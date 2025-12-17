@@ -17,6 +17,7 @@ from api import API
 from config.manager import ConfigManager
 from ui.settings_window import SettingsWindow
 from ui.console_window import ConsoleWindow
+from ui.help_window import HelpWindow
 from ui.mini_console import MiniConsole
 from ui.brand import BrandColors
 from ui.icons import IconUtils, IconType
@@ -228,11 +229,31 @@ class MainWindow(QMainWindow):
         
         self.layout.addLayout(button_layout)
 
+        self.help_button = QPushButton("Help")
+        self.help_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                color: {BrandColors.TEXT_PRIMARY};
+                border: none;
+                padding: 12px 20px;
+                border-radius: 6px;
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+            }}
+        """)
+        IconUtils.apply_icon(self.help_button, IconType.HELP, BrandColors.TEXT_PRIMARY)
+        self.help_button.setCursor(Qt.PointingHandCursor)
+        self.help_button.clicked.connect(self.open_help)
+        self.layout.addWidget(self.help_button)
+
         self.driver = None
         self.api = None
         self.server = None
         self.settings_window = None
         self.console_window = None
+        self.help_window = None
         self._main_logging_enabled = True
         
         # Initialize logging based on settings
@@ -387,6 +408,12 @@ class MainWindow(QMainWindow):
             self.settings_window.restart_requested.connect(self.on_restart_requested)
         self.settings_window.show()
         self.settings_window.activateWindow() # Bring to front
+
+    def open_help(self):
+        if not self.help_window:
+            self.help_window = HelpWindow(self.config_manager, None)
+        self.help_window.show()
+        self.help_window.activateWindow()
 
     def on_settings_saved(self):
         Logger.info("Settings saved.")

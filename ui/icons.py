@@ -12,6 +12,9 @@ class IconType(Enum):
     SETTINGS = "settings.svg"
     SEARCH = "search.svg"
     PLUS = "plus.svg"
+    HELP = "help-circle.svg"
+    MIGRATE = "truck.svg"
+    CONTRIBUTORS = "user-check.svg"
 
 class IconUtils:
     @staticmethod
