@@ -24,7 +24,7 @@ def default_update_method_availability() -> UpdateMethodAvailability:
 
     # From source runs can be updated via Git; PyInstaller builds do not have a git checkout.
     git_enabled = not frozen
-    git_reason = "" if git_enabled else "Git updates are available only when running from source."
+    git_reason = "" if git_enabled else "You aren't on a source run."
 
     # Auto-update is available for packaged builds on Windows and Linux.
     auto_enabled = frozen
@@ -114,7 +114,7 @@ class UpdateMethodDialog(QDialog):
 
         auto_btn = self._create_method_button(
             title="Auto-Update",
-            subtitle="Recommended for the packaged Windows build.",
+            subtitle="Recommended for packaged builds.",
             icon="download-cloud.svg",
             enabled=availability.auto_enabled,
             disabled_reason=availability.auto_reason,
