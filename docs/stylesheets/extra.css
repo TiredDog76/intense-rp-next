@@ -1,0 +1,22 @@
+:root {
+  /* Branding Colors from ui/brand.py */
+  --md-primary-fg-color: #5895fc;
+  --md-primary-fg-color--light: #7caeff;
+  --md-primary-fg-color--dark: #3b70c9;
+  --md-accent-fg-color: #5895fc;
+}
+
+/* Make headings bolder and add dividers */
+.md-typeset h1,
+.md-typeset h2 {
+  font-weight: 700;
+  border-bottom: 2px solid var(--md-default-fg-color--lightest);
+  padding-bottom: 0.3em;
+}
+
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6 {
+  font-weight: 600;
+}

@@ -16,3 +16,4 @@ build/
 *.spec
 oldfiles/
 findings.md
+site/
