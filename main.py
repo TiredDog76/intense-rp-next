@@ -496,7 +496,10 @@ class MainWindow(QMainWindow):
             except (TypeError, ValueError):
                 port = 7777
 
-            config = uvicorn.Config(app=self.api.app, host="127.0.0.1", port=port, log_level="info")
+            available_on_lan = self.config_manager.get_setting("network_settings", "available_on_lan")
+            host = "0.0.0.0" if available_on_lan else "127.0.0.1"
+
+            config = uvicorn.Config(app=self.api.app, host=host, port=port, log_level="info")
             self.server = uvicorn.Server(config)
             
             # Start Driver (with status callback for browser installation/launch updates)

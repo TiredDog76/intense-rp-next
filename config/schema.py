@@ -480,6 +480,13 @@ SCHEMA = [
                 validator=validate_port,
             ),
             SettingField(
+                key="available_on_lan",
+                label="Available on LAN",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Make the API server accessible from other devices on the local network.",
+            ),
+            SettingField(
                 key="use_api_keys",
                 label="Use API Keys",
                 type=SettingType.BOOLEAN,
