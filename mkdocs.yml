@@ -7,8 +7,8 @@ nav:
   - Features: features.md
   - Migration Guide: migration.md
   - Help & Support: 
-      - Contact: contact.md
-      - FAQ: faq.md
+      - Contact: hands/contact.md
+      - FAQ: hands/faq.md
 
 theme:
   name: material
