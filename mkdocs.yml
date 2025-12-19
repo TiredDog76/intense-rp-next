@@ -4,7 +4,14 @@ site_description: Documentation for IRP Next v2
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Features: features.md
+  - Features:
+      - Overview: features.md
+      - Formatting: features/formatting.md
+      - DeepSeek Behavior: features/deepseek-behavior.md
+      - Login & Sessions: features/login-sessions.md
+      - Network & API: features/network-api.md
+      - Console & Logging: features/console-logging.md
+      - System: features/system.md
   - Migration Guide: migration.md
   - Help & Support: 
       - Contact: hands/contact.md
@@ -47,7 +54,11 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.details
   - pymdownx.keys
   - pymdownx.tabbed:
