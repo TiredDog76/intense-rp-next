@@ -32,6 +32,8 @@ class DeepSeekDriver:
         # Abort handling
         self.current_abort_event: asyncio.Event = None
         self.abort_requested = False
+        self.current_model = None
+        self.current_send_deepthink = None
 
     def _get_persistent_profile_dir(self) -> str:
         config_dir = getattr(self.config_manager, "config_dir", None)
@@ -41,91 +43,22 @@ class DeepSeekDriver:
     async def ensure_browser_installed(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """
         Ensures the patchright chromium browser is installed.
-        Returns True if installation was performed, False if already installed.
-        Uses async subprocess to avoid blocking the UI event loop.
-        
-        Args:
-            status_callback: Optional callback to report status updates (e.g., for UI updates)
+        Returns True if installation was performed/verified, False if failed.
         """
-        # Check if chromium is already installed by trying to get the executable path
-        # The patchright/playwright browsers are stored in a known location
-        try:
-            # Try to import and check the browser registry
-            import patchright._impl._driver as driver_module
-            driver_executable, driver_cli = driver_module.compute_driver_executable()
-            
-            # Run 'patchright install chromium --dry-run' equivalent check (async)
-            try:
-                check_process = await asyncio.create_subprocess_exec(
-                    str(driver_cli), "install", "chromium", "--dry-run",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-                )
-                stdout, stderr = await asyncio.wait_for(check_process.communicate(), timeout=30)
-                stdout_text = stdout.decode() if stdout else ""
-                
-                # If dry-run indicates installation is needed, do it
-                if check_process.returncode != 0 or "chromium" in stdout_text.lower():
-                    return await self._run_browser_install(driver_cli, status_callback)
-                
-                Logger.debug("Chromium browser is already installed.")
-                return False
-                
-            except asyncio.TimeoutError:
-                Logger.warning("Browser check timed out, attempting installation...")
-                return await self._run_browser_install(driver_cli, status_callback)
-            
-        except ImportError:
-            # Fallback: try running patchright CLI directly
-            Logger.debug("Could not import patchright driver, trying CLI fallback...")
-            return await self._install_browser_via_cli(status_callback)
-        except FileNotFoundError:
-            # Driver not found, try CLI fallback
-            return await self._install_browser_via_cli(status_callback)
-        except Exception as e:
-            Logger.warning(f"Browser check failed: {e}, attempting installation...")
-            return await self._install_browser_via_cli(status_callback)
-
-    async def _run_browser_install(self, driver_cli, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        """
-        Run the browser installation using the patchright driver CLI (async).
-        """
-        Logger.info("Chromium browser not found. Installing...")
-        if status_callback:
-            status_callback("Installing Playwright browser...")
-        
-        try:
-            install_process = await asyncio.create_subprocess_exec(
-                str(driver_cli), "install", "chromium",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-            )
-            stdout, stderr = await asyncio.wait_for(install_process.communicate(), timeout=300)
-            
-            if install_process.returncode == 0:
-                Logger.success("Chromium browser installed successfully.")
-                return True
-            else:
-                error_msg = stderr.decode() if stderr else "Unknown error"
-                Logger.error(f"Failed to install Chromium browser: {error_msg}")
-                raise RuntimeError(f"Failed to install Chromium browser: {error_msg}")
-                
-        except asyncio.TimeoutError:
-            Logger.error("Browser installation timed out.")
-            raise RuntimeError("Browser installation timed out after 5 minutes.")
+        # Directly run the install/verify command to avoid issues where the dry-run check returns false negatives.
+        return await self._install_browser_via_cli(status_callback)
 
     async def _install_browser_via_cli(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """
-        Fallback method to install browser using patchright CLI (async).
+        Run the browser installation using the patchright CLI (async).
         """
-        Logger.info("Installing Chromium browser via CLI...")
+        Logger.info("Verifying/Installing Chromium browser...")
         if status_callback:
-            status_callback("Installing Playwright browser...")
+            status_callback("Verifying Browser...")
         
         try:
             # Use sys.executable to run the patchright module (async)
+            # This runs 'patchright install chromium' which downloads if missing, or validates if present.
             process = await asyncio.create_subprocess_exec(
                 sys.executable, "-m", "patchright", "install", "chromium",
                 stdout=asyncio.subprocess.PIPE,
@@ -135,7 +68,7 @@ class DeepSeekDriver:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
             
             if process.returncode == 0:
-                Logger.success("Chromium browser installed successfully.")
+                Logger.success("Chromium browser verified/installed.")
                 return True
             else:
                 error_msg = (stderr.decode() if stderr else "") or (stdout.decode() if stdout else "") or "Unknown error"
@@ -291,7 +224,19 @@ class DeepSeekDriver:
         self.is_running = False
         Logger.info("DeepSeek Driver closed.")
 
-    async def generate_response(self, message: Union[str, List[Any]], model: str = "deepseek-chat", stream: bool = False, temperature: float = None, top_p: float = None, abort_event: asyncio.Event = None):
+    def _resolve_deepthink_flags(self, model: str) -> tuple[bool, bool]:
+        enable_deepthink = bool(self.config_manager.get_setting("deepseek_behavior", "enable_deepthink"))
+        send_deepthink = bool(self.config_manager.get_setting("deepseek_behavior", "send_deepthink"))
+        normalized = (model or "").strip().lower()
+
+        if normalized == "deepseek-chat":
+            return False, False
+        if normalized == "deepseek-reasoner":
+            return True, send_deepthink
+
+        return enable_deepthink, send_deepthink
+
+    async def generate_response(self, message: Union[str, List[Any]], model: str = "deepseek-auto", stream: bool = False, temperature: float = None, top_p: float = None, abort_event: asyncio.Event = None):
         """
         Generates a response from DeepSeek.
         This function intercepts the network request to support streaming.
@@ -303,6 +248,10 @@ class DeepSeekDriver:
         self.thinking_active = False
         self.abort_requested = False
         self.current_abort_event = abort_event
+        resolved_model = (model or "").strip() or "deepseek-auto"
+        self.current_model = resolved_model
+        effective_deepthink, effective_send_deepthink = self._resolve_deepthink_flags(resolved_model)
+        self.current_send_deepthink = effective_send_deepthink
         
         async def handle_route(route):
             request = route.request
@@ -415,10 +364,9 @@ class DeepSeekDriver:
                 await asyncio.sleep(0.5)
                 
                 # Apply settings before sending
-                enable_deepthink = self.config_manager.get_setting("deepseek_behavior", "enable_deepthink")
                 enable_search = self.config_manager.get_setting("deepseek_behavior", "enable_search")
                 
-                await self.set_deepthink_state(enable_deepthink)
+                await self.set_deepthink_state(effective_deepthink)
                 await self.set_search_state(enable_search)
                 
                 # Small delay for the toggles to take effect
@@ -476,6 +424,8 @@ class DeepSeekDriver:
             # Cleanup interception
             self.current_abort_event = None
             self.abort_requested = False
+            self.current_model = None
+            self.current_send_deepthink = None
             await self.page.unroute("**/api/v0/chat/completion")
             await self.page.unroute("**/api/v0/chat/regenerate")
 
@@ -688,7 +638,11 @@ class DeepSeekDriver:
             
             # Cache settings once per chunk processing
             anti_censorship = self.config_manager.get_setting("deepseek_behavior", "anti_censorship")
-            send_deepthink = self.config_manager.get_setting("deepseek_behavior", "send_deepthink")
+            send_deepthink = (
+                self.current_send_deepthink
+                if self.current_send_deepthink is not None
+                else self.config_manager.get_setting("deepseek_behavior", "send_deepthink")
+            )
             
 
             
@@ -840,11 +794,12 @@ class DeepSeekDriver:
                             pass
 
                         if content or finish_reason:
+                            model_name = self.current_model or "deepseek-auto"
                             openai_chunk = {
                                 "id": "chatcmpl-custom",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "deepseek-chat",
+                                "model": model_name,
                                 "choices": [
                                     {
                                         "index": 0,

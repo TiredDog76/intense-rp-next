@@ -5,6 +5,7 @@ venv/
 .agent/ 
 # This one is for the guy I'm teaching to code, he uses AI so just in case
 AGENTS.md
+GEMINI.md
 config_data/
 cache/
 logs/

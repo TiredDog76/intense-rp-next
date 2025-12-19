@@ -76,7 +76,7 @@ class MiniClient(QMainWindow):
         payload = {
             "messages": [{"role": "user", "content": message}],
             "stream": stream,
-            "model": "deepseek-chat"
+            "model": "deepseek-auto"
         }
 
         try:

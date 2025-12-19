@@ -549,6 +549,12 @@ class SettingsWindow(QMainWindow):
         self._flash_reset_timer.timeout.connect(self._clear_flash)
 
     def _load_values(self):
+        override_cache = getattr(self, "_dep_override_cache", None)
+        if override_cache is not None:
+            override_cache.clear()
+        if hasattr(self, "_last_custom_template"):
+            delattr(self, "_last_custom_template")
+
         for category in SCHEMA:
             for field in self._iter_fields(category.fields):
                 key = f"{category.key}.{field.key}"
@@ -579,6 +585,19 @@ class SettingsWindow(QMainWindow):
         self._sync_config_storage_from_active_dir()
             
         self.unsaved_changes = False
+
+    def refresh_from_config(self, force: bool = False) -> bool:
+        if self.unsaved_changes and not force:
+            return False
+
+        try:
+            self.config_manager.load_settings()
+        except Exception as exc:
+            Logger.warning(f"Failed to reload settings: {exc}")
+
+        self._load_values()
+        self._sync_application_settings_info()
+        return True
 
     def _on_setting_changed(self):
         self.unsaved_changes = True
@@ -1203,6 +1222,7 @@ class SettingsWindow(QMainWindow):
             )
             
             if reply == QMessageBox.Yes:
+                self.unsaved_changes = False
                 event.accept()
             else:
                 event.ignore()

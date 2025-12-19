@@ -20,3 +20,20 @@
 .md-typeset h6 {
   font-weight: 600;
 }
+
+.md-typeset .image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.md-typeset .image-grid > * {
+  margin: 0;
+}
+
+.md-typeset .image-grid img {
+  width: 100%;
+  height: auto;
+  display: block;
+}

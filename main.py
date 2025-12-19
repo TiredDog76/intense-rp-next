@@ -1,6 +1,7 @@
 import sys
 import asyncio
 import uvicorn
+import logging
 import os
 import threading
 from pathlib import Path
@@ -406,6 +407,8 @@ class MainWindow(QMainWindow):
             self.settings_window = SettingsWindow(self.config_manager, None)
             self.settings_window.settings_saved.connect(self.on_settings_saved)
             self.settings_window.restart_requested.connect(self.on_restart_requested)
+        elif not self.settings_window.isVisible():
+            self.settings_window.refresh_from_config()
         self.settings_window.show()
         self.settings_window.activateWindow() # Bring to front
 
@@ -499,7 +502,24 @@ class MainWindow(QMainWindow):
             available_on_lan = self.config_manager.get_setting("network_settings", "available_on_lan")
             host = "0.0.0.0" if available_on_lan else "127.0.0.1"
 
-            config = uvicorn.Config(app=self.api.app, host=host, port=port, log_level="info")
+            # Configure Uvicorn with log_config=None to avoid "Unable to configure formatter 'default'" error
+            config = uvicorn.Config(
+                app=self.api.app,
+                host=host,
+                port=port,
+                log_level="critical",
+                log_config=None,
+                access_log=False,
+            )
+            
+            # Silence uvicorn loggers to avoid noisy console output.
+            for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+                logger = logging.getLogger(logger_name)
+                logger.handlers = [logging.NullHandler()]
+                logger.setLevel(logging.CRITICAL)
+                logger.propagate = False
+                logger.disabled = True
+
             self.server = uvicorn.Server(config)
             
             # Start Driver (with status callback for browser installation/launch updates)
@@ -628,6 +648,45 @@ class MainWindow(QMainWindow):
         asyncio.create_task(cleanup_and_close())
 
 def main():
+    import os
+    # If frozen, force Playwright/Patchright to use the global cache directory
+    # instead of looking for bundled browsers in the internal _MEIPASS/package directories.
+    if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            # Windows: %LOCALAPPDATA%\ms-playwright
+            local_app_data = os.environ.get("LOCALAPPDATA")
+            if local_app_data:
+                global_path = os.path.join(local_app_data, "ms-playwright")
+                if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+                    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = global_path
+                if "PATCHRIGHT_BROWSERS_PATH" not in os.environ:
+                    os.environ["PATCHRIGHT_BROWSERS_PATH"] = global_path
+        else:
+            # Linux/macOS: ~/.cache/ms-playwright
+            home = Path.home()
+            global_path = str(home / ".cache" / "ms-playwright")
+            if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+                os.environ["PLAYWRIGHT_BROWSERS_PATH"] = global_path
+            if "PATCHRIGHT_BROWSERS_PATH" not in os.environ:
+                os.environ["PATCHRIGHT_BROWSERS_PATH"] = global_path
+
+    # Handle module execution request (e.g. for patchright subprocesses in frozen app)
+    if len(sys.argv) > 2 and sys.argv[1] == "-m":
+        import runpy
+        # Remove exe and -m, keeping module name and args
+        # argv becomes ['module_name', 'arg1', ...]
+        sys.argv = sys.argv[2:]
+        module_name = sys.argv[0]
+        try:
+            # We must use alter_sys=True so the module sees the correct argv
+            runpy.run_module(module_name, run_name="__main__", alter_sys=True)
+            sys.exit(0)
+        except SystemExit:
+            raise
+        except Exception as e:
+            print(f"Failed to run module {module_name}: {e}")
+            sys.exit(1)
+
     remaining_args, delete_updater, updater_path = _parse_update_cleanup_args(sys.argv[1:])
     sys.argv = [sys.argv[0]] + remaining_args
 

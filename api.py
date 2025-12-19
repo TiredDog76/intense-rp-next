@@ -15,7 +15,7 @@ class Message(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     messages: List[Message]
-    model: str = "deepseek-chat"
+    model: str = "deepseek-auto"
     stream: bool = False
     temperature: Optional[float] = None
     top_p: Optional[float] = None
@@ -29,38 +29,56 @@ class API:
         self.setup_routes()
         self.start_worker()
 
+    def _authenticate_request(self, raw_request: Request) -> None:
+        cfg = getattr(self.driver, "config_manager", None)
+        if not cfg or not cfg.get_setting("network_settings", "use_api_keys"):
+            return
+
+        auth_header = raw_request.headers.get("Authorization") or ""
+        if not auth_header.lower().startswith("bearer "):
+            raise HTTPException(status_code=401, detail="Missing API key")
+
+        token = auth_header.split(" ", 1)[1].strip()
+        pairs = cfg.get_setting("network_settings", "api_keys") or []
+
+        matched_name = None
+        for p in pairs:
+            name = ""
+            key_val = ""
+            if isinstance(p, dict):
+                name = str(p.get("name", ""))
+                key_val = str(p.get("key", ""))
+            elif isinstance(p, (list, tuple)) and len(p) >= 2:
+                name = str(p[0])
+                key_val = str(p[1])
+
+            if key_val and token == key_val:
+                matched_name = name or "Unnamed"
+                break
+
+        if not matched_name:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+        Logger.info(f"Authenticated request using API key: {matched_name}")
+
     def setup_routes(self):
+        @self.app.get("/v1/models")
+        async def list_models(raw_request: Request):
+            self._authenticate_request(raw_request)
+
+            return {
+                "object": "list",
+                "data": [
+                    {"id": "deepseek-auto", "object": "model", "created": 0, "owned_by": "deepseek"},
+                    {"id": "deepseek-chat", "object": "model", "created": 0, "owned_by": "deepseek"},
+                    {"id": "deepseek-reasoner", "object": "model", "created": 0, "owned_by": "deepseek"},
+                ],
+            }
+
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: ChatCompletionRequest, raw_request: Request):
             # Optional API key authentication (Bearer token)
-            cfg = getattr(self.driver, "config_manager", None)
-            if cfg and cfg.get_setting("network_settings", "use_api_keys"):
-                auth_header = raw_request.headers.get("Authorization") or ""
-                if not auth_header.lower().startswith("bearer "):
-                    raise HTTPException(status_code=401, detail="Missing API key")
-
-                token = auth_header.split(" ", 1)[1].strip()
-                pairs = cfg.get_setting("network_settings", "api_keys") or []
-
-                matched_name = None
-                for p in pairs:
-                    name = ""
-                    key_val = ""
-                    if isinstance(p, dict):
-                        name = str(p.get("name", ""))
-                        key_val = str(p.get("key", ""))
-                    elif isinstance(p, (list, tuple)) and len(p) >= 2:
-                        name = str(p[0])
-                        key_val = str(p[1])
-
-                    if key_val and token == key_val:
-                        matched_name = name or "Unnamed"
-                        break
-
-                if not matched_name:
-                    raise HTTPException(status_code=401, detail="Invalid API key")
-
-                Logger.info(f"Authenticated request using API key: {matched_name}")
+            self._authenticate_request(raw_request)
 
             if not self.driver.is_running:
                 raise HTTPException(status_code=503, detail="DeepSeek Driver is not running")
