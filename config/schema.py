@@ -169,7 +169,7 @@ SCHEMA = [
                 key="injection_desc",
                 label="Description",
                 type=SettingType.DESCRIPTION,
-                default="Insert a small instruction before or after all other messages.",
+                default="Insert a small instruction before or after all other messages. Supports {{user}} and {{char}} placeholders.",
                 tooltip=None
             ),
             SettingField(
@@ -185,7 +185,7 @@ SCHEMA = [
                 label="Content",
                 type=SettingType.TEXTAREA,
                 default="",
-                tooltip="Content to inject."
+                tooltip="Content to inject. Supports {{user}} and {{char}} placeholders."
             ),
             SettingField(
                 key="reset_injection_btn",

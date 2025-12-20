@@ -1,11 +1,1 @@
-- [x] Add a logger
-- [x] Add better support for message stopping (if the client aborts the request, we abort generation)
-- [x] Add a process watcher to alert the main app if the browser process crashes
-- [ ] Recent Investigation:
-  - It seems like DeepSeek models actually get far less creative with the caching enabled
-  - Presumably the caching system is always-on in their web app
-  - My idea is to add a cache busting option that forces clean generations
-  - This *could* be done in SillyTavern, though, so perhaps it's not necessary here
-  - **ANYWAY**: I'll add a simple cache busting option to the API that will add a random number to the beginning of the prompt
-  - Something like [Request ID: 1234567890] at the start of the prompt
-- [ ] Add cache busting option
+- [] Replace -> in docs with :material-arrow-right: (I was too lazy to copy and paste the emoji everywhere so I just used what types easily)

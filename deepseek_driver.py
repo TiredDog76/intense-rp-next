@@ -577,10 +577,13 @@ class DeepSeekDriver:
                             user_name = classic_match.group(2)
 
         # 2. Format Messages
-        template = self.config_manager.get_setting("formatting", "formatting_template")
-        divider = self.config_manager.get_setting("formatting", "formatting_divider")
-        # Unescape newline in divider
-        divider = divider.replace("\\n", "\n")
+        template = self.config_manager.get_setting("formatting", "formatting_template") or ""
+        divider = self.config_manager.get_setting("formatting", "formatting_divider") or ""
+
+        # Unescape newlines in both the template and divider.
+        # We want users to be able to enter \n in the settings UI.
+        template = str(template).replace("\\n", "\n")
+        divider = str(divider).replace("\\n", "\n")
         
         formatted_parts = []
         
@@ -622,8 +625,26 @@ class DeepSeekDriver:
         # 3. Injection
         injection_pos = self.config_manager.get_setting("formatting", "injection_position")
         injection_content = self.config_manager.get_setting("formatting", "injection_content")
+
+        def _render_injection(text: str) -> str:
+            rendered = "" if text is None else str(text)
+
+            # v2 placeholders (recommended)
+            rendered = rendered.replace("{{user}}", user_name)
+            rendered = rendered.replace("{{char}}", char_name)
+
+            # Compatibility: common v1-style placeholders in injections
+            rendered = rendered.replace("{username}", user_name)
+            rendered = rendered.replace("{asstname}", char_name)
+
+            # Convenience aliases
+            rendered = rendered.replace("{{username}}", user_name)
+            rendered = rendered.replace("{{asstname}}", char_name)
+
+            return rendered
         
         if injection_content:
+            injection_content = _render_injection(injection_content)
             if injection_pos == "Before":
                 final_message = injection_content + "\n" + final_message
             else:

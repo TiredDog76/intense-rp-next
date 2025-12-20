@@ -251,6 +251,16 @@ Injection adds your custom text either **before** or **after** all other formatt
 | **Before** | At the very beginning of the prompt |
 | **After** | At the very end of the prompt |
 
+!!! tip "Injection placeholders"
+    Injection content supports these placeholders:
+
+    | Placeholder | Replaced with |
+    |---|---|
+    | `{{user}}` | Detected user name |
+    | `{{char}}` | Detected character name |
+
+    The names come from the same Name Detection system (Message Objects, IR2 blocks, or Classic IntenseRP tags).
+
 ### Example
 
 If your injection content is:
