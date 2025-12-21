@@ -175,7 +175,7 @@ IntenseRP tries to figure out who's who in your conversation. It looks for names
 
 IntenseRP checks these sources **in order**:
 
-1. **Message Objects** — The `name` field in each message (if your client sends it)
+1. **Message Objects** — The `name` field in each message (or `irp-next` for STMP patcher compat)
 2. **IR2 Blocks** — Special tags in system messages
 3. **Classic IntenseRP** — Legacy `DATA1`/`DATA2` format
 
@@ -196,6 +196,9 @@ The OpenAI API format lets you include a `name` field with each message:
 When enabled, IntenseRP reads this `name` and uses it for `{{name}}` in your template.
 
 :material-arrow-right: **Settings** → **Formatting** → **Name Behavior** → **Message Objects**
+
+!!! note "SMTP Patcher compatibility"
+    If your client sends `irp-next` instead of `name`, IntenseRP treats it exactly like `name` (when Message Objects is enabled).
 
 !!! warning "SillyTavern Setup Required"
     For SillyTavern to actually send these names, you need to configure it:

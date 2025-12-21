@@ -143,7 +143,7 @@ SCHEMA = [
                 label="Message Objects",
                 type=SettingType.BOOLEAN,
                 default=True,
-                tooltip="Scan for 'name' parameter in message objects."
+                tooltip="Scan for 'name' parameter in message objects (or 'irp-next' for STMP patcher compat)."
             ),
             SettingField(
                 key="enable_ir2",

@@ -62,7 +62,7 @@ IntenseRP doesn't just forward your messages to DeepSeek. It formats them into a
 |---------|-------------|
 | **Formatting Templates** | Define how messages appear using `{{name}}`, `{{role}}`, and `{{content}}` placeholders |
 | **Built-in Presets** | Choose from Classic, XML-Like, or Divided styles |
-| **Name Detection** | Extract character/user names from IR2 blocks, Classic IntenseRP tags, or message objects |
+| **Name Detection** | Extract character/user names from IR2 blocks, Classic IntenseRP tags, or message objects (`name` / `irp-next`) |
 | **Message Injection** | Add custom text before or after all messages |
 
 ---

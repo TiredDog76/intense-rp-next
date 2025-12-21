@@ -542,12 +542,32 @@ class DeepSeekDriver:
         char_name = "Character"
         
         msgs_to_scan = messages if isinstance(messages, list) else []
+
+        def _get_msg_field(msg: Any, key: str, default: Any = None) -> Any:
+            try:
+                value = getattr(msg, key)
+            except Exception:
+                value = None
+
+            if value is not None:
+                return value
+
+            if isinstance(msg, dict):
+                return msg.get(key, default)
+
+            return default
+
+        def _get_msg_name(msg: Any) -> Any:
+            name_value = _get_msg_field(msg, "name")
+            if name_value:
+                return name_value
+            return _get_msg_field(msg, "irp-next") # For patcher compat
         
         # Try Message Objects
         if self.config_manager.get_setting("formatting", "enable_msg_objects"):
             for msg in msgs_to_scan:
                 role = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                name = getattr(msg, "name", msg.get("name") if isinstance(msg, dict) else None)
+                name = _get_msg_name(msg)
                 if name:
                     if role == "user":
                         user_name = name
@@ -595,7 +615,7 @@ class DeepSeekDriver:
                 # Get per-message name if available and enabled
                 msg_name = None
                 if self.config_manager.get_setting("formatting", "enable_msg_objects"):
-                    msg_name = getattr(msg, "name", msg.get("name") if isinstance(msg, dict) else None)
+                    msg_name = _get_msg_name(msg)
                 
                 # Map role
                 display_role = "System"
