@@ -168,6 +168,11 @@ When you query `/v1/models`, you'll get:
 
 ---
 
+!!! tip "Need deeper API details?"
+    See [:material-api: API Behavior](../advanced/api-behavior.md) for request flow, streaming, cancellation, and queueing.
+
+---
+
 ## :material-arrow-left: Back to Features
 
 [:material-arrow-left: Features Overview](../features.md)

@@ -202,6 +202,9 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
 
 ## :material-bug: Troubleshooting
 
+!!! tip "More issues?"
+    See [:material-bug: Troubleshooting](../hands/troubleshooting.md) for a broader checklist (network, auth, provider issues, and bug report info).
+
 ??? question "Persistent Sessions is enabled, but I still get logged out"
     DeepSeek sessions can expire. If it happens frequently:
 

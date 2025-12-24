@@ -202,6 +202,9 @@ This saves your browser session so you stay logged in (unless you log out manual
 
 ## :material-help-circle: Troubleshooting
 
+!!! tip "Need more?"
+    See [:material-bug: Troubleshooting](hands/troubleshooting.md) for a full checklist and bug report tips.
+
 ### :material-window-close: Browser Won't Open
 
 - Make sure you have enough disk space (~500MB for browser, ~300MB for the app)

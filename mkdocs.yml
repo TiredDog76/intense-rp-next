@@ -12,8 +12,13 @@ nav:
       - Network & API: features/network-api.md
       - Console & Logging: features/console-logging.md
       - System: features/system.md
+  - Advanced:
+      - Overview: advanced.md
+      - Provider Support: advanced/provider-support.md
+      - API Behavior: advanced/api-behavior.md
   - Migration Guide: migration.md
   - Help & Support: 
+      - Troubleshooting: hands/troubleshooting.md
       - Contact: hands/contact.md
       - FAQ: hands/faq.md
 

@@ -143,6 +143,9 @@ Sometimes you need to save whatever's currently in the console - maybe to share 
 
 When things go sideways, logs are your best friend. Usually that's where you'll be going to figure out what went wrong.
 
+!!! tip "Want a full troubleshooting checklist?"
+    See [:material-bug: Troubleshooting](../hands/troubleshooting.md) for common fixes and how to file a good bug report.
+
 ### What to Look For
 
 1. **ERROR messages** - Usually tell you exactly what blew up

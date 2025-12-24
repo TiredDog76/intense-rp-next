@@ -1,0 +1,97 @@
+---
+icon: material/cloud
+---
+
+# :material-cloud: Provider Support
+
+IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests. Today, **only DeepSeek is implemented and usable**.
+
+!!! warning "Web apps change"
+    Provider drivers depend on the provider's web UI and internal API shapes. If a provider updates their frontend, a driver may break until it is updated.
+
+---
+
+## :material-connection: How providers work (in v2)
+
+All providers follow the same general approach:
+
+1. Launch a real browser session (Playwright/Patchright)
+2. Log in (manual or auto-login, depending on settings)
+3. Trigger a generation in the provider UI (type/upload + click send)
+4. Intercept the provider's internal streaming request
+5. Convert the provider stream into OpenAI-style SSE deltas (`/v1/chat/completions`)
+
+This is why IntenseRP can present an OpenAI-compatible API even though the underlying provider is a normal web chat app.
+
+---
+
+## :material-flag-checkered: Provider lifecycle stages
+
+Every provider goes through the same lifecycle:
+
+Queued :material-arrow-right: Planning :material-arrow-right: Prototyping :material-arrow-right: Driver Implementation :material-arrow-right: Integration :material-arrow-right: Verification :material-arrow-right: Stable
+
+### :material-palette: Stage legend (icon + color coded)
+
+| Stage | Indicator | What it means |
+|---|---|---|
+| **Queued** | :material-clock-outline:{ style="color: #ADB5BD" } | In the backlog, not started |
+| **Planning** | :material-lightbulb-outline:{ style="color: #74C0FC" } | Design/requirements work |
+| **Prototyping** | :material-flask-outline:{ style="color: #B197FC" } | Early experiments, not production-ready |
+| **Driver Implementation** | :material-hammer-wrench:{ style="color: #FF922B" } | Building the provider driver (UI + interception) |
+| **Integration** | :material-connection:{ style="color: #63E6BE" } | Wiring driver into the app and API surface |
+| **Verification** | :material-shield-check:{ style="color: #FFD43B" } | Stress testing, edge cases, reliability |
+| **Stable** | :material-check-circle:{ style="color: #51CF66" } | Considered reliable for normal use |
+
+---
+
+## :material-format-list-bulleted: Current provider roadmap
+
+Providers are prioritized in this order:
+
+| Provider | Priority | Current stage |
+|---|---:|---|
+| **DeepSeek** | 1 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
+| **GLM Chat** | 2 | :material-clock-outline:{ style="color: #ADB5BD" } **Queued** |
+| **Moonshot** | 3 | :material-clock-outline:{ style="color: #ADB5BD" } **Queued** |
+
+!!! note "What 'Verification' means for DeepSeek"
+    DeepSeek is implemented and usable, but it is still being validated for stability (provider UI changes, edge cases, cancellation, long prompts, etc.).
+
+---
+
+## :material-arrow-right: Related pages
+
+<div class="grid cards" markdown>
+
+-   :material-brain: **DeepSeek Behavior**
+
+    DeepThink, Search, anti-censorship, and more.
+
+    [:arrow_right: DeepSeek Behavior](../features/deepseek-behavior.md)
+
+-   :material-key: **Login & Sessions**
+
+    Auto login and persistent sessions.
+
+    [:arrow_right: Login & Sessions](../features/login-sessions.md)
+
+-   :material-lan: **Network & API**
+
+    Ports, LAN access, and API key auth.
+
+    [:arrow_right: Network & API](../features/network-api.md)
+
+-   :material-api: **API Behavior**
+
+    Request flow, streaming, cancellation, and queueing.
+
+    [:arrow_right: API Behavior](api-behavior.md)
+
+</div>
+
+---
+
+## :material-arrow-left: Back to Advanced
+
+[:material-arrow-left: Advanced](../advanced.md)
