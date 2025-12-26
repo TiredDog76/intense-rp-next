@@ -8,6 +8,7 @@ from PySide6.QtGui import QIcon
 from ui.brand import BrandColors
 from ui.icons import IconUtils, IconType
 from ui.contributors_window import ContributorsWindow
+from ui.stmp_patcher_window import STMPPatcherWindow
 from utils.v1_migrator import V1Migrator
 from utils.logger import Logger
 
@@ -16,13 +17,13 @@ class HelpWindow(QMainWindow):
         super().__init__(parent)
         self.config_manager = config_manager
         self.setWindowTitle("Help & Extras")
-        self.resize(350, 300)
+        self.resize(360, 450)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG};")
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
         layout.setContentsMargins(20, 20, 20, 20)
 
         # Title
@@ -35,7 +36,7 @@ class HelpWindow(QMainWindow):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        desc = QLabel("Access migration tools for older versions or view project resources.")
+        desc = QLabel("Migration tools, utilities, and project resources.")
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignCenter)
         desc.setStyleSheet(f"""
@@ -46,7 +47,11 @@ class HelpWindow(QMainWindow):
         """)
         layout.addWidget(desc)
         
-        layout.addStretch()
+        # STMP Patcher Button
+        self.stmp_btn = self._create_button("STMP Patcher", IconType.PATCHER)
+        self.stmp_btn.setToolTip("Patches RossAscends's STMP to include per-message names.")
+        self.stmp_btn.clicked.connect(self.show_stmp_patcher)
+        layout.addWidget(self.stmp_btn)
 
         # Migrate Button
         self.migrate_btn = self._create_button("Migrate from v1", IconType.MIGRATE)
@@ -63,6 +68,7 @@ class HelpWindow(QMainWindow):
 
 
         self.contributors_window = None
+        self.stmp_patcher_window = None
 
     def _create_button(self, text, icon_type):
         btn = QPushButton(text)
@@ -116,6 +122,12 @@ class HelpWindow(QMainWindow):
         result_msg.setText(message)
         result_msg.setIcon(QMessageBox.Information if success else QMessageBox.Warning)
         result_msg.exec()
+
+    def show_stmp_patcher(self):
+        if not self.stmp_patcher_window:
+            self.stmp_patcher_window = STMPPatcherWindow(None)  # Top level
+        self.stmp_patcher_window.show()
+        self.stmp_patcher_window.activateWindow()
 
     def show_contributors(self):
         if not self.contributors_window:

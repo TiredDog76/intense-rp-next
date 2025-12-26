@@ -7,6 +7,7 @@ nav:
   - Features:
       - Overview: features.md
       - Formatting: features/formatting.md
+      - STMP Support: features/stmp-support.md
       - DeepSeek Behavior: features/deepseek-behavior.md
       - Login & Sessions: features/login-sessions.md
       - Network & API: features/network-api.md

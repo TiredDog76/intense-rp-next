@@ -171,7 +171,7 @@ There is no automatic migrator for IntenseRP API configs in v2. The safest path 
 - Want the "classic" IR API look? Use **Formatting -> Preset -> Classic - Name**
 - If your old prompts used `DATA1`/`DATA2` naming tags, keep them. v2 can still parse them:
     - Formatting -> Name Behavior -> Classic IntenseRP
-- If your client can send OpenAI `name` fields (or `irp-next` for STMP patcher compat), that is the most reliable path:
+- If your client can send OpenAI `name` fields (or legacy `irp-next` for RossAscends's STMP patcher compat), that is the most reliable path:
     - Formatting -> Name Behavior -> Message Objects
     - SillyTavern -> User Settings -> Character Names Behavior -> Message
 

@@ -15,6 +15,7 @@ class IconType(Enum):
     HELP = "help-circle.svg"
     MIGRATE = "truck.svg"
     CONTRIBUTORS = "user-check.svg"
+    PATCHER = "terminal.svg"
 
 class IconUtils:
     @staticmethod
