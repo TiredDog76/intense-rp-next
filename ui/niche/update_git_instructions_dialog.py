@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from .brand import BrandColors
+from ..brand import BrandColors
 
 
 class UpdateGitInstructionsDialog(QDialog):
@@ -70,7 +70,7 @@ class UpdateGitInstructionsDialog(QDialog):
         layout.addWidget(self._build_button_row())
 
     def _default_commands(self) -> str:
-        repo_root = Path(__file__).resolve().parent.parent
+        repo_root = Path(__file__).resolve().parent.parent.parent
         repo_root_str = str(repo_root)
         # Keep it simple and cross-shell. Users can adapt for venvs as needed.
         return "\n".join(
@@ -194,4 +194,4 @@ class UpdateGitInstructionsDialog(QDialog):
     def _icon_path(self, filename: str) -> str:
         import os
 
-        return os.path.join(os.path.dirname(__file__), "assets", "icons", filename)
+        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)

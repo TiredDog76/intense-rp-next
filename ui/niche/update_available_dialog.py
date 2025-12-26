@@ -8,8 +8,8 @@ from PySide6.QtCore import Qt, QSize, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from .brand import BrandColors
-from .icons import IconType, IconUtils
+from ..brand import BrandColors
+from ..icons import IconType, IconUtils
 from .update_method_dialog import UpdateMethodDialog
 from .update_git_instructions_dialog import UpdateGitInstructionsDialog
 from .update_download_dialog import UpdateDownloadDialog
@@ -242,7 +242,7 @@ class UpdateAvailableDialog(QDialog):
         QDesktopServices.openUrl(QUrl(self._info.release_notes_url))
 
     def _icon_path(self, filename: str) -> str:
-        return os.path.join(os.path.dirname(__file__), "assets", "icons", filename)
+        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)
 
     def _get_icon_pixmap(self, filename: str, size: int) -> object:
         return QIcon(self._icon_path(filename)).pixmap(QSize(size, size))

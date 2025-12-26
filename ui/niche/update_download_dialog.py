@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 
-from .brand import BrandColors
+from ..brand import BrandColors
 from utils.auto_update import AutoUpdateError, PreparedUpdate, prepare_update_from_github, DownloadProgress
 
 
@@ -422,4 +422,4 @@ class UpdateDownloadDialog(QDialog):
     def _icon_path(self, filename: str) -> str:
         import os
 
-        return os.path.join(os.path.dirname(__file__), "assets", "icons", filename)
+        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)

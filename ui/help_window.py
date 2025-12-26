@@ -8,7 +8,7 @@ from PySide6.QtGui import QIcon
 from ui.brand import BrandColors
 from ui.icons import IconUtils, IconType
 from ui.contributors_window import ContributorsWindow
-from ui.stmp_patcher_window import STMPPatcherWindow
+from ui.niche.stmp_patcher_window import STMPPatcherWindow
 from utils.v1_migrator import V1Migrator
 from utils.logger import Logger
 

@@ -22,7 +22,7 @@ from ui.help_window import HelpWindow
 from ui.mini_console import MiniConsole
 from ui.brand import BrandColors
 from ui.icons import IconUtils, IconType
-from ui.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
+from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger, LogLevel
 from utils.update_checker import check_for_updates
 import shutil

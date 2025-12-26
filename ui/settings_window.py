@@ -17,7 +17,7 @@ from config.schema import SCHEMA, SettingType
 from .brand import BrandColors
 from .components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget
 from .icons import IconUtils, IconType
-from .update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
+from .niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
 from utils.update_checker import check_for_updates, read_local_version
 

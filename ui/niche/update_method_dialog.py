@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from .brand import BrandColors
+from ..brand import BrandColors
 
 
 @dataclass(frozen=True)
@@ -268,4 +268,4 @@ class UpdateMethodDialog(QDialog):
     def _icon_path(self, filename: str) -> str:
         import os
 
-        return os.path.join(os.path.dirname(__file__), "assets", "icons", filename)
+        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)
