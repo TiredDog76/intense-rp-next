@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="repo/images/IntenseRP%20Next%20release%20Strip.png" alt="IntenseRP Next" />
+  <img src=".github/images/logo-strip.png" alt="IntenseRP Next" />
 </p>
 
 <h1 align="center">IntenseRP Next v2</h1>
