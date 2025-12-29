@@ -860,7 +860,10 @@ class DeepSeekDriver:
         """
         Toggles the DeepThink mode to the desired state.
         """
-        button = self.page.locator("button.ds-toggle-button", has_text="DeepThink")
+        # this toggle used to be a <button>, but is now often a <div role="button">.
+        button = self.page.locator(".ds-toggle-button", has_text="DeepThink")
+        if await button.count() == 0:
+            button = self.page.locator("[role='button']", has_text="DeepThink")
         
         if await button.count() == 0:
             Logger.warning("DeepThink button not found.")
@@ -879,7 +882,10 @@ class DeepSeekDriver:
         """
         Toggles the Search mode to the desired state.
         """
-        button = self.page.locator("button.ds-toggle-button", has_text="Search")
+        # this toggle used to be a <button>, but is now often a <div role="button">.
+        button = self.page.locator(".ds-toggle-button", has_text="Search")
+        if await button.count() == 0:
+            button = self.page.locator("[role='button']", has_text="Search")
         
         if await button.count() == 0:
             Logger.warning("Search button not found.")
