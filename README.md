@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 
 
 > [!IMPORTANT]
-> v2 is the actively developed rewrite. Current version: `2.0.10-alpha` (see `version.json`).
+> v2 is the actively developed rewrite. Currently in beta but releasing very, very soon.
 >
 > Today: **DeepSeek is implemented and usable**, but still being validated for stability. If something breaks, it's usually not personal - it is just the web app breaking things again.
 
