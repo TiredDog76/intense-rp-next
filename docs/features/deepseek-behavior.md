@@ -107,16 +107,39 @@ When you send the exact same prompt twice in a row, IntenseRP can regenerate the
 
 ### How It Works
 
-1. IntenseRP caches the last prompt you sent
-2. When a new request comes in, it compares against the cache
+1. IntenseRP caches the last prompt you sent (plus the effective DeepSeek settings used for it)
+2. When a new request comes in, it compares the prompt and settings against the cache
 3. If they match, it clicks the "Regenerate" button instead of starting fresh
 4. If they don't match (or the button isn't available), it creates a new chat as usual
+
+!!! note "Settings Changes"
+    If you change DeepThink, Search, or Send As Text File, IntenseRP will start a new chat even if the prompt is identical. This makes sure the new settings actually apply to the request.
 
 !!! tip "Swipe in SillyTavern"
     This is especially useful with SillyTavern's "swipe" feature. Each swipe sends the same prompt again, and Clean Regeneration makes sure you're regenerating rather than cluttering up DeepSeek with duplicate chats.
 
 !!! note "Censorship"
     DeepSeek automatically disables the regenerate button if the last response was censored. In that case, Clean Regeneration won't work, and IntenseRP will start a new chat instead.
+
+---
+
+## :material-code-tags: Per-Message Macros
+
+You can add simple `[[...]]` macros to the *latest* user message in SillyTavern to override certain DeepSeek Behavior settings for that request only.
+
+All macros are stripped from the message before sending it to DeepSeek.
+
+| Macro | Effect |
+|------|--------|
+| `[[think]]`, `[[r1]]` | Force DeepThink on |
+| `[[nothink]]`, `[[r0]]` | Force DeepThink off |
+| `[[search]]` | Force Search on |
+| `[[nosearch]]` | Force Search off |
+| `[[file]]` | Force Send As Text File on |
+| `[[nofile]]` | Force Send As Text File off |
+
+!!! note "Scope"
+    Only macros from the latest user message apply. They do not persist across requests.
 
 ---
 

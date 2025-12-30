@@ -34,6 +34,8 @@ class DeepSeekDriver:
         self.abort_requested = False
         self.current_model = None
         self.current_send_deepthink = None
+        self.clean_regen_message_cache_key = "last_message.txt"
+        self.clean_regen_state_cache_key = "last_message_state.json"
 
     def _get_persistent_profile_dir(self) -> str:
         config_dir = getattr(self.config_manager, "config_dir", None)
@@ -138,7 +140,8 @@ class DeepSeekDriver:
         self.is_running = True
         
         # Invalidate cache on start
-        self.cache_manager.clear_cache("last_message.txt")
+        self.cache_manager.clear_cache(self.clean_regen_message_cache_key)
+        self.cache_manager.clear_cache(self.clean_regen_state_cache_key)
         
         Logger.success("DeepSeek Driver started successfully.")
         
@@ -236,6 +239,160 @@ class DeepSeekDriver:
 
         return enable_deepthink, send_deepthink
 
+    def _resolve_deepseek_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
+        resolved_model = (model or "").strip() or "deepseek-auto"
+        deepthink_enabled, send_deepthink = self._resolve_deepthink_flags(resolved_model)
+        search_enabled = bool(self.config_manager.get_setting("deepseek_behavior", "enable_search"))
+        send_as_text_file = bool(self.config_manager.get_setting("deepseek_behavior", "send_as_text_file"))
+
+        settings = {
+            "deepthink_enabled": bool(deepthink_enabled),
+            "send_deepthink": bool(send_deepthink),
+            "search_enabled": bool(search_enabled),
+            "send_as_text_file": bool(send_as_text_file),
+        }
+
+        if overrides:
+            for key in ("deepthink_enabled", "send_deepthink", "search_enabled", "send_as_text_file"):
+                if key in overrides:
+                    settings[key] = bool(overrides[key])
+
+        return settings
+
+    def _extract_deepseek_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
+        if not text:
+            return text, {}
+
+        macro_actions: Dict[str, tuple[str, bool]] = {
+            # DeepThink
+            "think": ("deepthink_enabled", True),
+            "r1": ("deepthink_enabled", True),
+            "nothink": ("deepthink_enabled", False),
+            "no_think": ("deepthink_enabled", False),
+            "r0": ("deepthink_enabled", False),
+
+            # Search
+            "search": ("search_enabled", True),
+            "nosearch": ("search_enabled", False),
+            "no_search": ("search_enabled", False),
+
+            # Send as text file
+            "file": ("send_as_text_file", True),
+            "sendfile": ("send_as_text_file", True),
+            "nofile": ("send_as_text_file", False),
+            "no_file": ("send_as_text_file", False),
+        }
+
+        overrides: Dict[str, bool] = {}
+        macro_pattern = re.compile(r"\[\[\s*([a-zA-Z0-9_-]+)\s*\]\]")
+
+        def _replace_macro(match: re.Match) -> str:
+            macro = (match.group(1) or "").strip().lower()
+            action = macro_actions.get(macro)
+            if not action:
+                return match.group(0)
+
+            key, value = action
+            overrides[key] = value
+            return ""
+
+        cleaned = macro_pattern.sub(_replace_macro, text)
+        return cleaned, overrides
+
+    def _strip_deepseek_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
+        last_user_index = None
+        for idx in range(len(messages) - 1, -1, -1):
+            msg = messages[idx]
+            role = ""
+            if isinstance(msg, dict):
+                role = str(msg.get("role", "") or "")
+            else:
+                try:
+                    role = str(getattr(msg, "role", "") or "")
+                except Exception:
+                    role = ""
+            if role.strip().lower() == "user":
+                last_user_index = idx
+                break
+
+        if last_user_index is None:
+            return messages, {}
+
+        last_msg = messages[last_user_index]
+        if isinstance(last_msg, dict):
+            content = last_msg.get("content", "")
+        else:
+            try:
+                content = getattr(last_msg, "content", "")
+            except Exception:
+                content = ""
+
+        if not isinstance(content, str):
+            return messages, {}
+
+        cleaned_content, overrides = self._extract_deepseek_macros_from_text(content)
+        if not overrides:
+            return messages, {}
+
+        cleaned_messages = list(messages)
+        if isinstance(last_msg, dict):
+            updated = dict(last_msg)
+            updated["content"] = cleaned_content
+            cleaned_messages[last_user_index] = updated
+        else:
+            role_value = ""
+            name_value = None
+            try:
+                role_value = getattr(last_msg, "role", "")
+            except Exception:
+                role_value = ""
+            try:
+                name_value = getattr(last_msg, "name", None)
+            except Exception:
+                name_value = None
+
+            updated = {"role": role_value, "content": cleaned_content}
+            if name_value is not None:
+                updated["name"] = name_value
+            cleaned_messages[last_user_index] = updated
+
+        return cleaned_messages, overrides
+
+    def _read_clean_regeneration_state(self) -> Optional[Dict[str, bool]]:
+        raw = self.cache_manager.read_cache(self.clean_regen_state_cache_key)
+        if raw is None:
+            return None
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            Logger.warning("Clean Regeneration: Cached state is invalid JSON, ignoring.")
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        required_keys = ("deepthink_enabled", "search_enabled", "send_as_text_file")
+        if not all(k in data for k in required_keys):
+            return None
+
+        return {
+            "deepthink_enabled": bool(data.get("deepthink_enabled")),
+            "search_enabled": bool(data.get("search_enabled")),
+            "send_as_text_file": bool(data.get("send_as_text_file")),
+        }
+
+    def _write_clean_regeneration_state(self, state: Dict[str, bool]) -> None:
+        payload = {
+            "deepthink_enabled": bool(state.get("deepthink_enabled")),
+            "search_enabled": bool(state.get("search_enabled")),
+            "send_as_text_file": bool(state.get("send_as_text_file")),
+        }
+        self.cache_manager.write_cache(
+            self.clean_regen_state_cache_key,
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+        )
+
     async def generate_response(self, message: Union[str, List[Any]], model: str = "deepseek-auto", stream: bool = False, temperature: float = None, top_p: float = None, abort_event: asyncio.Event = None):
         """
         Generates a response from DeepSeek.
@@ -250,7 +407,22 @@ class DeepSeekDriver:
         self.current_abort_event = abort_event
         resolved_model = (model or "").strip() or "deepseek-auto"
         self.current_model = resolved_model
-        effective_deepthink, effective_send_deepthink = self._resolve_deepthink_flags(resolved_model)
+
+        macros_overrides: Dict[str, bool] = {}
+        message_for_formatting = message
+        if isinstance(message, list):
+            message_for_formatting, macros_overrides = self._strip_deepseek_macros_from_messages(message)
+        elif isinstance(message, str):
+            message_for_formatting, macros_overrides = self._extract_deepseek_macros_from_text(message)
+
+        if macros_overrides:
+            Logger.debug(f"DeepSeek macros applied: {macros_overrides}")
+
+        effective_settings = self._resolve_deepseek_request_settings(resolved_model, overrides=macros_overrides)
+        effective_deepthink = effective_settings["deepthink_enabled"]
+        effective_send_deepthink = effective_settings["send_deepthink"]
+        enable_search = effective_settings["search_enabled"]
+        send_as_text_file = effective_settings["send_as_text_file"]
         self.current_send_deepthink = effective_send_deepthink
         
         async def handle_route(route):
@@ -337,21 +509,36 @@ class DeepSeekDriver:
         
         try:
             # Apply formatting
-            formatted_message = self._format_messages(message)
+            formatted_message = self._format_messages(message_for_formatting)
             
             # Check for Clean Regeneration
             clean_regeneration = self.config_manager.get_setting("deepseek_behavior", "clean_regeneration")
             regenerated = False
             
             if clean_regeneration:
-                last_message = self.cache_manager.read_cache("last_message.txt")
-                if last_message == formatted_message:
-                    Logger.info("Clean Regeneration: Message matches cache. Attempting to regenerate...")
+                clean_regen_state = {
+                    "deepthink_enabled": bool(effective_deepthink),
+                    "search_enabled": bool(enable_search),
+                    "send_as_text_file": bool(send_as_text_file),
+                }
+
+                last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
+                last_state = self._read_clean_regeneration_state()
+
+                message_matches = last_message == formatted_message
+                state_matches = last_state == clean_regen_state
+
+                if message_matches and state_matches:
+                    Logger.info("Clean Regeneration: Message and settings match cache. Attempting to regenerate...")
                     if await self._click_regenerate():
                         Logger.info("Clean Regeneration: Button clicked. Regenerating...")
                         regenerated = True
+                        self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                        self._write_clean_regeneration_state(clean_regen_state)
                     else:
                         Logger.warning("Clean Regeneration: Button not found or disabled. Falling back to new chat.")
+                elif message_matches and not state_matches:
+                    Logger.info("Clean Regeneration: Message matches cache but settings changed. Creating new chat.")
                 else:
                     Logger.debug("Clean Regeneration: Message differs from cache. Creating new chat.")
             
@@ -364,8 +551,6 @@ class DeepSeekDriver:
                 await asyncio.sleep(0.5)
                 
                 # Apply settings before sending
-                enable_search = self.config_manager.get_setting("deepseek_behavior", "enable_search")
-                
                 await self.set_deepthink_state(effective_deepthink)
                 await self.set_search_state(enable_search)
                 
@@ -373,8 +558,6 @@ class DeepSeekDriver:
                 await asyncio.sleep(0.5)
                 
                 # Check if we should send as text file
-                send_as_text_file = self.config_manager.get_setting("deepseek_behavior", "send_as_text_file")
-                
                 if send_as_text_file:
                     Logger.info("Sending message as text file...")
                     # Create a temporary file
@@ -402,7 +585,13 @@ class DeepSeekDriver:
                 
                 # Update cache
                 if clean_regeneration:
-                    self.cache_manager.write_cache("last_message.txt", formatted_message)
+                    clean_regen_state = {
+                        "deepthink_enabled": bool(effective_deepthink),
+                        "search_enabled": bool(enable_search),
+                        "send_as_text_file": bool(send_as_text_file),
+                    }
+                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_clean_regeneration_state(clean_regen_state)
             
             # Yield responses from queue
             while True:

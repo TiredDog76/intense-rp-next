@@ -11,4 +11,5 @@
 - [ ] Publish v2 rewrite on GitHub Releases without breaking anything
 - [ ] Update README to tell everyone about the docs page
 - [ ] ~~Celebrate New Year~~ code till I pass ~~out~~ away
-- [ ] IMPORTANT: The clean regeneration feature doesn't account for toggle changes or Send as File. **WE MUST CREATE A NEW CHAT INSTEAD OF REGENERATING THE MESSAGE IF THESE SETTINGS CHANGE.** However, if the send-as-file toggle is changed but the message itself is the same, we can still regenerate it as it was originally sent.
+- [x] IMPORTANT: The clean regeneration feature doesn't account for toggle changes (like DeepThink, Search) or Send as File. **WE MUST CREATE A NEW CHAT INSTEAD OF REGENERATING THE MESSAGE IF THESE SETTINGS CHANGE.**
+- [x] Add OG "macros" to use in SillyTavern to override certain settings (like DeepThink on/off, search on/off, send as file on/off) per-message, such as [[r1]] or [[think]] for thinking, or [[search]] for searching, etc. Only the ones from the latest message should apply, but all of them are stripped from the message before sending to DeepSeek.
