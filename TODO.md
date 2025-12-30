@@ -1,5 +1,5 @@
 - [x] Replace -> in docs with :material-arrow-right: (I was too lazy to copy and paste the emoji everywhere so I just used what types easily)
-- [ ] Finish the remaining docs pages (especially the advanced ones)
+- [x] Finish the remaining docs pages (especially the advanced ones)
 - [x] Add LICENSE file (MIT)
 - [ ] Add repo stuff (code of conduct, contributing, etc.)
 - [x] Figure out how to make it so that the v2 update is not compatible with existing v1 clients
