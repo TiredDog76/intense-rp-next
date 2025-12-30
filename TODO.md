@@ -1,14 +1,14 @@
 - [x] Replace -> in docs with :material-arrow-right: (I was too lazy to copy and paste the emoji everywhere so I just used what types easily)
-- [] Finish the remaining docs pages (especially the advanced ones)
+- [ ] Finish the remaining docs pages (especially the advanced ones)
 - [x] Add LICENSE file (MIT)
-- [] Add repo stuff (code of conduct, contributing, etc.)
+- [ ] Add repo stuff (code of conduct, contributing, etc.)
 - [x] Figure out how to make it so that the v2 update is not compatible with existing v1 clients
-- [] Make v2-rewrite the default branch
-- [] Set up readthedocs OR GitHub Pages for docs hosting (probably RTD)
-- [] Die from overwork
-- [] Announce the v2 rewrite on the old IntenseRP API repo
-- [] Revive myself after the overwork
-- [] Publish v2 rewrite on GitHub Releases without breaking anything
-- [] Update README to tell everyone about the docs page
-- [] ~~Celebrate New Year~~ code till I pass ~~out~~ away
-- [] IMPORTANT: The clean regeneration feature doesn't account for toggle changes or Send as File. **WE MUST CREATE A NEW CHAT INSTEAD OF REGENERATING THE MESSAGE IF THESE SETTINGS CHANGE.** However, if the send-as-file toggle is changed but the message itself is the same, we can still regenerate it as it was originally sent.
+- [ ] Make v2-rewrite the default branch
+- [ ] Set up readthedocs OR GitHub Pages for docs hosting (probably RTD)
+- [ ] Die from overwork
+- [ ] Announce the v2 rewrite on the old IntenseRP API repo
+- [ ] Revive myself after the overwork
+- [ ] Publish v2 rewrite on GitHub Releases without breaking anything
+- [ ] Update README to tell everyone about the docs page
+- [ ] ~~Celebrate New Year~~ code till I pass ~~out~~ away
+- [ ] IMPORTANT: The clean regeneration feature doesn't account for toggle changes or Send as File. **WE MUST CREATE A NEW CHAT INSTEAD OF REGENERATING THE MESSAGE IF THESE SETTINGS CHANGE.** However, if the send-as-file toggle is changed but the message itself is the same, we can still regenerate it as it was originally sent.
