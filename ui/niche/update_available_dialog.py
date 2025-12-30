@@ -72,23 +72,21 @@ class UpdateAvailableDialog(QDialog):
         layout.setContentsMargins(22, 22, 22, 18)
         layout.setSpacing(12)
 
-        title = QLabel("Update Available!")
+        title = QLabel()
         title.setAlignment(Qt.AlignCenter)
+        title.setTextFormat(Qt.RichText)
         title.setStyleSheet(
             f"""
             font-size: {BrandColors.FONT_SIZE_TITLE};
             font-weight: 800;
-            color: {BrandColors.TEXT_PRIMARY};
             background-color: transparent;
             """
         )
+        title.setText(self._build_title_html())
         layout.addWidget(title)
 
         versions = self._build_version_row()
         layout.addWidget(versions, 0, Qt.AlignHCenter)
-
-        meta = self._build_meta_row()
-        layout.addWidget(meta, 0, Qt.AlignHCenter)
 
         desc_text = "An update is available. You can install it or skip for now."
         if info.remote_auto_updateable is False:
@@ -176,45 +174,14 @@ class UpdateAvailableDialog(QDialog):
 
         return row
 
-    def _build_meta_row(self) -> QFrame:
-        row = QFrame()
-        row.setStyleSheet("background-color: transparent;")
-
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-
-        severity_text, severity_color = self._severity_text_and_color()
-        severity_badge = QLabel(f"Severity: {severity_text}")
-        severity_badge.setStyleSheet(
-            f"""
-            background-color: {BrandColors.SIDEBAR_BG};
-            border: 1px solid {BrandColors.INPUT_BORDER};
-            border-radius: 10px;
-            padding: 6px 10px;
-            font-size: {BrandColors.FONT_SIZE_SMALL};
-            font-weight: 800;
-            color: {severity_color};
-            """
-        )
-        layout.addWidget(severity_badge, 0, Qt.AlignVCenter)
-
-        if self._info.remote_auto_updateable is False:
-            aua_badge = QLabel("Auto-Update: Disabled")
-            aua_badge.setStyleSheet(
-                f"""
-                background-color: {BrandColors.SIDEBAR_BG};
-                border: 1px solid {BrandColors.INPUT_BORDER};
-                border-radius: 10px;
-                padding: 6px 10px;
-                font-size: {BrandColors.FONT_SIZE_SMALL};
-                font-weight: 800;
-                color: {BrandColors.WARNING};
-                """
+    def _build_title_html(self) -> str:
+        label, label_color = self._severity_label_and_color()
+        if label and label_color:
+            return (
+                f'<span style="color: {label_color};">{label}</span> '
+                f'<span style="color: {BrandColors.TEXT_PRIMARY};">Update Available!</span>'
             )
-            layout.addWidget(aua_badge, 0, Qt.AlignVCenter)
-
-        return row
+        return f'<span style="color: {BrandColors.TEXT_PRIMARY};">Update Available!</span>'
 
     def _build_button_row(self) -> QFrame:
         row = QFrame()
@@ -276,21 +243,20 @@ class UpdateAvailableDialog(QDialog):
 
         return row
 
-    def _severity_text_and_color(self) -> tuple[str, str]:
+    def _severity_label_and_color(self) -> tuple[Optional[str], Optional[str]]:
         mapping = {
             1: ("Optional", BrandColors.ACCENT),
-            2: ("Normal", "#f0d154"),
             3: ("Important", "#8854f0"),
             4: ("Critical", BrandColors.DANGER),
         }
         sev = self._info.remote_severity
         if sev is None:
-            return "Unknown", BrandColors.TEXT_DISABLED
+            return None, None
         try:
             sev_int = int(sev)
         except Exception:
-            return "Unknown", BrandColors.TEXT_DISABLED
-        return mapping.get(sev_int, ("Unknown", BrandColors.TEXT_DISABLED))
+            return None, None
+        return mapping.get(sev_int, (None, None))
 
     def _on_install_clicked(self) -> None:
         availability = default_update_method_availability()
