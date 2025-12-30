@@ -248,7 +248,10 @@ If you're not sure where to start, open an issue first - it saves everyone time.
 
 ## License
 
-This repository currently does not include a `LICENSE` file but I'll put it up under MIT once I figure out docs.
+IntenseRP Next v2 is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+>[!NOTE]
+> Original IntenseRP API by Omega-Slender is also MIT-licensed, but previously was a [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) project. This v2 rewrite is a new codebase and is not a derivative work, so the license has been switched to MIT for simplicity. I'm not affiliated with [Omega-Slender](https://github.com/Omega-Slender), even if I'm the official successor to their project (starting from v1).
 
 ## Credits
 
