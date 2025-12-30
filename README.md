@@ -37,7 +37,7 @@
 </p>
 
 > [!IMPORTANT]
-> v2 is the actively developed rewrite. Current version: `2.0.10-alpha` (see `version.txt`).
+> v2 is the actively developed rewrite. Current version: `2.0.10-alpha` (see `version.json`).
 >
 > Today: **DeepSeek is implemented and usable**, but still being validated for stability. If something breaks, it's usually not personal - it is just the web app breaking things again.
 

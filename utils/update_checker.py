@@ -7,8 +7,10 @@ from typing import Optional, Tuple
 
 import requests
 
+from utils.version_file import VersionFileInfo, parse_version_file
+
 DEFAULT_REMOTE_VERSION_URL = (
-    "https://raw.githubusercontent.com/LyubomirT/intense-rp-next/refs/heads/v2-rewrite/version.txt"
+    "https://raw.githubusercontent.com/LyubomirT/intense-rp-next/refs/heads/v2-rewrite/version.json"
 )
 
 _SEMVER_RE = re.compile(
@@ -28,6 +30,8 @@ class UpdateCheckResult:
     remote_version: Optional[str]
     update_available: bool
     error: Optional[str] = None
+    remote_auto_updateable: Optional[bool] = None
+    remote_severity: Optional[int] = None
 
 
 def _parse_semver(version: str) -> Tuple[Tuple[int, int, int], Optional[Tuple[str, ...]]]:
@@ -92,28 +96,41 @@ def compare_versions(a: str, b: str) -> int:
 def get_version_file_path(base_dir: Optional[Path] = None) -> Path:
     if base_dir is None:
         base_dir = Path(__file__).resolve().parent.parent
-    return (base_dir / "version.txt").resolve()
+    return (base_dir / "version.json").resolve()
 
 
 def read_local_version(version_file: Optional[Path] = None) -> str:
+    return read_local_version_info(version_file).version
+
+
+def read_local_version_info(version_file: Optional[Path] = None) -> VersionFileInfo:
     if version_file is None:
         version_file = get_version_file_path()
     try:
-        return version_file.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return "unknown"
-    except OSError:
-        return "unknown"
+        raw = version_file.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        raw = ""
+    return parse_version_file(raw, default_version="unknown", default_auto_updateable=True, default_severity=2)
 
 
 def fetch_remote_version(url: str = DEFAULT_REMOTE_VERSION_URL, timeout_s: float = 5.0) -> str:
+    return fetch_remote_version_info(url, timeout_s=timeout_s).version
+
+
+def fetch_remote_version_info(url: str = DEFAULT_REMOTE_VERSION_URL, timeout_s: float = 5.0) -> VersionFileInfo:
     response = requests.get(
         url,
         timeout=timeout_s,
         headers={"User-Agent": "IntenseRP-Next-UpdateChecker"},
     )
     response.raise_for_status()
-    return response.text.strip()
+    return parse_version_file(
+        response.text,
+        default_version="unknown",
+        default_auto_updateable=True,
+        default_severity=2,
+        strict=True,
+    )
 
 
 def check_for_updates(
@@ -121,31 +138,34 @@ def check_for_updates(
     timeout_s: float = 5.0,
     version_file: Optional[Path] = None,
 ) -> UpdateCheckResult:
-    local_version = read_local_version(version_file)
+    local_info = read_local_version_info(version_file)
     try:
-        remote_version = fetch_remote_version(remote_url, timeout_s=timeout_s)
+        remote_info = fetch_remote_version_info(remote_url, timeout_s=timeout_s)
     except Exception as exc:
         return UpdateCheckResult(
-            local_version=local_version,
+            local_version=local_info.version,
             remote_version=None,
             update_available=False,
             error=str(exc),
         )
 
     try:
-        update_available = compare_versions(remote_version, local_version) > 0
+        update_available = compare_versions(remote_info.version, local_info.version) > 0
     except Exception as exc:
         return UpdateCheckResult(
-            local_version=local_version,
-            remote_version=remote_version,
+            local_version=local_info.version,
+            remote_version=remote_info.version,
             update_available=False,
             error=str(exc),
+            remote_auto_updateable=remote_info.auto_updateable,
+            remote_severity=remote_info.severity,
         )
 
     return UpdateCheckResult(
-        local_version=local_version,
-        remote_version=remote_version,
+        local_version=local_info.version,
+        remote_version=remote_info.version,
         update_available=update_available,
         error=None,
+        remote_auto_updateable=remote_info.auto_updateable,
+        remote_severity=remote_info.severity,
     )
-

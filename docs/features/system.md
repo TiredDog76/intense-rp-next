@@ -161,7 +161,15 @@ That backup includes your settings, API keys, and (if enabled) your persistent b
 
 ### How the update check works
 
-When you check for updates, IntenseRP downloads the latest `version.txt` from GitHub and compares it to your local `version.txt` (SemVer-style comparison).
+When you check for updates, IntenseRP downloads the latest `version.json` from GitHub.
+
+`version.json` is a JSON object with 3 keys:
+
+- `version` - SemVer-style version string
+- `aua` - whether the update is auto-updateable (`true`/`false`)
+- `severity` - 1-4 (`optional`, `normal`, `important`, `critical`)
+
+IntenseRP compares only `version` to decide if an update is available. `aua` can disable Auto-Update for specific releases.
 
 !!! note "Requires internet access"
     If GitHub is blocked (network restrictions, firewall, captive portal), update checks will fail.

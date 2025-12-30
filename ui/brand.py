@@ -23,7 +23,7 @@ class BrandColors:
     
     # Semantic Colors
     SUCCESS = "#5af043" # Green
-    DANGER = "#f04943" # Red
+    DANGER = "#f73131" # Red
     WARNING = "#f0c243" # Orange
     
     # Fonts

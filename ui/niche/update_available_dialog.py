@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton,
 
 from ..brand import BrandColors
 from ..icons import IconType, IconUtils
-from .update_method_dialog import UpdateMethodDialog
+from .update_method_dialog import UpdateMethodAvailability, UpdateMethodDialog, default_update_method_availability
 from .update_git_instructions_dialog import UpdateGitInstructionsDialog
 from .update_download_dialog import UpdateDownloadDialog
 
@@ -30,6 +30,8 @@ def _format_version(version: Optional[str]) -> str:
 class UpdateAvailableInfo:
     local_version: str
     remote_version: str
+    remote_auto_updateable: Optional[bool] = None
+    remote_severity: Optional[int] = None
 
     @property
     def release_notes_url(self) -> str:
@@ -85,7 +87,17 @@ class UpdateAvailableDialog(QDialog):
         versions = self._build_version_row()
         layout.addWidget(versions, 0, Qt.AlignHCenter)
 
-        desc = QLabel("An update is available. You can install it or skip for now.")
+        meta = self._build_meta_row()
+        layout.addWidget(meta, 0, Qt.AlignHCenter)
+
+        desc_text = "An update is available. You can install it or skip for now."
+        if info.remote_auto_updateable is False:
+            desc_text = (
+                "An update is available, but Auto-Update is disabled for this release. "
+                "Use Git (source runs) or download manually from the release page."
+            )
+
+        desc = QLabel(desc_text)
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignCenter)
         desc.setStyleSheet(
@@ -164,6 +176,46 @@ class UpdateAvailableDialog(QDialog):
 
         return row
 
+    def _build_meta_row(self) -> QFrame:
+        row = QFrame()
+        row.setStyleSheet("background-color: transparent;")
+
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        severity_text, severity_color = self._severity_text_and_color()
+        severity_badge = QLabel(f"Severity: {severity_text}")
+        severity_badge.setStyleSheet(
+            f"""
+            background-color: {BrandColors.SIDEBAR_BG};
+            border: 1px solid {BrandColors.INPUT_BORDER};
+            border-radius: 10px;
+            padding: 6px 10px;
+            font-size: {BrandColors.FONT_SIZE_SMALL};
+            font-weight: 800;
+            color: {severity_color};
+            """
+        )
+        layout.addWidget(severity_badge, 0, Qt.AlignVCenter)
+
+        if self._info.remote_auto_updateable is False:
+            aua_badge = QLabel("Auto-Update: Disabled")
+            aua_badge.setStyleSheet(
+                f"""
+                background-color: {BrandColors.SIDEBAR_BG};
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 10px;
+                padding: 6px 10px;
+                font-size: {BrandColors.FONT_SIZE_SMALL};
+                font-weight: 800;
+                color: {BrandColors.WARNING};
+                """
+            )
+            layout.addWidget(aua_badge, 0, Qt.AlignVCenter)
+
+        return row
+
     def _build_button_row(self) -> QFrame:
         row = QFrame()
         row.setStyleSheet("background-color: transparent;")
@@ -224,8 +276,37 @@ class UpdateAvailableDialog(QDialog):
 
         return row
 
+    def _severity_text_and_color(self) -> tuple[str, str]:
+        mapping = {
+            1: ("Optional", BrandColors.ACCENT),
+            2: ("Normal", "#f0d154"),
+            3: ("Important", "#8854f0"),
+            4: ("Critical", BrandColors.DANGER),
+        }
+        sev = self._info.remote_severity
+        if sev is None:
+            return "Unknown", BrandColors.TEXT_DISABLED
+        try:
+            sev_int = int(sev)
+        except Exception:
+            return "Unknown", BrandColors.TEXT_DISABLED
+        return mapping.get(sev_int, ("Unknown", BrandColors.TEXT_DISABLED))
+
     def _on_install_clicked(self) -> None:
-        dialog = UpdateMethodDialog(parent=self)
+        availability = default_update_method_availability()
+        if self._info.remote_auto_updateable is False:
+            availability = UpdateMethodAvailability(
+                git_enabled=availability.git_enabled,
+                auto_enabled=False,
+                git_reason=availability.git_reason,
+                auto_reason="Auto-Update is disabled for this release.",
+            )
+
+        if not availability.auto_enabled and not availability.git_enabled:
+            self._open_release_notes()
+            return
+
+        dialog = UpdateMethodDialog(availability=availability, parent=self)
         if dialog.exec() != QDialog.Accepted:
             return
 

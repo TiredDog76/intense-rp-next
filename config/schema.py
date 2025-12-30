@@ -376,7 +376,7 @@ SCHEMA = [
                 type=SettingType.BUTTON,
                 default="Check",
                 action="check_for_updates",
-                tooltip="Compare local version.txt with the latest version on GitHub.",
+                tooltip="Compare local version.json with the latest version on GitHub (version, aua, severity).",
             ),
             SettingField(
                 key="check_for_updates_on_startup",

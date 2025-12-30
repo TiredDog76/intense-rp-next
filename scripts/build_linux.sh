@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 ENTRY_POINT="$REPO_ROOT/main.py"
 UPDATER_ENTRY_POINT="$REPO_ROOT/updater/main.py"
 ICON_PATH="$REPO_ROOT/ui/assets/brand/newlogo.ico"
-VERSION_PATH="$REPO_ROOT/version.txt"
+VERSION_PATH="$REPO_ROOT/version.json"
 
 for f in "$ENTRY_POINT" "$UPDATER_ENTRY_POINT" "$ICON_PATH" "$VERSION_PATH"; do
     if [[ ! -f "$f" ]]; then
@@ -41,7 +41,7 @@ python -m PyInstaller \
     --onedir \
     --noconsole \
     --name "$APP_NAME" \
-    --add-data "version.txt:." \
+    --add-data "version.json:." \
     --add-data "ui/assets:ui/assets" \
     --add-data "ui/fonts:ui/fonts" \
     --collect-all patchright \
@@ -54,8 +54,8 @@ if [[ ! -d "$BUILT_APP_DIR" ]]; then
     exit 1
 fi
 
-# Copy version.txt to package root
-cp -f "$VERSION_PATH" "$BUILT_APP_DIR/version.txt"
+# Copy version.json to package root
+cp -f "$VERSION_PATH" "$BUILT_APP_DIR/version.json"
 
 echo "Building updater..."
 UPDATER_WORK_DIR="$BUILD_DIR/updater-work"

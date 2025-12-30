@@ -25,6 +25,7 @@ from ui.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger, LogLevel
 from utils.update_checker import check_for_updates
+from utils.version_file import parse_version_file
 import shutil
 import time
 
@@ -126,17 +127,18 @@ def _resolve_resource_path(*parts: str) -> Path:
 
 
 def get_version():
-    """Read version from version.txt file."""
-    version_file = _resolve_resource_path("version.txt")
+    """Read version from version.json file."""
+    version_file = _resolve_resource_path("version.json")
     try:
         with open(version_file, "r", encoding="utf-8") as f:
-            return f.read().strip()
+            info = parse_version_file(f.read(), default_version="unknown", default_auto_updateable=True, default_severity=2)
+            return info.version.strip() or "unknown"
     except FileNotFoundError:
         return "unknown"
 
 
 class MainWindow(QMainWindow):
-    update_available_found = Signal(str, str)
+    update_available_found = Signal(object)
 
     def __init__(self):
         super().__init__()
@@ -266,8 +268,8 @@ class MainWindow(QMainWindow):
 
         self._maybe_check_for_updates_on_startup()
 
-    @Slot(str, str)
-    def _show_update_available_dialog(self, local_version: str, remote_version: str):
+    @Slot(object)
+    def _show_update_available_dialog(self, info: UpdateAvailableInfo):
         if getattr(self, "_update_dialog_open", False):
             return
 
@@ -280,7 +282,7 @@ class MainWindow(QMainWindow):
             self._update_dialog_open = True
             try:
                 dialog = UpdateAvailableDialog(
-                    UpdateAvailableInfo(local_version=local_version, remote_version=remote_version),
+                    info,
                     parent=self,
                 )
                 dialog.exec()
@@ -315,7 +317,14 @@ class MainWindow(QMainWindow):
                     f"Update available: {result.local_version} -> {result.remote_version}"
                 )
                 if result.remote_version is not None:
-                    self.update_available_found.emit(result.local_version, result.remote_version)
+                    self.update_available_found.emit(
+                        UpdateAvailableInfo(
+                            local_version=str(result.local_version or "unknown"),
+                            remote_version=str(result.remote_version or "unknown"),
+                            remote_auto_updateable=result.remote_auto_updateable,
+                            remote_severity=result.remote_severity,
+                        )
+                    )
                 return
 
             Logger.info(f"Up to date (v{result.local_version}).")

@@ -256,7 +256,7 @@ def _looks_like_app_root(path: Path, expected_exe_name: Optional[str]) -> bool:
 
     if "_internal" not in entries:
         return False
-    if "version.txt" not in entries:
+    if "version.json" not in entries:
         return False
 
     # Trust the expected executable name
@@ -278,7 +278,7 @@ def find_extracted_app_root(extract_dir: Path, expected_exe_name: Optional[str])
 
     if not candidates:
         raise AutoUpdateError(
-            "Could not locate the extracted app folder (expected executable, version.txt and _internal)."
+            "Could not locate the extracted app folder (expected executable, version.json and _internal)."
         )
 
     # Prefer the shallowest match to avoid nested duplicates.
@@ -332,4 +332,3 @@ def prepare_update_from_github(
         asset_download_url=asset_download_url,
         extracted_app_root=app_root,
     )
-

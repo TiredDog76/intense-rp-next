@@ -972,11 +972,15 @@ class SettingsWindow(QMainWindow):
             return
 
         if result.update_available:
-            self._set_update_status(f"Status: Update available ({result.remote_version}).")
+            sev = getattr(result, "remote_severity", None)
+            sev_suffix = f", severity: {sev}" if sev is not None else ""
+            self._set_update_status(f"Status: Update available ({result.remote_version}{sev_suffix}).")
             dialog = UpdateAvailableDialog(
                 UpdateAvailableInfo(
                     local_version=str(result.local_version or "unknown"),
                     remote_version=str(result.remote_version or "unknown"),
+                    remote_auto_updateable=getattr(result, "remote_auto_updateable", None),
+                    remote_severity=getattr(result, "remote_severity", None),
                 ),
                 parent=self,
             )

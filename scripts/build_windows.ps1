@@ -14,12 +14,12 @@ Set-Location $RepoRoot
 $EntryPoint = Join-Path $RepoRoot "main.py"
 $UpdaterEntryPoint = Join-Path $RepoRoot "updater/main.py"
 $IconPath = Join-Path $RepoRoot "ui/assets/brand/newlogo.ico"
-$VersionPath = Join-Path $RepoRoot "version.txt"
+$VersionPath = Join-Path $RepoRoot "version.json"
 
 if (!(Test-Path $EntryPoint)) { throw "Entry point not found: $EntryPoint" }
 if (!(Test-Path $UpdaterEntryPoint)) { throw "Updater entry point not found: $UpdaterEntryPoint" }
 if (!(Test-Path $IconPath)) { throw "Icon not found: $IconPath" }
-if (!(Test-Path $VersionPath)) { throw "version.txt not found: $VersionPath" }
+if (!(Test-Path $VersionPath)) { throw "version.json not found: $VersionPath" }
 
 $BuildDir = Join-Path $RepoRoot "build"
 $DistDir = Join-Path $RepoRoot "dist"
@@ -38,7 +38,7 @@ $pyinstallerArgs = @(
   "--noconsole"
   "--name", $AppName
   "--icon", $IconPath
-  "--add-data", "version.txt;."
+  "--add-data", "version.json;."
   "--add-data", "ui/assets;ui/assets"
   "--add-data", "ui/fonts;ui/fonts"
   "--collect-all", "patchright"
@@ -51,8 +51,8 @@ python -m PyInstaller @pyinstallerArgs
 $BuiltAppDir = Join-Path $DistDir $AppName
 if (!(Test-Path $BuiltAppDir)) { throw "PyInstaller output folder not found: $BuiltAppDir" }
 
-# version.txt must be present at the package root (convenience copy; runtime uses bundled data).
-Copy-Item -Force $VersionPath (Join-Path $BuiltAppDir "version.txt")
+# version.json must be present at the package root (convenience copy; runtime uses bundled data).
+Copy-Item -Force $VersionPath (Join-Path $BuiltAppDir "version.json")
 
 # Build updater (onefile) into dist/updater.exe
 $updaterWorkDir = Join-Path $BuildDir "updater-work"
