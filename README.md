@@ -29,12 +29,11 @@
 
 <h1 align="center">🎬 Preview Video 🎬</h1>
 
-<p align="center">
-  <video width="720" height="405" controls>
-    <source src=".github/videos/INTENSERPNEXT2PREVIEW.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-</p>
+
+
+https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
+
+
 
 > [!IMPORTANT]
 > v2 is the actively developed rewrite. Current version: `2.0.10-alpha` (see `version.json`).
