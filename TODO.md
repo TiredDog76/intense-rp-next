@@ -1,4 +1,4 @@
-- [] Replace -> in docs with :material-arrow-right: (I was too lazy to copy and paste the emoji everywhere so I just used what types easily)
+- [x] Replace -> in docs with :material-arrow-right: (I was too lazy to copy and paste the emoji everywhere so I just used what types easily)
 - [] Finish the remaining docs pages (especially the advanced ones)
 - [x] Add LICENSE file (MIT)
 - [] Add repo stuff (code of conduct, contributing, etc.)

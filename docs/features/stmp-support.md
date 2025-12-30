@@ -53,4 +53,4 @@ To make IntenseRP actually use message names:
 
 For more details on name detection, see:
 
-:material-arrow-right: [Formatting -> Name Detection](formatting.md#name-detection)
+:material-arrow-right: [Formatting → Name Detection](formatting.md#name-detection)

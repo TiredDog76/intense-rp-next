@@ -137,14 +137,14 @@ It also accepts common v1 placeholders for compatibility:
     The migrator only does a basic placeholder conversion. Make sure the final injected text still makes sense for your prompt style and chosen formatting preset.
 
 !!! tip "Where to review"
-    - Formatting -> **Injection** -> Position + Content
-    - Formatting -> **Templates** -> Preset + Template + Divider
+    - :material-arrow-right: **Settings** → **Formatting** → **Injection** (Position + Content)
+    - :material-arrow-right: **Settings** → **Formatting** → **Templates** (Preset + Template + Divider)
 
 ### 3) API keys: verify your client still authenticates
 
 If you used API keys in v1, confirm:
 
-- **Network Settings** -> Use API Keys is set the way you expect
+- :material-arrow-right: **Settings** → **Network Settings** → **Use API Keys** is set the way you expect
 - Your client (e.g. SillyTavern) is sending the key as a Bearer token
 
 ### 4) Persistent Sessions
@@ -157,8 +157,8 @@ v2 Persistent Sessions uses a Playwright profile folder under:
 
 If your login behavior feels different after migration, review:
 
-- Providers & Credentials -> Auto Login
-- System Settings -> Persistent Sessions
+- :material-arrow-right: **Settings** → **Providers & Credentials** → **Auto Login**
+- :material-arrow-right: **Settings** → **System Settings** → **Persistent Sessions**
 
 ---
 
@@ -168,12 +168,13 @@ There is no automatic migrator for IntenseRP API configs in v2. The safest path 
 
 ### Recommended mapping
 
-- Want the "classic" IR API look? Use **Formatting -> Preset -> Classic - Name**
+- Want the "classic" IR API look? Use:
+    - :material-arrow-right: **Settings** → **Formatting** → **Preset** → **Classic - Name**
 - If your old prompts used `DATA1`/`DATA2` naming tags, keep them. v2 can still parse them:
-    - Formatting -> Name Behavior -> Classic IntenseRP
+    - :material-arrow-right: **Settings** → **Formatting** → **Name Behavior** → **Classic IntenseRP**
 - If your client can send OpenAI `name` fields (or legacy `irp-next` for RossAscends's STMP patcher compat), that is the most reliable path:
-    - Formatting -> Name Behavior -> Message Objects
-    - SillyTavern -> User Settings -> Character Names Behavior -> Message
+    - :material-arrow-right: **Settings** → **Formatting** → **Name Behavior** → **Message Objects**
+    - :material-arrow-right: **SillyTavern** → **User Settings** → **Character Names Behavior** → **Message**
 
 ### Client endpoint changes
 
@@ -208,7 +209,7 @@ Available models:
     - v2 templates use `{{name}}` / `{{role}}` / `{{content}}`
     - v2 supports `\\n` in templates and dividers for newlines
 
-    Fix it by reviewing Formatting -> Preset + Template, and update placeholder syntax.
+    Fix it by reviewing :material-arrow-right: **Settings** → **Formatting** → **Templates** (Preset + Template), and update placeholder syntax.
 
 ??? question "My injection shows literal {username} or {asstname}"
     v2 supports `{{user}}` and `{{char}}`, and also accepts the v1 placeholders `{username}` / `{asstname}`.
@@ -224,4 +225,4 @@ Available models:
 
     - `Authorization: Bearer <your-key>`
 
-    Re-check Network Settings -> API Keys and the SillyTavern API Key field.
+    Re-check :material-arrow-right: **Settings** → **Network Settings** → **Use API Keys** and the SillyTavern API Key field.
