@@ -3,7 +3,7 @@
 - [x] Add LICENSE file (MIT)
 - [x] Add repo stuff (code of conduct, contributing, etc.)
 - [x] Figure out how to make it so that the v2 update is not compatible with existing v1 clients
-- [ ] Make v2-rewrite the default branch
+- [x] Make v2-rewrite the default branch
 - [ ] Set up readthedocs OR GitHub Pages for docs hosting (probably RTD)
 - [ ] Die from overwork
 - [ ] Announce the v2 rewrite on the old IntenseRP API repo
