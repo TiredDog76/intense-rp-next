@@ -1,6 +1,8 @@
 site_name: IntenseRP Next v2
 site_description: Documentation for IntenseRP Next v2
-site_url: !ENV READTHEDOCS_CANONICAL_URL
+# Read the Docs sets READTHEDOCS_CANONICAL_URL (includes /en/<version>/).
+# Use a fallback so local builds still get a stable site_url.
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, https://intense-rp-next.readthedocs.io/en/latest/]
 
 nav:
   - Home: index.md
