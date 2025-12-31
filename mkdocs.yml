@@ -1,5 +1,6 @@
-site_name: IRP Next v2
-site_description: Documentation for IRP Next v2
+site_name: IntenseRP Next v2
+site_description: Documentation for IntenseRP Next v2
+site_url: !ENV READTHEDOCS_CANONICAL_URL
 
 nav:
   - Home: index.md
