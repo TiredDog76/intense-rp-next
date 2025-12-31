@@ -225,7 +225,7 @@ More detail lives in `docs/` (best viewed as the MkDocs site - see below).
 
 There is a full docs site with screenshots and details if you want to dig a bit deeper:
 
-(IT'S ALMOST DONE BUT NOT HOSTED YET - COMING SOON)
+Check out [the docs site here](https://intense-rp-next.readthedocs.io/en/latest/).
 
 ## Security and privacy notes
 
