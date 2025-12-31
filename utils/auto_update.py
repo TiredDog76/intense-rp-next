@@ -14,7 +14,7 @@ import requests
 
 
 GITHUB_OWNER = "LyubomirT"
-GITHUB_REPO = "irp-next-autoupdate-test"
+GITHUB_REPO = "intense-rp-next"
 
 
 class AutoUpdateError(RuntimeError):
