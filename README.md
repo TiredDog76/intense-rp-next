@@ -40,7 +40,7 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 If you're here because you want DeepSeek (DS) in SillyTavern without wiring up the paid official API: Welcome to the club!
 IntenseRP Next v2 drives the official DeepSeek web app in a real browser, and re-exposes it as an OpenAI-compatible endpoint.
 
-Unlike the official API, this is usually free (DeepSeek is entirely free to use with limits, and paid plans are optional) and it gives you access to the full web UI experience (including DeepThink, file uploads, and more). Not without tradeoffs, of course - see below.
+Unlike the official API, this is usually free (DeepSeek is entirely free to use with limits, and paid plans aren't added yet) and it gives you access to the full web UI experience (including DeepThink, file uploads, and more). Not without tradeoffs, of course - see below.
 
 ## Start here! 🎁
 
