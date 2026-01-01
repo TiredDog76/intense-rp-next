@@ -153,8 +153,12 @@ class DeepSeekDriver:
         """
         Handles the login process if redirected to the sign-in page.
         """
+        # DeepSeek changes the auth flow/UI fairly often.
+        url_lower = (self.page.url or "").lower()
+        is_sign_in_page = any(token in url_lower for token in ("sign_in", "signin", "sign-in"))
+
         # Check if we were redirected to sign in
-        if "sign_in" in self.page.url:
+        if is_sign_in_page:
             Logger.info("Redirected to sign in page.")
             
             auto_login = self.config_manager.get_setting("providers_credentials", "auto_login")
@@ -172,22 +176,47 @@ class DeepSeekDriver:
                 else:
                     try:
                         # Wait for the form to appear
-                        await self.page.wait_for_selector(".ds-sign-up-form__main")
+                        await self.page.wait_for_selector(
+                            ".ds-sign-in-form__main, .ds-sign-in-form-wrapper, .ds-auth-form-wrapper, .ds-sign-up-form__main",
+                            timeout=30000,
+                        )
+
+                        form_root = self.page.locator(
+                            ".ds-sign-in-form-wrapper, .ds-sign-up-form-wrapper, .ds-auth-form-wrapper"
+                        )
+                        if await form_root.count() == 0:
+                            form_root = self.page.locator("body")
                         
                         # Fill email
                         Logger.debug(f"Entering email: {email}")
-                        await self.page.fill("input[type='text']", email)
+                        email_input = form_root.first.locator(
+                            "input[autocomplete='username'], "
+                            "input[type='text'][placeholder*='email'], "
+                            "input[type='text'][placeholder*='Email'], "
+                            "input[type='text'][placeholder*='Phone']"
+                        )
+                        if await email_input.count() == 0:
+                            email_input = form_root.first.locator("input[type='text']")
+                        await email_input.first.fill(email)
                         
                         # Fill password
                         Logger.debug("Entering password...")
-                        await self.page.fill("input[type='password']", password)
+                        password_input = form_root.first.locator(
+                            "input[autocomplete='current-password'], input[type='password']"
+                        )
+                        await password_input.first.fill(password)
                         
                         # Click login button
                         Logger.debug("Clicking login button...")
-                        await self.page.click(".ds-sign-up-form__register-button")
+                        login_button = form_root.first.locator("button", has_text="Log in")
+                        if await login_button.count() == 0:
+                            login_button = form_root.first.locator("button.ds-basic-button--primary")
+                        if await login_button.count() == 0:
+                            login_button = self.page.locator("button", has_text="Log in")
+                        await login_button.first.click()
                         
                         # Wait for navigation back to the chat page
-                        await self.page.wait_for_url("https://chat.deepseek.com/")
+                        await self.page.wait_for_selector("textarea[placeholder='Message DeepSeek']", timeout=60000)
                         Logger.success("Login successful.")
                         
                     except Exception as e:
@@ -196,7 +225,7 @@ class DeepSeekDriver:
                 Logger.info("Auto-login disabled. Waiting for manual login...")
                 # Wait indefinitely (or until closed) for the user to log in and reach the chat page
                 try:
-                    await self.page.wait_for_url("https://chat.deepseek.com/", timeout=0)
+                    await self.page.wait_for_selector("textarea[placeholder='Message DeepSeek']", timeout=0)
                     Logger.success("Manual login detected.")
                 except Exception as e:
                     Logger.error(f"Error waiting for manual login: {e}")
