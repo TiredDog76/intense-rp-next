@@ -35,11 +35,6 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 
 
 
-> [!IMPORTANT]
-> v2 is the actively developed rewrite. Currently in beta but releasing very, very soon.
->
-> Today: **DeepSeek is implemented and usable**, but still being validated for stability. If something breaks, it's usually not personal - it is just the web app breaking things again.
-
 ## Welcome 👋
 
 If you're here because you want DeepSeek (DS) in SillyTavern without wiring up the paid official API: Welcome to the club!
@@ -244,6 +239,15 @@ Just note a few things:
 - I move this in a very "me" way due to how fast things change, meaning not every idea will align with my vision even if it's objectively good.
 
 If you're not sure where to start, open an issue first - it saves everyone time.
+
+## Contributors ❤️
+
+| <a href="https://github.com/LyubomirT"><img src="https://avatars.githubusercontent.com/u/127299159?s=500&v=4" width="80" height="80" alt="LyubomirT" /></a> | <a href="https://github.com/Omega-Slender"><img src="https://avatars.githubusercontent.com/u/134849645?s=500&v=4" width="80" height="80" alt="Omega-Slender" /></a> | <a href="https://github.com/Deaquay"><img src="https://avatars.githubusercontent.com/u/103206423?s=500&v=4" width="80" height="80" alt="Deaquay" /></a> | <a href="https://github.com/Targren"><img src="https://avatars.githubusercontent.com/u/11566412?s=500&v=4" width="80" height="80" alt="Targren" /></a> | <a href="https://github.com/fushigipururin"><img src="https://avatars.githubusercontent.com/u/96440827?s=500&v=4" width="80" height="80" alt="fushigipururin" /></a> | <a href="https://github.com/Vova12344weq"><img src="https://avatars.githubusercontent.com/u/131772052?s=500&v=4" width="80" height="80" alt="Vova12344weq" /></a> |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| <a href="https://github.com/LyubomirT">LyubomirT</a> | <a href="https://github.com/Omega-Slender">Omega-Slender</a> | <a href="https://github.com/Deaquay">Deaquay</a> | <a href="https://github.com/Targren">Targren</a> | <a href="https://github.com/fushigipururin">fushigipururin</a> | <a href="https://github.com/Vova12344weq">Vova12344weq</a> |
+| Project Maintainer | Original Creator | Contributor to OG | Feedback & Proposals, Code | Code and Concept Contributor | Early Testing, Bug Reports, Suggestions |
+
+Full list: https://github.com/LyubomirT/intense-rp-next/graphs/contributors
 
 ## License
 
