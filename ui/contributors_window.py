@@ -2,6 +2,7 @@ import json
 import webbrowser
 import threading
 import requests
+import sys
 from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QScrollArea, QLabel, 
@@ -13,6 +14,26 @@ from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QBrush, QColor, QFont
 from ui.brand import BrandColors
 from ui.icons import IconUtils, IconType
 from utils.logger import Logger
+
+
+def _resolve_resource_path(*parts: str) -> Path:
+    """Resolve a resource path in both dev and PyInstaller-frozen runs."""
+    candidates: list[Path] = []
+
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / Path(*parts))
+        candidates.append(Path(sys.executable).resolve().parent / Path(*parts))
+
+    # Source checkout (repo root is the parent directory of this ui/ module)
+    candidates.append(Path(__file__).resolve().parent.parent / Path(*parts))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return candidates[-1]
 
 class ContributorCard(QFrame):
     def __init__(self, name, status, avatar_url, github_url, parent=None):
@@ -223,7 +244,7 @@ class ContributorsWindow(QMainWindow):
         main_layout.addWidget(close_btn)
 
     def _load_contributors(self, layout):
-        json_path = Path("ui/assets/contributors/contributors.json")
+        json_path = _resolve_resource_path("ui", "assets", "contributors", "contributors.json")
         try:
             if not json_path.exists():
                 Logger.warning(f"Contributors file not found at {json_path}")
