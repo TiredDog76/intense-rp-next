@@ -12,33 +12,24 @@
 <p align="center">
   <a href="https://github.com/LyubomirT/intense-rp-next/releases">
     <img alt="Release" src="https://img.shields.io/github/v/release/LyubomirT/intense-rp-next?style=flat-square" />
-  </a>
-  <a href="https://github.com/LyubomirT/intense-rp-next/releases">
+  </a><!--
+  --><a href="https://github.com/LyubomirT/intense-rp-next/releases">
     <img alt="Downloads" src="https://img.shields.io/github/downloads/LyubomirT/intense-rp-next/total?style=flat-square" />
-  </a>
-  <a href="https://github.com/LyubomirT/intense-rp-next/stargazers">
+  </a><!--
+  --><a href="https://github.com/LyubomirT/intense-rp-next/stargazers">
     <img alt="Stars" src="https://img.shields.io/github/stars/LyubomirT/intense-rp-next?style=flat-square" />
-  </a>
-  <a href="https://github.com/LyubomirT/intense-rp-next/issues">
+  </a><!--
+  --><a href="https://github.com/LyubomirT/intense-rp-next/issues">
     <img alt="Issues" src="https://img.shields.io/github/issues/LyubomirT/intense-rp-next?style=flat-square" />
-  </a>
-  <img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" />
-  <a href="LICENSE">
+  </a><!--
+  --><img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" /><!--
+  --><a href="LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/LyubomirT/intense-rp-next?style=flat-square" />
-  </a>
-  <a href="https://intense-rp-next.readthedocs.io/en/latest/">
+  </a><!--
+  --><a href="https://intense-rp-next.readthedocs.io/en/latest/">
     <img alt="Docs" src="https://img.shields.io/website?url=https%3A%2F%2Fintense-rp-next.readthedocs.io%2Fen%2Flatest%2F&label=docs&style=flat-square" />
-  </a>
-  <img alt="Status" src="https://img.shields.io/badge/status-stable-2ea44f?style=flat-square" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/LyubomirT/intense-rp-next/actions/workflows/release-pyinstaller-windows.yml">
-    <img alt="Build Windows release" src="https://img.shields.io/github/actions/workflow/status/LyubomirT/intense-rp-next/release-pyinstaller-windows.yml?style=flat-square&label=windows%20release" />
-  </a>
-  <a href="https://github.com/LyubomirT/intense-rp-next/actions/workflows/release-pyinstaller-linux.yml">
-    <img alt="Build Linux release" src="https://img.shields.io/github/actions/workflow/status/LyubomirT/intense-rp-next/release-pyinstaller-linux.yml?style=flat-square&label=linux%20release" />
-  </a>
+  </a><!--
+  --><img alt="Status" src="https://img.shields.io/badge/status-stable-2ea44f?style=flat-square" />
 </p>
 
 <p align="center">
