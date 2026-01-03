@@ -350,6 +350,19 @@ SCHEMA = [
                     "Absolute paths are recommended; relative paths are resolved from the app folder."
                 ),
             ),
+            SettingField(
+                key="ui_divider",
+                label="Main Window",
+                type=SettingType.DIVIDER,
+                default=None,
+            ),
+            SettingField(
+                key="show_request_queue_preview",
+                label="Request Queue Preview",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Show an optional Request Queue panel in the main window.",
+            ),
         ]
     ),
     SettingCategory(

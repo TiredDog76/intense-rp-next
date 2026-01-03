@@ -1,0 +1,362 @@
+"""
+Request queue preview widget for displaying pending/processing requests.
+"""
+
+from __future__ import annotations
+
+import os
+from datetime import datetime
+from typing import Any, Optional
+
+from PySide6.QtCore import QByteArray, QRectF, Qt
+from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QStackedLayout,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ui.core.brand import BrandColors
+
+
+class _SvgIconCache:
+    def __init__(self):
+        self._cache: dict[tuple[str, Optional[str], int, float], QPixmap] = {}
+
+    def get_pixmap(self, icon_path: str, color_override: Optional[str], size: int, dpr: float) -> Optional[QPixmap]:
+        cache_key = (icon_path, color_override, size, round(dpr, 2))
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            with open(icon_path, "r", encoding="utf-8") as file:
+                svg = file.read()
+        except OSError:
+            return None
+
+        if color_override:
+            svg = svg.replace('stroke="#ffffff"', f'stroke="{color_override}"')
+            svg = svg.replace('stroke="#FFFFFF"', f'stroke="{color_override}"')
+
+        renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+        px = int(size * dpr)
+        pixmap = QPixmap(px, px)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        renderer.render(painter, QRectF(0, 0, px, px))
+        painter.end()
+
+        pixmap.setDevicePixelRatio(dpr)
+        self._cache[cache_key] = pixmap
+        return pixmap
+
+
+_SVG_CACHE = _SvgIconCache()
+
+
+class RequestQueueItemCard(QFrame):
+    STATUS_STYLES = {
+        "pending": {
+            "header_bg": BrandColors.ITEM_HOVER,
+            "body_bg": "#1f1f1f",
+            "border": BrandColors.INPUT_BORDER,
+            "icon": "play.svg",
+            "icon_color": BrandColors.TUMBLER_HANDLE,
+        },
+        "processing": {
+            "header_bg": BrandColors.CATEGORY_ACTIVE_BG,
+            "body_bg": "#132b55",
+            "border": BrandColors.ACCENT,
+            "icon": "clock.svg",
+            "icon_color": None,
+        },
+        "cancelled": {
+            "header_bg": "#5a2a2a",
+            "body_bg": "#3a1a1a",
+            "border": BrandColors.DANGER,
+            "icon": "x-red.svg",
+            "icon_color": None,
+        },
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("requestQueueCard")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self._icon_label = QLabel()
+        self._icon_label.setFixedSize(18, 18)
+        self._icon_label.setStyleSheet("background-color: transparent;")
+
+        self._pos_label = QLabel()
+        self._pos_label.setStyleSheet(
+            f"color: {BrandColors.TEXT_PRIMARY}; font-weight: 700; font-size: {BrandColors.FONT_SIZE_REGULAR};"
+        )
+
+        self._id_label = QLabel()
+        self._id_label.setStyleSheet(
+            f"color: {BrandColors.TEXT_PRIMARY}; font-weight: 600; font-size: {BrandColors.FONT_SIZE_REGULAR};"
+        )
+        self._id_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        self._time_label = QLabel()
+        self._time_label.setStyleSheet(
+            f"color: {BrandColors.TEXT_SECONDARY}; font-size: {BrandColors.FONT_SIZE_SMALL};"
+        )
+
+        header = QFrame()
+        header.setObjectName("requestQueueCardHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(10, 8, 10, 8)
+        header_layout.setSpacing(8)
+        header_layout.addWidget(self._icon_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self._pos_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self._id_label, 0, Qt.AlignVCenter)
+        header_layout.addStretch(1)
+        header_layout.addWidget(self._time_label, 0, Qt.AlignVCenter)
+
+        self._meta_label = QLabel()
+        self._meta_label.setWordWrap(True)
+        self._meta_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._meta_label.setStyleSheet(
+            f"color: {BrandColors.TEXT_SECONDARY}; font-size: {BrandColors.FONT_SIZE_SMALL};"
+        )
+
+        meta = QFrame()
+        meta.setObjectName("requestQueueCardMeta")
+        meta_layout = QVBoxLayout(meta)
+        meta_layout.setContentsMargins(10, 8, 10, 8)
+        meta_layout.setSpacing(0)
+        meta_layout.addWidget(self._meta_label)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(header)
+        main_layout.addWidget(meta)
+
+    def _icon_path(self, filename: str) -> str:
+        return os.path.abspath(
+            os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", filename)
+        )
+
+    def update_from_data(self, data: dict[str, Any]) -> None:
+        status = (data.get("status") or "pending").lower()
+        style = self.STATUS_STYLES.get(status, self.STATUS_STYLES["pending"])
+
+        position = int(data.get("position") or 0)
+        request_id = str(data.get("id") or "")
+        queued_at = float(data.get("queued_at") or 0.0)
+
+        try:
+            time_str = datetime.fromtimestamp(queued_at).strftime("%H:%M:%S")
+        except Exception:
+            time_str = "Unknown"
+
+        self._pos_label.setText(f"#{position}")
+        self._id_label.setText(request_id)
+        self._time_label.setText(f"Added: {time_str}")
+
+        msg_count = int(data.get("message_count") or 0)
+        api_key_name = data.get("api_key_name")
+        model = str(data.get("model") or "")
+        stream = bool(data.get("stream"))
+
+        api_key_text = str(api_key_name) if api_key_name else "None"
+        self._meta_label.setText(
+            "Messages: {msg_count}\nAPI Key: {api_key}\nModel: {model}\nStreaming: {streaming}".format(
+                msg_count=msg_count,
+                api_key=api_key_text,
+                model=model or "Unknown",
+                streaming="Yes" if stream else "No",
+            )
+        )
+
+        icon_file = style["icon"]
+        icon_color = style.get("icon_color")
+        icon_path = self._icon_path(icon_file)
+        pixmap = _SVG_CACHE.get_pixmap(icon_path, icon_color, size=18, dpr=self.devicePixelRatioF())
+        if pixmap is not None:
+            self._icon_label.setPixmap(pixmap)
+
+        border_color = style["border"]
+        header_bg = style["header_bg"]
+        body_bg = style["body_bg"]
+
+        self.setStyleSheet(
+            f"""
+            QFrame#requestQueueCard {{
+                background-color: transparent;
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+            QFrame#requestQueueCardHeader {{
+                background-color: {header_bg};
+                border-top-left-radius: 7px;
+                border-top-right-radius: 7px;
+                border-bottom-left-radius: 0px;
+                border-bottom-right-radius: 0px;
+            }}
+            QFrame#requestQueueCardMeta {{
+                background-color: {body_bg};
+                border-top-left-radius: 0px;
+                border-top-right-radius: 0px;
+                border-bottom-left-radius: 7px;
+                border-bottom-right-radius: 7px;
+            }}
+            """
+        )
+
+
+class RequestQueuePreview(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._item_widgets: dict[str, RequestQueueItemCard] = {}
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        container = QFrame()
+        container.setObjectName("requestQueueContainer")
+        container.setStyleSheet(
+            f"""
+            QFrame#requestQueueContainer {{
+                background-color: #1a1a1a;
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 8px;
+            }}
+            """
+        )
+
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+
+        header_label = QLabel("Request Queue")
+        header_label.setStyleSheet(
+            f"""
+            font-size: {BrandColors.FONT_SIZE_REGULAR};
+            font-weight: bold;
+            color: {BrandColors.TEXT_SECONDARY};
+            padding: 10px 12px 8px 12px;
+            background-color: #222222;
+            border-bottom: 1px solid {BrandColors.INPUT_BORDER};
+            border-top-left-radius: 7px;
+            border-top-right-radius: 7px;
+            border-bottom-left-radius: 0px;
+            border-bottom-right-radius: 0px;
+            """
+        )
+        container_layout.addWidget(header_label)
+
+        self._scroll_area = QScrollArea()
+        self._scroll_area.setWidgetResizable(True)
+        self._scroll_area.setFrameShape(QFrame.NoFrame)
+        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_area.setStyleSheet(
+            """
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #1a1a1a;
+                width: 10px;
+                margin: 0px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #444444;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #555555;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+            """
+        )
+
+        self._stack_root = QWidget()
+        self._stack_root.setStyleSheet("background-color: transparent;")
+        self._stack = QStackedLayout(self._stack_root)
+
+        self._list_root = QWidget()
+        self._list_root.setStyleSheet("background-color: transparent;")
+        self._list_layout = QVBoxLayout(self._list_root)
+        self._list_layout.setContentsMargins(8, 8, 8, 8)
+        self._list_layout.setSpacing(8)
+        self._list_layout.setAlignment(Qt.AlignTop)
+
+        empty_root = QWidget()
+        empty_root.setStyleSheet("background-color: transparent;")
+        empty_layout = QVBoxLayout(empty_root)
+        empty_layout.setContentsMargins(12, 18, 12, 18)
+        empty_layout.addStretch(1)
+
+        empty_label = QLabel("No queued requests")
+        empty_label.setAlignment(Qt.AlignCenter)
+        empty_label.setStyleSheet(
+            f"color: {BrandColors.TEXT_SECONDARY}; font-size: {BrandColors.FONT_SIZE_REGULAR};"
+        )
+        empty_layout.addWidget(empty_label)
+        empty_layout.addStretch(1)
+
+        self._stack.addWidget(self._list_root)
+        self._stack.addWidget(empty_root)
+        self._stack.setCurrentWidget(empty_root)
+
+        self._scroll_area.setWidget(self._stack_root)
+        container_layout.addWidget(self._scroll_area)
+
+        main_layout.addWidget(container)
+
+    def set_requests(self, requests: list[dict[str, Any]]) -> None:
+        requests = list(requests or [])
+        if not requests:
+            self._stack.setCurrentIndex(1)
+            return
+
+        self._stack.setCurrentIndex(0)
+        active_ids = {str(r.get("id") or "") for r in requests if r.get("id")}
+
+        for request_id in list(self._item_widgets.keys()):
+            if request_id not in active_ids:
+                widget = self._item_widgets.pop(request_id)
+                widget.setParent(None)
+                widget.deleteLater()
+
+        while self._list_layout.count():
+            item = self._list_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+
+        for req in requests:
+            request_id = str(req.get("id") or "")
+            if not request_id:
+                continue
+
+            widget = self._item_widgets.get(request_id)
+            if widget is None:
+                widget = RequestQueueItemCard()
+                self._item_widgets[request_id] = widget
+
+            widget.update_from_data(req)
+            self._list_layout.addWidget(widget)
+

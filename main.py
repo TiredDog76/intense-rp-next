@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
-    QHBoxLayout, QSizePolicy
+    QHBoxLayout, QSizePolicy, QSplitter
 )
 from PySide6.QtCore import Signal, Slot, Qt, QProcess
 from PySide6.QtCore import QTimer
@@ -20,6 +20,7 @@ from ui.windows.settings_window import SettingsWindow
 from ui.windows.console_window import ConsoleWindow
 from ui.windows.help_window import HelpWindow
 from ui.widgets.mini_console import MiniConsole
+from ui.widgets.request_queue_preview import RequestQueuePreview
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
@@ -139,21 +140,51 @@ def get_version():
 
 class MainWindow(QMainWindow):
     update_available_found = Signal(object)
+    DEFAULT_WINDOW_WIDTH = 450
+    DEFAULT_WINDOW_HEIGHT = 500
 
     def __init__(self):
         super().__init__()
         version = get_version()
         self.setWindowTitle(f"IntenseRP Next v{version}")
-        self.resize(450, 500)
+        self.resize(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG}; color: {BrandColors.TEXT_PRIMARY};")
 
         self.config_manager = ConfigManager()
+        self._queue_preview_min_width = 300
+        self._queue_preview_handle_width = 12
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        self.layout = QVBoxLayout(self.central_widget)
-        self.layout.setContentsMargins(16, 16, 16, 16)
+
+        outer_layout = QHBoxLayout(self.central_widget)
+        outer_layout.setContentsMargins(16, 16, 16, 16)
+        outer_layout.setSpacing(0)
+        self._outer_layout = outer_layout
+
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setHandleWidth(0)
+        self.splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {BrandColors.WINDOW_BG}; }}")
+        outer_layout.addWidget(self.splitter)
+
+        self.main_panel = QWidget()
+        self.main_panel.setStyleSheet("background-color: transparent;")
+        self.main_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.layout = QVBoxLayout(self.main_panel)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(12)
+
+        self.queue_preview = RequestQueuePreview(self.central_widget)
+        self.queue_preview.setVisible(False)
+        self.queue_preview.setMinimumWidth(0)
+        self.queue_preview.setMaximumWidth(0)
+        self.queue_preview.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+
+        self.splitter.addWidget(self.main_panel)
+        self.splitter.setCollapsible(0, False)
+        self.splitter.splitterMoved.connect(self._on_splitter_moved)
 
         # 1. Title Area
         title_label = QLabel(f"Welcome to IntenseRP Next (v{version})!")
@@ -251,6 +282,13 @@ class MainWindow(QMainWindow):
         self.help_button.clicked.connect(self.open_help)
         self.layout.addWidget(self.help_button)
 
+        self._queue_preview_enabled = False
+        self._queue_preview_last_width = 360
+        self._queue_preview_refresh_inflight = False
+        self._queue_preview_timer = QTimer()
+        self._queue_preview_timer.setInterval(500)
+        self._queue_preview_timer.timeout.connect(self._schedule_queue_preview_refresh)
+
         self.driver = None
         self.api = None
         self.server = None
@@ -267,6 +305,7 @@ class MainWindow(QMainWindow):
         self.update_available_found.connect(self._show_update_available_dialog)
 
         self._maybe_check_for_updates_on_startup()
+        self._apply_queue_preview_setting(force=True)
 
     @Slot(object)
     def _show_update_available_dialog(self, info: UpdateAvailableInfo):
@@ -410,6 +449,173 @@ class MainWindow(QMainWindow):
             border-radius: 6px;
         """)
 
+    def _on_splitter_moved(self, pos: int, index: int):
+        if not getattr(self, "queue_preview", None):
+            return
+        if not self.queue_preview.isVisible():
+            return
+
+        try:
+            sizes = self.splitter.sizes()
+            if len(sizes) >= 2:
+                self._queue_preview_last_width = max(self._queue_preview_min_width, int(sizes[0]))
+        except Exception:
+            pass
+
+    def _rebuild_splitter(self, include_queue_preview: bool) -> None:
+        outer_layout = getattr(self, "_outer_layout", None)
+        if outer_layout is None:
+            return
+
+        old_splitter = getattr(self, "splitter", None)
+        if old_splitter is not None:
+            # Detach widgets we keep so deleting the splitter does not delete them
+            for widget in (getattr(self, "main_panel", None), getattr(self, "queue_preview", None)):
+                if widget is not None and widget.parent() is old_splitter:
+                    widget.setParent(self.central_widget)
+
+            outer_layout.removeWidget(old_splitter)
+            old_splitter.setParent(None)
+            old_splitter.deleteLater()
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(self._queue_preview_handle_width if include_queue_preview else 0)
+        splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {BrandColors.WINDOW_BG}; }}")
+        splitter.splitterMoved.connect(self._on_splitter_moved)
+        outer_layout.addWidget(splitter)
+        self.splitter = splitter
+
+        if include_queue_preview:
+            splitter.addWidget(self.queue_preview)
+            splitter.addWidget(self.main_panel)
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
+            return
+
+        splitter.addWidget(self.main_panel)
+        splitter.setCollapsible(0, False)
+
+    def _apply_queue_preview_setting(self, force: bool = False):
+        enabled = bool(self.config_manager.get_setting("system_settings", "show_request_queue_preview"))
+
+        if (not force) and enabled == getattr(self, "_queue_preview_enabled", False):
+            return
+
+        was_visible = bool(getattr(self, "queue_preview", None) and self.queue_preview.isVisible())
+        self._queue_preview_enabled = enabled
+
+        if enabled:
+            desired_width = max(int(getattr(self, "_queue_preview_last_width", 360) or 360), self._queue_preview_min_width)
+            if not was_visible:
+                self.resize(self.width() + desired_width, self.height())
+
+            if self.splitter.indexOf(self.queue_preview) == -1:
+                self.splitter.insertWidget(0, self.queue_preview)
+                self.splitter.setCollapsible(0, False)
+                self.splitter.setCollapsible(1, False)
+
+            self.queue_preview.setMaximumWidth(16777215)
+            self.queue_preview.setMinimumWidth(self._queue_preview_min_width)
+            self.queue_preview.setVisible(True)
+            self.splitter.setHandleWidth(self._queue_preview_handle_width)
+            self._queue_preview_timer.start()
+            self._schedule_queue_preview_refresh()
+
+            def apply_sizes():
+                if not self.queue_preview.isVisible():
+                    return
+                total = sum(self.splitter.sizes())
+                main_width = max(0, total - desired_width)
+                self.splitter.setSizes([desired_width, main_width])
+
+            QTimer.singleShot(0, apply_sizes)
+            return
+
+        # Disabled
+        try:
+            sizes = self.splitter.sizes()
+            if self.queue_preview.isVisible() and len(sizes) >= 2:
+                self._queue_preview_last_width = max(self._queue_preview_min_width, int(sizes[0]))
+        except Exception:
+            pass
+
+        self.queue_preview.setVisible(False)
+        self.queue_preview.setMinimumWidth(0)
+        self.queue_preview.setMaximumWidth(0)
+        self._queue_preview_timer.stop()
+
+        # Rebuild the splitter without the preview widget to avoid stale size/minimum constraints
+        # keeping the main window wide after the panel is disabled
+        self._rebuild_splitter(include_queue_preview=False)
+
+        # Clear any layout-driven minimums that may have been raised while the preview was present
+        try:
+            self.central_widget.setMinimumSize(0, 0)
+            self.splitter.setMinimumSize(0, 0)
+        except Exception:
+            pass
+
+        QTimer.singleShot(
+            0,
+            lambda: self.resize(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT),
+        )
+
+    def _schedule_queue_preview_refresh(self):
+        if not getattr(self, "_queue_preview_enabled", False):
+            return
+        if not getattr(self, "queue_preview", None) or not self.queue_preview.isVisible():
+            return
+        if getattr(self, "_queue_preview_refresh_inflight", False):
+            return
+
+        self._queue_preview_refresh_inflight = True
+        asyncio.create_task(self._refresh_queue_preview())
+
+    async def _refresh_queue_preview(self):
+        try:
+            if not getattr(self, "_queue_preview_enabled", False):
+                return
+            if not getattr(self, "queue_preview", None) or not self.queue_preview.isVisible():
+                return
+
+            entries = []
+            api = getattr(self, "api", None)
+            if api and getattr(api, "request_queue", None):
+                current = getattr(api, "current_entry", None)
+                if current:
+                    entries.append(("processing", current))
+
+                queued = await api.request_queue.snapshot()
+                for entry in queued:
+                    status = "cancelled" if entry.abort_event.is_set() else "pending"
+                    entries.append((status, entry))
+
+            rendered = []
+            for idx, (status, entry) in enumerate(entries, start=1):
+                req = getattr(entry, "request", None)
+                try:
+                    msg_count = len(getattr(req, "messages", []) or [])
+                except Exception:
+                    msg_count = 0
+
+                rendered.append(
+                    {
+                        "position": idx,
+                        "id": getattr(entry, "id", ""),
+                        "queued_at": getattr(entry, "queued_at", 0.0),
+                        "status": status,
+                        "message_count": msg_count,
+                        "api_key_name": getattr(entry, "api_key_name", None),
+                        "model": getattr(req, "model", "") if req else "",
+                        "stream": bool(getattr(req, "stream", False)) if req else False,
+                    }
+                )
+
+            self.queue_preview.set_requests(rendered)
+        finally:
+            self._queue_preview_refresh_inflight = False
+
     def open_settings(self):
         if not self.settings_window:
             # Pass None as parent to make it a top-level window with its own taskbar icon
@@ -432,6 +638,7 @@ class MainWindow(QMainWindow):
         Logger.info("Settings saved.")
         # Handle logging toggle
         self._setup_logging()
+        self._apply_queue_preview_setting()
         
         # Update console settings if it exists
         # Rule 43 of The Internet: If it exists, then it exists
