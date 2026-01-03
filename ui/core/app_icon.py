@@ -9,7 +9,7 @@ from PySide6.QtGui import QIcon
 
 @lru_cache(maxsize=1)
 def get_app_icon() -> QIcon:
-    base_dir = os.path.join(os.path.dirname(__file__), "assets", "brand")
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "brand"))
 
     ico_path = os.path.join(base_dir, "newlogo.ico")
     png_path = os.path.join(base_dir, "newlogo.png")

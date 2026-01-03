@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 
-from ..brand import BrandColors
+from ui.core.brand import BrandColors
 from utils.auto_update import AutoUpdateError, PreparedUpdate, prepare_update_from_github, DownloadProgress
 
 

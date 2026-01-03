@@ -14,10 +14,10 @@ from pathlib import Path
 from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
 from config.schema import SCHEMA, SettingType
-from .brand import BrandColors
-from .components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget
-from .icons import IconUtils, IconType
-from .niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
+from ui.core.brand import BrandColors
+from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget
+from ui.core.icons import IconUtils, IconType
+from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
 from utils.update_checker import check_for_updates, read_local_version
 
@@ -62,7 +62,7 @@ class SettingsWindow(QMainWindow):
         if cached:
             return cached
 
-        icon_path = os.path.join(os.path.dirname(__file__), "assets", "icons", "sidebar", icon_file)
+        icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", "sidebar", icon_file))
         try:
             with open(icon_path, "r", encoding="utf-8") as file:
                 svg = file.read()
@@ -286,7 +286,7 @@ class SettingsWindow(QMainWindow):
                 border: 2px solid {BrandColors.ACCENT};
             }}
         """)
-        icons_base = os.path.join(os.path.dirname(__file__), "assets", "icons")
+        icons_base = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons"))
         search_icon_path = os.path.join(icons_base, "search.svg")
         self.search_input.addAction(QIcon(search_icon_path), QLineEdit.LeadingPosition)
         self.search_input.textChanged.connect(self._on_search_text_changed)

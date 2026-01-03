@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QTextCharFormat, QColor, QFont
 
-from .brand import BrandColors
+from ui.core.brand import BrandColors
 from utils.logger import Logger
 
 

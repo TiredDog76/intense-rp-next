@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, Slot, QSize
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QBrush, QColor, QFont, QCursor
 
-from ui.brand import BrandColors
-from ui.icons import IconUtils, IconType
+from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils, IconType
 from utils.logger import Logger
 
 
@@ -26,8 +26,8 @@ def _resolve_resource_path(*parts: str) -> Path:
             candidates.append(Path(meipass) / Path(*parts))
         candidates.append(Path(sys.executable).resolve().parent / Path(*parts))
 
-    # Source checkout (repo root is the parent directory of this ui/ module)
-    candidates.append(Path(__file__).resolve().parent.parent / Path(*parts))
+    # Source checkout (repo root is the parent directory of the ui/ package)
+    candidates.append(Path(__file__).resolve().parents[2] / Path(*parts))
 
     for candidate in candidates:
         if candidate.exists():

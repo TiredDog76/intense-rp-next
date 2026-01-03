@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
 )
 
 from config.manager import ConfigManager
-from ..brand import BrandColors
-from ..components import Description, Divider, StyledButton
+from ui.core.brand import BrandColors
+from ui.widgets.components import Description, Divider, StyledButton
 from ..universal.working_dialog import WorkingDialog
 from utils.config_backup import create_config_backup_zip, import_config_backup_zip
 from utils.logger import Logger

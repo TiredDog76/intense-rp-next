@@ -8,8 +8,8 @@ from PySide6.QtCore import Qt, QSize, QUrl
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from ..brand import BrandColors
-from ..icons import IconType, IconUtils
+from ui.core.brand import BrandColors
+from ui.core.icons import IconType, IconUtils
 from .update_method_dialog import UpdateMethodAvailability, UpdateMethodDialog, default_update_method_availability
 from .update_git_instructions_dialog import UpdateGitInstructionsDialog
 from .update_download_dialog import UpdateDownloadDialog

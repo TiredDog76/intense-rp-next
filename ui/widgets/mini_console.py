@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtSvgWidgets import QSvgWidget
 
-from .brand import BrandColors
+from ui.core.brand import BrandColors
 from utils.logger import LogLevel
 
 
@@ -116,7 +116,7 @@ class LogGroup(QWidget):
     
     def _update_header(self):
         """Update header text with log count."""
-        icon_path = os.path.join(os.path.dirname(__file__), "assets", "icons", self.LEVEL_ICONS.get(self.level, "info-cyan.svg"))
+        icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", self.LEVEL_ICONS.get(self.level, "info-cyan.svg")))
         count = len(self.logs)
         self.header_text.setText(f"{self.level} ({count})")
         
@@ -131,7 +131,7 @@ class LogGroup(QWidget):
         else:
             chevron_file = "chevron-right.svg"
         
-        chevron_path = os.path.join(os.path.dirname(__file__), "assets", "icons", chevron_file)
+        chevron_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", chevron_file))
         if os.path.exists(chevron_path):
             self.chevron_label.load(chevron_path)
     

@@ -2,8 +2,8 @@ from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLab
 from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent
 import os
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon
-from .brand import BrandColors
-from .icons import IconUtils, IconType
+from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils, IconType
 
 class MultiColumnRow(QWidget):
     def __init__(self, widgets, ratios=None, spacing=10, parent=None):
@@ -135,7 +135,7 @@ class StyledComboBox(QComboBox):
             }}
             QComboBox::down-arrow {{
                 /* I AM (in) PAIN */
-                image: url({os.path.join(os.path.dirname(__file__), "assets", "icons", "chevron-down.svg").replace(os.sep, "/")});
+                image: url({os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", "chevron-down.svg")).replace(os.sep, "/")});
                 width: 16px;
                 height: 16px;
                 margin-right: 5px;
@@ -660,4 +660,3 @@ class ToggleRow(QWidget):
                 color: {desc_color}; 
                 background-color: transparent;
             """)
-

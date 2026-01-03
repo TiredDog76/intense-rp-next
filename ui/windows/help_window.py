@@ -5,10 +5,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon
 
-from ui.brand import BrandColors
-from ui.icons import IconUtils, IconType
+from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils, IconType
 from ui.niche.backup_import_window import BackupImportWindow
-from ui.contributors_window import ContributorsWindow
+from ui.windows.contributors_window import ContributorsWindow
 from ui.niche.stmp_patcher_window import STMPPatcherWindow
 from utils.v1_migrator import V1Migrator
 from utils.logger import Logger

@@ -5,7 +5,7 @@ from typing import Callable, Optional, Tuple
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtWidgets import QDialog, QFrame, QLabel, QProgressBar, QVBoxLayout
 
-from ui.brand import BrandColors
+from ui.core.brand import BrandColors
 
 
 class _WorkingWorker(QObject):

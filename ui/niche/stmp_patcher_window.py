@@ -12,8 +12,8 @@ from PySide6.QtWidgets import (
     QFileDialog,
 )
 
-from ui.brand import BrandColors
-from ui.components import StyledButton, Description, Divider
+from ui.core.brand import BrandColors
+from ui.widgets.components import StyledButton, Description, Divider
 from utils.logger import Logger
 from utils.stmp_patcher import patch_stmp_installation, scan_stmp_installation
 

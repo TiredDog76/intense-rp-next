@@ -16,12 +16,12 @@ import qasync
 from deepseek_driver import DeepSeekDriver
 from api import API
 from config.manager import ConfigManager
-from ui.settings_window import SettingsWindow
-from ui.console_window import ConsoleWindow
-from ui.help_window import HelpWindow
-from ui.mini_console import MiniConsole
-from ui.brand import BrandColors
-from ui.icons import IconUtils, IconType
+from ui.windows.settings_window import SettingsWindow
+from ui.windows.console_window import ConsoleWindow
+from ui.windows.help_window import HelpWindow
+from ui.widgets.mini_console import MiniConsole
+from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger, LogLevel
 from utils.update_checker import check_for_updates
@@ -713,7 +713,7 @@ def main():
 
     app = QApplication(sys.argv)
 
-    from ui.app_icon import get_app_icon
+    from ui.core.app_icon import get_app_icon
     from PySide6.QtWidgets import QStyleFactory
 
     # Force a consistent style between running-from-source and packaged(PyInstaller) builds. 

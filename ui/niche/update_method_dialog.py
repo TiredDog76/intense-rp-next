@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from ..brand import BrandColors
+from ui.core.brand import BrandColors
 
 
 @dataclass(frozen=True)

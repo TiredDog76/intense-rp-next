@@ -28,7 +28,7 @@ class IconUtils:
         The 'color', 'size', and 'y_offset' parameters are ignored but kept for compatibility.
         """
         # Path to icons
-        base_path = os.path.join(os.path.dirname(__file__), "assets", "icons")
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons"))
         file_path = os.path.join(base_path, icon_type.value)
         
         if not os.path.exists(file_path):
