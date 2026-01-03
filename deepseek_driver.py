@@ -1122,84 +1122,183 @@ class DeepSeekDriver:
         """
         Sets the sidebar status to open or closed.
         """
-        sidebar_inner_selector = "div.b8812f16.a2f3d50e"
-        sidebar_closed_class = "_70b689f"
+        # Sidebar visibility is controlled via hashed classes that DeepSeek changes frequently.
+        # when hidden, the sidebar container gains "a02af2e6" (removed when visible).
+
+        sidebar_wrapper_selector = "div.dc04ec1d"
+        sidebar_hidden_class = "a02af2e6"
         close_button_selector = "div.ds-icon-button._7d1f5e2"
         open_button_selector = "div.e5bf614e >> div.ds-icon-button._4f3769f >> nth=0"
 
-        sidebar_inner = self.page.locator(sidebar_inner_selector)
-        if await sidebar_inner.count() == 0:
-            Logger.warning("Sidebar inner container not found.")
-            return
+        async def _is_sidebar_hidden() -> Optional[bool]:
+            wrapper = self.page.locator(sidebar_wrapper_selector)
+            if await wrapper.count() > 0:
+                class_attr = await wrapper.first.get_attribute("class") or ""
+                return sidebar_hidden_class in class_attr
 
-        class_attr = await sidebar_inner.first.get_attribute("class") or ""
-        is_closed = sidebar_closed_class in class_attr
-        is_open = not is_closed
+            # Fallback heuristics if wrapper selector changes.
+            close_btn = self.page.locator(close_button_selector)
+            if await close_btn.count() > 0 and await close_btn.first.is_visible():
+                return False
+
+            open_btn = self.page.locator(open_button_selector)
+            if await open_btn.count() > 0 and await open_btn.first.is_visible():
+                return True
+
+            return None
+
+        is_hidden = await _is_sidebar_hidden()
 
         if open:
-            if is_open:
+            if is_hidden is False:
                 Logger.debug("Sidebar is already open.")
                 return
 
             Logger.debug("Opening sidebar...")
             open_btn = self.page.locator(open_button_selector)
-            if await open_btn.is_visible():
-                await open_btn.click()
-            else:
-                Logger.warning("Open sidebar button not visible.")
-                
+            if await open_btn.count() == 0:
+                Logger.warning("Open sidebar button not found.")
+                return
+
+            try:
+                await open_btn.click(timeout=2000)
+            except Exception as e:
+                Logger.warning(f"Failed to click open sidebar button: {e}")
+                return
+
         else:
-            if is_closed:
+            if is_hidden is True:
                 Logger.debug("Sidebar is already closed.")
                 return
-            
+
             Logger.debug("Closing sidebar...")
             close_btn = self.page.locator(close_button_selector)
-            if await close_btn.is_visible():
-                await close_btn.click()
-            else:
-                Logger.warning("Close sidebar button not visible.")
+            if await close_btn.count() == 0:
+                Logger.warning("Close sidebar button not found.")
+                return
+
+            try:
+                await close_btn.click(timeout=2000)
+            except Exception as e:
+                Logger.warning(f"Failed to click close sidebar button: {e}")
+                return
 
     async def click_new_chat(self, source: str = "auto"):
         """
         Clicks the New Chat button.
         """
-        simple_new_chat_selector = "div.e5bf614e >> div.ds-icon-button._4f3769f >> nth=1"
+        # DeepSeek changes their UI classes often; still relying on hashes because the structure is messed up.
+        # Sidebar open: "New chat" is a text button.
+        # Sidebar closed: quick actions show 2 icon buttons.
+        # Note: quick actions are removed from DOM when sidebar is open. The sidebar is NOT removed when closed, it just gets a new class.
+
+        sidebar_wrapper_selector = "div.dc04ec1d"
+        sidebar_hidden_class = "a02af2e6"
+        quick_action_container_selector = "div.e5bf614e"
+        quick_action_button_class = "_4f3769f"
         sidebar_new_chat_selector = "div._5a8ac7a.a084f19e"
 
-        if source == "simple":
-            Logger.debug("Clicking New Chat (Simple)...")
-            btn = self.page.locator(simple_new_chat_selector)
-            if await btn.count() > 0:
-                await btn.click()
-            else:
-                Logger.warning("New Chat (Simple) button not found.")
-                
-        elif source == "sidebar":
-            Logger.debug("Clicking New Chat (Sidebar)...")
+        quick_new_chat_selector = (
+            f"{quick_action_container_selector} >> div.ds-icon-button.{quick_action_button_class} >> nth=1"
+        )
+
+        async def _is_sidebar_hidden() -> Optional[bool]:
+            wrapper = self.page.locator(sidebar_wrapper_selector)
+            if await wrapper.count() > 0:
+                class_attr = await wrapper.first.get_attribute("class") or ""
+                return sidebar_hidden_class in class_attr
+
+            # Fallback heuristics if wrapper selector changes.
+            close_btn = self.page.locator("div.ds-icon-button._7d1f5e2")
+            if await close_btn.count() > 0 and await close_btn.first.is_visible():
+                return False
+
+            quick_actions = self.page.locator(quick_action_container_selector)
+            if await quick_actions.count() > 0 and await quick_actions.first.is_visible():
+                return True
+
+            return None
+
+        async def _click_sidebar_new_chat() -> bool:
             btn = self.page.locator(sidebar_new_chat_selector)
-            if await btn.count() > 0:
-                await btn.click()
-            else:
-                Logger.warning("New Chat (Sidebar) button not found.")
-                
-        elif source == "auto":
+            if await btn.count() > 0 and await btn.first.is_visible():
+                is_disabled = (await btn.first.get_attribute("aria-disabled")) == "true"
+                if not is_disabled:
+                    Logger.debug("Clicking New Chat (Sidebar)...")
+                    await btn.first.click(timeout=2000)
+                    return True
+
+            # Fallback: locate by visible text
+            btn = self.page.locator("div[tabindex='0']", has_text="New chat")
+            if await btn.count() > 0 and await btn.first.is_visible():
+                Logger.debug("Clicking New Chat (Sidebar text)...")
+                await btn.first.click(timeout=2000)
+                return True
+
+            return False
+
+        async def _click_quick_new_chat() -> bool:
+            btn = self.page.locator(quick_new_chat_selector)
+            if await btn.count() > 0 and await btn.first.is_visible():
+                is_disabled = (await btn.first.get_attribute("aria-disabled")) == "true"
+                if not is_disabled:
+                    Logger.debug("Clicking New Chat (Quick action)...")
+                    await btn.first.click(timeout=2000)
+                    return True
+            return False
+
+        try:
+            if source == "sidebar":
+                if not await _click_sidebar_new_chat():
+                    Logger.warning("New Chat (Sidebar) button not found.")
+                return
+
+            if source == "simple":
+                if not await _click_quick_new_chat():
+                    Logger.warning("New Chat (Quick action) button not found.")
+                return
+
+            if source != "auto":
+                Logger.warning(f"Unknown source: {source}")
+                return
+
             Logger.debug("Attempting to click New Chat (Auto)...")
-            simple_btn = self.page.locator(simple_new_chat_selector)
-            if await simple_btn.count() > 0:
-                Logger.debug("Found Simple New Chat button. Clicking...")
-                await simple_btn.click()
+            is_hidden = await _is_sidebar_hidden()
+
+            # If sidebar is open, quick actions are removed; prefer the sidebar button.
+            if is_hidden is False:
+                if await _click_sidebar_new_chat():
+                    return
+                # If our state detection is wrong or UI changed, try quick action as a fallback.
+                if await _click_quick_new_chat():
+                    return
+                Logger.warning("Sidebar appears open, but New Chat button was not found.")
                 return
-                
-            sidebar_btn = self.page.locator(sidebar_new_chat_selector)
-            if await sidebar_btn.count() > 0:
-                Logger.debug("Found Sidebar New Chat button. Clicking...")
-                await sidebar_btn.click()
+
+            # If sidebar is hidden, quick actions should exist; prefer quick action.
+            if is_hidden is True:
+                if await _click_quick_new_chat():
+                    return
+                # Fallback: open sidebar and try the sidebar button.
+                await self.set_sidebar_status(open=True)
+                if await _click_sidebar_new_chat():
+                    return
+                Logger.warning("Sidebar appears hidden, but New Chat button was not found.")
                 return
-                
+
+            # Unknown state: try both, then try opening sidebar as a last resort.
+            if await _click_quick_new_chat():
+                return
+            if await _click_sidebar_new_chat():
+                return
+
+            await self.set_sidebar_status(open=True)
+            if await _click_sidebar_new_chat():
+                return
+
             Logger.warning("Could not find New Chat button in either mode.")
-        else:
-            Logger.warning(f"Unknown source: {source}")
+        except Exception as e:
+            Logger.error(f"Error clicking New Chat: {e}")
 
     async def enter_message(self, message: str):
         """
@@ -1265,28 +1364,56 @@ class DeepSeekDriver:
         Clicks the regenerate button.
         Returns True if successful, False otherwise.
         """
-        # Selector based on my investigation: within ds-flex _965abe9 _54866f7, it's the second button
-        # The container has classes _965abe9 and _54866f7
-        container_selector = "div.ds-flex._965abe9._54866f7"
-        
-        # We need the second button inside this container
-        # The buttons are div.ds-icon-button
-        button_selector = f"{container_selector} >> div.ds-icon-button >> nth=1"
-        
-        button = self.page.locator(button_selector)
-        
-        if await button.count() > 0:
-            # Check if disabled
-            is_disabled = await button.get_attribute("aria-disabled") == "true"
-            if is_disabled:
-                Logger.warning("Regenerate button is disabled (likely due to censorship).")
-                return False
-            
-            Logger.debug("Clicking regenerate button...")
-            await button.click()
-            return True
-        else:
+        # DeepSeek changes their UI classes often; hence we avoid relying on hashed class names.
+        # In the current UI, regenerate is the 2nd "control" icon-button (nth=1) in the control bar
+        # that appears right after the last assistant message.
+        try:
+            assistant_messages = self.page.locator("div.ds-message:has(.ds-markdown)")
+            assistant_count = await assistant_messages.count()
+
+            candidate_containers = []
+
+            if assistant_count > 0:
+                last_assistant = assistant_messages.nth(assistant_count - 1)
+                # The control bar is typically the first ds-flex sibling after the message that contains icon buttons.
+                candidate_containers.append(
+                    last_assistant.locator(
+                        "xpath=following-sibling::*[self::div[contains(@class,'ds-flex')] and .//div[contains(@class,'ds-icon-button')]][1]"
+                    )
+                )
+
+            # Fallback: scan for the last visible ds-flex that has at least 2 icon buttons (excluding the input area).
+            candidate_containers.append(self.page.locator("div.ds-flex:has(.ds-icon-button)"))
+
+            for container in candidate_containers:
+                container_count = await container.count()
+                for i in range(container_count - 1, -1, -1):
+                    bar = container.nth(i)
+                    # Skip the composer/input area.
+                    if await bar.locator("textarea").count() > 0:
+                        continue
+
+                    buttons = bar.locator(".ds-icon-button")
+                    if await buttons.count() < 2:
+                        continue
+
+                    regen_button = buttons.nth(1)
+                    if not await regen_button.is_visible():
+                        continue
+
+                    is_disabled = (await regen_button.get_attribute("aria-disabled")) == "true"
+                    if is_disabled:
+                        Logger.warning("Regenerate button is disabled (likely due to censorship).")
+                        return False
+
+                    Logger.debug("Clicking regenerate button...")
+                    await regen_button.click()
+                    return True
+
             Logger.warning("Regenerate button not found.")
+            return False
+        except Exception as e:
+            Logger.error(f"Error clicking regenerate button: {e}")
             return False
 
     async def _upload_file(self, file_path: str):
