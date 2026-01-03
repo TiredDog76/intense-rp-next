@@ -16,6 +16,7 @@ class IconType(Enum):
     MIGRATE = "truck.svg"
     CONTRIBUTORS = "user-check.svg"
     PATCHER = "terminal.svg"
+    BACKUP = "download-cloud.svg"
 
 class IconUtils:
     @staticmethod

@@ -424,6 +424,7 @@ class MainWindow(QMainWindow):
     def open_help(self):
         if not self.help_window:
             self.help_window = HelpWindow(self.config_manager, None)
+            self.help_window.settings_reloaded.connect(self.on_settings_reloaded)
         self.help_window.show()
         self.help_window.activateWindow()
 
@@ -439,6 +440,17 @@ class MainWindow(QMainWindow):
             
         # If driver is running, it will pick up changes on next generation
         # All thanks to the config manager being dynamic
+
+    def on_settings_reloaded(self):
+        Logger.info("Settings reloaded.")
+        self._setup_logging()
+
+        if self.console_window:
+            self.console_window.apply_settings()
+
+        if self.settings_window and self.settings_window.isVisible():
+            # Importing settings is effectively an external change; force refresh
+            self.settings_window.refresh_from_config(force=True)
 
     def on_restart_requested(self):
         asyncio.create_task(self._restart_application())

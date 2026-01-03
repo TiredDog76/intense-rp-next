@@ -2,17 +2,20 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, 
     QMessageBox, QFileDialog
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon
 
 from ui.brand import BrandColors
 from ui.icons import IconUtils, IconType
+from ui.niche.backup_import_window import BackupImportWindow
 from ui.contributors_window import ContributorsWindow
 from ui.niche.stmp_patcher_window import STMPPatcherWindow
 from utils.v1_migrator import V1Migrator
 from utils.logger import Logger
 
 class HelpWindow(QMainWindow):
+    settings_reloaded = Signal()
+
     def __init__(self, config_manager, parent=None):
         super().__init__(parent)
         self.config_manager = config_manager
@@ -47,6 +50,12 @@ class HelpWindow(QMainWindow):
         """)
         layout.addWidget(desc)
         
+        # Backup / Import Button
+        self.backup_btn = self._create_button("Backup / Import Settings", IconType.BACKUP)
+        self.backup_btn.setToolTip("Backup or restore your config directory (settings/key/profiles) using a .zip file.")
+        self.backup_btn.clicked.connect(self.show_backup_import)
+        layout.addWidget(self.backup_btn)
+
         # STMP Patcher Button
         self.stmp_btn = self._create_button("STMP Patcher", IconType.PATCHER)
         self.stmp_btn.setToolTip("Patches RossAscends's STMP to include per-message names.")
@@ -69,6 +78,7 @@ class HelpWindow(QMainWindow):
 
         self.contributors_window = None
         self.stmp_patcher_window = None
+        self.backup_import_window = None
 
     def _create_button(self, text, icon_type):
         btn = QPushButton(text)
@@ -134,3 +144,10 @@ class HelpWindow(QMainWindow):
             self.contributors_window = ContributorsWindow(None) # Top level
         self.contributors_window.show()
         self.contributors_window.activateWindow()
+
+    def show_backup_import(self):
+        if not self.backup_import_window:
+            self.backup_import_window = BackupImportWindow(self.config_manager, None)  # Top level
+            self.backup_import_window.settings_reloaded.connect(self.settings_reloaded.emit)
+        self.backup_import_window.show()
+        self.backup_import_window.activateWindow()

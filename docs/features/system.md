@@ -130,26 +130,36 @@ During migration, IntenseRP will:
 
 ## :material-content-save: Backup & Restore
 
-!!! note "Work in Progress"
-    Backup and restore instructions are preliminary as of this writing. A more user-friendly backup/restore feature are in the works.
+IntenseRP Next v2 includes a built-in backup/import tool that packages your active config directory into a `.zip`.
 
-### Back up your settings
+### In-app backup/import (recommended)
+
+1. Open **Help** (main window) -> **Backup / Import Settings**
+2. Click **Backup to .zip** and choose a save location
+3. To restore, click **Import from .zip** and select your backup zip
+
+After backup/import, settings reload automatically. Import replaces the contents of your active `[config_dir]`.
+
+!!! warning "Import overwrites your current config"
+    Import replaces your active config directory contents. Create a backup zip first if you want an easy rollback.
+
+!!! tip "Stop services for reliable imports"
+    If Persistent Sessions are enabled and the browser is running, profile files can be in use. Click **Stop** in the main window before importing.
+
+!!! tip "Portable Backups"
+    If you use **Relative**, you can usually back up by copying the whole app folder. `config_data/` lives inside it.
+
+### Manual backup (advanced)
 
 1. Close IntenseRP
 2. Copy your entire `[config_dir]/` somewhere safe
 
 That backup includes your settings, API keys, and (if enabled) your persistent browser profile.
 
-### Restore from a backup
+### Manual restore (advanced)
 
 1. Close IntenseRP
-2. Put the backed-up folder back as your config directory
-3. Either:
-   - Set **Config Storage Location** to point to it (recommended), or
-   - Update `config_dir.txt` to the restored path (advanced)
-
-!!! tip "Portable Backups"
-    If you use **Relative**, you can usually back up by copying the whole app folder. `config_data/` lives inside it.
+2. Replace the contents of your active `[config_dir]/` with the backup
 
 ---
 

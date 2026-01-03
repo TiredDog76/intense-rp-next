@@ -19,6 +19,20 @@ class ConfigManager:
         self._load_key()
         self.load_settings()
 
+    def reload_from_disk(self) -> None:
+        """
+        Reload the encryption key and settings data from disk.
+
+        This is useful after external changes to the config directory contents
+        (e.g., restoring settings from a backup zip).
+        """
+        self.config_dir = self.config_dir.resolve()
+        self.settings_file = self.config_dir / "settings.json.enc"
+        self.key_file = self.config_dir / "settings.key"
+        self._ensure_dir()
+        self._load_key()
+        self.load_settings()
+
     def _ensure_dir(self):
         if not self.config_dir.exists():
             self.config_dir.mkdir(parents=True, exist_ok=True)
