@@ -88,7 +88,7 @@ What this means in practice:
 - If multiple clients send requests at once, later requests will wait.
 - If your client retries aggressively, you may unintentionally build up a queue.
 
-### :material-format-list-bulleted: Request Queue Preview (UI) { #request-queue-preview }
+## :material-format-list-bulleted: Request Queue Preview (UI) { #request-queue-preview }
 
 If you want to see the queue without guessing (or digging through logs), IntenseRP can show an optional panel in the main window.
 
