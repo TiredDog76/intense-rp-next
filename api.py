@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections import deque
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -7,6 +8,39 @@ from typing import List, Optional, Dict, Any
 
 from deepseek_driver import DeepSeekDriver
 from utils.logger import Logger
+
+class RequestQueue:
+    def __init__(self):
+        self._items = deque()
+        self._condition = asyncio.Condition()
+
+    async def put(self, item) -> None:
+        async with self._condition:
+            self._items.append(item)
+            self._condition.notify(1)
+
+    async def get(self):
+        async with self._condition:
+            while not self._items:
+                await self._condition.wait()
+            return self._items.popleft()
+
+    async def remove_by_abort_event(self, abort_event: asyncio.Event) -> bool:
+        async with self._condition:
+            if not self._items:
+                return False
+
+            removed = False
+            kept = deque()
+            while self._items:
+                item = self._items.popleft()
+                if (not removed) and item[2] is abort_event:
+                    removed = True
+                    continue
+                kept.append(item)
+
+            self._items = kept
+            return removed
 
 class Message(BaseModel):
     role: str
@@ -24,7 +58,7 @@ class API:
     def __init__(self, driver: DeepSeekDriver):
         self.app = FastAPI()
         self.driver = driver
-        self.request_queue = asyncio.Queue()
+        self.request_queue = RequestQueue()
         self.current_abort_event: asyncio.Event = None  # Track current request's abort event
         self.setup_routes()
         self.start_worker()
@@ -155,8 +189,10 @@ class API:
                 if await raw_request.is_disconnected():
                     Logger.warning("Client disconnected, aborting request...")
                     abort_event.set()
-                    # Signal the driver to abort (don't await, just set the flag)
-                    self.driver.abort_requested = True
+                    removed = await self.request_queue.remove_by_abort_event(abort_event)
+                    if not removed and self.current_abort_event is abort_event:
+                        # Signal the driver to abort (don't await, just set the flag)
+                        self.driver.abort_requested = True
                     break
                 
                 try:
@@ -172,13 +208,17 @@ class API:
         except asyncio.CancelledError:
             Logger.warning("Stream generator cancelled, aborting...")
             abort_event.set()
-            # Just set the flag, don't await anything during cancellation
-            self.driver.abort_requested = True
+            asyncio.create_task(self.request_queue.remove_by_abort_event(abort_event))
+            if self.current_abort_event is abort_event:
+                # Just set the flag, don't await anything during cancellation
+                self.driver.abort_requested = True
         except GeneratorExit:
             # Client disconnected abruptly
             Logger.warning("Generator exit, aborting...")
             abort_event.set()
-            self.driver.abort_requested = True
+            asyncio.create_task(self.request_queue.remove_by_abort_event(abort_event))
+            if self.current_abort_event is abort_event:
+                self.driver.abort_requested = True
 
     def start_worker(self):
         self.worker_task = asyncio.create_task(self.worker())
@@ -198,9 +238,13 @@ class API:
         try:
             while True:
                 request, response_queue, abort_event = await self.request_queue.get()
-                self.current_abort_event = abort_event
                 Logger.info("Processing queued request...")
                 try:
+                    if abort_event.is_set():
+                        Logger.info("Queued request was already aborted. Skipping.")
+                        continue
+
+                    self.current_abort_event = abort_event
                     # Call the driver with the raw messages list
                     # The driver will handle formatting
                     async for chunk in self.driver.generate_response(
