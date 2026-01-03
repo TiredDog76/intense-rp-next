@@ -24,6 +24,7 @@ from ui.widgets.request_queue_preview import RequestQueuePreview
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
+from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstalledInfo
 from utils.logger import Logger, LogLevel
 from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
@@ -136,6 +137,52 @@ def get_version():
             return info.version.strip() or "unknown"
     except FileNotFoundError:
         return "unknown"
+
+
+POSTUPDATE_FLAG_FILENAME = "postupdate_notes_url.txt"
+
+
+def _release_notes_url_for_version(version: str) -> str:
+    value = (version or "").strip()
+    if value.lower().startswith("v"):
+        value = value[1:].strip()
+    if not value or value.lower() == "unknown":
+        return "https://github.com/LyubomirT/intense-rp-next/releases"
+    return f"https://github.com/LyubomirT/intense-rp-next/releases/tag/v{value}"
+
+
+def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
+    try:
+        if getattr(sys, "frozen", False):
+            app_root = Path(sys.executable).resolve().parent
+        else:
+            app_root = Path(__file__).resolve().parent
+    except Exception:
+        return None
+
+    flag_path = app_root / POSTUPDATE_FLAG_FILENAME
+    try:
+        if not flag_path.is_file():
+            return None
+    except Exception:
+        return None
+
+    try:
+        version = get_version()
+    except Exception:
+        version = "unknown"
+
+    try:
+        release_notes_url = _release_notes_url_for_version(version)
+    except Exception:
+        release_notes_url = "https://github.com/LyubomirT/intense-rp-next/releases"
+
+    try:
+        flag_path.unlink()
+    except Exception:
+        pass
+
+    return UpdateInstalledInfo(version=version, release_notes_url=release_notes_url)
 
 
 class MainWindow(QMainWindow):
@@ -304,8 +351,34 @@ class MainWindow(QMainWindow):
         Logger.set_console_callback(self._on_log_message)
         self.update_available_found.connect(self._show_update_available_dialog)
 
+        self._post_update_info = _consume_postupdate_installed_info()
+        self._maybe_show_update_installed_dialog()
+
         self._maybe_check_for_updates_on_startup()
         self._apply_queue_preview_setting(force=True)
+
+    def _maybe_show_update_installed_dialog(self) -> None:
+        info = getattr(self, "_post_update_info", None)
+        if info is None:
+            return
+
+        def show() -> None:
+            if getattr(self, "_post_update_dialog_open", False):
+                return
+
+            if not self.isVisible():
+                QTimer.singleShot(50, show)
+                return
+
+            self._post_update_dialog_open = True
+            try:
+                dialog = UpdateInstalledDialog(info, parent=self)
+                dialog.exec()
+            finally:
+                self._post_update_dialog_open = False
+                self._post_update_info = None
+
+        QTimer.singleShot(0, show)
 
     @Slot(object)
     def _show_update_available_dialog(self, info: UpdateAvailableInfo):

@@ -24,6 +24,7 @@ class UpdateFailed(RuntimeError):
 DEFAULT_PAYLOAD_DIRNAME = "intense-rp-next"
 DEFAULT_OPTIONAL_DIRNAME = "optional"
 DEFAULT_LOCK_WAIT_S = 300.0
+POSTUPDATE_FLAG_FILENAME = "postupdate_notes_url.txt"
 
 
 @dataclass(frozen=True)
@@ -299,6 +300,11 @@ def _perform_update(args: UpdateArgs, *, status_cb, progress_cb) -> None:
         status_cb("Launching updated app…")
         progress_cb(90)
         exe_path = _select_main_exe(install_dir, args.exe_name)
+
+        try:
+            (install_dir / POSTUPDATE_FLAG_FILENAME).write_text("true", encoding="utf-8")
+        except Exception:
+            pass
 
         cmd = [str(exe_path)]
         if _is_frozen():
