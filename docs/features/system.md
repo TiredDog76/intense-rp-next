@@ -163,6 +163,16 @@ That backup includes your settings, API keys, and (if enabled) your persistent b
 
 ---
 
+## :material-format-list-bulleted: Request Queue Preview
+
+If you have requests piling up or taking a while, this panel can help you see what's going on.
+
+:material-arrow-right: **Settings** → **System Settings** → **Main Window** → **Request Queue Preview**
+
+For what it shows (and why requests queue in the first place), see [:material-api: API Behavior](../advanced/api-behavior.md#request-queue-preview).
+
+---
+
 ## :material-update: Updates
 
 :material-arrow-right: **Settings** → **Application Settings**

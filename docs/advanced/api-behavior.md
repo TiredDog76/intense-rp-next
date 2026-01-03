@@ -88,6 +88,18 @@ What this means in practice:
 - If multiple clients send requests at once, later requests will wait.
 - If your client retries aggressively, you may unintentionally build up a queue.
 
+### :material-format-list-bulleted: Request Queue Preview (UI) { #request-queue-preview }
+
+If you want to see the queue without guessing (or digging through logs), IntenseRP can show an optional panel in the main window.
+
+:material-arrow-right: **Settings** → **System Settings** → **Main Window** → **Request Queue Preview**
+
+Once enabled, it shows the request currently being processed (if any), plus any waiting requests.
+
+Each entry includes a short request ID (useful when matching things up with logs), when it was added, message count, model, streaming mode, and the API key name (if you have API keys enabled).
+
+It's read-only, but you can drag the divider to resize it if you don't like the default width.
+
 ---
 
 ## :material-signal: Streaming (`stream: true`)
