@@ -5,7 +5,6 @@ import json
 import asyncio
 import re
 import httpx
-import tempfile
 import subprocess
 from pathlib import Path
 from typing import List, Union, Any, Dict, Callable, Optional
@@ -589,19 +588,12 @@ class DeepSeekDriver:
                 # Check if we should send as text file
                 if send_as_text_file:
                     Logger.info("Sending message as text file...")
-                    # Create a temporary file
-                    with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.txt', encoding='utf-8') as temp_file:
-                        temp_file.write(formatted_message)
-                        temp_file_path = temp_file.name
-                    
-                    try:
-                        await self._upload_file(temp_file_path)
-                    finally:
-                        # Clean up the temporary file
-                        try:
-                            os.remove(temp_file_path)
-                        except OSError:
-                            pass
+                    file_payload = {
+                        "name": "prompt.txt",
+                        "mimeType": "text/plain",
+                        "buffer": formatted_message.encode("utf-8"),
+                    }
+                    await self._upload_file(file_payload)
                     
                     # Get timeout from settings
                     upload_timeout = self.config_manager.get_setting("deepseek_behavior", "file_upload_timeout")
@@ -1416,17 +1408,30 @@ class DeepSeekDriver:
             Logger.error(f"Error clicking regenerate button: {e}")
             return False
 
-    async def _upload_file(self, file_path: str):
+    async def _upload_file(self, file_spec: Any):
         """
         Uploads a file to the chat.
+
+        file_spec can be a path (str/Path) or a file payload dict supported by Playwright
+        (e.g. {"name": "...", "mimeType": "...", "buffer": b"..."}).
         """
-        Logger.debug(f"Uploading file: {file_path}")
+        try:
+            if isinstance(file_spec, dict):
+                name = file_spec.get("name", "<payload>")
+                buffer = file_spec.get("buffer")
+                size = len(buffer) if isinstance(buffer, (bytes, bytearray)) else None
+                size_info = f" ({size} bytes)" if size is not None else ""
+                Logger.debug(f"Uploading file payload: {name}{size_info}")
+            else:
+                Logger.debug(f"Uploading file: {file_spec}")
+        except Exception:
+            Logger.debug("Uploading file (details unavailable).")
         
         # The file input is hidden or styled, but we can target it by type="file"
         file_input = self.page.locator("input[type='file']")
         
         if await file_input.count() > 0:
-            await file_input.set_input_files(file_path)
+            await file_input.set_input_files(file_spec)
             Logger.debug("File set to input.")
             
             # Wait a bit for the upload to be processed by the UI
