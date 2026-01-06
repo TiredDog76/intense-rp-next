@@ -18,11 +18,17 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
     - A Chromium window should be open.
     - If you're on a DeepSeek login page, log in (or enable Auto Login).
 
-3. **Is your client pointing at the right endpoint?**
+3. **Is DeepSeek UI language set to English?**
+    - IntenseRP currently expects the DeepSeek UI language to be English (en / en-US).
+    - If you see a warning/popup about UI language, change it in the DeepSeek browser window and **reload the page**, then retry.
+    - If that doesn't fix it after changing the language, close IntenseRP and start it again.
+    - Persistent Sessions help a lot with managing languages.
+
+4. **Is your client pointing at the right endpoint?**
     - Default endpoint: `http://127.0.0.1:7777/v1`
     - If you changed the port, your client must match.
 
-4. **If using API keys, is your client sending one?**
+5. **If using API keys, is your client sending one?**
     - `Authorization: Bearer YOUR_KEY`
 
 ---
@@ -103,18 +109,64 @@ See: [:material-console: Console & Logging](../features/console-logging.md)
 
 ---
 
+## :material-folder-alert: Install folder / config directory issues
+
+Symptoms:
+
+- Settings "reset" between restarts
+- Persistent Sessions never stick
+- Logs are missing / not written
+- The app works only when run as admin
+- You moved `intenserp-next-v2.exe` out of its folder (release build)
+
+Checklist:
+
+- If you downloaded a release `.zip`, **extract it fully** before running. Do not run from inside the zip viewer.
+- Keep `intenserp-next-v2.exe` next to the `_internal/` folder (release build). Do not rename or separate them.
+- Avoid running from protected folders (like `C:\\Program Files`) if you use **Relative** config storage. Use a normal writable folder instead.
+- If you use cloud-synced folders (OneDrive/Dropbox/network drives), try moving the app/config to a local folder - Persistent Sessions can get weird when files are locked or delayed.
+- Check the active config directory:
+    1. Open the folder where the app executable is
+    2. Open `config_dir.txt`
+    3. Confirm the folder exists and is writable
+- Try switching config storage:
+    - :material-arrow-right: **Settings** -> **System Settings** -> **Config Storage Location**
+
+See: [:material-cog: System](../features/system.md)
+
+---
+
 ## :material-account-alert: Login problems (stuck on sign-in, loops, expired sessions)
 
 Fixes, in order:
 
 1. If you use Auto Login, double-check your DeepSeek email/password in **Providers & Credentials**.
-2. If Persistent Sessions is enabled but things feel "stuck", use **Clear Profile** to reset the saved browser profile.
-3. Try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
+2. Try toggling **Persistent Sessions** off and back on (then Start again).
+3. If Persistent Sessions is enabled but things feel "stuck", use **Clear Profile** to reset the saved browser profile.
+4. Try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:
 
 - [:material-key: Login & Sessions](../features/login-sessions.md)
 - [:material-cog: System](../features/system.md)
+
+---
+
+## :material-translate: DeepSeek UI language is not English
+
+IntenseRP currently relies on a few English UI elements in DeepSeek (button labels/placeholders). If DeepSeek is set to a non-English language, automation can fail in confusing ways.
+
+Symptoms:
+
+- You see a popup/warning about DeepSeek UI language not being English
+- Requests fail immediately with an error mentioning `DeepSeek UI language is not English`
+- Buttons like DeepThink/Search are "not found" even though DeepSeek loaded
+
+Fix:
+
+1. In the DeepSeek browser window, change the language to English (en / en-US).
+2. **Reload the DeepSeek page** after changing the language (F5 / Ctrl+R).
+3. In IntenseRP, click **Retry** on the language prompt (or click **Stop** then **Start**).
 
 ---
 
