@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
-    QHBoxLayout, QSizePolicy, QSplitter
+    QHBoxLayout, QSizePolicy, QSplitter, QMessageBox
 )
 from PySide6.QtCore import Signal, Slot, Qt, QProcess
 from PySide6.QtCore import QTimer
@@ -339,6 +339,8 @@ class MainWindow(QMainWindow):
         self.driver = None
         self.api = None
         self.server = None
+        self._stop_task: asyncio.Task | None = None
+        self._shutdown_task: asyncio.Task | None = None
         self.settings_window = None
         self.console_window = None
         self.help_window = None
@@ -826,6 +828,12 @@ class MainWindow(QMainWindow):
             # Start Driver (with status callback for browser installation/launch updates)
             self._update_status("Launching Browser...", "info")
             await self.driver.start(status_callback=lambda msg: self._update_status(msg, "info"))
+
+            # DeepSeek UI language check (some selectors rely on English UI text)
+            # If the user cancels, stop startup gracefully
+            if not await self._ensure_deepseek_ui_language_is_english():
+                await self.stop_services()
+                return
             
             # Start API Server
             self._update_status("Starting API Server...", "info")
@@ -844,29 +852,114 @@ class MainWindow(QMainWindow):
             IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
             Logger.error(f"Error starting services: {e}")
 
+    async def _ensure_deepseek_ui_language_is_english(self) -> bool:
+        driver = getattr(self, "driver", None)
+        if not driver:
+            return True
+
+        async def _exec_message_box(dialog: QMessageBox) -> int:
+            loop = asyncio.get_running_loop()
+            future: asyncio.Future[int] = loop.create_future()
+
+            def on_button_clicked(button) -> None:
+                if future.done():
+                    return
+                try:
+                    future.set_result(int(dialog.standardButton(button)))
+                except Exception:
+                    future.set_result(int(QMessageBox.Cancel))
+
+            def on_finished(_result: int) -> None:
+                if future.done():
+                    return
+                future.set_result(int(QMessageBox.Cancel))
+
+            dialog.buttonClicked.connect(on_button_clicked)
+            dialog.finished.connect(on_finished)
+            dialog.open()
+
+            try:
+                return await future
+            finally:
+                try:
+                    dialog.buttonClicked.disconnect(on_button_clicked)
+                except Exception:
+                    pass
+                try:
+                    dialog.finished.disconnect(on_finished)
+                except Exception:
+                    pass
+                dialog.deleteLater()
+
+        while True:
+            try:
+                is_english = await driver.check_ui_language()
+            except Exception as e:
+                Logger.warning(f"Failed to detect DeepSeek UI language: {e}")
+                return True
+
+            if is_english:
+                return True
+
+            detected = getattr(driver, "last_document_lang", None) or "<unset>"
+            self._update_status("DeepSeek UI language must be English (en-US)", "warning")
+
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Warning)
+            dialog.setWindowTitle("DeepSeek UI Language")
+            dialog.setText("DeepSeek UI language is not English.")
+            dialog.setInformativeText(
+                f"Detected <html lang>: {detected}\n\n"
+                "IntenseRP currently requires the DeepSeek UI language to be English (en-US). "
+                "Some automation relies on English UI text, and a non-English interface can make it break.\n\n"
+                "Please change the language to English in the DeepSeek browser window, then click Retry."
+            )
+            dialog.setStandardButtons(QMessageBox.Retry | QMessageBox.Cancel)
+            dialog.setDefaultButton(QMessageBox.Retry)
+
+            choice = await _exec_message_box(dialog)
+            if choice == int(QMessageBox.Cancel):
+                Logger.warning("Start cancelled: DeepSeek UI language is not English.")
+                return False
+
+            # Give the page a moment in case changing language triggers a reload
+            await asyncio.sleep(0.25)
+
     async def stop_services(self):
-        Logger.info("Stopping services...")
+        existing = getattr(self, "_stop_task", None)
+        if existing and (not existing.done()):
+            await existing
+            return
+
+        async def _stop_impl() -> None:
+            Logger.info("Stopping services...")
+            try:
+                if self.api:
+                    await self.api.stop()
+                    
+                if self.server:
+                    self.server.should_exit = True
+                    if hasattr(self, 'server_task'):
+                        await self.server_task
+                
+                if self.driver:
+                    await self.driver.close()
+                    
+                self._update_status("Stopped", "ready")
+                self.start_button.setText("Start")
+                IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
+                self.start_button.setEnabled(True)
+                Logger.success("Services stopped.")
+            except Exception as e:
+                Logger.error(f"Error stopping services: {e}")
+                self._update_status(f"Error stopping: {e}", "error")
+                self.start_button.setEnabled(True)
+
+        self._stop_task = asyncio.create_task(_stop_impl())
         try:
-            if self.api:
-                await self.api.stop()
-                
-            if self.server:
-                self.server.should_exit = True
-                if hasattr(self, 'server_task'):
-                    await self.server_task
-            
-            if self.driver:
-                await self.driver.close()
-                
-            self._update_status("Stopped", "ready")
-            self.start_button.setText("Start")
-            IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
-            self.start_button.setEnabled(True)
-            Logger.success("Services stopped.")
-        except Exception as e:
-            Logger.error(f"Error stopping services: {e}")
-            self._update_status(f"Error stopping: {e}", "error")
-            self.start_button.setEnabled(True)
+            await self._stop_task
+        finally:
+            self._stop_task = None
 
     async def on_browser_crashed(self):
         """
@@ -924,6 +1017,11 @@ class MainWindow(QMainWindow):
             event.accept()
             return
 
+        shutdown_task = getattr(self, "_shutdown_task", None)
+        if shutdown_task and (not shutdown_task.done()):
+            event.ignore()
+            return
+
         event.ignore()
         self._update_status("Shutting down...", "info")
         
@@ -946,7 +1044,7 @@ class MainWindow(QMainWindow):
                 
             self.close()
             
-        asyncio.create_task(cleanup_and_close())
+        self._shutdown_task = asyncio.create_task(cleanup_and_close())
 
 def main():
     import os

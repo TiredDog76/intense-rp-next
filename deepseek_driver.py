@@ -27,6 +27,13 @@ class DeepSeekDriver:
         self.cache_manager = CacheManager()
         self.on_crash_callback = None
         self.monitoring_active = False
+        self._monitor_task: Optional[asyncio.Task] = None
+
+        # DeepSeek UI language detection (some selectors rely on English UI text)
+        self.last_document_lang: Optional[str] = None
+        self.ui_language_ok: Optional[bool] = None
+        self._non_english_ui_warned = False
+        self._non_english_ui_warned_lang: Optional[str] = None
         
         # Abort handling
         self.current_abort_event: asyncio.Event = None
@@ -135,6 +142,9 @@ class DeepSeekDriver:
         
         # Handle Login
         await self.login()
+
+        # Detect DeepSeek UI language early (warn only; hard-requirement is enforced per-request)
+        await self.check_ui_language(status_callback=status_callback)
         
         self.is_running = True
         
@@ -146,7 +156,7 @@ class DeepSeekDriver:
         
         # Start monitoring loop
         self.monitoring_active = True
-        asyncio.create_task(self._monitor_browser_loop())
+        self._monitor_task = asyncio.create_task(self._monitor_browser_loop())
 
     async def login(self):
         """
@@ -215,7 +225,7 @@ class DeepSeekDriver:
                         await login_button.first.click()
                         
                         # Wait for navigation back to the chat page
-                        await self.page.wait_for_selector("textarea[placeholder='Message DeepSeek']", timeout=60000)
+                        await self.page.wait_for_selector("textarea", timeout=60000)
                         Logger.success("Login successful.")
                         
                     except Exception as e:
@@ -224,12 +234,93 @@ class DeepSeekDriver:
                 Logger.info("Auto-login disabled. Waiting for manual login...")
                 # Wait indefinitely (or until closed) for the user to log in and reach the chat page
                 try:
-                    await self.page.wait_for_selector("textarea[placeholder='Message DeepSeek']", timeout=0)
+                    await self.page.wait_for_selector("textarea", timeout=0)
                     Logger.success("Manual login detected.")
                 except Exception as e:
                     Logger.error(f"Error waiting for manual login: {e}")
         else:
             Logger.info("Not redirected to sign in. Continuing...")
+
+    async def _get_document_lang(self) -> str:
+        if not self.page:
+            return ""
+
+        try:
+            lang = await self.page.evaluate(
+                "() => {"
+                "  const el = document.documentElement;"
+                "  if (!el) return '';"
+                "  return (el.getAttribute('lang') || el.lang || '').toString();"
+                "}"
+            )
+        except Exception as e:
+            Logger.debug(f"Failed to read DeepSeek document language: {e}")
+            return ""
+
+        if not isinstance(lang, str):
+            try:
+                lang = str(lang)
+            except Exception:
+                return ""
+
+        return lang.strip()
+
+    @staticmethod
+    def _is_english_lang(lang: str) -> bool:
+        normalized = (lang or "").strip().lower()
+        if not normalized:
+            return False
+        if normalized == "en-us":
+            return True
+        if normalized == "en" or normalized.startswith("en-"):
+            return True
+        return False
+
+    async def check_ui_language(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
+        """
+        Detect the current DeepSeek UI language via <html lang="...">.
+
+        Some IntenseRP automation uses English UI text (placeholders/toggle labels),
+        so a non-English DeepSeek interface can break interactions.
+        """
+        lang = await self._get_document_lang()
+        self.last_document_lang = lang or None
+
+        ok = self._is_english_lang(lang)
+        self.ui_language_ok = ok
+
+        if ok:
+            self._non_english_ui_warned = False
+            self._non_english_ui_warned_lang = None
+            return True
+
+        # Warn only once per detected language value to avoid log spam.
+        if (not self._non_english_ui_warned) or (self._non_english_ui_warned_lang != lang):
+            self._non_english_ui_warned = True
+            self._non_english_ui_warned_lang = lang
+
+            detected = lang or "<unset>"
+            Logger.warning(
+                f"DeepSeek UI language detected as '{detected}'. "
+                "IntenseRP currently expects English UI (en-US). "
+                "Please change DeepSeek language to English in the browser window, then refresh/reload."
+            )
+            if status_callback:
+                status_callback("DeepSeek UI language is not English. Please change it to English (en-US).")
+
+        return False
+
+    async def require_english_ui(self) -> None:
+        ok = await self.check_ui_language()
+        if ok:
+            return
+
+        detected = self.last_document_lang or "<unset>"
+        raise RuntimeError(
+            f"DeepSeek UI language is not English (detected: {detected}). "
+            "IntenseRP currently requires DeepSeek UI language to be English (en-US). "
+            "Please change DeepSeek language to English and reload the page."
+        )
 
     async def close(self):
         """
@@ -237,19 +328,38 @@ class DeepSeekDriver:
         """
         Logger.info("Closing DeepSeek Driver...")
         self.monitoring_active = False
+        monitor_task = getattr(self, "_monitor_task", None)
+        if monitor_task and (not monitor_task.done()):
+            try:
+                monitor_task.cancel()
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                Logger.debug(f"Error stopping monitor task: {e}")
+        self._monitor_task = None
+
+        async def _await_with_timeout(coro, timeout_s: float, label: str) -> None:
+            try:
+                await asyncio.wait_for(coro, timeout=timeout_s)
+            except asyncio.TimeoutError:
+                Logger.warning(f"Timeout while {label}.")
+            except Exception as e:
+                Logger.debug(f"Error while {label}: {e}")
+
         if self.context:
             try:
-                await self.context.close()
+                await _await_with_timeout(self.context.close(), 10.0, "closing browser context")
             except Exception as e:
                 Logger.debug(f"Error closing browser context: {e}")
         if self.browser:
             try:
-                await self.browser.close()
+                await _await_with_timeout(self.browser.close(), 10.0, "closing browser")
             except Exception as e:
                 Logger.debug(f"Error closing browser: {e}")
         if self.playwright:
             try:
-                await self.playwright.stop()
+                await _await_with_timeout(self.playwright.stop(), 10.0, "stopping Playwright")
             except Exception as e:
                 Logger.debug(f"Error stopping Playwright: {e}")
         self.is_running = False
@@ -427,6 +537,9 @@ class DeepSeekDriver:
         This function intercepts the network request to support streaming.
         """
         response_queue = asyncio.Queue()
+
+        # Some selectors rely on English UI text; fail fast with a clear error instead of hanging.
+        await self.require_english_ui()
         
         # Reset state for new generation
         self.fragment_types_list = []
@@ -1311,10 +1424,12 @@ class DeepSeekDriver:
         # The textarea has placeholder "Message DeepSeek"
         textarea = self.page.locator("textarea[placeholder='Message DeepSeek']")
         if await textarea.count() == 0:
-            Logger.warning("Message textarea not found.")
-            return
+            textarea = self.page.locator("textarea")
+            if await textarea.count() == 0:
+                Logger.warning("Message textarea not found.")
+                return
         Logger.debug(f"Entering message: {message[:50]}..." if len(message) > 50 else f"Entering message: {message}")
-        await textarea.fill(message)
+        await textarea.first.fill(message)
 
     async def _send_message(self, timeout: int = None):
         """
