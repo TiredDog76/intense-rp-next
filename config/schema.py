@@ -395,7 +395,7 @@ SCHEMA = [
                 key="check_for_updates_on_startup",
                 label="Check for Updates on Startup",
                 type=SettingType.BOOLEAN,
-                default=False,
+                default=True,
                 tooltip="Automatically check for updates when the app starts.",
             ),
         ],
