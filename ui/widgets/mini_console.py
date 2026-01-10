@@ -53,10 +53,6 @@ class LogGroup(QWidget):
         
         # Header container widget
         self.header_widget = QWidget()
-        self.header_widget.setStyleSheet(f"""
-            background-color: {self.header_color};
-            border-radius: 4px 4px 0 0;
-        """)
         self.header_widget.setCursor(Qt.PointingHandCursor)
         
         header_layout = QHBoxLayout(self.header_widget)
@@ -92,19 +88,48 @@ class LogGroup(QWidget):
         
         # Content area
         self.content_widget = QWidget()
-        self.content_widget.setStyleSheet(f"""
-            background-color: {self.bg_color};
-            border-radius: 0 0 4px 4px;
-        """)
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(10, 6, 10, 6)
         self.content_layout.setSpacing(2)
         
         self.main_layout.addWidget(self.content_widget)
-        
+
+        self.content_widget.setVisible(self.is_expanded)
+        self._update_expand_styles()
+
         # Initial update
         self._update_header()
         self._update_chevron()
+
+    def _update_expand_styles(self):
+        """Update corner rounding based on expanded/collapsed state.
+        
+        Am I a perfectionist? Yes. Do I obsess over tiny UI details? Also yes. 
+        But have I lost touch with reality?
+        One could argue that as well.
+        """
+        if self.is_expanded:
+            header_bottom_left = "0px"
+            header_bottom_right = "0px"
+        else:
+            header_bottom_left = "4px"
+            header_bottom_right = "4px"
+
+        self.header_widget.setStyleSheet(f"""
+            background-color: {self.header_color};
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+            border-bottom-left-radius: {header_bottom_left};
+            border-bottom-right-radius: {header_bottom_right};
+        """)
+
+        self.content_widget.setStyleSheet(f"""
+            background-color: {self.bg_color};
+            border-top-left-radius: 0px;
+            border-top-right-radius: 0px;
+            border-bottom-left-radius: 4px;
+            border-bottom-right-radius: 4px;
+        """)
     
     def _lighten_color(self, hex_color: str, amount: int) -> str:
         """Lighten a hex color by an amount."""
@@ -139,6 +164,7 @@ class LogGroup(QWidget):
         """Toggle the expanded/collapsed state."""
         self.is_expanded = not self.is_expanded
         self.content_widget.setVisible(self.is_expanded)
+        self._update_expand_styles()
         self._update_chevron()
     
     def add_log(self, message: str) -> bool:
