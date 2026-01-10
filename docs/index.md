@@ -4,6 +4,14 @@ icon: material/home
 
 # Welcome to IntenseRP Next v2
 
+<p align="center">
+  <img
+    src="assets/logo-strip.png"
+    alt="IntenseRP Next v2 logo strip"
+    style="max-width: 900px; width: 100%; height: auto;"
+  />
+</p>
+
 **IntenseRP Next v2** is a complete rewrite of the original IntenseRP Next project. I rebuilt it from the ground up so that it's MUCH more stable, faster, and easier to use. It's a modern (but hacky) tool for getting free access to LLMs via their web apps, and connecting it to SillyTavern (or other clients) for RPs.
 
 <div class="grid cards" markdown>

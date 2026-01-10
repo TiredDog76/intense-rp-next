@@ -10,6 +10,7 @@ edit_uri: edit/v2-rewrite/docs/
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Migration Guide: migration.md
   - Features:
       - Overview: features.md
       - Formatting: features/formatting.md
@@ -23,7 +24,12 @@ nav:
       - Overview: advanced.md
       - Provider Support: advanced/provider-support.md
       - API Behavior: advanced/api-behavior.md
-  - Migration Guide: migration.md
+  - Util Reference:
+      - Overview: util-reference.md
+      - Help & Extras: util-reference/help-extras.md
+      - Backup & Import Settings: util-reference/backup-import-settings.md
+      - STMP Patcher: util-reference/stmp-patcher.md
+      - Contributors: util-reference/contributors.md
   - Help & Support: 
       - Troubleshooting: hands/troubleshooting.md
       - Contact: hands/contact.md
