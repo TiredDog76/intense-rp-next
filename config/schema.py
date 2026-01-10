@@ -1,12 +1,13 @@
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Any, Optional, Callable, Dict
-from .validators import validate_email, validate_port
+from .validators import validate_email, validate_port, validate_directory_path
 from .location import get_config_storage_options
 
 class SettingType(Enum):
     BOOLEAN = "boolean"
     STRING = "string"
+    DIRECTORY = "directory"
     INTEGER = "integer"
     PASSWORD = "password"
     TEXTAREA = "textarea"
@@ -26,6 +27,7 @@ class SettingField:
     tooltip: Optional[str] = None
     validator: Optional[Callable[[Any], None]] = None
     required: bool = False
+    nullable: bool = False
     depends: Optional[str] = None
     options: Optional[List[str]] = None # For dropdowns
     action: Optional[str] = None # For buttons (function name to call)
@@ -267,9 +269,11 @@ SCHEMA = [
             SettingField(
                 key="log_dir",
                 label="Log Directory",
-                type=SettingType.STRING,
+                type=SettingType.DIRECTORY,
                 default="logs",
-                tooltip="Directory to store log files."
+                tooltip="Directory to store log files.",
+                validator=validate_directory_path,
+                nullable=True,
             ),
             SettingField(
                 key="max_files",
@@ -343,12 +347,13 @@ SCHEMA = [
             SettingField(
                 key="config_storage_custom_path",
                 label="Custom Config Directory",
-                type=SettingType.STRING,
+                type=SettingType.DIRECTORY,
                 default="",
                 tooltip=(
                     "Used when Config Storage Location is Custom. "
                     "Absolute paths are recommended; relative paths are resolved from the app folder."
                 ),
+                validator=validate_directory_path,
             ),
             SettingField(
                 key="ui_divider",
@@ -474,9 +479,11 @@ SCHEMA = [
             SettingField(
                 key="condump_directory",
                 label="Condump Directory",
-                type=SettingType.STRING,
-                default="",
+                type=SettingType.DIRECTORY,
+                default=None,
                 tooltip="Directory to write console dumps to. Leave blank to ask each time.",
+                validator=validate_directory_path,
+                nullable=True,
             ),
         ]
     ),

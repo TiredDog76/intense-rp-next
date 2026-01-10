@@ -15,7 +15,7 @@ from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
 from config.schema import SCHEMA, SettingType
 from ui.core.brand import BrandColors
-from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget
+from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, DirectoryEntry
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
@@ -149,6 +149,16 @@ class SettingsWindow(QMainWindow):
         if field.type == SettingType.BOOLEAN:
             widget = Tumbler()
             widget.stateChanged.connect(self._on_setting_changed)
+        elif field.type == SettingType.DIRECTORY:
+            dialog_title = f"Select {field.label}" if field.label else "Select Directory"
+            widget = DirectoryEntry(dialog_title=dialog_title)
+            if field.key == "config_storage_custom_path":
+                widget.setPlaceholderText("Custom config directory...")
+            elif field.key == "condump_directory":
+                widget.setPlaceholderText("Ask (leave blank)...")
+            elif field.key == "log_dir":
+                widget.setPlaceholderText("Default (logs)...")
+            widget.textChanged.connect(self._on_setting_changed)
         elif field.type in [SettingType.STRING, SettingType.PASSWORD, SettingType.INTEGER]:
             widget = StyledLineEdit()
             if field.type == SettingType.PASSWORD:
@@ -158,9 +168,9 @@ class SettingsWindow(QMainWindow):
                 widget.setValidator(QIntValidator())
 
             if field.key == "config_storage_custom_path":
-                widget.setPlaceholderText("Custom config directory…")
+                widget.setPlaceholderText("Custom config directory...")
             elif field.key == "condump_directory":
-                widget.setPlaceholderText("Ask (leave blank)…")
+                widget.setPlaceholderText("Ask (leave blank)...")
             widget.textChanged.connect(self._on_setting_changed)
         elif field.type == SettingType.DROPDOWN:
             widget = StyledComboBox()
@@ -565,7 +575,7 @@ class SettingsWindow(QMainWindow):
                     widget.blockSignals(True)
                     if field.type == SettingType.BOOLEAN:
                         widget.setChecked(bool(value))
-                    elif field.type in [SettingType.STRING, SettingType.PASSWORD, SettingType.INTEGER]:
+                    elif field.type in [SettingType.STRING, SettingType.DIRECTORY, SettingType.PASSWORD, SettingType.INTEGER]:
                         widget.setText(str(value) if value is not None else "")
                     elif field.type == SettingType.TEXTAREA:
                         widget.setPlainText(str(value) if value is not None else "")
@@ -606,7 +616,7 @@ class SettingsWindow(QMainWindow):
     def _get_widget_value(self, widget):
         if isinstance(widget, Tumbler):
             return widget.isChecked()
-        if isinstance(widget, StyledLineEdit) or isinstance(widget, QLineEdit):
+        if isinstance(widget, (StyledLineEdit, QLineEdit, DirectoryEntry)):
             return widget.text()
         if isinstance(widget, StyledComboBox):
             return widget.currentText()
@@ -619,7 +629,7 @@ class SettingsWindow(QMainWindow):
         try:
             if isinstance(widget, Tumbler):
                 widget.setChecked(bool(value))
-            elif isinstance(widget, StyledLineEdit) or isinstance(widget, QLineEdit):
+            elif isinstance(widget, (StyledLineEdit, QLineEdit, DirectoryEntry)):
                 widget.setText("" if value is None else str(value))
             elif isinstance(widget, StyledComboBox):
                 widget.setCurrentText("" if value is None else str(value))
@@ -638,7 +648,7 @@ class SettingsWindow(QMainWindow):
             is_met = False
             if isinstance(dep_widget, Tumbler):
                 is_met = dep_widget.isChecked()
-            elif isinstance(dep_widget, StyledLineEdit) or isinstance(dep_widget, QLineEdit):
+            elif isinstance(dep_widget, (StyledLineEdit, QLineEdit, DirectoryEntry)):
                 is_met = bool(dep_widget.text())
             elif isinstance(dep_widget, StyledComboBox):
                 is_met = bool(dep_widget.currentText())
@@ -686,7 +696,7 @@ class SettingsWindow(QMainWindow):
                         row.setEnabled(is_met)
                     else:
                         widget.setEnabled(is_met)
-                    if not is_met and isinstance(widget, StyledLineEdit):
+                    if not is_met and isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                         widget.set_error(False) # Clear error if disabled
 
     def _add_search_target(self, category, field, widget):
@@ -884,7 +894,7 @@ class SettingsWindow(QMainWindow):
         elif widget:
             widget.setEnabled(is_custom)
 
-        if not is_custom and isinstance(widget, StyledLineEdit):
+        if not is_custom and isinstance(widget, (StyledLineEdit, DirectoryEntry)):
             widget.set_error(False)
 
     def _on_preset_changed(self, text):
@@ -1072,11 +1082,11 @@ class SettingsWindow(QMainWindow):
         try:
             target_config_dir = resolve_config_dir(requested_preset, requested_custom_path).resolve()
         except Exception as e:
-            if isinstance(storage_custom_widget, StyledLineEdit):
+            if isinstance(storage_custom_widget, (StyledLineEdit, DirectoryEntry)):
                 storage_custom_widget.set_error(True)
             validation_errors.append(f"Config Storage Location: {e}")
         else:
-            if isinstance(storage_custom_widget, StyledLineEdit):
+            if isinstance(storage_custom_widget, (StyledLineEdit, DirectoryEntry)):
                 storage_custom_widget.set_error(False)
         
         for category in SCHEMA:
@@ -1088,8 +1098,12 @@ class SettingsWindow(QMainWindow):
                     value = None
                     if field.type == SettingType.BOOLEAN:
                         value = widget.isChecked()
-                    elif field.type == SettingType.STRING or field.type == SettingType.PASSWORD:
+                    elif field.type in [SettingType.STRING, SettingType.PASSWORD]:
                         value = widget.text()
+                    elif field.type == SettingType.DIRECTORY:
+                        value = widget.text().strip()
+                        if getattr(field, "nullable", False) and not value:
+                            value = None
                     elif field.type == SettingType.INTEGER:
                         text_val = widget.text()
                         value = int(text_val) if text_val else 0
@@ -1109,7 +1123,7 @@ class SettingsWindow(QMainWindow):
                         if dep_widget:
                             if isinstance(dep_widget, Tumbler):
                                 is_enabled = dep_widget.isChecked()
-                            elif isinstance(dep_widget, StyledLineEdit) or isinstance(dep_widget, QLineEdit):
+                            elif isinstance(dep_widget, (StyledLineEdit, QLineEdit, DirectoryEntry)):
                                 is_enabled = bool(dep_widget.text())
                             elif isinstance(dep_widget, StyledComboBox):
                                 is_enabled = bool(dep_widget.currentText())
@@ -1120,7 +1134,7 @@ class SettingsWindow(QMainWindow):
                     if is_enabled:
                         # Check required
                         if field.required and not value:
-                            if isinstance(widget, StyledLineEdit):
+                            if isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                                 widget.set_error(True)
                             validation_errors.append(f"{field.label}: This field is required.")
                         
@@ -1128,15 +1142,15 @@ class SettingsWindow(QMainWindow):
                         elif field.validator:
                             try:
                                 field.validator(value)
-                                if isinstance(widget, StyledLineEdit):
+                                if isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                                     widget.set_error(False)
                             except ValueError as e:
-                                if isinstance(widget, StyledLineEdit):
+                                if isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                                     widget.set_error(True)
                                 validation_errors.append(f"{field.label}: {str(e)}")
                     else:
                         # If disabled, ensure no error state
-                        if isinstance(widget, StyledLineEdit):
+                        if isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                             widget.set_error(False)
                     
                     if not validation_errors:

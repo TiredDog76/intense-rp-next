@@ -1,6 +1,7 @@
-from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QFrame, QPushButton, QSizePolicy
+from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QFrame, QPushButton, QSizePolicy, QFileDialog
 from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent
 import os
+from pathlib import Path
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
@@ -373,6 +374,100 @@ class StyledLineEdit(QLineEdit):
                 opacity: 0.6;
             }}
         """)
+
+class DirectoryEntry(QWidget):
+    textChanged = Signal(str)
+
+    def __init__(self, parent=None, button_text: str = "Browse", dialog_title: str = "Select Directory") -> None:
+        super().__init__(parent)
+        self._dialog_title = dialog_title
+        self._error_state = False
+
+        self.setStyleSheet("background-color: transparent;")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        self.line_edit = StyledLineEdit()
+        self.line_edit.textChanged.connect(self.textChanged.emit)
+
+        self.browse_button = QPushButton(button_text)
+        self.browse_button.setCursor(Qt.PointingHandCursor)
+        self.browse_button.setFixedWidth(92)
+        self._update_button_style()
+        self.browse_button.clicked.connect(self._browse_directory)
+
+        layout.addWidget(self.line_edit, 1)
+        layout.addWidget(self.browse_button, 0)
+
+        # Keep the button height aligned to the line edit for a cohesive input-like look.
+        self.browse_button.setFixedHeight(self.line_edit.sizeHint().height())
+
+    def _update_button_style(self) -> None:
+        border_color = BrandColors.DANGER if self._error_state else BrandColors.INPUT_BORDER
+        hover_border = BrandColors.DANGER if self._error_state else BrandColors.ACCENT
+        self.browse_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                color: {BrandColors.TEXT_PRIMARY};
+                border: 2px solid {border_color};
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+                font-family: {BrandColors.FONT_FAMILY};
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+                border: 2px solid {hover_border};
+            }}
+            QPushButton:pressed {{
+                background-color: {BrandColors.ACCENT};
+            }}
+            QPushButton:disabled {{
+                color: {BrandColors.TEXT_DISABLED};
+                border: 2px solid {BrandColors.INPUT_BORDER};
+                background-color: {BrandColors.SIDEBAR_BG};
+                opacity: 0.6;
+            }}
+        """)
+
+    def _browse_directory(self) -> None:
+        start_dir = ""
+        current = self.line_edit.text().strip()
+        if current:
+            try:
+                path = Path(current).expanduser()
+                if path.is_dir():
+                    start_dir = str(path)
+                elif path.parent.is_dir():
+                    start_dir = str(path.parent)
+            except Exception:
+                start_dir = ""
+
+        selected_dir = QFileDialog.getExistingDirectory(self, self._dialog_title, start_dir)
+        if not selected_dir:
+            return
+        self.line_edit.setText(os.path.normpath(selected_dir))
+
+    def set_error(self, error: bool) -> None:
+        self._error_state = error
+        self.line_edit.set_error(error)
+        self._update_button_style()
+
+    def text(self) -> str:
+        return self.line_edit.text()
+
+    def setText(self, text: str) -> None:
+        self.line_edit.setText(text)
+
+    def setPlaceholderText(self, text: str) -> None:
+        self.line_edit.setPlaceholderText(text)
+
+    def setEnabled(self, enabled: bool) -> None:
+        super().setEnabled(enabled)
+        self.line_edit.setEnabled(enabled)
+        self.browse_button.setEnabled(enabled)
 
 
 class InputPairRow(QWidget):
