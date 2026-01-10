@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -54,17 +55,24 @@ class STMPPatcherWindow(QMainWindow):
 
         self.path_label = QLabel("No folder selected.")
         self.path_label.setWordWrap(True)
+        self.path_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         self.path_label.setStyleSheet(
             f"""
-            color: {BrandColors.TEXT_SECONDARY};
-            background-color: transparent;
-            font-size: {BrandColors.FONT_SIZE_REGULAR};
+            QLabel {{
+                color: {BrandColors.TEXT_PRIMARY};
+                background-color: {BrandColors.SIDEBAR_BG};
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+            }}
             """
         )
         layout.addWidget(self.path_label)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
+        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         self.status_label.setStyleSheet(
             f"""
             color: {BrandColors.TEXT_SECONDARY};
@@ -131,17 +139,11 @@ class STMPPatcherWindow(QMainWindow):
         self._selected_root = scan.stmp_root
         self.path_label.setText(str(scan.stmp_root))
 
-        status_parts = []
-        if scan.is_patched:
-            status_parts.append("Status: already patched")
-        else:
-            status_parts.append("Status: not patched")
-
+        status_lines = ["Status: already patched" if scan.is_patched else "Status: not patched"]
         if scan.has_legacy_irp_next_field and not scan.is_patched:
-            status_parts.append("(legacy 'irp-next' field detected)")
-
-        status_parts.append(f"Target file: {scan.api_calls}")
-        self.status_label.setText(" ".join(status_parts))
+            status_lines.append("Note: legacy 'irp-next' field detected")
+        status_lines.append(f"Target file: {scan.api_calls}")
+        self.status_label.setText("\n".join(status_lines))
 
         self.patch_btn.setEnabled(not scan.is_patched)
 
@@ -187,12 +189,13 @@ class STMPPatcherWindow(QMainWindow):
 
         scan = scan_stmp_installation(self._selected_root)
         if scan.api_calls is None:
-            self.status_label.setText("Status: unknown (missing src/api-calls.js)")
+            self.status_label.setText("Status: unknown\nTarget file: missing (src/api-calls.js)")
             self.patch_btn.setEnabled(False)
             return
 
-        status_parts = []
-        status_parts.append("Status: already patched" if scan.is_patched else "Status: not patched")
-        status_parts.append(f"Target file: {scan.api_calls}")
-        self.status_label.setText(" ".join(status_parts))
+        status_lines = ["Status: already patched" if scan.is_patched else "Status: not patched"]
+        if scan.has_legacy_irp_next_field and not scan.is_patched:
+            status_lines.append("Note: legacy 'irp-next' field detected")
+        status_lines.append(f"Target file: {scan.api_calls}")
+        self.status_label.setText("\n".join(status_lines))
         self.patch_btn.setEnabled(not scan.is_patched)
