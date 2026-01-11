@@ -1,15 +1,8 @@
-- [x] Replace -> in docs with :material-arrow-right: (I was too lazy to copy and paste the emoji everywhere so I just used what types easily)
-- [x] Finish the remaining docs pages (especially the advanced ones)
-- [x] Add LICENSE file (MIT)
-- [x] Add repo stuff (code of conduct, contributing, etc.)
-- [x] Figure out how to make it so that the v2 update is not compatible with existing v1 clients
-- [x] Make v2-rewrite the default branch
-- [x] Set up readthedocs OR GitHub Pages for docs hosting (probably RTD)
-- [x] Die from overwork
-- [x] Announce the v2 rewrite on the old IntenseRP API repo
-- [ ] Revive myself after the overwork
-- [x] Publish v2 rewrite on GitHub Releases without breaking anything
-- [x] Update README to tell everyone about the docs page
-- [x] ~~Celebrate New Year~~ code till I pass ~~out~~ away
-- [x] IMPORTANT: The clean regeneration feature doesn't account for toggle changes (like DeepThink, Search) or Send as File. **WE MUST CREATE A NEW CHAT INSTEAD OF REGENERATING THE MESSAGE IF THESE SETTINGS CHANGE.**
-- [x] Add OG "macros" to use in SillyTavern to override certain settings (like DeepThink on/off, search on/off, send as file on/off) per-message, such as [[r1]] or [[think]] for thinking, or [[search]] for searching, etc. Only the ones from the latest message should apply, but all of them are stripped from the message before sending to DeepSeek.
+- [ ] Reformat DeepSeek to be an extension of the base driver instead of a separate thing.
+- [ ] Implement the base driver (obviously).
+- [ ] Add GLM support
+  - Should be easy to do since apparently GLM uses no obfuscation in their interface.
+  - Which means... I can probably just use their IDs directly?
+  - YES!!
+- [ ] Die inside.
+- [ ] Add easter eggs into the updater.
