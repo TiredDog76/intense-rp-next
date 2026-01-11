@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
-from deepseek_driver import DeepSeekDriver
+from drivers.base_driver import BaseDriver
 from utils.logger import Logger
 
 class Message(BaseModel):
@@ -71,7 +71,7 @@ class RequestQueue:
             return removed
 
 class API:
-    def __init__(self, driver: DeepSeekDriver):
+    def __init__(self, driver: BaseDriver):
         self.app = FastAPI()
         self.driver = driver
         self.request_queue = RequestQueue()
@@ -133,7 +133,7 @@ class API:
             api_key_name = self._authenticate_request(raw_request)
 
             if not self.driver.is_running:
-                raise HTTPException(status_code=503, detail="DeepSeek Driver is not running")
+                raise HTTPException(status_code=503, detail="Driver is not running")
 
             # Log incoming request
             msg_count = len(request.messages)
@@ -217,8 +217,8 @@ class API:
                     abort_event.set()
                     removed = await self.request_queue.remove_by_abort_event(abort_event)
                     if not removed and self.current_abort_event is abort_event:
-                        # Signal the driver to abort (don't await, just set the flag)
-                        self.driver.abort_requested = True
+                        # Signal the driver to abort (non-blocking)
+                        self.driver.request_abort()
                     break
                 
                 try:
@@ -236,15 +236,14 @@ class API:
             abort_event.set()
             asyncio.create_task(self.request_queue.remove_by_abort_event(abort_event))
             if self.current_abort_event is abort_event:
-                # Just set the flag, don't await anything during cancellation
-                self.driver.abort_requested = True
+                self.driver.request_abort()
         except GeneratorExit:
             # Client disconnected abruptly
             Logger.warning("Generator exit, aborting...")
             abort_event.set()
             asyncio.create_task(self.request_queue.remove_by_abort_event(abort_event))
             if self.current_abort_event is abort_event:
-                self.driver.abort_requested = True
+                self.driver.request_abort()
 
     def start_worker(self):
         self.worker_task = asyncio.create_task(self.worker())

@@ -14,6 +14,7 @@ from pathlib import Path
 from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
 from config.schema import SCHEMA, SettingType
+from drivers.providers import DriverProvider, get_playwright_profile_dir
 from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, DirectoryEntry
 from ui.core.icons import IconUtils, IconType
@@ -27,6 +28,7 @@ class SettingsWindow(QMainWindow):
     update_check_finished = Signal(object, str)
 
     SIDEBAR_ICON_MAP = {
+        "base_driver": "settings.svg",
         "providers_credentials": "key.svg",
         "formatting": "type.svg",
         "deepseek_behavior": "pen-tool.svg",
@@ -1022,9 +1024,10 @@ class SettingsWindow(QMainWindow):
             content_widget.setPlainText("[Important Instructions]")
 
     def _get_persistent_profile_dir(self) -> Path:
+        provider_setting = self.config_manager.get_setting("base_driver", "provider")
+        provider = DriverProvider.from_setting(provider_setting)
         config_dir = getattr(self.config_manager, "config_dir", None)
-        base_dir = Path(config_dir) if config_dir is not None else Path("config_data")
-        return (base_dir.resolve() / "playwright_profiles" / "deepseek")
+        return get_playwright_profile_dir(config_dir, provider)
 
     def _clear_persistent_profile(self):
         profile_dir = self._get_persistent_profile_dir()

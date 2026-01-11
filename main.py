@@ -13,7 +13,7 @@ from PySide6.QtCore import Signal, Slot, Qt, QProcess
 from PySide6.QtCore import QTimer
 import qasync
 
-from deepseek_driver import DeepSeekDriver
+from drivers.factory import create_driver
 from api import API
 from config.manager import ConfigManager
 from ui.windows.settings_window import SettingsWindow
@@ -790,7 +790,7 @@ class MainWindow(QMainWindow):
     async def start_services(self):
         try:
             # Pass config manager to driver
-            self.driver = DeepSeekDriver(self.config_manager)
+            self.driver = create_driver(self.config_manager)
             self.driver.on_crash_callback = self.on_browser_crashed
             
             self.api = API(self.driver)
@@ -829,9 +829,9 @@ class MainWindow(QMainWindow):
             self._update_status("Launching Browser...", "info")
             await self.driver.start(status_callback=lambda msg: self._update_status(msg, "info"))
 
-            # DeepSeek UI language check (some selectors rely on English UI text)
+            # Optional provider UI language check (provider-specific enforcement; safe to no-op)
             # If the user cancels, stop startup gracefully
-            if not await self._ensure_deepseek_ui_language_is_english():
+            if not await self._ensure_driver_ui_language_is_compatible():
                 await self.stop_services()
                 return
             
@@ -852,7 +852,7 @@ class MainWindow(QMainWindow):
             IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
             Logger.error(f"Error starting services: {e}")
 
-    async def _ensure_deepseek_ui_language_is_english(self) -> bool:
+    async def _ensure_driver_ui_language_is_compatible(self) -> bool:
         driver = getattr(self, "driver", None)
         if not driver:
             return True
@@ -891,35 +891,38 @@ class MainWindow(QMainWindow):
                     pass
                 dialog.deleteLater()
 
+        provider_label = getattr(driver, "provider_label", None) or "Provider"
+        required_label = getattr(driver, "required_ui_language_label", None) or "English (en-US)"
+
         while True:
             try:
-                is_english = await driver.check_ui_language()
+                is_ok = await driver.check_ui_language()
             except Exception as e:
-                Logger.warning(f"Failed to detect DeepSeek UI language: {e}")
+                Logger.warning(f"Failed to detect {provider_label} UI language: {e}")
                 return True
 
-            if is_english:
+            if is_ok:
                 return True
 
             detected = getattr(driver, "last_document_lang", None) or "<unset>"
-            self._update_status("DeepSeek UI language must be English (en-US)", "warning")
+            self._update_status(f"{provider_label} UI language must be {required_label}", "warning")
 
             dialog = QMessageBox(self)
             dialog.setIcon(QMessageBox.Warning)
-            dialog.setWindowTitle("DeepSeek UI Language")
-            dialog.setText("DeepSeek UI language is not English.")
+            dialog.setWindowTitle(f"{provider_label} UI Language")
+            dialog.setText(f"{provider_label} UI language is not {required_label}.")
             dialog.setInformativeText(
                 f"Detected <html lang>: {detected}\n\n"
-                "IntenseRP currently requires the DeepSeek UI language to be English (en-US). "
-                "Some automation relies on English UI text, and a non-English interface can make it break.\n\n"
-                "Please change the language to English in the DeepSeek browser window, then click Retry."
+                f"IntenseRP currently requires the {provider_label} UI language to be {required_label}. "
+                "Some automation relies on expected UI text, and an unsupported interface language can make it break.\n\n"
+                f"Please change the language to {required_label} in the {provider_label} browser window, then click Retry."
             )
             dialog.setStandardButtons(QMessageBox.Retry | QMessageBox.Cancel)
             dialog.setDefaultButton(QMessageBox.Retry)
 
             choice = await _exec_message_box(dialog)
             if choice == int(QMessageBox.Cancel):
-                Logger.warning("Start cancelled: DeepSeek UI language is not English.")
+                Logger.warning(f"Start cancelled: {provider_label} UI language is not {required_label}.")
                 return False
 
             # Give the page a moment in case changing language triggers a reload

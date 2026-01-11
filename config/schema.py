@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Any, Optional, Callable, Dict
 from .validators import validate_email, validate_port, validate_directory_path
 from .location import get_config_storage_options
+from drivers.providers import provider_options
 
 class SettingType(Enum):
     BOOLEAN = "boolean"
@@ -43,6 +44,23 @@ class SettingCategory:
 
 # Define the schema
 SCHEMA = [
+    SettingCategory(
+        name="Base Driver",
+        key="base_driver",
+        fields=[
+            SettingField(
+                key="provider",
+                label="Provider",
+                type=SettingType.DROPDOWN,
+                default="DeepSeek",
+                options=provider_options(),
+                tooltip=(
+                    "Select the active provider driver. "
+                    "This applies on the next browser start (Stop -> Start)."
+                ),
+            ),
+        ],
+    ),
     SettingCategory(
         name="Providers & Credentials",
         key="providers_credentials",

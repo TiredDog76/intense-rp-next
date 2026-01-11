@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+from typing import Any
+
+from deepseek_driver import DeepSeekDriver
+from drivers.base_driver import BaseDriver
+from drivers.providers import DriverProvider
+from utils.logger import Logger
+
+
+def create_driver(config_manager: Any) -> BaseDriver:
+    provider_setting = None
+    try:
+        provider_setting = config_manager.get_setting("base_driver", "provider")
+    except Exception:
+        provider_setting = None
+
+    provider = DriverProvider.from_setting(provider_setting)
+    Logger.info(f"Selected driver provider: {provider.value}")
+
+    if provider == DriverProvider.DEEPSEEK:
+        return DeepSeekDriver(config_manager)
+
+    Logger.warning(f"Unknown driver provider '{provider_setting}', falling back to DeepSeek.")
+    return DeepSeekDriver(config_manager)
+

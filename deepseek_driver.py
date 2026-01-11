@@ -1,33 +1,21 @@
-import os
-import sys
 import time
 import json
 import asyncio
 import re
 import httpx
-import subprocess
-from pathlib import Path
 from typing import List, Union, Any, Dict, Callable, Optional
-from patchright.async_api import async_playwright, Page, Browser, BrowserContext
 from dotenv import load_dotenv
+from drivers.base_driver import BaseDriver
+from drivers.providers import DriverProvider
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
 
 load_dotenv()
 
-class DeepSeekDriver:
+class DeepSeekDriver(BaseDriver):
     def __init__(self, config_manager):
-        self.config_manager = config_manager
-        self.playwright = None
-        self.browser: Browser = None
-        self.context: BrowserContext = None
-        self.page: Page = None
-        self.page: Page = None
-        self.is_running = False
+        super().__init__(config_manager=config_manager, provider=DriverProvider.DEEPSEEK)
         self.cache_manager = CacheManager()
-        self.on_crash_callback = None
-        self.monitoring_active = False
-        self._monitor_task: Optional[asyncio.Task] = None
 
         # DeepSeek UI language detection (some selectors rely on English UI text)
         self.last_document_lang: Optional[str] = None
@@ -35,128 +23,21 @@ class DeepSeekDriver:
         self._non_english_ui_warned = False
         self._non_english_ui_warned_lang: Optional[str] = None
         
-        # Abort handling
-        self.current_abort_event: asyncio.Event = None
-        self.abort_requested = False
         self.current_model = None
         self.current_send_deepthink = None
         self.clean_regen_message_cache_key = "last_message.txt"
         self.clean_regen_state_cache_key = "last_message_state.json"
 
-    def _get_persistent_profile_dir(self) -> str:
-        config_dir = getattr(self.config_manager, "config_dir", None)
-        base_dir = Path(config_dir) if config_dir is not None else Path("config_data")
-        return str((base_dir / "playwright_profiles" / "deepseek").resolve())
+    def get_start_url(self) -> str:
+        return "https://chat.deepseek.com/"
 
-    async def ensure_browser_installed(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        """
-        Ensures the patchright chromium browser is installed.
-        Returns True if installation was performed/verified, False if failed.
-        """
-        # Directly run the install/verify command to avoid issues where the dry-run check returns false negatives.
-        return await self._install_browser_via_cli(status_callback)
-
-    async def _install_browser_via_cli(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        """
-        Run the browser installation using the patchright CLI (async).
-        """
-        Logger.info("Verifying/Installing Chromium browser...")
-        if status_callback:
-            status_callback("Verifying Browser...")
-        
-        try:
-            # Use sys.executable to run the patchright module (async)
-            # This runs 'patchright install chromium' which downloads if missing, or validates if present.
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "patchright", "install", "chromium",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-            )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
-            
-            if process.returncode == 0:
-                Logger.success("Chromium browser verified/installed.")
-                return True
-            else:
-                error_msg = (stderr.decode() if stderr else "") or (stdout.decode() if stdout else "") or "Unknown error"
-                Logger.error(f"Failed to install Chromium browser: {error_msg}")
-                raise RuntimeError(f"Failed to install Chromium browser: {error_msg}")
-                
-        except asyncio.TimeoutError:
-            Logger.error("Browser installation timed out.")
-            raise RuntimeError("Browser installation timed out after 5 minutes.")
-        except Exception as e:
-            Logger.error(f"Browser installation failed: {e}")
-            raise RuntimeError(f"Browser installation failed: {e}")
-
-    async def start(self, status_callback: Optional[Callable[[str], None]] = None):
-        """
-        Starts the browser and navigates to DeepSeek.
-        
-        Args:
-            status_callback: Optional callback to report status updates (e.g., for UI updates)
-        """
-        Logger.info("Starting DeepSeek Driver...")
-        
-        # Ensure browser is installed before starting
-        await self.ensure_browser_installed(status_callback)
-        
-        if status_callback:
-            status_callback("Launching Browser...")
-        
-        self.playwright = await async_playwright().start()
-        persistent_sessions = bool(self.config_manager.get_setting("system_settings", "persistent_sessions"))
-
-        if persistent_sessions:
-            user_data_dir = self._get_persistent_profile_dir()
-            Logger.info("Launching Chromium (Persistent Sessions enabled)...")
-            Logger.debug(f"Persistent profile dir: {user_data_dir}")
-
-            try:
-                os.makedirs(user_data_dir, exist_ok=True)
-                self.context = await self.playwright.chromium.launch_persistent_context(user_data_dir, headless=False)
-                context_browser = getattr(self.context, "browser", None)
-                self.browser = context_browser() if callable(context_browser) else context_browser
-            except Exception as e:
-                Logger.error(f"Failed to launch persistent context: {e}")
-                Logger.warning("Falling back to non-persistent session...")
-                self.browser = await self.playwright.chromium.launch(headless=False)
-                self.context = await self.browser.new_context()
-        else:
-            # Launch Chromium
-            # headless=False to see the browser
-            Logger.info("Launching Chromium...")
-            self.browser = await self.playwright.chromium.launch(headless=False)
-            self.context = await self.browser.new_context()
-
-        # Create or reuse a page
-        try:
-            pages = getattr(self.context, "pages", [])
-            self.page = pages[0] if pages else await self.context.new_page()
-        except Exception:
-            self.page = await self.context.new_page()
-        
-        Logger.info("Navigating to https://chat.deepseek.com/ ...")
-        await self.page.goto("https://chat.deepseek.com/")
-        
-        # Handle Login
-        await self.login()
-
+    async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         # Detect DeepSeek UI language early (warn only; hard-requirement is enforced per-request)
         await self.check_ui_language(status_callback=status_callback)
-        
-        self.is_running = True
-        
+
         # Invalidate cache on start
         self.cache_manager.clear_cache(self.clean_regen_message_cache_key)
         self.cache_manager.clear_cache(self.clean_regen_state_cache_key)
-        
-        Logger.success("DeepSeek Driver started successfully.")
-        
-        # Start monitoring loop
-        self.monitoring_active = True
-        self._monitor_task = asyncio.create_task(self._monitor_browser_loop())
 
     async def login(self):
         """
@@ -321,49 +202,6 @@ class DeepSeekDriver:
             "IntenseRP currently requires DeepSeek UI language to be English (en-US). "
             "Please change DeepSeek language to English and reload the page."
         )
-
-    async def close(self):
-        """
-        Closes the browser and playwright.
-        """
-        Logger.info("Closing DeepSeek Driver...")
-        self.monitoring_active = False
-        monitor_task = getattr(self, "_monitor_task", None)
-        if monitor_task and (not monitor_task.done()):
-            try:
-                monitor_task.cancel()
-                await monitor_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                Logger.debug(f"Error stopping monitor task: {e}")
-        self._monitor_task = None
-
-        async def _await_with_timeout(coro, timeout_s: float, label: str) -> None:
-            try:
-                await asyncio.wait_for(coro, timeout=timeout_s)
-            except asyncio.TimeoutError:
-                Logger.warning(f"Timeout while {label}.")
-            except Exception as e:
-                Logger.debug(f"Error while {label}: {e}")
-
-        if self.context:
-            try:
-                await _await_with_timeout(self.context.close(), 10.0, "closing browser context")
-            except Exception as e:
-                Logger.debug(f"Error closing browser context: {e}")
-        if self.browser:
-            try:
-                await _await_with_timeout(self.browser.close(), 10.0, "closing browser")
-            except Exception as e:
-                Logger.debug(f"Error closing browser: {e}")
-        if self.playwright:
-            try:
-                await _await_with_timeout(self.playwright.stop(), 10.0, "stopping Playwright")
-            except Exception as e:
-                Logger.debug(f"Error stopping Playwright: {e}")
-        self.is_running = False
-        Logger.info("DeepSeek Driver closed.")
 
     def _resolve_deepthink_flags(self, model: str) -> tuple[bool, bool]:
         enable_deepthink = bool(self.config_manager.get_setting("deepseek_behavior", "enable_deepthink"))
@@ -793,54 +631,6 @@ class DeepSeekDriver:
         except Exception as e:
             Logger.error(f"Error clicking stop button: {e}")
             return False
-
-    async def _monitor_browser_loop(self):
-        """
-        Periodically checks if the browser is still open.
-        """
-        Logger.debug("Starting browser monitoring loop...")
-        while self.monitoring_active:
-            try:
-                if not self.browser or not self.browser.is_connected():
-                    Logger.warning("Browser disconnected!")
-                    await self._handle_crash()
-                    break
-                
-                if not self.page or self.page.is_closed():
-                    Logger.warning("Page closed!")
-                    await self._handle_crash()
-                    break
-                    
-                # Also check if context is closed
-                if not self.context or len(self.context.pages) == 0:
-                     # Sometimes page.is_closed() isn't enough if the whole context is gone
-                    Logger.warning("Context has no pages or is closed!")
-                    await self._handle_crash()
-                    break
-
-            except Exception as e:
-                Logger.debug(f"Error in monitoring loop: {e}")
-                # If we can't check, assume it's gone or something is wrong
-                pass
-            
-            await asyncio.sleep(2.0)
-            
-    async def _handle_crash(self):
-        """
-        Handles the crash event.
-        """
-        if not self.monitoring_active:
-            return
-
-        Logger.warning("Browser crash detected!")
-        self.is_running = False
-        self.monitoring_active = False
-        
-        if self.on_crash_callback:
-            if asyncio.iscoroutinefunction(self.on_crash_callback):
-                await self.on_crash_callback()
-            else:
-                self.on_crash_callback()
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         """
@@ -1522,6 +1312,12 @@ class DeepSeekDriver:
         except Exception as e:
             Logger.error(f"Error clicking regenerate button: {e}")
             return False
+
+    async def upload_file(self, file_spec: Any) -> None:
+        """
+        Public wrapper for uploading a file.
+        """
+        await self._upload_file(file_spec)
 
     async def _upload_file(self, file_spec: Any):
         """

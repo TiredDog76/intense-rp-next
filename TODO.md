@@ -1,5 +1,5 @@
-- [ ] Reformat DeepSeek to be an extension of the base driver instead of a separate thing.
-- [ ] Implement the base driver (obviously).
+- [x] Reformat DeepSeek to be an extension of the base driver instead of a separate thing.
+- [x] Implement the base driver (obviously).
 - [ ] Add GLM support
   - Should be easy to do since apparently GLM uses no obfuscation in their interface.
   - Which means... I can probably just use their IDs directly?
