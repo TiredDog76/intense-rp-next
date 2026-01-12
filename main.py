@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
-    QHBoxLayout, QSizePolicy, QSplitter, QMessageBox
+    QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon
 )
 from PySide6.QtCore import Signal, Slot, Qt, QProcess
 from PySide6.QtCore import QTimer
@@ -353,11 +353,119 @@ class MainWindow(QMainWindow):
         Logger.set_console_callback(self._on_log_message)
         self.update_available_found.connect(self._show_update_available_dialog)
 
+        self._tray_icon = None
+        try:
+            if QSystemTrayIcon.isSystemTrayAvailable():
+                tray_icon = QSystemTrayIcon(self)
+                icon = self.windowIcon() if not self.windowIcon().isNull() else QApplication.windowIcon()
+                if not icon.isNull():
+                    tray_icon.setIcon(icon)
+                tray_icon.setToolTip(self.windowTitle())
+                tray_icon.show()
+                self._tray_icon = tray_icon
+        except Exception:
+            self._tray_icon = None
+
         self._post_update_info = _consume_postupdate_installed_info()
         self._maybe_show_update_installed_dialog()
 
         self._maybe_check_for_updates_on_startup()
         self._apply_queue_preview_setting(force=True)
+
+    def _cleanup_tray_icon(self) -> None:
+        tray_icon = getattr(self, "_tray_icon", None)
+        if not tray_icon:
+            return
+
+        try:
+            tray_icon.hide()
+        except Exception:
+            pass
+
+        try:
+            tray_icon.setVisible(False)
+        except Exception:
+            pass
+
+        try:
+            tray_icon.deleteLater()
+        except Exception:
+            pass
+
+        self._tray_icon = None
+
+    def _request_application_quit(self, force_after_s: float = 8.0) -> None:
+        """
+        Best-effort request to quit both the Qt app and the qasync/asyncio loop.
+
+        Some shutdown paths can leave the window closed but the process still alive;
+        this makes quitting more deterministic and includes a last-resort forced exit.
+        """
+        import os
+        import threading
+
+        def _force_exit() -> None:
+            try:
+                os._exit(0)
+            except Exception:
+                return
+
+        # Last-resort: hard-exit if we still haven't quit after a grace period
+        try:
+            timer = threading.Timer(float(force_after_s), _force_exit)
+            timer.daemon = True
+            timer.start()
+        except Exception:
+            pass
+
+        try:
+            loop = asyncio.get_event_loop()
+            loop.call_soon(loop.stop)
+        except Exception:
+            pass
+
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+        except Exception:
+            pass
+
+    def _notify_user(self, title: str, message: str, level: str = "info") -> None:
+        title = str(title or "Notification")
+        message = str(message or "")
+        level_norm = str(level or "info").strip().lower()
+
+        is_focused = bool(self.isVisible() and self.isActiveWindow())
+        if is_focused:
+            dialog = QMessageBox(self)
+            if level_norm in {"warn", "warning"}:
+                dialog.setIcon(QMessageBox.Warning)
+            elif level_norm in {"err", "error", "critical"}:
+                dialog.setIcon(QMessageBox.Critical)
+            else:
+                dialog.setIcon(QMessageBox.Information)
+            dialog.setWindowTitle(title)
+            dialog.setText(message)
+            dialog.setStandardButtons(QMessageBox.Ok)
+            dialog.open()
+            return
+
+        tray_icon = getattr(self, "_tray_icon", None)
+        if tray_icon and tray_icon.isVisible():
+            icon = QSystemTrayIcon.Information
+            if level_norm in {"warn", "warning"}:
+                icon = QSystemTrayIcon.Warning
+            elif level_norm in {"err", "error", "critical"}:
+                icon = QSystemTrayIcon.Critical
+
+            try:
+                tray_icon.showMessage(title, message, icon)
+                return
+            except Exception:
+                pass
+
+        Logger.warning(f"{title}: {message}")
 
     def _maybe_show_update_installed_dialog(self) -> None:
         info = getattr(self, "_post_update_info", None)
@@ -404,7 +512,7 @@ class MainWindow(QMainWindow):
                 self._update_dialog_open = False
 
         # make sure the dialog is shown from the running UI event loop to avoid
-        # early-startup edge cases (startup update checks complete very quickly).
+        # early-startup edge cases (startup update checks complete very quickly)
         QTimer.singleShot(0, show)
 
     def _maybe_check_for_updates_on_startup(self):
@@ -788,13 +896,24 @@ class MainWindow(QMainWindow):
             asyncio.create_task(self.stop_services())
 
     async def start_services(self):
+        if (
+            getattr(self, "api", None) is not None
+            or getattr(self, "server", None) is not None
+            or getattr(self, "server_task", None) is not None
+            or getattr(self, "driver", None) is not None
+        ):
+            Logger.warning("Start requested while services still exist; cleaning up first.")
+            try:
+                await self.stop_services(update_ui=False)
+            except Exception as e:
+                Logger.error(f"Pre-start cleanup failed: {e}")
+
         try:
             # Pass config manager to driver
             self.driver = create_driver(self.config_manager)
+            self.driver.notify_user_callback = self._notify_user
             self.driver.on_crash_callback = self.on_browser_crashed
-            
-            self.api = API(self.driver)
-            
+
             # Configure Uvicorn
             port_setting = self.config_manager.get_setting("network_settings", "port")
             try:
@@ -805,16 +924,6 @@ class MainWindow(QMainWindow):
             available_on_lan = self.config_manager.get_setting("network_settings", "available_on_lan")
             host = "0.0.0.0" if available_on_lan else "127.0.0.1"
 
-            # Configure Uvicorn with log_config=None to avoid "Unable to configure formatter 'default'" error
-            config = uvicorn.Config(
-                app=self.api.app,
-                host=host,
-                port=port,
-                log_level="critical",
-                log_config=None,
-                access_log=False,
-            )
-            
             # Silence uvicorn loggers to avoid noisy console output.
             for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
                 logger = logging.getLogger(logger_name)
@@ -822,8 +931,6 @@ class MainWindow(QMainWindow):
                 logger.setLevel(logging.CRITICAL)
                 logger.propagate = False
                 logger.disabled = True
-
-            self.server = uvicorn.Server(config)
             
             # Start Driver (with status callback for browser installation/launch updates)
             self._update_status("Launching Browser...", "info")
@@ -834,6 +941,20 @@ class MainWindow(QMainWindow):
             if not await self._ensure_driver_ui_language_is_compatible():
                 await self.stop_services()
                 return
+
+            self.api = API(self.driver)
+
+            # Configure Uvicorn with log_config=None to avoid "Unable to configure formatter 'default'" error
+            config = uvicorn.Config(
+                app=self.api.app,
+                host=host,
+                port=port,
+                log_level="critical",
+                log_config=None,
+                access_log=False,
+            )
+
+            self.server = uvicorn.Server(config)
             
             # Start API Server
             self._update_status("Starting API Server...", "info")
@@ -847,10 +968,14 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             self._update_status(f"Error: {e}", "error")
-            self.start_button.setEnabled(True)
+            Logger.error(f"Error starting services: {e}")
+            try:
+                await self.stop_services(update_ui=False)
+            except Exception as cleanup_error:
+                Logger.error(f"Error cleaning up after failed start: {cleanup_error}")
             self.start_button.setText("Start")
             IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
-            Logger.error(f"Error starting services: {e}")
+            self.start_button.setEnabled(True)
 
     async def _ensure_driver_ui_language_is_compatible(self) -> bool:
         driver = getattr(self, "driver", None)
@@ -928,7 +1053,7 @@ class MainWindow(QMainWindow):
             # Give the page a moment in case changing language triggers a reload
             await asyncio.sleep(0.25)
 
-    async def stop_services(self):
+    async def stop_services(self, update_ui: bool = True):
         existing = getattr(self, "_stop_task", None)
         if existing and (not existing.done()):
             await existing
@@ -936,27 +1061,86 @@ class MainWindow(QMainWindow):
 
         async def _stop_impl() -> None:
             Logger.info("Stopping services...")
-            try:
-                if self.api:
-                    await self.api.stop()
-                    
-                if self.server:
-                    self.server.should_exit = True
-                    if hasattr(self, 'server_task'):
-                        await self.server_task
-                
-                if self.driver:
-                    await self.driver.close()
-                    
+            had_warnings = False
+
+            api = getattr(self, "api", None)
+            if api is not None:
+                try:
+                    await asyncio.wait_for(api.stop(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    had_warnings = True
+                    Logger.warning("Timeout while stopping API worker.")
+                except asyncio.CancelledError:
+                    had_warnings = True
+                    Logger.warning("API stop cancelled.")
+                except Exception as e:
+                    had_warnings = True
+                    Logger.error(f"Error stopping API worker: {e}")
+                finally:
+                    self.api = None
+
+            server = getattr(self, "server", None)
+            server_task = getattr(self, "server_task", None)
+            if server is not None:
+                try:
+                    server.should_exit = True
+                except Exception:
+                    pass
+
+            if server_task is not None:
+                try:
+                    await asyncio.wait_for(server_task, timeout=5.0)
+                except asyncio.TimeoutError:
+                    had_warnings = True
+                    Logger.warning("Timeout while stopping API server; cancelling server task.")
+                    try:
+                        server_task.cancel()
+                    except Exception:
+                        pass
+                    try:
+                        await asyncio.wait_for(server_task, timeout=2.0)
+                    except asyncio.TimeoutError:
+                        Logger.warning("Server task did not cancel in time.")
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        Logger.debug(f"Error while cancelling server task: {e}")
+                except asyncio.CancelledError:
+                    had_warnings = True
+                    Logger.warning("API server stop cancelled.")
+                except Exception as e:
+                    had_warnings = True
+                    Logger.error(f"Error stopping API server: {e}")
+                finally:
+                    self.server_task = None
+
+            self.server = None
+
+            driver = getattr(self, "driver", None)
+            if driver is not None:
+                try:
+                    await asyncio.wait_for(driver.close(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    had_warnings = True
+                    Logger.warning("Timeout while closing browser driver.")
+                except asyncio.CancelledError:
+                    had_warnings = True
+                    Logger.warning("Driver close cancelled.")
+                except Exception as e:
+                    had_warnings = True
+                    Logger.error(f"Error closing driver: {e}")
+                finally:
+                    self.driver = None
+
+            if update_ui:
                 self._update_status("Stopped", "ready")
                 self.start_button.setText("Start")
                 IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
                 self.start_button.setEnabled(True)
+            if had_warnings:
+                Logger.warning("Services stopped with warnings.")
+            else:
                 Logger.success("Services stopped.")
-            except Exception as e:
-                Logger.error(f"Error stopping services: {e}")
-                self._update_status(f"Error stopping: {e}", "error")
-                self.start_button.setEnabled(True)
 
         self._stop_task = asyncio.create_task(_stop_impl())
         try:
@@ -973,21 +1157,65 @@ class MainWindow(QMainWindow):
         
         # We need to clean up all services including playwright
         try:
-            if self.api:
-                await self.api.stop()
-                
-            if self.server:
-                self.server.should_exit = True
-                if hasattr(self, 'server_task'):
-                    await self.server_task
+            api = getattr(self, "api", None)
+            if api is not None:
+                try:
+                    await asyncio.wait_for(api.stop(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    Logger.warning("Timeout while stopping API worker after crash.")
+                except asyncio.CancelledError:
+                    Logger.warning("API stop cancelled after crash.")
+                except Exception as e:
+                    Logger.error(f"Error stopping API worker after crash: {e}")
+                finally:
+                    self.api = None
+
+            server = getattr(self, "server", None)
+            server_task = getattr(self, "server_task", None)
+            if server is not None:
+                try:
+                    server.should_exit = True
+                except Exception:
+                    pass
+
+            if server_task is not None:
+                try:
+                    await asyncio.wait_for(server_task, timeout=5.0)
+                except asyncio.TimeoutError:
+                    Logger.warning("Timeout while stopping API server after crash; cancelling server task.")
+                    try:
+                        server_task.cancel()
+                    except Exception:
+                        pass
+                    try:
+                        await asyncio.wait_for(server_task, timeout=2.0)
+                    except asyncio.TimeoutError:
+                        Logger.warning("Server task did not cancel in time after crash.")
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        Logger.debug(f"Error while cancelling server task after crash: {e}")
+                except asyncio.CancelledError:
+                    Logger.warning("API server stop cancelled after crash.")
+                except Exception as e:
+                    Logger.error(f"Error stopping API server after crash: {e}")
+                finally:
+                    self.server_task = None
+
+            self.server = None
             
             # The driver's close() method handles None checks for context/browser, theoretically that is enough
             if self.driver:
                 try:
-                    await self.driver.close()
+                    await asyncio.wait_for(self.driver.close(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    Logger.warning("Timeout while closing driver after crash.")
+                except asyncio.CancelledError:
+                    Logger.warning("Driver close cancelled after crash.")
                 except Exception as e:
                     Logger.error(f"Error closing driver after crash: {e}")
-                self.driver = None
+                finally:
+                    self.driver = None
             
             # Reset UI
             self.start_button.setText("Start")
@@ -1017,6 +1245,9 @@ class MainWindow(QMainWindow):
             if self.console_window:
                 self.console_window.force_close()
                 self.console_window = None
+
+            self._cleanup_tray_icon()
+            self._request_application_quit()
             event.accept()
             return
 
@@ -1044,13 +1275,14 @@ class MainWindow(QMainWindow):
             if self.settings_window and self.settings_window.isVisible():
                 if not self.settings_window.close():
                     return
-                
+
             self.close()
             
         self._shutdown_task = asyncio.create_task(cleanup_and_close())
 
 def main():
     import os
+    import signal
     # If frozen, force Playwright/Patchright to use the global cache directory
     # instead of looking for bundled browsers in the internal _MEIPASS/package directories.
     if getattr(sys, "frozen", False):
@@ -1138,6 +1370,38 @@ def main():
 
     window = MainWindow()
     window.show()
+
+    def _request_quit() -> None:
+        try:
+            if window.isVisible():
+                window.close()
+                return
+        except Exception:
+            pass
+
+        try:
+            app.quit()
+        except Exception:
+            pass
+
+    try:
+        app.aboutToQuit.connect(window._cleanup_tray_icon)
+    except Exception:
+        pass
+
+    def _sigint_handler(_signum, _frame) -> None:
+        try:
+            QTimer.singleShot(0, _request_quit)
+        except Exception:
+            try:
+                app.quit()
+            except Exception:
+                pass
+
+    try:
+        signal.signal(signal.SIGINT, _sigint_handler)
+    except Exception:
+        pass
 
     if delete_updater and updater_path:
         try:

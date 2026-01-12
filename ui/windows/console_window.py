@@ -63,6 +63,7 @@ class ConsoleWindow(QMainWindow):
         self.setWindowTitle("Console")
         self.resize(700, 400)
         self.config_manager = config_manager
+        self._allow_close = False
         
         # Remove close button but keep minimize and maximize
         self.setWindowFlags(
@@ -418,10 +419,18 @@ class ConsoleWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Prevent manual closing - always ignore close events."""
+        if getattr(self, "_allow_close", False):
+            event.accept()
+            return
+
         event.ignore()
     
     def force_close(self):
         """Force close the window (called when settings toggle is off)."""
         # Temporarily restore close button behavior
-        self.setWindowFlags(self.windowFlags() | Qt.WindowCloseButtonHint)
-        self.close()
+        self._allow_close = True
+        try:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowCloseButtonHint)
+            self.close()
+        finally:
+            self._allow_close = False

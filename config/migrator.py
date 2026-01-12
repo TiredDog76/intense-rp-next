@@ -29,6 +29,14 @@ class SettingsMigrator:
             console_settings = settings.setdefault("console_settings", {})
             if isinstance(console_settings, dict) and "enable_console" not in console_settings:
                 console_settings["enable_console"] = enable_console
+
+        # Migration: Base Driver provider moved to providers_credentials.provider
+        base_driver = settings.get("base_driver")
+        if isinstance(base_driver, dict) and "provider" in base_driver:
+            provider = base_driver.get("provider")
+            providers_credentials = settings.setdefault("providers_credentials", {})
+            if isinstance(providers_credentials, dict) and not providers_credentials.get("provider"):
+                providers_credentials["provider"] = provider
                     
         # Future migrations will be added here
         # e.g. v1 to v2

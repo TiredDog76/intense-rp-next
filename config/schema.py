@@ -45,8 +45,8 @@ class SettingCategory:
 # Define the schema
 SCHEMA = [
     SettingCategory(
-        name="Base Driver",
-        key="base_driver",
+        name="Providers & Credentials",
+        key="providers_credentials",
         fields=[
             SettingField(
                 key="provider",
@@ -59,12 +59,6 @@ SCHEMA = [
                     "This applies on the next browser start (Stop -> Start)."
                 ),
             ),
-        ],
-    ),
-    SettingCategory(
-        name="Providers & Credentials",
-        key="providers_credentials",
-        fields=[
             SettingField(
                 key="auto_login",
                 label="Auto Login",
@@ -80,7 +74,7 @@ SCHEMA = [
                 tooltip="Email address for DeepSeek login.",
                 validator=validate_email,
                 required=True,
-                depends="providers_credentials.auto_login"
+                depends="providers_credentials.auto_login && providers_credentials.provider==DeepSeek"
             ),
             SettingField(
                 key="deepseek_password",
@@ -89,7 +83,26 @@ SCHEMA = [
                 default="",
                 tooltip="Password for DeepSeek login.",
                 required=True,
-                depends="providers_credentials.auto_login"
+                depends="providers_credentials.auto_login && providers_credentials.provider==DeepSeek"
+            ),
+            SettingField(
+                key="glm_email",
+                label="GLM Email",
+                type=SettingType.STRING,
+                default="",
+                tooltip="Email address for GLM Chat (Z.ai) login.",
+                validator=validate_email,
+                required=True,
+                depends="providers_credentials.auto_login && providers_credentials.provider==GLM Chat"
+            ),
+            SettingField(
+                key="glm_password",
+                label="GLM Password",
+                type=SettingType.PASSWORD,
+                default="",
+                tooltip="Password for GLM Chat (Z.ai) login.",
+                required=True,
+                depends="providers_credentials.auto_login && providers_credentials.provider==GLM Chat"
             ),
         ]
     ),
@@ -263,6 +276,69 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="If enabled, suppresses the 'Sorry, that's beyond my current scope' message when content filtering is triggered."
+            ),
+            SettingField(
+                key="clean_regeneration",
+                label="Clean Regeneration",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="If enabled, attempts to regenerate the last message instead of creating a new chat if the prompt is identical."
+            ),
+        ]
+    ),
+    SettingCategory(
+        name="GLM Behavior",
+        key="glm_behavior",
+        fields=[
+            SettingField(
+                key="enable_deepthink",
+                label="Enable Deep Think",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Toggle the Deep Think button on the GLM interface."
+            ),
+            SettingField(
+                key="send_deepthink",
+                label="Send Deep Think",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include the thinking process in the response sent to the API."
+            ),
+            SettingField(
+                key="search_forced_off_note",
+                label="Search (Note)",
+                type=SettingType.DESCRIPTION,
+                default=(
+                    "Note: GLM Chat Search is currently forced OFF by IntenseRP (even if enabled below). "
+                    "GLM streams search results directly into the response stream, which makes it hard to "
+                    "process reliably. This will be revisited in a future update."
+                ),
+                tooltip=None,
+            ),
+            SettingField(
+                key="enable_search",
+                label="Enable Search",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Toggle the Search button on the GLM interface. "
+                    "Currently forced OFF for GLM Chat (setting is ignored)."
+                )
+            ),
+            SettingField(
+                key="send_as_text_file",
+                label="Send As Text File",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Upload message as a text file instead of typing it."
+            ),
+            SettingField(
+                key="file_upload_timeout",
+                label="File Upload Timeout",
+                type=SettingType.INTEGER,
+                default=15,
+                tooltip="Max seconds to wait for the send button to become enabled after file upload.",
+                depends="glm_behavior.send_as_text_file"
             ),
             SettingField(
                 key="clean_regeneration",

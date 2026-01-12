@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from deepseek_driver import DeepSeekDriver
+from glm_driver import GLMDriver
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from utils.logger import Logger
@@ -11,7 +12,7 @@ from utils.logger import Logger
 def create_driver(config_manager: Any) -> BaseDriver:
     provider_setting = None
     try:
-        provider_setting = config_manager.get_setting("base_driver", "provider")
+        provider_setting = config_manager.get_setting("providers_credentials", "provider")
     except Exception:
         provider_setting = None
 
@@ -20,7 +21,8 @@ def create_driver(config_manager: Any) -> BaseDriver:
 
     if provider == DriverProvider.DEEPSEEK:
         return DeepSeekDriver(config_manager)
+    if provider == DriverProvider.GLM_CHAT:
+        return GLMDriver(config_manager)
 
     Logger.warning(f"Unknown driver provider '{provider_setting}', falling back to DeepSeek.")
     return DeepSeekDriver(config_manager)
-

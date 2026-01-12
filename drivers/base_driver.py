@@ -26,6 +26,7 @@ class BaseDriver(ABC):
         self.on_crash_callback = None
         self.monitoring_active = False
         self._monitor_task: Optional[asyncio.Task] = None
+        self.notify_user_callback: Optional[Callable[[str, str, str], None]] = None
 
         # Abort handling (provider-specific use; common surface)
         self.current_abort_event: asyncio.Event | None = None
@@ -33,6 +34,16 @@ class BaseDriver(ABC):
 
         # Optional provider UI language detection (providers may opt in)
         self.last_document_lang: Optional[str] = None
+
+    def notify_user(self, title: str, message: str, level: str = "info") -> None:
+        cb = getattr(self, "notify_user_callback", None)
+        if not cb:
+            return
+
+        try:
+            cb(str(title or ""), str(message or ""), str(level or "info"))
+        except Exception:
+            return
 
     @property
     def provider_label(self) -> str:
@@ -215,22 +226,55 @@ class BaseDriver(ABC):
         self.monitoring_active = False
         monitor_task = getattr(self, "_monitor_task", None)
         if monitor_task and (not monitor_task.done()):
-            try:
-                monitor_task.cancel()
-                await monitor_task
-            except asyncio.CancelledError:
+            current_task = asyncio.current_task()
+            if monitor_task is current_task:
+                # Avoid self-cancel / self-await when close() is invoked from the monitor task.
+                # The loop will exit naturally because monitoring_active is already False.
                 pass
-            except Exception as e:
-                Logger.debug(f"Error stopping monitor task: {e}")
+            else:
+                try:
+                    monitor_task.cancel()
+                    done, pending = await asyncio.wait({monitor_task}, timeout=2.0)
+                    if pending:
+                        Logger.warning("Timeout while stopping monitor task.")
+                    if done:
+                        try:
+                            monitor_task.exception()
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception:
+                            pass
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    Logger.debug(f"Error stopping monitor task: {e}")
         self._monitor_task = None
 
         async def _await_with_timeout(coro, timeout_s: float, label: str) -> None:
             try:
-                await asyncio.wait_for(coro, timeout=timeout_s)
-            except asyncio.TimeoutError:
-                Logger.warning(f"Timeout while {label}.")
+                task = asyncio.create_task(coro)
             except Exception as e:
-                Logger.debug(f"Error while {label}: {e}")
+                Logger.debug(f"Error while creating task for {label}: {e}")
+                return
+
+            try:
+                done, pending = await asyncio.wait({task}, timeout=timeout_s)
+                if pending:
+                    Logger.warning(f"Timeout while {label}.")
+                    task.cancel()
+                    await asyncio.wait({task}, timeout=1.0)
+                    return
+
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    Logger.debug(f"Error while {label}: {e}")
+            except asyncio.CancelledError:
+                # Best-effort cleanup should not prevent outer cancellation.
+                task.cancel()
+                raise
 
         if self.context:
             try:
@@ -247,6 +291,11 @@ class BaseDriver(ABC):
                 await _await_with_timeout(self.playwright.stop(), 10.0, "stopping Playwright")
             except Exception as e:
                 Logger.debug(f"Error stopping Playwright: {e}")
+
+        self.page = None
+        self.context = None
+        self.browser = None
+        self.playwright = None
 
         self.is_running = False
         Logger.info(f"{self.provider_label} Driver closed.")

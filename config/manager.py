@@ -133,13 +133,54 @@ class ConfigManager:
         if not depends:
             return value
 
-        try:
-            dep_category, dep_field = depends.split(".", 1)
-        except ValueError:
-            return value
+        def _get_setting_value(full_key: str) -> Any:
+            try:
+                dep_category, dep_field = full_key.split(".", 1)
+            except ValueError:
+                return None
+            return self.get_setting(dep_category, dep_field)
 
-        dep_value = self.get_setting(dep_category, dep_field)
-        is_met = bool(dep_value)
+        def _eval_dep_expr(expr: str) -> bool:
+            parts = [part.strip() for part in str(expr).split("&&")]
+            for part in parts:
+                if not part:
+                    continue
+
+                if "==" in part:
+                    left, right = part.split("==", 1)
+                    dep_key = left.strip()
+                    expected = right.strip()
+                    value = _get_setting_value(dep_key)
+                    if isinstance(value, bool):
+                        expected_bool = expected.lower() in {"1", "true", "yes", "on"}
+                        if value != expected_bool:
+                            return False
+                    else:
+                        if str(value or "").strip() != expected:
+                            return False
+                    continue
+
+                if "!=" in part:
+                    left, right = part.split("!=", 1)
+                    dep_key = left.strip()
+                    expected = right.strip()
+                    value = _get_setting_value(dep_key)
+                    if isinstance(value, bool):
+                        expected_bool = expected.lower() in {"1", "true", "yes", "on"}
+                        if value == expected_bool:
+                            return False
+                    else:
+                        if str(value or "").strip() == expected:
+                            return False
+                    continue
+
+                value = _get_setting_value(part)
+                if not value:
+                    return False
+
+            return True
+
+        is_met = _eval_dep_expr(depends)
         forced_value = getattr(field_def, "force_when_dep_unmet", None)
         if (not is_met) and (forced_value is not None):
             return forced_value

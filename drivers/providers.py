@@ -7,6 +7,7 @@ from typing import Optional
 
 class DriverProvider(str, Enum):
     DEEPSEEK = "DeepSeek"
+    GLM_CHAT = "GLM Chat"
 
     @classmethod
     def from_setting(cls, value: Optional[str]) -> "DriverProvider":
@@ -20,6 +21,8 @@ class DriverProvider(str, Enum):
 
         if normalized == "deepseek":
             return cls.DEEPSEEK
+        if normalized in {"glm", "glm_chat", "glm chat", "z.ai", "zai", "zhipu", "zhipuai"}:
+            return cls.GLM_CHAT
 
         return cls.DEEPSEEK
 
@@ -35,4 +38,3 @@ def provider_options() -> list[str]:
 def get_playwright_profile_dir(config_dir: str | Path | None, provider: DriverProvider) -> Path:
     base_dir = Path(config_dir) if config_dir is not None else Path("config_data")
     return (base_dir.resolve() / "playwright_profiles" / provider.key)
-

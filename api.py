@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
 from drivers.base_driver import BaseDriver
+from drivers.providers import DriverProvider
 from utils.logger import Logger
 
 class Message(BaseModel):
@@ -117,6 +118,17 @@ class API:
         @self.app.get("/v1/models")
         async def list_models(raw_request: Request):
             self._authenticate_request(raw_request)
+
+            provider = getattr(self.driver, "provider", None)
+            if provider == DriverProvider.GLM_CHAT:
+                return {
+                    "object": "list",
+                    "data": [
+                        {"id": "glm-auto", "object": "model", "created": 0, "owned_by": "glm"},
+                        {"id": "glm-chat", "object": "model", "created": 0, "owned_by": "glm"},
+                        {"id": "glm-reasoner", "object": "model", "created": 0, "owned_by": "glm"},
+                    ],
+                }
 
             return {
                 "object": "list",

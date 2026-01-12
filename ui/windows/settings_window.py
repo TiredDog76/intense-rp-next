@@ -28,10 +28,10 @@ class SettingsWindow(QMainWindow):
     update_check_finished = Signal(object, str)
 
     SIDEBAR_ICON_MAP = {
-        "base_driver": "settings.svg",
         "providers_credentials": "key.svg",
         "formatting": "type.svg",
         "deepseek_behavior": "pen-tool.svg",
+        "glm_behavior": "pen-tool.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
         "system_settings": "monitor.svg",
@@ -527,17 +527,12 @@ class SettingsWindow(QMainWindow):
         self._apply_category_item_icon(self.category_list.currentItem(), active=True)
         
         # Setup dependency tracking
-        self.dependencies = {} # Map "dependency_key" -> list of "dependent_key"
         self.field_defs = {} # Map "category.key" -> SettingField
         self._dep_override_cache = {} # Map "category.key" -> underlying value (when overriding display value)
         for category in SCHEMA:
             for field in self._iter_fields(category.fields):
                 full_key = f"{category.key}.{field.key}"
                 self.field_defs[full_key] = field
-                if field.depends:
-                    if field.depends not in self.dependencies:
-                        self.dependencies[field.depends] = []
-                    self.dependencies[field.depends].append(full_key)
         
         # Debounce timer for updates
         self.update_timer = QTimer()
@@ -640,66 +635,128 @@ class SettingsWindow(QMainWindow):
         finally:
             widget.blockSignals(False)
 
-    def _update_dependencies(self):
-        for dep_key, dependent_keys in self.dependencies.items():
-            dep_widget = self.field_widgets.get(dep_key)
-            if not dep_widget:
+    def _is_dependency_met(self, expr: str | None) -> bool:
+        if not expr:
+            return True
+
+        parts = [part.strip() for part in str(expr).split("&&")]
+        for part in parts:
+            if not part:
                 continue
-                
-            # Determine if dependency is met
-            is_met = False
-            if isinstance(dep_widget, Tumbler):
-                is_met = dep_widget.isChecked()
-            elif isinstance(dep_widget, (StyledLineEdit, QLineEdit, DirectoryEntry)):
-                is_met = bool(dep_widget.text())
-            elif isinstance(dep_widget, StyledComboBox):
-                is_met = bool(dep_widget.currentText())
-            
-            # Update dependents
-            for dependent_key in dependent_keys:
-                widget = self.field_widgets.get(dependent_key)
-                if widget:
-                    field_def = self.field_defs.get(dependent_key)
-                    forced_value = getattr(field_def, "force_when_dep_unmet", None) if field_def else None
 
-                    desired_mode = None
-                    should_override = False
-                    override_value = None
+            if "==" in part:
+                left, right = part.split("==", 1)
+                dep_key = left.strip()
+                expected = right.strip()
+                widget = self.field_widgets.get(dep_key)
+                if not widget:
+                    return False
 
-                    if not is_met:
-                        if forced_value is not None:
-                            should_override = True
-                            override_value = forced_value
-                            if isinstance(widget, Tumbler):
-                                desired_mode = "forced"
-                        elif isinstance(widget, Tumbler):
-                            # Disabled + not counted: show as OFF and treat as unmet.
-                            should_override = True
-                            override_value = False
-                            desired_mode = "ignored"
+                value = self._get_widget_value(widget)
+                if isinstance(value, bool):
+                    expected_bool = expected.lower() in {"1", "true", "yes", "on"}
+                    if value != expected_bool:
+                        return False
+                else:
+                    if str(value or "").strip() != expected:
+                        return False
+                continue
 
-                    if is_met:
-                        if dependent_key in self._dep_override_cache:
-                            cached_value = self._dep_override_cache.pop(dependent_key)
-                            self._set_widget_value(widget, cached_value)
-                        if isinstance(widget, Tumbler):
-                            widget.set_dependency_mode(None)
-                    else:
-                        if should_override:
-                            if dependent_key not in self._dep_override_cache:
-                                self._dep_override_cache[dependent_key] = self._get_widget_value(widget)
-                            self._set_widget_value(widget, override_value)
-                        if isinstance(widget, Tumbler):
-                            widget.set_dependency_mode(desired_mode)
+            if "!=" in part:
+                left, right = part.split("!=", 1)
+                dep_key = left.strip()
+                expected = right.strip()
+                widget = self.field_widgets.get(dep_key)
+                if not widget:
+                    return False
 
-                    # If there's a SettingRow for this field, enable/disable the whole row
-                    row = self.setting_rows.get(dependent_key)
-                    if row:
-                        row.setEnabled(is_met)
-                    else:
-                        widget.setEnabled(is_met)
-                    if not is_met and isinstance(widget, (StyledLineEdit, DirectoryEntry)):
-                        widget.set_error(False) # Clear error if disabled
+                value = self._get_widget_value(widget)
+                if isinstance(value, bool):
+                    expected_bool = expected.lower() in {"1", "true", "yes", "on"}
+                    if value == expected_bool:
+                        return False
+                else:
+                    if str(value or "").strip() == expected:
+                        return False
+                continue
+
+            # Backwards-compatible: treat the token as a widget key and check truthiness.
+            widget = self.field_widgets.get(part)
+            if not widget:
+                return False
+
+            value = self._get_widget_value(widget)
+            if isinstance(value, bool):
+                if not value:
+                    return False
+            else:
+                if not str(value or "").strip():
+                    return False
+
+        return True
+
+    def _update_dependencies(self):
+        for dependent_key, field_def in (self.field_defs or {}).items():
+            depends_expr = getattr(field_def, "depends", None) if field_def else None
+            if not depends_expr:
+                continue
+
+            widget = self.field_widgets.get(dependent_key)
+            if not widget:
+                continue
+
+            is_met = self._is_dependency_met(depends_expr)
+            forced_value = getattr(field_def, "force_when_dep_unmet", None) if field_def else None
+
+            desired_mode = None
+            should_override = False
+            override_value = None
+
+            if not is_met:
+                if forced_value is not None:
+                    should_override = True
+                    override_value = forced_value
+                    if isinstance(widget, Tumbler):
+                        desired_mode = "forced"
+                elif isinstance(widget, Tumbler):
+                    # Disabled + not counted: show as OFF and treat as unmet.
+                    should_override = True
+                    override_value = False
+                    desired_mode = "ignored"
+
+            if is_met:
+                if dependent_key in self._dep_override_cache:
+                    cached_value = self._dep_override_cache.pop(dependent_key)
+                    self._set_widget_value(widget, cached_value)
+                if isinstance(widget, Tumbler):
+                    widget.set_dependency_mode(None)
+            else:
+                if should_override:
+                    if dependent_key not in self._dep_override_cache:
+                        self._dep_override_cache[dependent_key] = self._get_widget_value(widget)
+                    self._set_widget_value(widget, override_value)
+                if isinstance(widget, Tumbler):
+                    widget.set_dependency_mode(desired_mode)
+
+            # If there's a SettingRow for this field, enable/disable the whole row
+            row = self.setting_rows.get(dependent_key)
+            if row:
+                row.setEnabled(is_met)
+            else:
+                widget.setEnabled(is_met)
+            if not is_met and isinstance(widget, (StyledLineEdit, DirectoryEntry)):
+                widget.set_error(False) # Clear error if disabled
+
+        self._apply_forced_overrides()
+
+    def _apply_forced_overrides(self) -> None:
+        # GLM Chat Search is currently forced OFF (setting exists for future re-enable)
+        key = "glm_behavior.enable_search"
+        widget = self.field_widgets.get(key)
+        if isinstance(widget, Tumbler):
+            self._set_widget_value(widget, False)
+            widget.setEnabled(False)
+            widget.set_dependency_mode("forced")
 
     def _add_search_target(self, category, field, widget):
         extra_labels = ""
@@ -1024,7 +1081,7 @@ class SettingsWindow(QMainWindow):
             content_widget.setPlainText("[Important Instructions]")
 
     def _get_persistent_profile_dir(self) -> Path:
-        provider_setting = self.config_manager.get_setting("base_driver", "provider")
+        provider_setting = self.config_manager.get_setting("providers_credentials", "provider")
         provider = DriverProvider.from_setting(provider_setting)
         config_dir = getattr(self.config_manager, "config_dir", None)
         return get_playwright_profile_dir(config_dir, provider)
@@ -1120,16 +1177,7 @@ class SettingsWindow(QMainWindow):
                         continue # These don't have values to save
                         
                     # Check dependencies
-                    is_enabled = True
-                    if field.depends:
-                        dep_widget = self.field_widgets.get(field.depends)
-                        if dep_widget:
-                            if isinstance(dep_widget, Tumbler):
-                                is_enabled = dep_widget.isChecked()
-                            elif isinstance(dep_widget, (StyledLineEdit, QLineEdit, DirectoryEntry)):
-                                is_enabled = bool(dep_widget.text())
-                            elif isinstance(dep_widget, StyledComboBox):
-                                is_enabled = bool(dep_widget.currentText())
+                    is_enabled = self._is_dependency_met(field.depends) if field.depends else True
 
                     if (not is_enabled) and (key in self._dep_override_cache):
                         value = self._dep_override_cache[key]
