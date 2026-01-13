@@ -131,13 +131,25 @@ IntenseRP exposes an OpenAI-compatible API. Here are the available endpoints:
 
 ### Available Models
 
-When you query `/v1/models`, you'll get:
+When you query `/v1/models`, you'll get different model IDs depending on the active provider (**Settings -> Providers & Credentials -> Provider**).
 
-| Model ID | Behavior |
-|----------|----------|
-| `deepseek-auto` | Uses your IntenseRP settings |
-| `deepseek-chat` | Forces DeepThink off |
-| `deepseek-reasoner` | Forces DeepThink on |
+These IDs are behavior presets (modes), not true model selection.
+
+=== ":material-brain: DeepSeek"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `deepseek-auto` | Uses your IntenseRP settings |
+    | `deepseek-chat` | Forces DeepThink off |
+    | `deepseek-reasoner` | Forces DeepThink on |
+
+=== ":material-chat-processing: GLM Chat"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `glm-auto` | Uses your IntenseRP settings |
+    | `glm-chat` | Forces Deep Think off |
+    | `glm-reasoner` | Forces Deep Think on |
 
 ---
 

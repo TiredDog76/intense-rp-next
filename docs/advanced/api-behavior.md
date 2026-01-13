@@ -7,7 +7,7 @@ icon: material/api
 This page documents how the built-in OpenAI-compatible API behaves at runtime: what routes exist, how streaming works, and why requests are queued instead of running in parallel.
 
 !!! note "Implementation detail"
-    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `main.py`). If DeepSeek changes their web app, behavior may need to change as well.
+    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
 
 ---
 
@@ -30,7 +30,13 @@ Authorization: Bearer YOUR_KEY
 
 ## :material-robot: Models and what they mean
 
-The API reports three "models". They are *behavior presets* that map to DeepSeek UI toggles:
+The API reports three "models", but they are best thought of as **behavior presets**.
+
+Which IDs you get from `GET /v1/models` depends on the currently selected provider in **Settings -> Providers & Credentials**.
+
+### DeepSeek
+
+These map to DeepSeek UI toggles:
 
 | Model ID | DeepThink | Send DeepThink |
 |---|---|---|
@@ -38,8 +44,20 @@ The API reports three "models". They are *behavior presets* that map to DeepSeek
 | `deepseek-chat` | Forced off | Forced off |
 | `deepseek-reasoner` | Forced on | Uses your settings |
 
-!!! info "Where the toggles come from"
-    DeepThink and Search are applied by clicking the DeepSeek web UI toggles right before sending. "Send DeepThink" controls whether the `<think>...</think>` content is included in the API output.
+### GLM Chat
+
+These map to GLM UI toggles:
+
+| Model ID | Deep Think | Send Deep Think |
+|---|---|---|
+| `glm-auto` | Uses your settings | Uses your settings |
+| `glm-chat` | Forced off | Forced off |
+| `glm-reasoner` | Forced on | Uses your settings |
+
+!!! info "What these IDs are (and are not)"
+    These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
+
+    For GLM specifically, IntenseRP currently drives only **GLM-4.7** (other GLM models are not selectable yet).
 
 ---
 
@@ -58,13 +76,13 @@ sequenceDiagram
     participant C as Client
     participant A as IntenseRP API (FastAPI)
     participant Q as Request Queue
-    participant D as DeepSeek Driver (Playwright)
-    participant DS as DeepSeek Backend
+    participant D as Provider Driver (Playwright)
+    participant DS as Provider Backend
 
     C->>A: POST /v1/chat/completions
     A->>Q: enqueue (request)
     Q->>D: worker dequeues (one at a time)
-    D->>DS: proxied stream of DeepSeek request
+    D->>DS: proxied stream of provider request
     DS-->>D: SSE chunks
     D-->>A: OpenAI-style chunk(s)
     A-->>C: SSE (stream=true) or JSON (stream=false)

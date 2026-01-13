@@ -16,11 +16,14 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
 
 2. **Is the browser open and logged in?**
     - A Chromium window should be open.
-    - If you're on a DeepSeek login page, log in (or enable Auto Login).
+    - If you're on a provider login page, log in (or enable Auto Login).
+    - For GLM Chat, login requires solving a CAPTCHA (Persistent Sessions are strongly recommended).
 
-3. **Is DeepSeek UI language set to English?**
-    - IntenseRP currently expects the DeepSeek UI language to be English (en / en-US).
-    - If you see a warning/popup about UI language, change it in the DeepSeek browser window and **reload the page**, then retry.
+3. **Is the provider UI language set to English?**
+    - IntenseRP currently expects the provider UI language to be English.
+    - DeepSeek: English (en / en-US)
+    - GLM Chat: English (en-US)
+    - If you see a warning/popup about UI language, change it in the provider browser window and **reload the page**, then retry.
     - If that doesn't fix it after changing the language, close IntenseRP and start it again.
     - Persistent Sessions help a lot with managing languages.
 
@@ -140,10 +143,11 @@ See: [:material-cog: System](../features/system.md)
 
 Fixes, in order:
 
-1. If you use Auto Login, double-check your DeepSeek email/password in **Providers & Credentials**.
-2. Try toggling **Persistent Sessions** off and back on (then Start again).
-3. If Persistent Sessions is enabled but things feel "stuck", use **Clear Profile** to reset the saved browser profile.
-4. Try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
+1. If you use Auto Login, double-check your provider selection + email/password in **Providers & Credentials**.
+2. GLM Chat requires a CAPTCHA during login. Auto Login can fill credentials, but you still need to solve the CAPTCHA in the browser window.
+3. Try toggling **Persistent Sessions** off and back on (then Start again).
+4. If Persistent Sessions is enabled but things feel "stuck", use **Clear Profile** to reset the saved browser profile.
+5. Try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:
 
@@ -152,20 +156,20 @@ See:
 
 ---
 
-## :material-translate: DeepSeek UI language is not English
+## :material-translate: Provider UI language is not English
 
-IntenseRP currently relies on a few English UI elements in DeepSeek (button labels/placeholders). If DeepSeek is set to a non-English language, automation can fail in confusing ways.
+IntenseRP currently relies on a few English UI elements (button labels/placeholders). If a provider is set to a non-English language, automation can fail in confusing ways.
 
 Symptoms:
 
-- You see a popup/warning about DeepSeek UI language not being English
-- Requests fail immediately with an error mentioning `DeepSeek UI language is not English`
-- Buttons like DeepThink/Search are "not found" even though DeepSeek loaded
+- You see a popup/warning about UI language not being English
+- Requests fail immediately with an error mentioning UI language
+- Buttons/toggles are "not found" even though the provider loaded
 
 Fix:
 
-1. In the DeepSeek browser window, change the language to English (en / en-US).
-2. **Reload the DeepSeek page** after changing the language (F5 / Ctrl+R).
+1. In the provider browser window, change the language to English.
+2. **Reload the provider page** after changing the language (F5 / Ctrl+R).
 3. In IntenseRP, click **Retry** on the language prompt (or click **Stop** then **Start**).
 
 ---
@@ -216,7 +220,7 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 
 - [ ] Reproduce once (so you can describe exact steps).
 - [ ] If possible, reproduce with logs enabled (console and/or logfiles).
-- [ ] Note whether it happens on `deepseek-auto`, `deepseek-chat`, or `deepseek-reasoner`.
+- [ ] Note whether it happens on `deepseek-*` or `glm-*` (depending on your provider).
 - [ ] If you are using LAN, try locally too (to rule out firewall/network issues).
 
 ### :material-clipboard-text-outline: What to include
@@ -224,10 +228,10 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - **Version** (app title bar)
 - **OS** (Windows/Linux + version)
 - **Install method** (release zip vs from source)
-- **Provider** (currently: DeepSeek)
+- **Provider** (DeepSeek or GLM Chat)
 - **Client** (SillyTavern or other client + version)
 - **Endpoint** (example: `http://127.0.0.1:7777/v1`)
-- **Model** (`deepseek-auto` / `deepseek-chat` / `deepseek-reasoner`)
+- **Model** (example: `deepseek-auto` / `glm-auto`)
 - **Streaming** (`stream: true` or `stream: false`)
 - **Expected vs actual**
 - **Logs** (console dump or `logs/log_*.txt`)

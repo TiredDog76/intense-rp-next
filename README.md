@@ -171,13 +171,20 @@ Once the app says **Running (Port 7777)**:
 | Endpoint | `http://127.0.0.1:7777/v1` |
 | API | OpenAI-compatible chat completions |
 | API key | Leave blank (unless you enabled API keys) |
-| Model | `deepseek-auto` |
+| Model | `deepseek-auto` / `glm-auto` |
 
-Available model IDs:
+Available model IDs (depends on provider):
 
-- `deepseek-auto` (uses your IntenseRP settings)
-- `deepseek-chat` (forces DeepThink off)
-- `deepseek-reasoner` (forces DeepThink on, Send DeepThink follows your setting)
+- DeepSeek:
+  - `deepseek-auto` (uses your IntenseRP settings)
+  - `deepseek-chat` (forces DeepThink off)
+  - `deepseek-reasoner` (forces DeepThink on, Send DeepThink follows your setting)
+- GLM Chat:
+  - `glm-auto` (uses your IntenseRP settings)
+  - `glm-chat` (forces Deep Think off)
+  - `glm-reasoner` (forces Deep Think on, Send Deep Think follows your setting)
+
+Note: these IDs are behavior presets (modes). For GLM, IntenseRP currently drives only GLM-4.7 (other GLM models are not selectable yet).
 
 If you change the port in Settings, update the endpoint to match (example: `http://127.0.0.1:YOUR_PORT/v1`).
 
@@ -210,10 +217,10 @@ There are a few highlights I think are worth calling out. Most have been in v1 a
 Current:
 
 - DeepSeek (usable; in "verification" stage)
+- GLM Chat (usable; beta-like, Search forced OFF)
 
 Planned (not implemented yet):
 
-- GLM Chat
 - Moonshot
 
 More detail lives in `docs/` (best viewed as the MkDocs site - see below).

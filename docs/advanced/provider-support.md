@@ -4,7 +4,17 @@ icon: material/cloud
 
 # :material-cloud: Provider Support
 
-IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests. Today, **only DeepSeek is implemented and usable**.
+IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
+
+Today, **DeepSeek** and **GLM Chat (Z.ai)** are implemented and usable.
+
+!!! note "GLM status (important)"
+    The GLM driver is still beta-like. It is mostly usable, but:
+
+    - Search is currently forced OFF (see GLM Behavior)
+    - Login requires solving a CAPTCHA (Persistent Sessions are strongly recommended)
+    - Only GLM-4.7 is driven for now (model selection is not implemented yet)
+    - Clean Regeneration is currently unreliable with GLM
 
 !!! warning "Web apps change"
     Provider drivers depend on the provider's web UI and internal API shapes. If a provider updates their frontend, a driver may break until it is updated.
@@ -52,11 +62,14 @@ Providers are prioritized in this order:
 | Provider | Priority | Current stage |
 |---|---:|---|
 | **DeepSeek** | 1 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
-| **GLM Chat** | 2 | :material-clock-outline:{ style="color: #ADB5BD" } **Queued** |
+| **GLM Chat** | 2 | :material-shield-check:{ style="color: #FFD43B" } **Verification (beta)** |
 | **Moonshot** | 3 | :material-clock-outline:{ style="color: #ADB5BD" } **Queued** |
 
 !!! note "What 'Verification' means for DeepSeek"
     DeepSeek is implemented and usable, but it is still being validated for stability (provider UI changes, edge cases, cancellation, long prompts, etc.).
+
+!!! note "What 'Verification' means for GLM"
+    GLM Chat is implemented and usable, but it is still being stabilized. Expect occasional quirks, and note that Search is currently disabled.
 
 ---
 
@@ -69,6 +82,12 @@ Providers are prioritized in this order:
     DeepThink, Search, anti-censorship, and more.
 
     [:arrow_right: DeepSeek Behavior](../features/deepseek-behavior.md)
+
+-   :material-chat-processing: **GLM Behavior**
+
+    Deep Think, modes, Search status, and GLM-specific notes.
+
+    [:arrow_right: GLM Behavior](../features/glm-behavior.md)
 
 -   :material-key: **Login & Sessions**
 

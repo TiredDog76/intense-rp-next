@@ -12,7 +12,7 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
 -   :material-format-text: **Formatting**
 
-    Control how messages are processed and displayed to DeepSeek.
+    Control how messages are processed and sent to the provider.
 
     [:arrow_right: Learn More](features/formatting.md)
 
@@ -21,6 +21,12 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
     Configure DeepThink, search, anti-censorship, and more.
 
     [:arrow_right: Learn More](features/deepseek-behavior.md)
+
+-   :material-chat-processing: **GLM Behavior**
+
+    Configure Deep Think modes, Search status, and GLM-specific quirks.
+
+    [:arrow_right: Learn More](features/glm-behavior.md)
 
 -   :material-key: **Login & Sessions**
 
@@ -56,7 +62,7 @@ Here's a quick rundown of all the major features you'll find in IntenseRP Next v
 
 ### :material-format-text: Formatting
 
-IntenseRP doesn't just forward your messages to DeepSeek. It formats them into a single prompt that the model can understand better.
+IntenseRP doesn't just forward your messages to the provider. It formats them into a single prompt that the model can understand better.
 
 | Feature | What It Does |
 |---------|-------------|
@@ -79,6 +85,20 @@ Fine-tune how DeepSeek processes your requests.
 | **File Upload Mode** | Send long prompts as a text file to bypass input limits |
 | **Anti-Censorship** | Suppress "Sorry, that's beyond my current scope" messages |
 | **Clean Regeneration** | Regenerate the last response instead of creating a new chat when the prompt is identical |
+
+---
+
+### :material-chat-processing: GLM Behavior
+
+Fine-tune how GLM Chat processes your requests.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Deep Think** | Toggle GLM reasoning mode |
+| **Send Deep Think** | Include the thinking process in the response (wrapped in `<think>` tags) |
+| **Search** | Currently disabled (forced OFF) |
+| **File Upload Mode** | Send long prompts as a text file to bypass input limits |
+| **Clean Regeneration** | Regenerate on duplicate prompts (currently unreliable for GLM) |
 
 ---
 

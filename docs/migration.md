@@ -149,11 +149,14 @@ If you used API keys in v1, confirm:
 
 ### 4) Persistent Sessions
 
-v2 Persistent Sessions uses a Playwright profile folder under:
+v2 Persistent Sessions uses a Playwright profile folder under (one folder per provider):
 
 ```
 [config_dir]/playwright_profiles/deepseek/
+[config_dir]/playwright_profiles/glm_chat/
 ```
+
+IntenseRP uses the folder for the currently selected **Provider**.
 
 If your login behavior feels different after migration, review:
 
@@ -186,9 +189,16 @@ http://127.0.0.1:7777/v1
 
 Available models:
 
-- `deepseek-auto` (respects v2 settings)
-- `deepseek-chat` (forces DeepThink off)
-- `deepseek-reasoner` (forces DeepThink on)
+Depends on your active provider:
+
+- DeepSeek:
+  - `deepseek-auto` (respects v2 settings)
+  - `deepseek-chat` (forces DeepThink off)
+  - `deepseek-reasoner` (forces DeepThink on)
+- GLM Chat:
+  - `glm-auto` (respects v2 settings)
+  - `glm-chat` (forces Deep Think off)
+  - `glm-reasoner` (forces Deep Think on)
 
 ---
 

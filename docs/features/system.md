@@ -31,7 +31,10 @@ When enabled, IntenseRP launches Chromium using a **persistent browser context**
 
 ```
 [config_dir]/playwright_profiles/deepseek/
+[config_dir]/playwright_profiles/glm_chat/
 ```
+
+IntenseRP uses one folder per provider and will read/write the folder for the currently selected **Provider**.
 
 Next time you start the app, it loads that same profile, so you usually won’t see a login page at all.
 
@@ -42,14 +45,14 @@ Next time you start the app, it loads that same profile, so you usually won’t 
 
 ## :material-delete: Clear Profile
 
-If the saved session gets weird (stuck login, expired cookies, endless redirects), Clear Profile deletes the saved DeepSeek browser profile so you can start fresh.
+If the saved session gets weird (stuck login, expired cookies, endless redirects), Clear Profile deletes the saved browser profile for your active provider so you can start fresh.
 
 :material-arrow-right: **Settings** → **System Settings** → **Clear Profile**
 
 What this does:
 
-- Deletes `[config_dir]/playwright_profiles/deepseek/`
-- Logs you out of DeepSeek (cookies/local storage are removed)
+- Deletes the provider profile under `[config_dir]/playwright_profiles/` (based on your selected Provider)
+- Logs you out (cookies/local storage are removed)
 - Forces a fresh login on next start
 
 !!! warning "This can’t be undone"
@@ -234,7 +237,7 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
     See [:material-bug: Troubleshooting](../hands/troubleshooting.md) for a broader checklist (network, auth, provider issues, and bug report info).
 
 ??? question "Persistent Sessions is enabled, but I still get logged out"
-    DeepSeek sessions can expire. If it happens frequently:
+    Provider sessions can expire. If it happens frequently:
 
     - Enable **Auto Login** as a fallback (Providers & Credentials)
     - Use **Clear Profile** if the stored profile is corrupted or stuck
@@ -273,7 +276,7 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
 | Active config directory pointer | `<app-folder>/config_dir.txt` |
 | Encrypted settings file | `[config_dir]/settings.json.enc` |
 | Settings encryption key | `[config_dir]/settings.key` |
-| Persistent browser profile | `[config_dir]/playwright_profiles/deepseek/` |
+| Persistent browser profile | `[config_dir]/playwright_profiles/<provider>/` (example: `deepseek/`, `glm_chat/`) |
 
 ---
 

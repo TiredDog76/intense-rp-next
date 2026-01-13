@@ -4,28 +4,33 @@ icon: material/key
 
 # :material-key: Login & Sessions
 
-Managing how you log in to DeepSeek and keeping your session alive between restarts. These two features work together to make your life easier.
+Managing how you log in to your active provider (DeepSeek / GLM Chat) and keeping your session alive between restarts. These two features work together to make your life easier.
 
 ---
 
 ## :material-login: Auto Login
 
-If you tired of typing your password every time, Auto Login saves your DeepSeek credentials and enters them automatically when the browser opens.
+If you're tired of typing your password every time, Auto Login saves your provider credentials and enters them automatically when the browser opens.
 
 ![Login settings](../pics/features/login_settings.png)
 
 ### Setting It Up
 
 1. Go to **Settings** → **Providers & Credentials**
-2. Toggle on **Auto Login**
-3. Enter your **DeepSeek Email** and **Password**
-4. Click **Save**
+2. Select your **Provider**
+3. Toggle on **Auto Login**
+4. Enter the email/password for your provider
+5. Click **Save**
 
 Next time you start IntenseRP, it'll fill in your credentials and click the login button for you.
 
+!!! warning "GLM CAPTCHA"
+    GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
+    If you don't want to do that every time, enable Persistent Sessions (below).
+
 ### How It Works
 
-When IntenseRP detects you've been redirected to the DeepSeek sign-in page:
+When IntenseRP detects you've been redirected to the provider sign-in page:
 
 1. It waits for the login form to appear
 2. Fills in your email and password
@@ -51,13 +56,19 @@ When enabled, IntenseRP uses a "persistent browser context" - basically saving c
 
 ### Where's the Data Stored?
 
-The browser profile is saved in your config directory:
+The browser profile is saved in your config directory (one folder per provider):
 
 ```
 [config_dir]/playwright_profiles/deepseek/
+[config_dir]/playwright_profiles/glm_chat/
 ```
 
-This folder contains your DeepSeek session cookies and any browser data. It's automatically created when you first enable Persistent Sessions.
+IntenseRP uses the folder for the currently selected **Provider**.
+
+This folder contains your provider session cookies and browser data. It's automatically created when you first enable Persistent Sessions.
+
+!!! tip "GLM recommendation"
+    Persistent Sessions are strongly recommended for GLM Chat, because login requires a CAPTCHA.
 
 !!! tip "Best of Both Worlds"
     You can use both features together! Enable Persistent Sessions so you're usually already logged in, and keep Auto Login as a backup for when the session expires.
@@ -73,7 +84,7 @@ If you want to start fresh or log out completely, you can wipe the saved browser
 This deletes the saved profile folder, which:
 
 - Removes all cookies and session data
-- Logs you out of DeepSeek
+- Logs you out of the active provider
 - Forces a fresh login next time
 
 !!! warning "This Can't Be Undone"
@@ -91,13 +102,13 @@ This deletes the saved profile folder, which:
     - **Both**: Best reliability - persistent session when it works, auto login as fallback
 
 ??? question "My session keeps expiring?"
-    DeepSeek sessions do expire eventually. If Persistent Sessions isn't keeping you logged in long enough, make sure you also have Auto Login configured as a backup.
+    Provider sessions do expire eventually. If Persistent Sessions isn't keeping you logged in long enough, make sure you also have Auto Login configured as a backup.
 
 ??? question "Is my password stored securely?"
-    Your credentials are saved in the config file on your local machine. IntenseRP doesn't send them anywhere except to DeepSeek's login form. If you're concerned, you can skip Auto Login and log in manually each time.
+    Your credentials are saved in the config file on your local machine. IntenseRP doesn't send them anywhere except to the provider's login form. If you're concerned, you can skip Auto Login and log in manually each time.
 
-??? question "Can I use this with multiple DeepSeek accounts?"
-    Not directly - the app only supports one set of credentials at a time. You'd need to clear the profile and change credentials to switch accounts.
+??? question "Can I use this with multiple accounts?"
+    Not directly - the app supports one set of credentials per provider at a time. To switch accounts, clear the profile and change credentials.
 
 ---
 

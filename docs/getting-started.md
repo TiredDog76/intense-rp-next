@@ -15,7 +15,7 @@ Before we dive in, make sure you have:
 | | |
 |---|---|
 | :material-microsoft-windows: **Windows 10/11** or :material-linux: **Linux** | 64-bit with a graphical desktop |
-| :material-account-plus: **DeepSeek account** | [Sign up here](https://chat.deepseek.com) if you don't have one |
+| :material-account-plus: **DeepSeek or GLM account** | [DeepSeek](https://chat.deepseek.com) or [GLM Chat (Z.ai)](https://chat.z.ai/) |
 | :material-chat: **SillyTavern** (or similar) | Any OpenAI-compatible client works |
 
 ---
@@ -83,18 +83,23 @@ Pick your platform and let's go!
 
 ## :material-cog: Step 2: Set Up Your Credentials
 
-Before hitting Start, let's save your DeepSeek login so you don't have to type it every time.
+Before hitting Start, pick your provider and (optionally) save your login so you don't have to type it every time.
 
 1. Click the :material-cog: **Settings** button
 2. Go to **Providers & Credentials**
-3. Turn on :material-toggle-switch: **Auto Login**
-4. Enter your **DeepSeek email** and **password**
-5. Hit :material-content-save: **Save**
+3. Choose your **Provider** (DeepSeek or GLM Chat)
+4. Turn on :material-toggle-switch: **Auto Login**
+5. Enter your provider **email** and **password**
+6. Hit :material-content-save: **Save**
 
 ![Settings Credentials](pics/getting-started/settings_credentials.png)
 
 !!! info "Skip This?"
     If you prefer to log in manually each time, just skip this step. The browser will pop up a login page instead.
+
+!!! warning "GLM CAPTCHA"
+    GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
+    Persistent Sessions are strongly recommended if you do not want to solve it every start.
 
 ---
 
@@ -143,14 +148,28 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 |-------|-------|
 | :material-web: **Custom Endpoint** | `http://127.0.0.1:7777/v1` |
 | :material-key: **API Key** | Leave blank |
-| :material-robot: **Model** | `deepseek-chat` |
+| :material-robot: **Model** | `deepseek-auto` |
+
+!!! note
+    If your active provider is **GLM Chat**, use `glm-auto` here instead.
 
 !!! info "Model Names"
-    There are three models available:
+    The model IDs are behavior presets (modes). Which set you get depends on your active provider.
 
-    - `deepseek-auto` (default, respects your IntenseRP settings)
-    - `deepseek-chat` (reasoning always off)
-    - `deepseek-reasoner` (reasoning always on, respects `Send DeepThink` setting)
+    === ":material-brain: DeepSeek"
+
+        - `deepseek-auto` (default, respects your IntenseRP settings)
+        - `deepseek-chat` (reasoning always off)
+        - `deepseek-reasoner` (reasoning always on, respects `Send DeepThink` setting)
+
+    === ":material-chat-processing: GLM Chat"
+
+        - `glm-auto` (default, respects your IntenseRP settings)
+        - `glm-chat` (Deep Think always off)
+        - `glm-reasoner` (Deep Think always on, respects `Send Deep Think` setting)
+
+    !!! note "GLM model selection"
+        IntenseRP currently drives only GLM-4.7. The `glm-*` IDs are modes, not a way to select GLM-4.6 / 4.6v yet.
 
 ![SillyTavern Endpoint Settings](pics/getting-started/preview_of_settings.png)
 
@@ -159,7 +178,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 Click :material-connection: **Connect** and look for the green indicator.
 
 !!! success ":material-party-popper: You Did It!"
-    Start a chat and enjoy free DeepSeek completions!
+    Start a chat and enjoy free LLM completions!
 
 ---
 
