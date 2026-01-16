@@ -46,16 +46,13 @@ When enabled, IntenseRP includes GLM's reasoning in the response, wrapped in `<t
 
 ---
 
-## :material-magnify: Search (currently disabled)
+## :material-magnify: Search
 
-GLM Chat search is currently **forced OFF** in IntenseRP.
+GLM Chat Search can be toggled via IntenseRP.
 
-The reason is that GLM streams search/tool output directly into the same response stream, and I haven't yet figured out how to make IntenseRP reliably separate "model text" from "search/tool text" yet.
+GLM streams internal tool/search payloads into the same response stream (wrapped in `<glm_block>...</glm_block>`). IntenseRP strips these blocks, so search results are **not sent** to the client.
 
 :material-arrow-right: **Settings** -> **GLM Behavior** -> **Enable Search**
-
-!!! note "Setting is ignored"
-    The toggle is kept in the UI for future support, but IntenseRP will treat Search as disabled even if you enable it.
 
 ---
 
@@ -119,11 +116,13 @@ All macros are stripped from the message before sending it to GLM.
 |------|--------|
 | `[[think]]`, `[[r1]]` | Force Deep Think on |
 | `[[nothink]]`, `[[r0]]` | Force Deep Think off |
+| `[[search]]` | Force Search on |
+| `[[nosearch]]`, `[[no_search]]` | Force Search off |
 | `[[file]]` | Force Send As Text File on |
 | `[[nofile]]` | Force Send As Text File off |
 
 !!! note "Search macros"
-    Search macros like `[[search]]` / `[[nosearch]]` are currently ignored for GLM, because Search is forced OFF.
+    Search macros like `[[search]]` / `[[nosearch]]` override the **Enable Search** setting for that request only.
 
 !!! note "Scope"
     Only macros from the latest user message apply. They do not persist across requests.
@@ -136,7 +135,7 @@ All macros are stripped from the message before sending it to GLM.
 |---------|--------------|---------|
 | **Enable Deep Think** | Toggles GLM reasoning mode | Off |
 | **Send Deep Think** | Includes thinking in response | Off |
-| **Enable Search** | Enables GLM search | Off (forced OFF) |
+| **Enable Search** | Enables GLM search | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Clean Regeneration** | Regenerates on duplicate prompts | Off (unstable for GLM) |
@@ -146,4 +145,3 @@ All macros are stripped from the message before sending it to GLM.
 ## :material-arrow-left: Back to Features
 
 [:material-arrow-left: Features Overview](../features.md)
-

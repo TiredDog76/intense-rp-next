@@ -309,9 +309,9 @@ SCHEMA = [
                 label="Search (Note)",
                 type=SettingType.DESCRIPTION,
                 default=(
-                    "Note: GLM Chat Search is currently forced OFF by IntenseRP (even if enabled below). "
-                    "GLM streams search results directly into the response stream, which makes it hard to "
-                    "process reliably. This will be revisited in a future update."
+                    "Note: GLM Chat Search streams internal tool/search payloads into the response stream."
+                    "IntenseRP does *not forward* these search results to the client for stability reasons."
+                    "Despite that, you might still get citations or references in the response."
                 ),
                 tooltip=None,
             ),
@@ -322,7 +322,7 @@ SCHEMA = [
                 default=False,
                 tooltip=(
                     "Toggle the Search button on the GLM interface. "
-                    "Currently forced OFF for GLM Chat (setting is ignored)."
+                    "Search results are not forwarded to the client."
                 )
             ),
             SettingField(

@@ -11,7 +11,7 @@ Today, **DeepSeek** and **GLM Chat (Z.ai)** are implemented and usable.
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
 
-    - Search is currently forced OFF (see GLM Behavior)
+    - Search is supported (search results are not sent to the client)
     - Login requires solving a CAPTCHA (Persistent Sessions are strongly recommended)
     - Only GLM-4.7 is driven for now (model selection is not implemented yet)
     - Clean Regeneration is currently unreliable with GLM
@@ -69,7 +69,7 @@ Providers are prioritized in this order:
     DeepSeek is implemented and usable, but it is still being validated for stability (provider UI changes, edge cases, cancellation, long prompts, etc.).
 
 !!! note "What 'Verification' means for GLM"
-    GLM Chat is implemented and usable, but it is still being stabilized. Expect occasional quirks, and note that Search is currently disabled.
+    GLM Chat is implemented and usable, but it is still being stabilized. Expect occasional quirks.
 
 ---
 

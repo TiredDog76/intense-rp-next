@@ -96,7 +96,7 @@ Fine-tune how GLM Chat processes your requests.
 |---------|-------------|
 | **Deep Think** | Toggle GLM reasoning mode |
 | **Send Deep Think** | Include the thinking process in the response (wrapped in `<think>` tags) |
-| **Search** | Currently disabled (forced OFF) |
+| **Search** | Toggle GLM Search (search results are not sent to the client) |
 | **File Upload Mode** | Send long prompts as a text file to bypass input limits |
 | **Clean Regeneration** | Regenerate on duplicate prompts (currently unreliable for GLM) |
 

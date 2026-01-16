@@ -217,7 +217,7 @@ There are a few highlights I think are worth calling out. Most have been in v1 a
 Current:
 
 - DeepSeek (usable; in "verification" stage)
-- GLM Chat (usable; beta-like, Search forced OFF)
+- GLM Chat (usable; beta-like, Search supported)
 
 Planned (not implemented yet):
 

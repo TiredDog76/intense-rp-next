@@ -32,7 +32,6 @@ class GLMDriver(BaseDriver):
         self.current_model: Optional[str] = None
         self.current_send_deepthink: Optional[bool] = None
         self.thinking_active = False
-        self._glm_search_forced_off_warned = False
 
         self.clean_regen_message_cache_key = "glm_last_message.txt"
         self.clean_regen_state_cache_key = "glm_last_message_state.json"
@@ -46,42 +45,8 @@ class GLMDriver(BaseDriver):
 
     async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         await self.check_ui_language(status_callback=status_callback)
-        self._enforce_glm_search_forced_off(source="after_start")
         self.cache_manager.clear_cache(self.clean_regen_message_cache_key)
         self.cache_manager.clear_cache(self.clean_regen_state_cache_key)
-
-    def _enforce_glm_search_forced_off(self, source: str = "unknown") -> None:
-        """
-        GLM Chat "Search" is currently forced OFF.
-
-        Reason: GLM streams search results directly into the response stream, which makes
-        it hard for IntenseRP to reliably separate model output from tool/search output.
-
-        We keep the setting and UI toggle in place for future re-enable, but treat the
-        effective value as always False.
-        """
-        try:
-            current = bool(self.config_manager.get_setting("glm_behavior", "enable_search"))
-        except Exception:
-            current = False
-
-        if not current:
-            return
-
-        try:
-            self.config_manager.set_setting("glm_behavior", "enable_search", False)
-            save = getattr(self.config_manager, "save_settings", None)
-            if callable(save):
-                save()
-        except Exception as e:
-            Logger.debug(f"GLM Chat: failed to persist forced search-off setting: {e}")
-
-        if not self._glm_search_forced_off_warned:
-            self._glm_search_forced_off_warned = True
-            Logger.warning(
-                f"GLM Chat: forcing Search OFF (source: {source}). "
-                "GLM Search currently streams results directly into the response."
-            )
 
     async def _get_document_lang(self) -> str:
         if not self.page:
@@ -326,22 +291,19 @@ class GLMDriver(BaseDriver):
     def _resolve_glm_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
         resolved_model = (model or "").strip() or "glm-auto"
         deepthink_enabled, send_deepthink = self._resolve_deepthink_flags(resolved_model)
+        enable_search = bool(self.config_manager.get_setting("glm_behavior", "enable_search"))
         send_as_text_file = bool(self.config_manager.get_setting("glm_behavior", "send_as_text_file"))
 
         settings = {
             "deepthink_enabled": bool(deepthink_enabled),
             "send_deepthink": bool(send_deepthink),
-            # NOTE: GLM Search is currently forced OFF regardless of settings/macros
-            "search_enabled": False,
+            "search_enabled": bool(enable_search),
             "send_as_text_file": bool(send_as_text_file),
         }
 
         if overrides:
             for key in ("deepthink_enabled", "send_deepthink", "search_enabled", "send_as_text_file"):
                 if key in overrides:
-                    if key == "search_enabled":
-                        # Search macros are ignored for GLM; search is forced OFF
-                        continue
                     settings[key] = bool(overrides[key])
 
         return settings
@@ -349,13 +311,6 @@ class GLMDriver(BaseDriver):
     def _extract_glm_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
         if not text:
             return text, {}
-
-        ignored_macros = {
-            # Search (currently forced OFF for GLM)
-            "search",
-            "nosearch",
-            "no_search",
-        }
 
         macro_actions: Dict[str, tuple[str, bool]] = {
             # Deep Think
@@ -365,6 +320,12 @@ class GLMDriver(BaseDriver):
             "no_think": ("deepthink_enabled", False),
             "r0": ("deepthink_enabled", False),
 
+            # Search
+            "search": ("search_enabled", True),
+            "nosearch": ("search_enabled", False),
+            "no_search": ("search_enabled", False),
+            "no-search": ("search_enabled", False),
+
             # Send as text file
             "file": ("send_as_text_file", True),
             "sendfile": ("send_as_text_file", True),
@@ -373,15 +334,10 @@ class GLMDriver(BaseDriver):
         }
 
         overrides: Dict[str, bool] = {}
-        ignored_seen = False
         macro_pattern = re.compile(r"\[\[\s*([a-zA-Z0-9_-]+)\s*\]\]")
 
         def _replace_macro(match: re.Match) -> str:
-            nonlocal ignored_seen
             macro = (match.group(1) or "").strip().lower()
-            if macro in ignored_macros:
-                ignored_seen = True
-                return ""
             action = macro_actions.get(macro)
             if not action:
                 return match.group(0)
@@ -391,11 +347,6 @@ class GLMDriver(BaseDriver):
             return ""
 
         cleaned = macro_pattern.sub(_replace_macro, text)
-        if ignored_seen and not self._glm_search_forced_off_warned:
-            self._glm_search_forced_off_warned = True
-            Logger.warning(
-                "GLM Chat: ignoring Search macros because Search is currently forced OFF."
-            )
         return cleaned, overrides
 
     def _strip_glm_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
@@ -881,6 +832,56 @@ class GLMDriver(BaseDriver):
         return text
 
     @staticmethod
+    def _strip_glm_blocks_from_stream_chunk(text: str, in_glm_block: bool) -> tuple[str, bool]:
+        """
+        Strip GLM's internal <glm_block ...>...</glm_block> tool payloads from the stream.
+
+        These blocks contain tool/search metadata and results and should never be forwarded to the client.
+
+        Returns (cleaned_text, new_in_glm_block_state).
+        """
+        if not text:
+            return "", bool(in_glm_block)
+
+        start_token = "<glm_block"
+        end_token = "</glm_block>"
+
+        out: list[str] = []
+        i = 0
+        active = bool(in_glm_block)
+
+        while i < len(text):
+            if active:
+                end = text.find(end_token, i)
+                if end == -1:
+                    return "".join(out), True
+                i = end + len(end_token)
+                active = False
+                continue
+
+            start = text.find(start_token, i)
+            if start == -1:
+                # If we see a closing tag without a visible opening tag in this chunk,
+                # assume we're still inside a block (e.g. the opening tag was split across
+                # chunks) and drop everything up to and including the closing tag
+                end = text.find(end_token, i)
+                if end != -1:
+                    i = end + len(end_token)
+                    active = False
+                    continue
+                out.append(text[i:])
+                return "".join(out), False
+
+            out.append(text[i:start])
+            end = text.find(end_token, start)
+            if end == -1:
+                return "".join(out), True
+            i = end + len(end_token)
+            active = False
+
+        return "".join(out), active
+
+    @staticmethod
     def _strip_partial_details_opening_tail(text: str) -> str:
         """
         GLM sometimes emits an edit_content patch that starts mid-way through the opening
@@ -977,7 +978,6 @@ class GLMDriver(BaseDriver):
         response_queue: asyncio.Queue = asyncio.Queue()
 
         await self.require_english_ui()
-        self._enforce_glm_search_forced_off(source="generate_response")
 
         # Reset state for new generation
         self.thinking_active = False
@@ -1023,6 +1023,7 @@ class GLMDriver(BaseDriver):
             text_buffer = ""
             thinking_emitted = ""
             answer_emitted = False
+            glm_block_active = False
 
             def enqueue_openai_delta(content: str, finish_reason: str | None = None) -> None:
                 if (not content) and (not finish_reason):
@@ -1044,7 +1045,7 @@ class GLMDriver(BaseDriver):
                 response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
 
             def process_sse_line(line: str) -> None:
-                nonlocal text_buffer, thinking_emitted, answer_emitted
+                nonlocal text_buffer, thinking_emitted, answer_emitted, glm_block_active
                 line = line.strip()
                 if not line.startswith("data:"):
                     return
@@ -1104,6 +1105,10 @@ class GLMDriver(BaseDriver):
                     return
 
                 if isinstance(edit_content, str):
+                    edit_content, glm_block_active = self._strip_glm_blocks_from_stream_chunk(
+                        edit_content, glm_block_active
+                    )
+
                     # When thinking is enabled, GLM often sends a huge edit_content that includes the full
                     # <details> reasoning plus the first token(s) of the answer. Extract only the answer tail
                     if phase == "answer":
@@ -1135,6 +1140,17 @@ class GLMDriver(BaseDriver):
                             enqueue_openai_delta("</think>")
                             self.thinking_active = False
                         if edit_content:
+                            enqueue_openai_delta(edit_content)
+                            answer_emitted = True
+                        return
+
+                    # At this point answer content may already be streaming via delta_content; only
+                    # treat tool_call edit_content as answer tail if we've already emitted answer
+                    if phase == "tool_call":
+                        if self.thinking_active and self.current_send_deepthink:
+                            enqueue_openai_delta("</think>")
+                            self.thinking_active = False
+                        if answer_emitted and edit_content:
                             enqueue_openai_delta(edit_content)
                             answer_emitted = True
                         return
@@ -1235,9 +1251,8 @@ class GLMDriver(BaseDriver):
 
                 if message_matches and state_matches:
                     Logger.info("Clean Regeneration (GLM): Message and settings match cache. Attempting to regenerate...")
-                    # Search is forced OFF for GLM, but the UI toggle could be left enabled from manual clicks
-                    # or older sessions. Just to make sure it's in the expected state, we explicitly disable it here.
-                    await self.set_search_state(False)
+                    await self.set_deepthink_state(effective_deepthink)
+                    await self.set_search_state(enable_search)
                     if await self._click_regenerate():
                         Logger.info("Clean Regeneration (GLM): Button clicked. Regenerating...")
                         regenerated = True
@@ -1252,7 +1267,7 @@ class GLMDriver(BaseDriver):
                 await asyncio.sleep(0.4)
 
                 await self.set_deepthink_state(effective_deepthink)
-                await self.set_search_state(False)
+                await self.set_search_state(enable_search)
                 await asyncio.sleep(0.2)
 
                 if send_as_text_file:

@@ -750,13 +750,8 @@ class SettingsWindow(QMainWindow):
         self._apply_forced_overrides()
 
     def _apply_forced_overrides(self) -> None:
-        # GLM Chat Search is currently forced OFF (setting exists for future re-enable)
-        key = "glm_behavior.enable_search"
-        widget = self.field_widgets.get(key)
-        if isinstance(widget, Tumbler):
-            self._set_widget_value(widget, False)
-            widget.setEnabled(False)
-            widget.set_dependency_mode("forced")
+        # Reserved for future UI-level forced overrides (none currently).
+        return
 
     def _add_search_target(self, category, field, widget):
         extra_labels = ""
