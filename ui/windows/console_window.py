@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QTextCharFormat, QColor, QFont
+from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextOption
 
 from ui.core.brand import BrandColors
 from utils.logger import Logger
@@ -30,6 +30,7 @@ class ConsoleWindow(QMainWindow):
     """
     
     MAX_LINES = 500
+    AUTO_SCROLL_MODES = {"Always", "Bottom only", "Never"}
     
     # Color Palettes
     # copypasted from original project
@@ -64,6 +65,7 @@ class ConsoleWindow(QMainWindow):
         self.resize(700, 400)
         self.config_manager = config_manager
         self._allow_close = False
+        self._auto_scroll_mode = "Always"
         
         # Remove close button but keep minimize and maximize
         self.setWindowFlags(
@@ -270,7 +272,20 @@ class ConsoleWindow(QMainWindow):
         font = QFont("Consolas", int(font_size))
         self.text_area.setFont(font)
 
-        # 3. Color Palette setup
+        # 3. Wrapping
+        wrap_lines = bool(self.config_manager.get_setting("console_settings", "wrap_lines"))
+        if wrap_lines:
+            self.text_area.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+            self.text_area.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        else:
+            self.text_area.setLineWrapMode(QPlainTextEdit.NoWrap)
+        
+        # 4. Auto-scroll mode
+        auto_scroll_mode = self.config_manager.get_setting("console_settings", "auto_scroll_mode") or "Always"
+        auto_scroll_mode = str(auto_scroll_mode).strip()
+        self._auto_scroll_mode = auto_scroll_mode if auto_scroll_mode in self.AUTO_SCROLL_MODES else "Always"
+
+        # 5. Color Palette setup
         palette_name = self.config_manager.get_setting("console_settings", "color_palette") or "Modern"
         self.current_palette = self.PALETTES.get(palette_name, self.PALETTES["Modern"])
         
@@ -326,7 +341,7 @@ class ConsoleWindow(QMainWindow):
             }}
         """)
         
-        # 4. Always On Top
+        # 6. Always On Top
         always_on_top = self.config_manager.get_setting("console_settings", "always_on_top")
         
         # Base flags
@@ -360,6 +375,10 @@ class ConsoleWindow(QMainWindow):
             level_name: The log level name (DEBUG, INFO, etc.)
             message: The formatted log message
         """
+        scrollbar = self.text_area.verticalScrollBar()
+        old_scroll_value = scrollbar.value()
+        was_at_bottom = old_scroll_value >= (scrollbar.maximum() - 2)
+
         color = self._get_color_for_level(level_name)
         
         # Escape HTML entities and convert newlines for multiline support
@@ -374,10 +393,17 @@ class ConsoleWindow(QMainWindow):
         # Trim old lines if exceeded max
         if self._line_count > self.MAX_LINES:
             self._trim_lines()
-        
-        # Auto-scroll to bottom
-        scrollbar = self.text_area.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+
+        mode = getattr(self, "_auto_scroll_mode", "Always")
+        if mode == "Always":
+            scrollbar.setValue(scrollbar.maximum())
+        elif mode == "Bottom only":
+            if was_at_bottom:
+                scrollbar.setValue(scrollbar.maximum())
+            else:
+                scrollbar.setValue(old_scroll_value)
+        elif mode == "Never":
+            scrollbar.setValue(old_scroll_value)
     
     def _trim_lines(self):
         """Remove oldest lines to stay within MAX_LINES limit."""

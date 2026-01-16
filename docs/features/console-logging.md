@@ -57,6 +57,8 @@ Just a few more tweaks to make it your own:
 |---------|-------------|
 | **Max Line Limit** | How many lines to keep before old ones get trimmed (default: 500) |
 | **Font Size** | Text size in the console (default: 10 but I prefer 12) |
+| **Wrap Lines** | Soft-wrap long lines to reduce horizontal scrolling |
+| **Auto-Scroll Mode** | When to follow new logs: Always / Bottom only / Never |
 | **Always On Top** | Keep the console above other windows |
 
 !!! warning "Always On Top"
@@ -206,6 +208,8 @@ If you need to share logs with the developer or community:
 | Log to Stdout | On | Prints to terminal |
 | Max Line Limit | 500 | Lines before trimming |
 | Font Size | 10 | Console text size |
+| Wrap Lines | Off | Soft-wrap long lines |
+| Auto-Scroll Mode | Always | Auto-scroll behavior |
 | Color Palette | Modern | Color scheme |
 | Always On Top | Off | Keeps console above other windows |
 

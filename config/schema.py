@@ -543,6 +543,21 @@ SCHEMA = [
                 tooltip="Font size for the console text."
             ),
             SettingField(
+                key="wrap_lines",
+                label="Wrap Lines",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Soft-wrap long lines in the console window.",
+            ),
+            SettingField(
+                key="auto_scroll_mode",
+                label="Auto-Scroll Mode",
+                type=SettingType.DROPDOWN,
+                default="Always",
+                options=["Always", "Bottom only", "Never"],
+                tooltip="Control how the console view follows new log messages.",
+            ),
+            SettingField(
                 key="color_palette",
                 label="Color Palette",
                 type=SettingType.DROPDOWN,
