@@ -40,9 +40,9 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 ## Welcome 👋
 
 If you're here because you want DeepSeek (DS) in SillyTavern without wiring up the paid official API: Welcome to the club!
-IntenseRP Next v2 drives the official DeepSeek web app in a real browser, and re-exposes it as an OpenAI-compatible endpoint.
+IntenseRP Next v2 drives the official DeepSeek/GLM web apps in a real browser, and re-exposes them as an OpenAI-compatible endpoint.
 
-Unlike the official API, this is usually free (DeepSeek is entirely free to use with limits, and paid plans aren't added yet) and it gives you access to the full web UI experience (including DeepThink, file uploads, and more). Not without tradeoffs, of course - see below.
+Unlike the official API, this is usually free (DeepSeek/GLM are entirely free to use with limits, and paid plans aren't added yet) and it gives you access to the full web UI experience (including DeepThink, file uploads, and more). Not without tradeoffs, of course - see below.
 
 ## Start here! 🎁
 
@@ -57,7 +57,7 @@ And it's done! It should Just Work™️.
 IntenseRP Next v2 (sometimes shortened to "IRP Next v2") is a local bridge between:
 
 - an OpenAI-style client (like SillyTavern), and
-- a provider web app (currently: DeepSeek)
+- a provider web app (currently: DeepSeek, GLM Chat)
 
 Under the hood it:
 
@@ -67,9 +67,9 @@ Under the hood it:
 4. Intercepts the provider's streaming network responses
 5. Re-emits them as OpenAI-style SSE deltas for your client
 
-In normal human terms: it makes "use DeepSeek from SillyTavern" feel like a normal API connection, even though DeepSeek is a web app.
+In normal human terms: it makes "use DeepSeek/GLM from SillyTavern" feel like a normal API connection, even though they are web apps.
 
-DeepSeek also has an official API (paid), but not everyone can pay for it, so this is kind of a free alternative. 🙂
+DeepSeek/GLM also have official APIs (paid), but not everyone can pay for them, so this is kind of a free alternative. 🙂
 
 ## Should you use it? 🎯
 
@@ -90,7 +90,7 @@ Not the best fit if you:
 > [!NOTE]
 > 1. Provider web apps change. When they do, a driver can break until it's updated.
 > 2. IntenseRP currently processes **one request at a time** (requests are queued). This is on purpose (single live browser session).
-> 3. This project is not affiliated with DeepSeek, SillyTavern, or any provider.
+> 3. This project is not affiliated with DeepSeek, ZhipuAI, SillyTavern, or any provider.
 
 </details>
 
