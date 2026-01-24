@@ -2,8 +2,8 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, 
     QMessageBox, QFileDialog
 )
-from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QSize, Signal, QUrl
+from PySide6.QtGui import QIcon, QDesktopServices
 
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
@@ -20,7 +20,7 @@ class HelpWindow(QMainWindow):
         super().__init__(parent)
         self.config_manager = config_manager
         self.setWindowTitle("Help & Extras")
-        self.resize(360, 450)
+        self.resize(360, 520)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG};")
 
         central_widget = QWidget()
@@ -71,6 +71,12 @@ class HelpWindow(QMainWindow):
         self.contrib_btn = self._create_button("Contributors", IconType.CONTRIBUTORS)
         self.contrib_btn.clicked.connect(self.show_contributors)
         layout.addWidget(self.contrib_btn)
+
+        # Contact & Support Button
+        self.support_btn = self._create_button("Contact && Support", IconType.SUPPORT)
+        self.support_btn.setToolTip("Open the Contact & Support page.")
+        self.support_btn.clicked.connect(self.open_contact_support)
+        layout.addWidget(self.support_btn)
         
         layout.addStretch()
 
@@ -151,3 +157,6 @@ class HelpWindow(QMainWindow):
             self.backup_import_window.settings_reloaded.connect(self.settings_reloaded.emit)
         self.backup_import_window.show()
         self.backup_import_window.activateWindow()
+
+    def open_contact_support(self):
+        QDesktopServices.openUrl(QUrl("https://intense-rp-next.readthedocs.io/en/latest/hands/contact/"))
