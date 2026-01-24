@@ -286,6 +286,15 @@ class API:
 
                     self.current_entry = entry
                     self.current_abort_event = abort_event
+
+                    # Optional provider hook: apply configured *real* model selection (UI model picker),
+                    # if the active provider supports it.
+                    try:
+                        await self.driver.apply_configured_model()
+                    except Exception as e:
+                        provider_label = getattr(self.driver, "provider_label", None) or "Provider"
+                        Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")
+
                     # Call the driver with the raw messages list
                     # The driver will handle formatting
                     async for chunk in self.driver.generate_response(

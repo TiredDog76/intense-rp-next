@@ -24,7 +24,20 @@ For GLM, these model IDs map to simple behavior presets:
 | `glm-reasoner` | Forces Deep Think **on** (Send Deep Think follows your setting) |
 
 !!! note "About real GLM model selection"
-    For now, IntenseRP only drives **GLM-4.7**. Support for selecting other GLM models (like GLM-4.6 / 4.6v) is planned, but not implemented yet.
+    IntenseRP can also switch GLM's *real* model picker in the web UI.
+
+    :material-arrow-right: **Settings** -> **GLM Behavior** -> **Model**
+
+    Supported options:
+
+    - **GLM-4.7** (recommended default)
+    - **GLM-4.6**
+
+    !!! tip "About GLM-4.6v"
+        GLM-4.6v exists, but IntenseRP intentionally does **not** select it (quality reasons for roleplay).
+
+    !!! warning "Fallback behavior"
+        If your selected model is not present in the dropdown (UI changes / rollout), IntenseRP logs a warning and selects the **first available** model instead.
 
 ---
 
@@ -133,6 +146,7 @@ All macros are stripped from the message before sending it to GLM.
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
+| **Model** | Selects GLM's real model picker (UI) | GLM-4.7 |
 | **Enable Deep Think** | Toggles GLM reasoning mode | Off |
 | **Send Deep Think** | Includes thinking in response | Off |
 | **Enable Search** | Enables GLM search | Off |

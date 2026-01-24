@@ -155,6 +155,18 @@ class BaseDriver(ABC):
     ) -> None:
         return None
 
+    async def apply_configured_model(self) -> None:
+        """
+        Optional hook: make sure the provider's *real* model selection is applied.
+
+        Notes:
+        - This is intentionally separate from the OpenAI-compatible request `model` field,
+          which IntenseRP uses as a behavior preset (mode) selector.
+        (NOTE FOR SELF: Might want to make the request `model` field configurable.)
+        - Providers without a model selector can keep the default no-op implementation.
+        """
+        return None
+
     async def start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         """
         Starts the browser and navigates to the provider.

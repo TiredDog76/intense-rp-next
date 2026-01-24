@@ -57,7 +57,7 @@ These map to GLM UI toggles:
 !!! info "What these IDs are (and are not)"
     These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
-    For GLM specifically, IntenseRP currently drives only **GLM-4.7** (other GLM models are not selectable yet).
+    For GLM specifically, the *real* GLM model is selected via **Settings -> GLM Behavior -> Model** (GLM-4.7 or GLM-4.6). The API `glm-*` IDs still remain behavior presets.
 
 ---
 

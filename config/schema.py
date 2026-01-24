@@ -291,6 +291,17 @@ SCHEMA = [
         key="glm_behavior",
         fields=[
             SettingField(
+                key="model",
+                label="Model",
+                type=SettingType.DROPDOWN,
+                default="GLM-4.7",
+                options=["GLM-4.7", "GLM-4.6"],
+                tooltip=(
+                    "Select which GLM model to use in the GLM Chat web UI. "
+                    "This is separate from the API 'glm-*' model IDs (those are behavior presets)."
+                ),
+            ),
+            SettingField(
                 key="enable_deepthink",
                 label="Enable Deep Think",
                 type=SettingType.BOOLEAN,

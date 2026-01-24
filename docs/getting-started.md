@@ -168,8 +168,14 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
         - `glm-chat` (Deep Think always off)
         - `glm-reasoner` (Deep Think always on, respects `Send Deep Think` setting)
 
-    !!! note "GLM model selection"
-        IntenseRP currently drives only GLM-4.7. The `glm-*` IDs are modes, not a way to select GLM-4.6 / 4.6v yet.
+        !!! note "GLM model selection"
+            The `glm-*` IDs are still modes (behavior presets).
+
+            The *real* GLM model is selected in IntenseRP:
+
+            :material-arrow-right: **Settings** -> **GLM Behavior** -> **Model** (GLM-4.7 or GLM-4.6)
+
+            GLM-4.6v exists, but IntenseRP intentionally does not select it.
 
 ![SillyTavern Endpoint Settings](pics/getting-started/preview_of_settings.png)
 

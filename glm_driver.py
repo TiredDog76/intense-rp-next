@@ -19,6 +19,14 @@ class GLMDriver(BaseDriver):
     CHAT_URL = "https://chat.z.ai/"
     AUTH_URL = "https://chat.z.ai/auth"
 
+    MODEL_SELECTOR_BUTTON_SELECTOR = "button.modelSelectorButton"
+    MODEL_DROPDOWN_ID = "f8T9iEf1QC"
+    MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
+    MODEL_DATA_VALUE_BY_FRIENDLY: Dict[str, str] = {
+        "GLM-4.7": "glm-4.7",
+        "GLM-4.6": "GLM-4-6-API-V1",
+    }
+
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.GLM_CHAT)
         self.cache_manager = CacheManager()
@@ -47,6 +55,207 @@ class GLMDriver(BaseDriver):
         await self.check_ui_language(status_callback=status_callback)
         self.cache_manager.clear_cache(self.clean_regen_message_cache_key)
         self.cache_manager.clear_cache(self.clean_regen_state_cache_key)
+
+    async def apply_configured_model(self) -> None:
+        desired_friendly = self._get_configured_glm_model_friendly()
+        if not desired_friendly:
+            return
+
+        try:
+            await self._ensure_glm_model_selected(desired_friendly)
+        except Exception as e:
+            Logger.warning(f"GLM Chat: Failed to apply model selection '{desired_friendly}': {e}")
+
+    def _get_configured_glm_model_friendly(self) -> str:
+        try:
+            value = self.config_manager.get_setting("glm_behavior", "model")
+        except Exception:
+            value = None
+        return str(value or "").strip()
+
+    @staticmethod
+    def _normalize_model_label(value: str) -> str:
+        return re.sub(r"\\s+", " ", str(value or "")).strip().lower()
+
+    async def _read_current_glm_model_label(self) -> str:
+        if not self.page:
+            return ""
+
+        try:
+            label = await self.page.evaluate(
+                "() => {"
+                "  const btn = document.querySelector('button.modelSelectorButton');"
+                "  if (!btn) return '';"
+                "  const div = btn.querySelector('div');"
+                "  if (!div) return '';"
+                "  const node = div.childNodes && div.childNodes[0];"
+                "  const text = (node && node.textContent) ? node.textContent : (div.textContent || '');"
+                "  return (text || '').toString().trim();"
+                "}"
+            )
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed to read current model label: {e}")
+            return ""
+
+        return str(label or "").strip()
+
+    async def _open_glm_model_dropdown(self, timeout_ms: int = 5000) -> bool:
+        if not self.page:
+            return False
+
+        button = self.page.locator(self.MODEL_SELECTOR_BUTTON_SELECTOR)
+        if await button.count() == 0:
+            Logger.warning("GLM Chat: model selector button not found.")
+            return False
+
+        try:
+            await button.first.click(timeout=2000)
+        except Exception as e:
+            Logger.warning(f"GLM Chat: failed to click model selector button: {e}")
+            return False
+
+        # Wait for the dropdown content to appear.
+        try:
+            await self.page.wait_for_selector(
+                f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value]",
+                timeout=int(timeout_ms),
+                state="visible",
+            )
+            return True
+        except Exception:
+            pass
+
+        # Fallback if the dropdown id changes.
+        try:
+            await self.page.wait_for_selector("button[data-value]", timeout=int(timeout_ms), state="visible")
+            return True
+        except Exception:
+            Logger.warning("GLM Chat: model dropdown did not appear after clicking the selector (this is usually very bad).")
+            return False
+
+    async def _close_glm_model_dropdown(self) -> None:
+        if not self.page:
+            return
+
+        button = self.page.locator(self.MODEL_SELECTOR_BUTTON_SELECTOR)
+        if await button.count() == 0:
+            return
+
+        try:
+            await button.first.click(timeout=2000)
+        except Exception:
+            return
+
+        try:
+            await self.page.wait_for_selector(self.MODEL_DROPDOWN_SELECTOR, timeout=1500, state="hidden")
+        except Exception:
+            return
+
+    async def _click_glm_model_option(self, data_value: str) -> bool:
+        if not self.page:
+            return False
+
+        safe_value = str(data_value or "").strip()
+        if not safe_value:
+            return False
+
+        option = self.page.locator(
+            f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value='{safe_value}']"
+        )
+        if await option.count() == 0:
+            option = self.page.locator(f"button[data-value='{safe_value}']")
+
+        count = await option.count()
+        if count == 0:
+            return False
+
+        for idx in range(min(count, 10)):
+            cand = option.nth(idx)
+            try:
+                if await cand.is_visible():
+                    await cand.click(timeout=2000)
+                    return True
+            except Exception:
+                continue
+
+        try:
+            await option.first.click(timeout=2000)
+            return True
+        except Exception:
+            return False
+
+    async def _click_first_glm_model_option(self) -> Optional[str]:
+        if not self.page:
+            return None
+
+        options = self.page.locator(f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value]")
+        if await options.count() == 0:
+            options = self.page.locator("button[data-value]")
+
+        count = await options.count()
+        if count == 0:
+            return None
+
+        for idx in range(min(count, 25)):
+            cand = options.nth(idx)
+            try:
+                if not await cand.is_visible():
+                    continue
+            except Exception:
+                pass
+
+            try:
+                data_value = (await cand.get_attribute("data-value")) or ""
+            except Exception:
+                data_value = ""
+
+            try:
+                await cand.click(timeout=2000)
+            except Exception:
+                continue
+
+            return str(data_value or "").strip() or None
+
+        return None
+
+    async def _ensure_glm_model_selected(self, desired_friendly: str) -> None:
+        if not self.page:
+            return
+
+        desired = str(desired_friendly or "").strip()
+        if not desired:
+            return
+
+        desired_data_value = self.MODEL_DATA_VALUE_BY_FRIENDLY.get(desired)
+        if not desired_data_value:
+            Logger.warning(f"GLM Chat: unknown configured model '{desired}'.")
+            return
+
+        try:
+            await self.page.wait_for_selector(self.MODEL_SELECTOR_BUTTON_SELECTOR, timeout=10000, state="visible")
+        except Exception:
+            Logger.warning("GLM Chat: model selector is not available yet.")
+            return
+
+        current_label = await self._read_current_glm_model_label()
+        if self._normalize_model_label(current_label) == self._normalize_model_label(desired):
+            return
+
+        if not await self._open_glm_model_dropdown(timeout_ms=5000):
+            return
+
+        try:
+            clicked = await self._click_glm_model_option(desired_data_value)
+            if not clicked:
+                Logger.error(
+                    f"GLM Chat: desired model '{desired}' not found in dropdown (data-value '{desired_data_value}'). "
+                    "Selecting the first available model instead."
+                )
+                fallback_value = await self._click_first_glm_model_option()
+                if fallback_value:
+                    Logger.warning(f"GLM Chat: selected fallback model data-value '{fallback_value}'.")
+        finally:
+            await self._close_glm_model_dropdown()
 
     async def _get_document_lang(self) -> str:
         if not self.page:
@@ -1233,6 +1442,8 @@ class GLMDriver(BaseDriver):
         await self.page.route("**/api/v2/chat/completions**", handle_route)
 
         try:
+            await self.apply_configured_model()
+
             clean_regeneration = bool(self.config_manager.get_setting("glm_behavior", "clean_regeneration"))
             regenerated = False
 
@@ -1265,6 +1476,8 @@ class GLMDriver(BaseDriver):
                 Logger.info("GLM Chat: preparing new chat session...")
                 await self.click_new_chat(source="auto")
                 await asyncio.sleep(0.4)
+
+                await self.apply_configured_model()
 
                 await self.set_deepthink_state(effective_deepthink)
                 await self.set_search_state(enable_search)

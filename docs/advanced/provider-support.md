@@ -13,7 +13,7 @@ Today, **DeepSeek** and **GLM Chat (Z.ai)** are implemented and usable.
 
     - Search is supported (search results are not sent to the client)
     - Login requires solving a CAPTCHA (Persistent Sessions are strongly recommended)
-    - Only GLM-4.7 is driven for now (model selection is not implemented yet)
+    - GLM model selection is supported (GLM-4.7 / GLM-4.6) via **Settings -> GLM Behavior -> Model**
     - Clean Regeneration is currently unreliable with GLM
 
 !!! warning "Web apps change"
