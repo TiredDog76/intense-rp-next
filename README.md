@@ -270,7 +270,7 @@ IntenseRP Next v2 is licensed under the MIT License. See the [LICENSE](LICENSE) 
 - FastAPI, Pydantic, Uvicorn
 - PySide6 (Qt)
 - Playwright + Patchright
-- Feather Icons
+- Feather Icons / Lucide Icons
 - SillyTavern (client ecosystem)
 - IntenseRP API (Omega-Slender) - original inspiration
 - Me (LyubomirT) - for doing all the work :D
