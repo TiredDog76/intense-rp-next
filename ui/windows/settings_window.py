@@ -40,6 +40,11 @@ class SettingsWindow(QMainWindow):
         "network_settings": "share-2.svg",
     }
 
+    BEHAVIOR_CATEGORY_BY_PROVIDER = {
+        DriverProvider.DEEPSEEK: "deepseek_behavior",
+        DriverProvider.GLM_CHAT: "glm_behavior",
+    }
+
     def __init__(self, config_manager: ConfigManager, parent=None):
         super().__init__(parent)
         self.config_manager = config_manager
@@ -51,6 +56,8 @@ class SettingsWindow(QMainWindow):
         self.field_widgets = {} # Map "category.key" -> widget
         self.setting_rows = {} # Map "category.key" -> SettingRow (for dependency toggling)
         self._sidebar_icon_cache = {}
+        self.category_widgets_by_key = {}  # Map category key -> card widget
+        self.category_items_by_key = {}  # Map category key -> QListWidgetItem
 
         self._init_ui()
         self._load_values()
@@ -151,6 +158,8 @@ class SettingsWindow(QMainWindow):
         if field.type == SettingType.BOOLEAN:
             widget = Tumbler()
             widget.stateChanged.connect(self._on_setting_changed)
+            if category_key == "application_settings" and field.key == "show_only_active_provider_behavior":
+                widget.stateChanged.connect(self._sync_behavior_category_visibility)
         elif field.type == SettingType.DIRECTORY:
             dialog_title = f"Select {field.label}" if field.label else "Select Directory"
             widget = DirectoryEntry(dialog_title=dialog_title)
@@ -179,6 +188,9 @@ class SettingsWindow(QMainWindow):
             if field.options:
                 widget.addItems(field.options)
             widget.currentTextChanged.connect(self._on_setting_changed)
+
+            if category_key == "providers_credentials" and field.key == "provider":
+                widget.currentTextChanged.connect(self._sync_behavior_category_visibility)
             
             # Specific logic for formatting preset
             if field.key == "formatting_preset":
@@ -358,18 +370,22 @@ class SettingsWindow(QMainWindow):
         self.scroll_layout.setSpacing(BrandColors.CARD_SPACING)
         self.scroll_layout.setAlignment(Qt.AlignTop)
         
-        self.category_widgets = {} # Map category key -> widget (for scrolling)
+        self.category_widgets = {} # Map category name -> widget (for scrolling)
+        self.category_widgets_by_key = {}  # Map category key -> widget (for visibility/selection)
+        self.category_items_by_key = {}  # Map category key -> QListWidgetItem
         self.search_targets = []  # List of searchable setting widgets
 
         # Generate Fields
         for category in SCHEMA:
             # Add to list
             item = QListWidgetItem(category.name)
+            item.setData(Qt.UserRole, category.key)
             icon_file = self.SIDEBAR_ICON_MAP.get(category.key)
             if icon_file:
                 item.setData(Qt.UserRole + 1, icon_file)
                 item.setIcon(self._get_sidebar_icon(icon_file, BrandColors.TEXT_SECONDARY))
             self.category_list.addItem(item)
+            self.category_items_by_key[category.key] = item
             
             # Category Card
             card = QWidget()
@@ -384,6 +400,7 @@ class SettingsWindow(QMainWindow):
             card_layout.setSpacing(4)  # now SettingRow/ToggleRow have their own internal padding
             
             self.category_widgets[category.name] = card
+            self.category_widgets_by_key[category.key] = card
             
             # Header
             header = self._create_card_header(category.key, category.name)
@@ -590,6 +607,7 @@ class SettingsWindow(QMainWindow):
             self._on_preset_changed(preset_widget.currentText())
 
         self._sync_config_storage_from_active_dir()
+        self._sync_behavior_category_visibility()
             
         self.unsaved_changes = False
 
@@ -812,6 +830,9 @@ class SettingsWindow(QMainWindow):
         best_score = 0.0
 
         for target in self.search_targets:
+            widget = target.get("widget")
+            if not widget or not widget.isVisible():
+                continue
             score = self._score_match(query, target)
             if score > best_score:
                 best_score = score
@@ -879,9 +900,13 @@ class SettingsWindow(QMainWindow):
             # Select the last category
             count = self.category_list.count()
             if count > 0:
-                last_item = self.category_list.item(count - 1)
-                if last_item != self.category_list.currentItem():
-                    self.category_list.setCurrentItem(last_item)
+                for idx in range(count - 1, -1, -1):
+                    last_item = self.category_list.item(idx)
+                    if not last_item or last_item.isHidden():
+                        continue
+                    if last_item != self.category_list.currentItem():
+                        self.category_list.setCurrentItem(last_item)
+                    break
             return
 
         # Find which category is currently visible
@@ -894,6 +919,8 @@ class SettingsWindow(QMainWindow):
         # The scroll_content coordinates
         
         for name, widget in self.category_widgets.items():
+            if not widget.isVisible():
+                continue
             # Get widget position relative to scroll content
             widget_pos = widget.y()
             
@@ -936,6 +963,70 @@ class SettingsWindow(QMainWindow):
             custom_widget.blockSignals(False)
 
         self._on_config_storage_location_changed(preset_to_apply)
+
+    def _is_behavior_category(self, category_key: str) -> bool:
+        return bool(category_key) and str(category_key).endswith("_behavior")
+
+    def _should_show_only_active_provider_behavior(self) -> bool:
+        widget = self.field_widgets.get("application_settings.show_only_active_provider_behavior")
+        if isinstance(widget, Tumbler):
+            return widget.isChecked()
+        return bool(self.config_manager.get_setting("application_settings", "show_only_active_provider_behavior"))
+
+    def _get_selected_provider(self) -> DriverProvider:
+        widget = self.field_widgets.get("providers_credentials.provider")
+        if isinstance(widget, StyledComboBox):
+            provider_setting = widget.currentText()
+        else:
+            provider_setting = self.config_manager.get_setting("providers_credentials", "provider")
+        return DriverProvider.from_setting(provider_setting)
+
+    def _set_category_visible(self, category_key: str, visible: bool) -> None:
+        item = self.category_items_by_key.get(category_key)
+        if item:
+            item.setHidden(not visible)
+
+        card = self.category_widgets_by_key.get(category_key)
+        if card:
+            card.setVisible(visible)
+
+    def _sync_behavior_category_visibility(self, *_args) -> None:
+        behavior_keys = [key for key in (self.category_widgets_by_key or {}) if self._is_behavior_category(key)]
+        if not behavior_keys:
+            return
+
+        if not self._should_show_only_active_provider_behavior():
+            for key in behavior_keys:
+                self._set_category_visible(key, True)
+            return
+
+        active_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider())
+        if not active_key:
+            for key in behavior_keys:
+                self._set_category_visible(key, True)
+            return
+
+        for key in behavior_keys:
+            self._set_category_visible(key, key == active_key)
+
+        current_item = self.category_list.currentItem()
+        if current_item and current_item.isHidden():
+            preferred_item = self.category_items_by_key.get(active_key)
+            if preferred_item and not preferred_item.isHidden():
+                self.category_list.setCurrentItem(preferred_item)
+                preferred_card = self.category_widgets_by_key.get(active_key)
+                if preferred_card:
+                    self.scroll_area.ensureWidgetVisible(preferred_card)
+                return
+
+            for i in range(self.category_list.count()):
+                item = self.category_list.item(i)
+                if item and not item.isHidden():
+                    self.category_list.setCurrentItem(item)
+                    card = self.category_widgets.get(item.text())
+                    if card:
+                        self.scroll_area.ensureWidgetVisible(card)
+                    return
 
     def _on_config_storage_location_changed(self, text: str):
         is_custom = text == "Custom"

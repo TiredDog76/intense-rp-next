@@ -508,6 +508,16 @@ SCHEMA = [
                 default=True,
                 tooltip="Automatically check for updates when the app starts.",
             ),
+            SettingField(
+                key="show_only_active_provider_behavior",
+                label="Show Only Active Provider Behavior",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip=(
+                    "If enabled, only the Behavior category for the selected Provider is shown. "
+                    "If disabled, all provider Behavior categories are shown."
+                ),
+            ),
         ],
     ),
     SettingCategory(
