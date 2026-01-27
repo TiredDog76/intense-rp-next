@@ -1227,9 +1227,10 @@ class GLMDriver(BaseDriver):
             cookie_dict = {c["name"]: c["value"] for c in cookies}
 
             response_headers: Dict[str, str] = {}
-            full_response_body = b""
+            full_response_body = bytearray()
             aborted = False
-            text_buffer = ""
+            text_buffer = bytearray()
+            text_buffer_pos = 0
             thinking_emitted = ""
             answer_emitted = False
             glm_block_active = False
@@ -1254,7 +1255,7 @@ class GLMDriver(BaseDriver):
                 response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
 
             def process_sse_line(line: str) -> None:
-                nonlocal text_buffer, thinking_emitted, answer_emitted, glm_block_active
+                nonlocal thinking_emitted, answer_emitted, glm_block_active
                 line = line.strip()
                 if not line.startswith("data:"):
                     return
@@ -1399,20 +1400,34 @@ class GLMDriver(BaseDriver):
                                     aborted = True
                                     break
 
-                                full_response_body += chunk
-                                try:
-                                    text_buffer += chunk.decode("utf-8", errors="ignore")
-                                except Exception:
-                                    continue
+                                full_response_body.extend(chunk)
+                                text_buffer.extend(chunk)
 
-                                while "\n" in text_buffer:
-                                    line, text_buffer = text_buffer.split("\n", 1)
-                                    process_sse_line(line)
+                                while True:
+                                    newline_idx = text_buffer.find(b"\n", text_buffer_pos)
+                                    if newline_idx == -1:
+                                        break
+
+                                    line_bytes = text_buffer[text_buffer_pos:newline_idx]
+                                    text_buffer_pos = newline_idx + 1
+                                    try:
+                                        process_sse_line(
+                                            bytes(line_bytes).decode("utf-8", errors="ignore")
+                                        )
+                                    except Exception:
+                                        continue
+
+                                # Periodically compact the buffer to avoid unbounded growth
+                                if text_buffer_pos > 8192:
+                                    del text_buffer[:text_buffer_pos]
+                                    text_buffer_pos = 0
 
                             # Flush any final SSE line if the stream didn't end with a newline
-                            if text_buffer.strip():
-                                process_sse_line(text_buffer)
-                                text_buffer = ""
+                            tail = bytes(text_buffer[text_buffer_pos:])
+                            if tail.strip():
+                                process_sse_line(tail.decode("utf-8", errors="ignore"))
+                            text_buffer.clear()
+                            text_buffer_pos = 0
                     except httpx.ReadError as e:
                         if not aborted and not self.abort_requested:
                             Logger.error(f"Read error during GLM intercepted request: {e}")
@@ -1431,7 +1446,7 @@ class GLMDriver(BaseDriver):
                 Logger.warning("GLM Chat generation aborted by user.")
 
             try:
-                await route.fulfill(body=full_response_body, status=200, headers=response_headers)
+                await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
             except Exception as e:
                 Logger.error(f"GLM Chat: error fulfilling route: {e}")
 

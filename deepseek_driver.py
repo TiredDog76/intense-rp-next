@@ -424,7 +424,7 @@ class DeepSeekDriver(BaseDriver):
             
             # Don't touch the original post data, as the ui needs what it sent
             # But we could modify it here if needed
-            full_response_body = b""
+            full_response_body = bytearray()
             response_headers = {}
             aborted = False
             
@@ -445,7 +445,7 @@ class DeepSeekDriver(BaseDriver):
                                     aborted = True
                                     break
                                 
-                                full_response_body += chunk
+                                full_response_body.extend(chunk)
                                 # Process chunk for streaming
                                 await self._process_chunk(chunk, response_queue)
                                 
@@ -473,7 +473,7 @@ class DeepSeekDriver(BaseDriver):
             # Fulfill the original request so the UI updates
             try:
                 # Forward the captured headers, especially Content-Type
-                await route.fulfill(body=full_response_body, status=200, headers=response_headers)
+                await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
             except Exception as e:
                 Logger.error(f"Error fulfilling route: {e}")
             

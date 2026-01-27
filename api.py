@@ -176,7 +176,7 @@ class API:
                 )
             else:
                 # Accumulate response for non-streaming
-                full_content = ""
+                content_parts: list[str] = []
                 finish_reason = None
                 
                 while True:
@@ -192,11 +192,14 @@ class API:
                             data = json.loads(data_str)
                             if "choices" in data and len(data["choices"]) > 0:
                                 delta = data["choices"][0].get("delta", {})
-                                if "content" in delta:
-                                    full_content += delta["content"]
+                                content = delta.get("content")
+                                if isinstance(content, str) and content:
+                                    content_parts.append(content)
                                 finish_reason = data["choices"][0].get("finish_reason")
                         except:
                             pass
+
+                full_content = "".join(content_parts)
                 
                 return {
                     "id": "chatcmpl-custom",
