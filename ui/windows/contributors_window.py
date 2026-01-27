@@ -4,39 +4,17 @@ import hashlib
 import time
 from concurrent.futures import ThreadPoolExecutor
 import requests
-import sys
-from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QScrollArea, QLabel, 
     QFrame, QHBoxLayout, QPushButton
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSize
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QBrush, QColor, QFont, QCursor
 
 from ui.core.brand import BrandColors
-from ui.core.icons import IconUtils, IconType
 from utils.logger import Logger
 from utils.cache_manager import CacheManager
-
-
-def _resolve_resource_path(*parts: str) -> Path:
-    """Resolve a resource path in both dev and PyInstaller-frozen runs."""
-    candidates: list[Path] = []
-
-    if getattr(sys, "frozen", False):
-        meipass = getattr(sys, "_MEIPASS", None)
-        if meipass:
-            candidates.append(Path(meipass) / Path(*parts))
-        candidates.append(Path(sys.executable).resolve().parent / Path(*parts))
-
-    # Source checkout (repo root is the parent directory of the ui/ package)
-    candidates.append(Path(__file__).resolve().parents[2] / Path(*parts))
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-
-    return candidates[-1]
+from utils.resource_path import resolve_resource_path
 
 
 _AVATAR_EXECUTOR = ThreadPoolExecutor(max_workers=4)
@@ -305,7 +283,7 @@ class ContributorsWindow(QMainWindow):
         main_layout.addWidget(close_btn)
 
     def _load_contributors(self, layout):
-        json_path = _resolve_resource_path("ui", "assets", "contributors", "contributors.json")
+        json_path = resolve_resource_path("ui", "assets", "contributors", "contributors.json")
         try:
             if not json_path.exists():
                 Logger.warning(f"Contributors file not found at {json_path}")

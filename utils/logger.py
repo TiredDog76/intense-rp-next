@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional, Callable, Any
 import os
 import glob
+import threading
 
 class LogLevel(Enum):
     DEBUG = "DEBUG"
@@ -51,9 +52,10 @@ class Logger:
     _stdout_enabled: bool = True
     
     _log_file: Optional[str] = None
-    _max_file_size: int = 0
-    _max_files: int = 0
+    _max_file_size: float = 0.0
+    _max_files: float = 0.0
     _log_dir: Optional[str] = None
+    _file_lock = threading.RLock()
     
     @classmethod
     def set_console_callback(cls, callback: Optional[Callable[[LogLevel, str], None]]):
@@ -102,37 +104,40 @@ class Logger:
     @classmethod
     def configure_file_logging(cls, enabled: bool, log_dir: str, max_files: int, max_size_val: int, size_unit: str):
         """Configure file logging settings."""
-        if not enabled:
-            cls._log_file = None
-            return
-
-        cls._log_dir = log_dir
-        cls._max_files = max_files if max_files > 0 else float('inf')
-        
-        # Calculate max size in bytes
-        multiplier = 1
-        if size_unit == "KB":
-            multiplier = 1024
-        elif size_unit == "MB":
-            multiplier = 1024 * 1024
-        elif size_unit == "GB":
-            multiplier = 1024 * 1024 * 1024
-            
-        cls._max_file_size = max_size_val * multiplier if max_size_val > 0 else float('inf')
-        
-        if not os.path.exists(log_dir):
-            try:
-                os.makedirs(log_dir)
-            except OSError:
-                print(f"Failed to create log directory: {log_dir}")
+        with cls._file_lock:
+            if not enabled:
+                cls._log_file = None
                 return
 
-        # Create new log file for this session
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        cls._log_file = os.path.join(log_dir, f"log_{timestamp}.txt")
-        
-        # Cleanup old files
-        cls._cleanup_old_files()
+            cls._log_dir = log_dir
+            cls._max_files = max_files if max_files > 0 else float("inf")
+
+            # Calculate max size in bytes
+            multiplier = 1
+            if size_unit == "KB":
+                multiplier = 1024
+            elif size_unit == "MB":
+                multiplier = 1024 * 1024
+            elif size_unit == "GB":
+                multiplier = 1024 * 1024 * 1024
+
+            cls._max_file_size = (
+                (max_size_val * multiplier) if max_size_val > 0 else float("inf")
+            )
+
+            if not os.path.exists(log_dir):
+                try:
+                    os.makedirs(log_dir, exist_ok=True)
+                except OSError:
+                    print(f"Failed to create log directory: {log_dir}")
+                    return
+
+            # Create new log file for this session
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            cls._log_file = os.path.join(log_dir, f"log_{timestamp}.txt")
+
+            # Cleanup old files
+            cls._cleanup_old_files()
         
     @classmethod
     def _cleanup_old_files(cls):
@@ -156,39 +161,58 @@ class Logger:
     @classmethod
     def _trim_file(cls):
         """Remove lines from the beginning of the file until size is under limit."""
-        if not cls._log_file or not os.path.exists(cls._log_file):
+        if not cls._log_file:
             return
-            
+
+        max_size = getattr(cls, "_max_file_size", float("inf"))
+        if max_size == float("inf"):
+            return
+
         try:
-            current_size = os.path.getsize(cls._log_file)
-            if current_size <= cls._max_file_size:
-                return
-                
-            # Read all lines
-            with open(cls._log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-            
-            # Remove lines until size fits
-            
-            # Optimization: Estimate how many bytes to remove.
-            bytes_to_remove = current_size - cls._max_file_size
-            removed_bytes = 0
-            start_index = 0
-            
-            for i, line in enumerate(lines):
-                line_bytes = len(line.encode('utf-8'))
-                removed_bytes += line_bytes
-                if removed_bytes >= bytes_to_remove:
-                    start_index = i + 1
-                    break
-            
-            new_lines = lines[start_index:]
-            
-            with open(cls._log_file, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
-                
+            max_bytes = int(max_size)
+        except Exception:
+            return
+
+        if max_bytes <= 0:
+            return
+
+        tmp_path: str | None = None
+        try:
+            with cls._file_lock:
+                log_file = cls._log_file
+                if not log_file or not os.path.exists(log_file):
+                    return
+
+                current_size = os.path.getsize(log_file)
+                if current_size <= max_bytes:
+                    return
+
+                tmp_path = log_file + ".tmp"
+                start_offset = max(0, current_size - max_bytes)
+
+                with open(log_file, "rb") as src:
+                    if start_offset:
+                        src.seek(start_offset)
+                    data = src.read()
+
+                # If we started mid-file, align to the next newline to avoid chopping a line in half.
+                if start_offset:
+                    nl = data.find(b"\n")
+                    if nl != -1:
+                        data = data[nl + 1 :]
+
+                with open(tmp_path, "wb") as dst:
+                    dst.write(data)
+
+                os.replace(tmp_path, log_file)
         except Exception as e:
             print(f"Error trimming log file: {e}")
+            if tmp_path:
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
 
     @classmethod
     def _log_to_file(cls, message: str):
@@ -198,14 +222,15 @@ class Logger:
             
         try:
             # We do NOT put ANSI codes in log file, they don't render well (at all)
-             
-            with open(cls._log_file, 'a', encoding='utf-8') as f:
-                f.write(message + "\n")
-                
-            # Check size
-            if cls._max_file_size != float('inf'):
-                if os.path.getsize(cls._log_file) > cls._max_file_size:
-                    cls._trim_file()
+
+            with cls._file_lock:
+                with open(cls._log_file, "a", encoding="utf-8") as f:
+                    f.write(message + "\n")
+
+                # Check size
+                if cls._max_file_size != float("inf"):
+                    if os.path.getsize(cls._log_file) > cls._max_file_size:
+                        cls._trim_file()
                     
         except Exception:
             # Don't crash app on logging failure

@@ -1061,7 +1061,6 @@ class SettingsWindow(QMainWindow):
                 self._last_custom_template = template_widget.toPlainText()
             
             template_widget.setEnabled(False)
-            template_widget.setEnabled(False)
             if text == "Classic - Name":
                 template_widget.setPlainText("{{name}}: {{content}}")
             elif text == "Classic - Role":

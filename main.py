@@ -28,6 +28,7 @@ from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstal
 from utils.logger import Logger, LogLevel
 from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
+from utils.resource_path import resolve_resource_path
 import shutil
 import time
 
@@ -103,34 +104,9 @@ def _delete_updater_best_effort(cleanup_path: Path) -> None:
             time.sleep(0.5)
 
 
-def _resolve_resource_path(*parts: str) -> Path:
-    """
-    Resolve a resource path in both dev and PyInstaller-frozen runs.
-
-    We try, in order:
-    - PyInstaller extraction/bundle dir (sys._MEIPASS)
-    - Executable directory (where users often place loose data)
-    - Source checkout directory (relative to this file)
-    """
-    candidates: list[Path] = []
-    if getattr(sys, "frozen", False):
-        meipass = getattr(sys, "_MEIPASS", None)
-        if meipass:
-            candidates.append(Path(meipass) / Path(*parts))
-        candidates.append(Path(sys.executable).resolve().parent / Path(*parts))
-
-    candidates.append(Path(__file__).resolve().parent / Path(*parts))
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-
-    return candidates[-1]
-
-
 def get_version():
     """Read version from version.json file."""
-    version_file = _resolve_resource_path("version.json")
+    version_file = resolve_resource_path("version.json")
     try:
         with open(version_file, "r", encoding="utf-8") as f:
             info = parse_version_file(f.read(), default_version="unknown", default_auto_updateable=True, default_severity=2)
@@ -1352,7 +1328,7 @@ def main():
     from PySide6.QtGui import QFontDatabase, QFont
     import os
     
-    font_dir = _resolve_resource_path("ui", "fonts")
+    font_dir = resolve_resource_path("ui", "fonts")
     if font_dir.exists():
         for filename in os.listdir(font_dir):
             if filename.endswith(".ttf"):
