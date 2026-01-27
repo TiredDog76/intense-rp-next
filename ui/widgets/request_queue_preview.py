@@ -91,6 +91,8 @@ class RequestQueueItemCard(QFrame):
         super().__init__(parent)
         self.setObjectName("requestQueueCard")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self._current_status: Optional[str] = None
+        self._current_icon_key: Optional[tuple[str, Optional[str], int, float]] = None
 
         self._icon_label = QLabel()
         self._icon_label.setFixedSize(18, 18)
@@ -183,43 +185,58 @@ class RequestQueueItemCard(QFrame):
         icon_file = style["icon"]
         icon_color = style.get("icon_color")
         icon_path = self._icon_path(icon_file)
-        pixmap = _SVG_CACHE.get_pixmap(icon_path, icon_color, size=18, dpr=self.devicePixelRatioF())
-        if pixmap is not None:
-            self._icon_label.setPixmap(pixmap)
+        icon_key = (icon_path, icon_color, 18, round(self.devicePixelRatioF(), 2))
 
-        border_color = style["border"]
-        header_bg = style["header_bg"]
-        body_bg = style["body_bg"]
+        if status != self._current_status:
+            self._current_status = status
+            self._current_icon_key = None
 
-        self.setStyleSheet(
-            f"""
-            QFrame#requestQueueCard {{
-                background-color: transparent;
-                border: 1px solid {border_color};
-                border-radius: 8px;
-            }}
-            QFrame#requestQueueCardHeader {{
-                background-color: {header_bg};
-                border-top-left-radius: 7px;
-                border-top-right-radius: 7px;
-                border-bottom-left-radius: 0px;
-                border-bottom-right-radius: 0px;
-            }}
-            QFrame#requestQueueCardMeta {{
-                background-color: {body_bg};
-                border-top-left-radius: 0px;
-                border-top-right-radius: 0px;
-                border-bottom-left-radius: 7px;
-                border-bottom-right-radius: 7px;
-            }}
-            """
-        )
+            border_color = style["border"]
+            header_bg = style["header_bg"]
+            body_bg = style["body_bg"]
+
+            self.setStyleSheet(
+                f"""
+                QFrame#requestQueueCard {{
+                    background-color: transparent;
+                    border: 1px solid {border_color};
+                    border-radius: 8px;
+                }}
+                QFrame#requestQueueCardHeader {{
+                    background-color: {header_bg};
+                    border-top-left-radius: 7px;
+                    border-top-right-radius: 7px;
+                    border-bottom-left-radius: 0px;
+                    border-bottom-right-radius: 0px;
+                }}
+                QFrame#requestQueueCardMeta {{
+                    background-color: {body_bg};
+                    border-top-left-radius: 0px;
+                    border-top-right-radius: 0px;
+                    border-bottom-left-radius: 7px;
+                    border-bottom-right-radius: 7px;
+                }}
+                """
+            )
+
+        if icon_key != self._current_icon_key:
+            pixmap = _SVG_CACHE.get_pixmap(
+                icon_path,
+                icon_color,
+                size=18,
+                dpr=self.devicePixelRatioF(),
+            )
+            if pixmap is not None:
+                self._icon_label.setPixmap(pixmap)
+            self._current_icon_key = icon_key
 
 
 class RequestQueuePreview(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._item_widgets: dict[str, RequestQueueItemCard] = {}
+        self._last_order: list[str] = []
+        self._last_payload_by_id: dict[str, dict[str, Any]] = {}
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -329,23 +346,31 @@ class RequestQueuePreview(QWidget):
     def set_requests(self, requests: list[dict[str, Any]]) -> None:
         requests = list(requests or [])
         if not requests:
+            if not self._last_order:
+                self._stack.setCurrentIndex(1)
+                return
+
             self._stack.setCurrentIndex(1)
+            for request_id in list(self._item_widgets.keys()):
+                widget = self._item_widgets.pop(request_id)
+                widget.setParent(None)
+                widget.deleteLater()
+            self._last_order = []
+            self._last_payload_by_id = {}
             return
 
         self._stack.setCurrentIndex(0)
         active_ids = {str(r.get("id") or "") for r in requests if r.get("id")}
+        new_order = [str(r.get("id") or "") for r in requests if r.get("id")]
 
         for request_id in list(self._item_widgets.keys()):
-            if request_id not in active_ids:
-                widget = self._item_widgets.pop(request_id)
-                widget.setParent(None)
-                widget.deleteLater()
-
-        while self._list_layout.count():
-            item = self._list_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
+            if request_id in active_ids:
+                continue
+            widget = self._item_widgets.pop(request_id)
+            self._last_payload_by_id.pop(request_id, None)
+            self._list_layout.removeWidget(widget)
+            widget.setParent(None)
+            widget.deleteLater()
 
         for req in requests:
             request_id = str(req.get("id") or "")
@@ -357,6 +382,20 @@ class RequestQueuePreview(QWidget):
                 widget = RequestQueueItemCard()
                 self._item_widgets[request_id] = widget
 
-            widget.update_from_data(req)
-            self._list_layout.addWidget(widget)
+            prev_payload = self._last_payload_by_id.get(request_id)
+            if prev_payload != req:
+                widget.update_from_data(req)
+                self._last_payload_by_id[request_id] = dict(req)
 
+        if new_order != self._last_order:
+            for request_id in self._last_order:
+                widget = self._item_widgets.get(request_id)
+                if widget is not None:
+                    self._list_layout.removeWidget(widget)
+
+            for request_id in new_order:
+                widget = self._item_widgets.get(request_id)
+                if widget is not None:
+                    self._list_layout.addWidget(widget)
+
+            self._last_order = new_order

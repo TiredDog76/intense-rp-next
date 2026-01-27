@@ -38,6 +38,8 @@ class LogGroup(QWidget):
         self.level = level
         self.logs = []
         self.is_expanded = True
+        self._loaded_level_icon = False
+        self._loaded_chevron_path = None
         
         colors = self.LEVEL_COLORS.get(level, self.LEVEL_COLORS["INFO"])
         self.bg_color = colors["bg"]
@@ -98,8 +100,23 @@ class LogGroup(QWidget):
         self._update_expand_styles()
 
         # Initial update
+        self._load_level_icon()
         self._update_header()
         self._update_chevron()
+
+    def _load_level_icon(self) -> None:
+        if self._loaded_level_icon:
+            return
+
+        icon_filename = self.LEVEL_ICONS.get(self.level, "info-cyan.svg")
+        icon_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), os.pardir, "assets", "icons", icon_filename
+            )
+        )
+        if os.path.exists(icon_path):
+            self.level_icon.load(icon_path)
+            self._loaded_level_icon = True
 
     def _update_expand_styles(self):
         """Update corner rounding based on expanded/collapsed state.
@@ -141,13 +158,8 @@ class LogGroup(QWidget):
     
     def _update_header(self):
         """Update header text with log count."""
-        icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", self.LEVEL_ICONS.get(self.level, "info-cyan.svg")))
         count = len(self.logs)
         self.header_text.setText(f"{self.level} ({count})")
-        
-        # Set level icon using QSvgWidget for crisp HiDPI rendering
-        if os.path.exists(icon_path):
-            self.level_icon.load(icon_path)
     
     def _update_chevron(self):
         """Update the chevron icon based on expanded state."""
@@ -157,8 +169,11 @@ class LogGroup(QWidget):
             chevron_file = "chevron-right.svg"
         
         chevron_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", chevron_file))
+        if chevron_path == self._loaded_chevron_path:
+            return
         if os.path.exists(chevron_path):
             self.chevron_label.load(chevron_path)
+            self._loaded_chevron_path = chevron_path
     
     def _toggle_expand(self):
         """Toggle the expanded/collapsed state."""

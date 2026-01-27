@@ -332,6 +332,7 @@ class MainWindow(QMainWindow):
         self._queue_preview_enabled = False
         self._queue_preview_last_width = 360
         self._queue_preview_refresh_inflight = False
+        self._queue_preview_last_rendered = None
         self._queue_preview_timer = QTimer()
         self._queue_preview_timer.setInterval(500)
         self._queue_preview_timer.timeout.connect(self._schedule_queue_preview_refresh)
@@ -702,6 +703,7 @@ class MainWindow(QMainWindow):
             self.queue_preview.setMinimumWidth(self._queue_preview_min_width)
             self.queue_preview.setVisible(True)
             self.splitter.setHandleWidth(self._queue_preview_handle_width)
+            self._queue_preview_last_rendered = None
             self._queue_preview_timer.start()
             self._schedule_queue_preview_refresh()
 
@@ -727,6 +729,7 @@ class MainWindow(QMainWindow):
         self.queue_preview.setMinimumWidth(0)
         self.queue_preview.setMaximumWidth(0)
         self._queue_preview_timer.stop()
+        self._queue_preview_last_rendered = None
 
         # Rebuild the splitter without the preview widget to avoid stale size/minimum constraints
         # keeping the main window wide after the panel is disabled
@@ -795,6 +798,9 @@ class MainWindow(QMainWindow):
                     }
                 )
 
+            if getattr(self, "_queue_preview_last_rendered", None) == rendered:
+                return
+            self._queue_preview_last_rendered = rendered
             self.queue_preview.set_requests(rendered)
         finally:
             self._queue_preview_refresh_inflight = False

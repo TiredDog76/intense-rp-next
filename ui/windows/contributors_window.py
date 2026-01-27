@@ -1,6 +1,8 @@
 import json
 import webbrowser
-import threading
+import hashlib
+import time
+from concurrent.futures import ThreadPoolExecutor
 import requests
 import sys
 from pathlib import Path
@@ -14,6 +16,7 @@ from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QBrush, QColor, QFont
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from utils.logger import Logger
+from utils.cache_manager import CacheManager
 
 
 def _resolve_resource_path(*parts: str) -> Path:
@@ -35,7 +38,62 @@ def _resolve_resource_path(*parts: str) -> Path:
 
     return candidates[-1]
 
+
+_AVATAR_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+_AVATAR_CACHE = CacheManager()
+_AVATAR_CACHE_TTL_S = 7 * 24 * 60 * 60
+_AVATAR_CACHE_PREFIX = "ui/avatars"
+
+
+def _avatar_cache_filename(url: str) -> str:
+    digest = hashlib.sha256((url or "").encode("utf-8")).hexdigest()
+    return f"{_AVATAR_CACHE_PREFIX}/{digest}.img"
+
+
+def _load_cached_avatar_bytes(url: str) -> bytes | None:
+    if not url:
+        return None
+
+    filename = _avatar_cache_filename(url)
+    path = _AVATAR_CACHE.get_cache_path_obj(filename)
+    try:
+        if not path.exists():
+            return None
+        age_s = time.time() - path.stat().st_mtime
+        if age_s > _AVATAR_CACHE_TTL_S:
+            return None
+    except Exception:
+        return None
+
+    return _AVATAR_CACHE.read_bytes(filename)
+
+
+def _fetch_avatar_bytes(url: str) -> bytes | None:
+    cached = _load_cached_avatar_bytes(url)
+    if cached:
+        return cached
+
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code != 200:
+            return None
+        data = response.content
+        if not data:
+            return None
+    except Exception:
+        return None
+
+    try:
+        _AVATAR_CACHE.write_bytes(_avatar_cache_filename(url), data)
+    except Exception:
+        pass
+
+    return data
+
+
 class ContributorCard(QFrame):
+    avatar_loaded = Signal(object)
+
     def __init__(self, name, status, avatar_url, github_url, parent=None):
         super().__init__(parent)
         self.github_url = github_url
@@ -88,11 +146,10 @@ class ContributorCard(QFrame):
         layout.addLayout(text_layout)
         layout.addStretch()
 
-        # Load Avatar
+        self.avatar_loaded.connect(self._on_avatar_loaded)
+        self._set_placeholder_avatar(name)
         if avatar_url:
             self._load_avatar(avatar_url)
-        else:
-            self._set_placeholder_avatar(name)
 
     def mousePressEvent(self, event):
         if self.github_url:
@@ -121,28 +178,16 @@ class ContributorCard(QFrame):
         self.avatar_label.setPixmap(pixmap)
 
     def _load_avatar(self, url):
-        def worker():
+        future = _AVATAR_EXECUTOR.submit(_fetch_avatar_bytes, url)
+
+        def _done(f):
             try:
-                response = requests.get(url, timeout=5)
-                if response.status_code == 200:
-                    data = response.content
-                    pixmap = QPixmap()
-                    pixmap.loadFromData(data)
-                    # we'll store bytes and process in `update_avatar`
-                    return pixmap
+                data = f.result()
             except Exception:
-                pass
-            return None
+                data = None
+            self.avatar_loaded.emit(data)
 
-        thread = threading.Thread(target=self._thread_wrapper, args=(worker,), daemon=True)
-        thread.start()
-
-    def _thread_wrapper(self, worker_func):
-        pixmap = worker_func()
-        if pixmap:
-            # Schedule update on main thread
-            from PySide6.QtCore import QMetaObject, Q_ARG
-            QMetaObject.invokeMethod(self, "update_avatar", Qt.QueuedConnection, Q_ARG(QPixmap, pixmap))
+        future.add_done_callback(_done)
 
     @Slot(QPixmap)
     def update_avatar(self, pixmap):
@@ -167,6 +212,22 @@ class ContributorCard(QFrame):
         painter.end()
         
         self.avatar_label.setPixmap(rounded)
+
+    @Slot(object)
+    def _on_avatar_loaded(self, data):
+        if not data:
+            return
+
+        pixmap = QPixmap()
+        try:
+            ok = pixmap.loadFromData(data)
+        except Exception:
+            ok = False
+
+        if not ok:
+            return
+
+        self.update_avatar(pixmap)
 
 class ContributorsWindow(QMainWindow):
     def __init__(self, parent=None):
