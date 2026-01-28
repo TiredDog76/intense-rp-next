@@ -5,7 +5,7 @@
 <h1 align="center">IntenseRP Next v2</h1>
 
 <p align="center">
-  It's a local OpenAI-compatible API + desktop app that drives DeepSeek's web UI (via Playwright),
+  It's a local OpenAI-compatible API + desktop app that drives various web LLM chat UI (via Playwright),
   so you can use it from SillyTavern and other clients without paying for the official API. <i>Slightly cursed yet surprisingly effective.</i>
 </p>
 
