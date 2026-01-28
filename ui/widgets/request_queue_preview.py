@@ -360,8 +360,8 @@ class RequestQueuePreview(QWidget):
             return
 
         self._stack.setCurrentIndex(0)
-        active_ids = {str(r.get("id") or "") for r in requests if r.get("id")}
-        new_order = [str(r.get("id") or "") for r in requests if r.get("id")]
+        active_ids = {str(r.get("id")) for r in requests if r.get("id") is not None}
+        new_order = [str(r.get("id")) for r in requests if r.get("id") is not None]
 
         for request_id in list(self._item_widgets.keys()):
             if request_id in active_ids:
@@ -373,10 +373,10 @@ class RequestQueuePreview(QWidget):
             widget.deleteLater()
 
         for req in requests:
-            request_id = str(req.get("id") or "")
-            if not request_id:
+            val = req.get("id")
+            if val is None:
                 continue
-
+            request_id = str(val)
             widget = self._item_widgets.get(request_id)
             if widget is None:
                 widget = RequestQueueItemCard()
