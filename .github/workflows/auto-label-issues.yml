@@ -35,6 +35,7 @@ jobs:
             9. ⊘ CRITICAL - Critical priority issue
             13. ➥ Feature Request - Request for new functionality
             16. 𓆣 Bug - Something isn't working
+            18. ꕤ DEV - Developer-created notes/issues for tracking progress, project planning, and development state
 
             Issue Title: ${title}
             Issue Body: ${body}
@@ -45,6 +46,7 @@ jobs:
             - For a critical bug: 16,9
             - For a docs improvement: 1,3
             - For a simple bug good for beginners: 16,4,5
+            - For a developer note / project tracking issue: 18
             - If unclear/invalid: 6 or 7
 
             NOTE: You can combine and mix various labels, but do not add any labels that are not listed above.
@@ -103,7 +105,8 @@ jobs:
               '14': '⦻ Confirmed',
               '15': '⧖ In Progress',
               '16': '𓆣 Bug',
-              '17': '𖦏 Investigating'
+              '17': '𖦏 Investigating',
+              '18': 'ꕤ DEV'
             };
 
             const aiLabels = '${{ steps.ai.outputs.labels }}';
