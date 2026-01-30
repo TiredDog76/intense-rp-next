@@ -1,14 +1,13 @@
 """
 Mini-console widget for displaying grouped logs in the main window.
 """
-import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame, QStackedLayout
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtSvgWidgets import QSvgWidget
 
 from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils
 from utils.logger import LogLevel
 
 
@@ -61,8 +60,8 @@ class LogGroup(QWidget):
         header_layout.setContentsMargins(10, 6, 10, 6)
         header_layout.setSpacing(8)
 
-        # Level icon (using QSvgWidget for HiDPI rendering)
-        self.level_icon = QSvgWidget()
+        self.level_icon = QLabel()
+        self.level_icon.setStyleSheet("background-color: transparent;")
         self.level_icon.setFixedSize(18, 18)
         header_layout.addWidget(self.level_icon)
         
@@ -78,8 +77,8 @@ class LogGroup(QWidget):
         
         header_layout.addStretch()
         
-        # Chevron icon (using QSvgWidget for HiDPI rendering)
-        self.chevron_label = QSvgWidget()
+        self.chevron_label = QLabel()
+        self.chevron_label.setStyleSheet("background-color: transparent;")
         self.chevron_label.setFixedSize(16, 16)
         header_layout.addWidget(self.chevron_label)
         
@@ -109,13 +108,14 @@ class LogGroup(QWidget):
             return
 
         icon_filename = self.LEVEL_ICONS.get(self.level, "info-cyan.svg")
-        icon_path = os.path.abspath(
-            os.path.join(
-                os.path.dirname(__file__), os.pardir, "assets", "icons", icon_filename
-            )
+        pixmap = IconUtils.get_pixmap(
+            icon_filename,
+            color=self.text_color,
+            size=18,
+            dpr=self.devicePixelRatioF(),
         )
-        if os.path.exists(icon_path):
-            self.level_icon.load(icon_path)
+        if not pixmap.isNull():
+            self.level_icon.setPixmap(pixmap)
             self._loaded_level_icon = True
 
     def _update_expand_styles(self):
@@ -167,13 +167,19 @@ class LogGroup(QWidget):
             chevron_file = "chevron-down.svg"
         else:
             chevron_file = "chevron-right.svg"
-        
-        chevron_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", chevron_file))
-        if chevron_path == self._loaded_chevron_path:
+
+        if chevron_file == self._loaded_chevron_path:
             return
-        if os.path.exists(chevron_path):
-            self.chevron_label.load(chevron_path)
-            self._loaded_chevron_path = chevron_path
+
+        pixmap = IconUtils.get_pixmap(
+            chevron_file,
+            color=BrandColors.TEXT_SECONDARY,
+            size=16,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not pixmap.isNull():
+            self.chevron_label.setPixmap(pixmap)
+            self._loaded_chevron_path = chevron_file
     
     def _toggle_expand(self):
         """Toggle the expanded/collapsed state."""

@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils
 
 
 class UpdateGitInstructionsDialog(QDialog):
@@ -138,7 +139,7 @@ class UpdateGitInstructionsDialog(QDialog):
             }}
             """
         )
-        copy_btn.setIcon(QIcon(self._icon_path("copy.svg")))
+        IconUtils.apply_icon(copy_btn, "copy.svg", BrandColors.TEXT_PRIMARY, size=16)
         copy_btn.setIconSize(QSize(16, 16))
         copy_btn.clicked.connect(self._on_copy_clicked)
         layout.addWidget(copy_btn, 1)
@@ -190,8 +191,3 @@ class UpdateGitInstructionsDialog(QDialog):
             btn.setEnabled(True)
 
         QTimer.singleShot(650, restore)
-
-    def _icon_path(self, filename: str) -> str:
-        import os
-
-        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)

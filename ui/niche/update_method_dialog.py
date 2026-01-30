@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils
 
 
 @dataclass(frozen=True)
@@ -216,7 +216,15 @@ class UpdateMethodDialog(QDialog):
         icon_label = QLabel()
         icon_label.setStyleSheet("background-color: transparent;")
         icon_size = 24
-        icon_label.setPixmap(QIcon(self._icon_path(icon)).pixmap(QSize(icon_size, icon_size)))
+        icon_color = BrandColors.TEXT_PRIMARY if enabled else BrandColors.TEXT_DISABLED
+        pixmap = IconUtils.get_pixmap(
+            icon,
+            color=icon_color,
+            size=icon_size,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not pixmap.isNull():
+            icon_label.setPixmap(pixmap)
         icon_label.setFixedSize(QSize(icon_size, icon_size))
         top.addWidget(icon_label, 0, Qt.AlignVCenter)
 
@@ -264,8 +272,3 @@ class UpdateMethodDialog(QDialog):
         content.addWidget(sub)
 
         return btn
-
-    def _icon_path(self, filename: str) -> str:
-        import os
-
-        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)

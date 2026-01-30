@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QFrame, QPushButton, QSizePolicy, QFileDialog
+from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QFrame, QPushButton, QSizePolicy, QFileDialog, QStyle, QStyleOptionComboBox
 from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent
 import os
 from pathlib import Path
@@ -135,8 +135,8 @@ class StyledComboBox(QComboBox):
                 border-bottom-right-radius: 6px;
             }}
             QComboBox::down-arrow {{
-                /* I AM (in) PAIN */
-                image: url({os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", "chevron-down.svg")).replace(os.sep, "/")});
+                /* Custom-painted in paintEvent to support currentColor icons */
+                image: none;
                 width: 16px;
                 height: 16px;
                 margin-right: 5px;
@@ -154,6 +154,37 @@ class StyledComboBox(QComboBox):
     def wheelEvent(self, event):
         # Ignore wheel events to prevent accidental value changes when scrolling
         event.ignore()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+
+        arrow_rect = self.style().subControlRect(QStyle.CC_ComboBox, option, QStyle.SC_ComboBoxArrow, self)
+        if arrow_rect.isNull():
+            return
+
+        icon_color = BrandColors.TEXT_SECONDARY if self.isEnabled() else BrandColors.TEXT_DISABLED
+        pixmap = IconUtils.get_pixmap(
+            "chevron-down.svg",
+            color=icon_color,
+            size=16,
+            dpr=self.devicePixelRatioF(),
+        )
+        if pixmap.isNull():
+            return
+
+        dpr = float(pixmap.devicePixelRatio() or 1.0)
+        logical_w = pixmap.width() / dpr
+        logical_h = pixmap.height() / dpr
+        x = arrow_rect.center().x() - (logical_w / 2)
+        y = arrow_rect.center().y() - (logical_h / 2)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        painter.drawPixmap(int(round(x)), int(round(y)), pixmap)
+        painter.end()
 
 
 class Divider(QWidget):

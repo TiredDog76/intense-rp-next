@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QSize, QThread, Signal, QObject, QProcess, QTimer
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.core.brand import BrandColors
+from ui.core.icons import IconType, IconUtils
 from utils.auto_update import AutoUpdateError, PreparedUpdate, prepare_update_from_github, DownloadProgress
 
 
@@ -271,7 +272,7 @@ class UpdateDownloadDialog(QDialog):
             }}
             """
         )
-        self._install_btn.setIcon(QIcon(self._icon_path("download-cloud.svg")))
+        IconUtils.apply_icon(self._install_btn, IconType.BACKUP, BrandColors.TEXT_PRIMARY, size=16)
         self._install_btn.setIconSize(QSize(16, 16))
         self._install_btn.clicked.connect(self._on_install_clicked)
         layout.addWidget(self._install_btn, 1)
@@ -419,7 +420,4 @@ class UpdateDownloadDialog(QDialog):
 
         QTimer.singleShot(500, force_exit)
 
-    def _icon_path(self, filename: str) -> str:
-        import os
-
-        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)
+    # Icon rendering is handled centrally by IconUtils

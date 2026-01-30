@@ -134,7 +134,7 @@ class UpdateInstalledDialog(QDialog):
             """
         )
         notes_btn.clicked.connect(self._on_release_notes_clicked)
-        IconUtils.apply_icon(notes_btn, IconType.HELP, BrandColors.TEXT_PRIMARY, size=14)
+        IconUtils.apply_icon(notes_btn, IconType.HELP, BrandColors.TEXT_PRIMARY, size=16)
         notes_btn.setIconSize(QSize(16, 16))
         layout.addWidget(notes_btn, 1)
 

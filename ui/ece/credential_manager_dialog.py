@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QByteArray, Qt, QRectF, Signal, QSize
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -30,41 +27,6 @@ from ece.models import CredentialPair
 from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
 from ui.widgets.components import StyledLineEdit
-
-
-def _read_svg_text(path: str) -> str:
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception:
-        return ""
-
-
-def _make_colored_svg_icon(svg_path: str, color: str, *, size: int = 16, dpr: float = 1.0) -> QIcon:
-    svg = _read_svg_text(svg_path)
-    if not svg:
-        return QIcon()
-
-    # temporary, i just realized that this is needed until i add proper svg theming
-    # FIXME: this is a hacky way to color SVGs; a proper solution would UNIVERSALLY edit any svg fill/stroke
-    # definitions. All icons must be updated to use "currentColor" for fills/strokes for this to work properly.
-    svg = svg.replace("currentColor", color)
-    svg = svg.replace('stroke=\"#ffffff\"', f'stroke=\"{color}\"')
-    svg = svg.replace("stroke=\"#ffffff\"", f"stroke=\"{color}\"")
-    svg = svg.replace('fill=\"#ffffff\"', f'fill=\"{color}\"')
-    svg = svg.replace("fill=\"#ffffff\"", f"fill=\"{color}\"")
-
-    renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
-    px = int(size * dpr)
-    pixmap = QPixmap(px, px)
-    pixmap.fill(Qt.transparent)
-
-    painter = QPainter(pixmap)
-    renderer.render(painter, QRectF(0, 0, px, px))
-    painter.end()
-
-    pixmap.setDevicePixelRatio(dpr)
-    return QIcon(pixmap)
 
 
 @dataclass(frozen=True)
@@ -232,17 +194,7 @@ class _ProviderPage(QWidget):
             }}
             """
         )
-        plus_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", "plus.svg")
-        )
-        self.add_button.setIcon(
-            _make_colored_svg_icon(
-                plus_path,
-                BrandColors.ACCENT,
-                size=14,
-                dpr=self.devicePixelRatioF(),
-            )
-        )
+        IconUtils.apply_icon(self.add_button, IconType.PLUS, BrandColors.ACCENT, size=14)
         self.add_button.clicked.connect(self.add_row)
         self._content_layout.addWidget(self.add_button, 0)
 

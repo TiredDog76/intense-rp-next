@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Optional
 
 from PySide6.QtCore import Qt, QSize, QUrl
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from ui.core.brand import BrandColors
@@ -158,7 +157,14 @@ class UpdateAvailableDialog(QDialog):
 
         arrow = QLabel()
         arrow.setStyleSheet("background-color: transparent;")
-        arrow.setPixmap(self._get_icon_pixmap("chevron-right.svg", 18))
+        arrow_pixmap = IconUtils.get_pixmap(
+            "chevron-right.svg",
+            color=BrandColors.TEXT_SECONDARY,
+            size=18,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not arrow_pixmap.isNull():
+            arrow.setPixmap(arrow_pixmap)
         layout.addWidget(arrow, 0, Qt.AlignVCenter)
 
         remote_label = QLabel(_format_version(self._info.remote_version))
@@ -233,9 +239,9 @@ class UpdateAvailableDialog(QDialog):
             QPushButton:pressed {{
                 background-color: #3c6ac3;
             }}
-            """
+        """
         )
-        install.setIcon(QIcon(self._icon_path("download-cloud.svg")))
+        IconUtils.apply_icon(install, IconType.BACKUP, BrandColors.TEXT_PRIMARY, size=16)
         install.setIconSize(QSize(16, 16))
         layout.addWidget(install, 1)
         install.clicked.connect(self._on_install_clicked)
@@ -288,8 +294,4 @@ class UpdateAvailableDialog(QDialog):
     def _open_release_notes(self) -> None:
         QDesktopServices.openUrl(QUrl(self._info.release_notes_url))
 
-    def _icon_path(self, filename: str) -> str:
-        return os.path.join(os.path.dirname(__file__), "..", "assets", "icons", filename)
-
-    def _get_icon_pixmap(self, filename: str, size: int) -> object:
-        return QIcon(self._icon_path(filename)).pixmap(QSize(size, size))
+    # Icon rendering is handled centrally by IconUtils

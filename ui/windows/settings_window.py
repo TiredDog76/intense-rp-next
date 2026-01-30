@@ -3,9 +3,8 @@ from PySide6.QtWidgets import (
     QScrollArea, QLabel, QPushButton, QFrame, QMessageBox, QDialog, QListWidgetItem,
     QLineEdit, QTextEdit, QComboBox, QGraphicsColorizeEffect
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QSize, QByteArray, QRectF
-from PySide6.QtGui import QIcon, QColor, QPixmap, QPainter
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtGui import QColor, QIcon
 from difflib import SequenceMatcher
 import threading
 import os
@@ -58,7 +57,6 @@ class SettingsWindow(QMainWindow):
         self.unsaved_changes = False
         self.field_widgets = {} # Map "category.key" -> widget
         self.setting_rows = {} # Map "category.key" -> SettingRow (for dependency toggling)
-        self._sidebar_icon_cache = {}
         self.category_widgets_by_key = {}  # Map category key -> card widget
         self.category_items_by_key = {}  # Map category key -> QListWidgetItem
 
@@ -69,36 +67,13 @@ class SettingsWindow(QMainWindow):
         self._sync_application_settings_info()
 
     def _get_sidebar_icon(self, icon_file: str, color: str, size: int = 18) -> QIcon:
-        cache_key = (icon_file, color, size, round(self.devicePixelRatioF(), 2))
-        cached = self._sidebar_icon_cache.get(cache_key)
-        if cached:
-            return cached
-
-        icon_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", "sidebar", icon_file))
-        try:
-            with open(icon_path, "r", encoding="utf-8") as file:
-                svg = file.read()
-        except OSError as exc:
-            Logger.warning(f"Failed to read icon {icon_path}: {exc}")
-            return QIcon()
-
-        svg = svg.replace("currentColor", color)
-        renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
-
-        dpr = self.devicePixelRatioF()
-        px = int(size * dpr)
-
-        pixmap = QPixmap(px, px)
-        pixmap.fill(Qt.transparent)
-
-        painter = QPainter(pixmap)
-        renderer.render(painter, QRectF(0, 0, px, px))
-        painter.end()
-
-        pixmap.setDevicePixelRatio(dpr)
-        icon = QIcon(pixmap)
-        self._sidebar_icon_cache[cache_key] = icon
-        return icon
+        return IconUtils.get_icon(
+            icon_file,
+            color=color,
+            size=size,
+            widget=self,
+            subdir="sidebar",
+        )
 
     def _create_card_header(self, category_key: str, title: str) -> QWidget:
         header = QWidget()
@@ -319,9 +294,13 @@ class SettingsWindow(QMainWindow):
                 border: 2px solid {BrandColors.ACCENT};
             }}
         """)
-        icons_base = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons"))
-        search_icon_path = os.path.join(icons_base, "search.svg")
-        self.search_input.addAction(QIcon(search_icon_path), QLineEdit.LeadingPosition)
+        search_icon = IconUtils.get_icon(
+            IconType.SEARCH,
+            color=BrandColors.TEXT_SECONDARY,
+            size=16,
+            widget=self.search_input,
+        )
+        self.search_input.addAction(search_icon, QLineEdit.LeadingPosition)
         self.search_input.textChanged.connect(self._on_search_text_changed)
         search_layout.addWidget(self.search_input, 1)
 

@@ -4,13 +4,10 @@ Request queue preview widget for displaying pending/processing requests.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from typing import Any, Optional
 
-from PySide6.QtCore import QByteArray, QRectF, Qt
-from PySide6.QtGui import QPainter, QPixmap
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -23,43 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.core.brand import BrandColors
-
-
-class _SvgIconCache:
-    def __init__(self):
-        self._cache: dict[tuple[str, Optional[str], int, float], QPixmap] = {}
-
-    def get_pixmap(self, icon_path: str, color_override: Optional[str], size: int, dpr: float) -> Optional[QPixmap]:
-        cache_key = (icon_path, color_override, size, round(dpr, 2))
-        cached = self._cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        try:
-            with open(icon_path, "r", encoding="utf-8") as file:
-                svg = file.read()
-        except OSError:
-            return None
-
-        if color_override:
-            svg = svg.replace('stroke="#ffffff"', f'stroke="{color_override}"')
-            svg = svg.replace('stroke="#FFFFFF"', f'stroke="{color_override}"')
-
-        renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
-        px = int(size * dpr)
-        pixmap = QPixmap(px, px)
-        pixmap.fill(Qt.transparent)
-
-        painter = QPainter(pixmap)
-        renderer.render(painter, QRectF(0, 0, px, px))
-        painter.end()
-
-        pixmap.setDevicePixelRatio(dpr)
-        self._cache[cache_key] = pixmap
-        return pixmap
-
-
-_SVG_CACHE = _SvgIconCache()
+from ui.core.icons import IconUtils
 
 
 class RequestQueueItemCard(QFrame):
@@ -76,14 +37,14 @@ class RequestQueueItemCard(QFrame):
             "body_bg": "#132b55",
             "border": BrandColors.ACCENT,
             "icon": "clock.svg",
-            "icon_color": None,
+            "icon_color": BrandColors.ACCENT,
         },
         "cancelled": {
             "header_bg": "#5a2a2a",
             "body_bg": "#3a1a1a",
             "border": BrandColors.DANGER,
-            "icon": "x-red.svg",
-            "icon_color": None,
+            "icon": "x.svg",
+            "icon_color": BrandColors.DANGER,
         },
     }
 
@@ -145,11 +106,6 @@ class RequestQueueItemCard(QFrame):
         main_layout.addWidget(header)
         main_layout.addWidget(meta)
 
-    def _icon_path(self, filename: str) -> str:
-        return os.path.abspath(
-            os.path.join(os.path.dirname(__file__), os.pardir, "assets", "icons", filename)
-        )
-
     def update_from_data(self, data: dict[str, Any]) -> None:
         status = (data.get("status") or "pending").lower()
         style = self.STATUS_STYLES.get(status, self.STATUS_STYLES["pending"])
@@ -183,9 +139,9 @@ class RequestQueueItemCard(QFrame):
         )
 
         icon_file = style["icon"]
-        icon_color = style.get("icon_color")
-        icon_path = self._icon_path(icon_file)
-        icon_key = (icon_path, icon_color, 18, round(self.devicePixelRatioF(), 2))
+        icon_color = style.get("icon_color") or BrandColors.TEXT_PRIMARY
+        dpr = self.devicePixelRatioF()
+        icon_key = (icon_file, icon_color, 18, round(dpr, 2))
 
         if status != self._current_status:
             self._current_status = status
@@ -220,13 +176,8 @@ class RequestQueueItemCard(QFrame):
             )
 
         if icon_key != self._current_icon_key:
-            pixmap = _SVG_CACHE.get_pixmap(
-                icon_path,
-                icon_color,
-                size=18,
-                dpr=self.devicePixelRatioF(),
-            )
-            if pixmap is not None:
+            pixmap = IconUtils.get_pixmap(icon_file, color=icon_color, size=18, dpr=dpr)
+            if not pixmap.isNull():
                 self._icon_label.setPixmap(pixmap)
             self._current_icon_key = icon_key
 
