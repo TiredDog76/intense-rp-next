@@ -587,6 +587,22 @@ class MainWindow(QMainWindow):
     
     def _update_status(self, text: str, status_type: str = "info"):
         """Update the status label with appropriate styling."""
+        def _to_status_bar_text(raw: str, level: str) -> str:
+            raw_text = str(raw or "")
+            is_multiline = ("\n" in raw_text) or ("\r" in raw_text)
+            one_liner = " ".join(raw_text.split())
+
+            max_len = 80
+            if level == "error":
+                if is_multiline or ("Call log:" in raw_text) or ("Traceback" in raw_text) or (len(one_liner) > max_len):
+                    return "Unexpected Error"
+                return one_liner
+
+            if len(one_liner) > max_len:
+                return one_liner[: max_len - 3].rstrip() + "..."
+            return one_liner
+
+        status_type = str(status_type or "info").strip().lower()
         color_map = {
             "ready": BrandColors.SUCCESS,
             "running": BrandColors.ACCENT,
@@ -599,7 +615,7 @@ class MainWindow(QMainWindow):
         # Add status indicator dot
         dot = "●" if status_type in ["ready", "running"] else "○"
         
-        self.status_label.setText(f"{dot} {text}")
+        self.status_label.setText(f"{dot} {_to_status_bar_text(text, status_type)}")
         self.status_label.setStyleSheet(f"""
             font-size: {BrandColors.FONT_SIZE_LARGE};
             font-weight: bold;
