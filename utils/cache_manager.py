@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 from typing import Optional, Union
@@ -35,22 +34,35 @@ class CacheManager:
             return Path("cache")
 
     def get_cache_path_obj(self, filename: str) -> Path:
-        """Returns the full Path to a cache file."""
-        return (self.cache_dir / filename).resolve()
+        """
+        Returns the full Path to a cache file.
+
+        Safety: Reject absolute paths and parent traversal that would escape the cache dir.
+        """
+        cache_root = self.cache_dir.resolve()
+        path = (cache_root / str(filename)).resolve()
+
+        try:
+            path.relative_to(cache_root)
+        except Exception as e:
+            raise ValueError(f"Cache path escapes cache dir: {filename}") from e
+
+        return path
 
     def get_cache_path(self, filename):
         """Returns the full path to a cache file."""
-        try:
-            return str(self.get_cache_path_obj(str(filename)))
-        except Exception:
-            return os.path.join(str(self.cache_dir), str(filename))
+        return str(self.get_cache_path_obj(str(filename)))
 
     def read_cache(self, filename):
         """Reads content from a cache file. Returns None if file doesn't exist."""
         return self.read_text(filename)
 
     def read_text(self, filename: str) -> Optional[str]:
-        path = self.get_cache_path_obj(str(filename))
+        try:
+            path = self.get_cache_path_obj(str(filename))
+        except Exception as e:
+            Logger.error(f"Error resolving cache file {filename}: {e}")
+            return None
         if not path.exists():
             return None
 
@@ -61,7 +73,11 @@ class CacheManager:
             return None
 
     def read_bytes(self, filename: str) -> Optional[bytes]:
-        path = self.get_cache_path_obj(str(filename))
+        try:
+            path = self.get_cache_path_obj(str(filename))
+        except Exception as e:
+            Logger.error(f"Error resolving cache file {filename}: {e}")
+            return None
         if not path.exists():
             return None
 
@@ -76,7 +92,11 @@ class CacheManager:
         self.write_text(filename, content)
 
     def write_text(self, filename: str, content: str) -> None:
-        path = self.get_cache_path_obj(str(filename))
+        try:
+            path = self.get_cache_path_obj(str(filename))
+        except Exception as e:
+            Logger.error(f"Error resolving cache file {filename}: {e}")
+            return
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(str(content), encoding="utf-8")
@@ -84,7 +104,11 @@ class CacheManager:
             Logger.error(f"Error writing to cache file {filename}: {e}")
 
     def write_bytes(self, filename: str, content: bytes) -> None:
-        path = self.get_cache_path_obj(str(filename))
+        try:
+            path = self.get_cache_path_obj(str(filename))
+        except Exception as e:
+            Logger.error(f"Error resolving cache file {filename}: {e}")
+            return
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
@@ -93,7 +117,11 @@ class CacheManager:
 
     def clear_cache(self, filename):
         """Removes a specific cache file."""
-        path = self.get_cache_path_obj(str(filename))
+        try:
+            path = self.get_cache_path_obj(str(filename))
+        except Exception as e:
+            Logger.error(f"Error resolving cache file {filename}: {e}")
+            return
         if not path.exists():
             return
 

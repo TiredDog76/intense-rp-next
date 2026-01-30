@@ -33,8 +33,8 @@ def _load_cached_avatar_bytes(url: str) -> bytes | None:
         return None
 
     filename = _avatar_cache_filename(url)
-    path = _AVATAR_CACHE.get_cache_path_obj(filename)
     try:
+        path = _AVATAR_CACHE.get_cache_path_obj(filename)
         if not path.exists():
             return None
         age_s = time.time() - path.stat().st_mtime
