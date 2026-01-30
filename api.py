@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import secrets
 import time
 from collections import deque
@@ -12,6 +13,84 @@ from typing import List, Optional, Dict, Any
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from utils.logger import Logger
+
+_RATE_LIMIT_LIKE_RE = re.compile(
+    r"(rate\s*limit|too\s*many\s*requests|\b429\b|quota|limit\s*reached)",
+    flags=re.IGNORECASE,
+)
+
+
+def _parse_sse_json(chunk: Any) -> dict | None:
+    if not isinstance(chunk, str):
+        return None
+    if not chunk.startswith("data:"):
+        return None
+
+    data_str = chunk[len("data:") :]
+    if data_str.startswith(" "):
+        data_str = data_str[1:]
+    data_str = data_str.strip()
+
+    if not data_str or data_str == "[DONE]":
+        return None
+
+    try:
+        parsed = json.loads(data_str)
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _extract_error_message(payload: dict) -> str:
+    err = payload.get("error")
+    if isinstance(err, dict):
+        msg = err.get("message")
+        return str(msg or "")
+    return str(err or "")
+
+
+def _payload_has_meaningful_content(payload: dict) -> bool:
+    try:
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            return False
+
+        choice0 = choices[0]
+        if not isinstance(choice0, dict):
+            return False
+
+        delta = choice0.get("delta")
+        if isinstance(delta, dict):
+            content = delta.get("content")
+            if isinstance(content, str) and content.strip():
+                return True
+
+        # Non-streaming responses can carry content in 'message'
+        message = choice0.get("message")
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str) and content.strip():
+                return True
+    except Exception:
+        return False
+
+    return False
+
+
+def _is_rate_limit_like_error(message: str) -> bool:
+    return bool(_RATE_LIMIT_LIKE_RE.search(str(message or "")))
+
+
+def _make_openai_error_sse_chunk(message: str) -> str:
+    error_chunk = {
+        "error": {
+            "message": str(message or ""),
+            "type": "internal_error",
+            "param": None,
+            "code": None,
+        }
+    }
+    return f"data: {json.dumps(error_chunk)}\n\n"
 
 class Message(BaseModel):
     role: str
@@ -178,29 +257,51 @@ class API:
                 # Accumulate response for non-streaming
                 content_parts: list[str] = []
                 finish_reason = None
+                error_message: str | None = None
                 
                 while True:
                     chunk_str = await response_queue.get()
                     if chunk_str is None:
                         break
-                    
-                    if chunk_str.startswith("data: "):
-                        data_str = chunk_str[6:].strip()
-                        if data_str == "[DONE]":
-                            continue
-                        try:
-                            data = json.loads(data_str)
-                            if "choices" in data and len(data["choices"]) > 0:
-                                delta = data["choices"][0].get("delta", {})
-                                content = delta.get("content")
-                                if isinstance(content, str) and content:
-                                    content_parts.append(content)
-                                finish_reason = data["choices"][0].get("finish_reason")
-                        except:
-                            pass
+
+                    parsed = _parse_sse_json(chunk_str)
+                    if not parsed:
+                        continue
+
+                    if "error" in parsed:
+                        error_message = (_extract_error_message(parsed) or "request failed").strip()
+                        if not error_message:
+                            error_message = "request failed"
+                        break
+
+                    choices = parsed.get("choices")
+                    if isinstance(choices, list) and choices:
+                        choice0 = choices[0] if isinstance(choices[0], dict) else {}
+                        delta = choice0.get("delta") if isinstance(choice0, dict) else {}
+                        if isinstance(delta, dict):
+                            content = delta.get("content")
+                            if isinstance(content, str) and content:
+                                content_parts.append(content)
+                        if isinstance(choice0, dict):
+                            finish_reason = choice0.get("finish_reason")
 
                 full_content = "".join(content_parts)
                 
+                if error_message:
+                    abort_event.set()
+                    if self.current_abort_event is abort_event:
+                        self.driver.request_abort()
+
+                    # Prefer returning partial content for non-streaming clients if we already have
+                    # meaningful output (i.e., avoid losing all progress)
+                    if content_parts:
+                        Logger.warning(
+                            "Non-streaming request returned partial content due to error: "
+                            + str(error_message)
+                        )
+                    else:
+                        raise HTTPException(status_code=500, detail=error_message)
+
                 return {
                     "id": "chatcmpl-custom",
                     "object": "chat.completion",
@@ -290,41 +391,121 @@ class API:
                     self.current_entry = entry
                     self.current_abort_event = abort_event
 
-                    # Optional provider hook: apply configured *real* model selection (UI model picker),
-                    # if the active provider supports it.
                     try:
-                        await self.driver.apply_configured_model()
-                    except Exception as e:
-                        provider_label = getattr(self.driver, "provider_label", None) or "Provider"
-                        Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")
+                        ece_reauth_enabled = bool(self.driver.ece_reauth_enabled())
+                    except Exception:
+                        ece_reauth_enabled = False
 
-                    # Call the driver with the raw messages list
-                    # The driver will handle formatting
-                    async for chunk in self.driver.generate_response(
-                        message=request.messages,
-                        model=request.model,
-                        stream=request.stream,
-                        temperature=request.temperature,
-                        top_p=request.top_p,
-                        abort_event=abort_event
-                    ):
-                        # Check if aborted before putting chunk
+                    max_attempts = 2 if ece_reauth_enabled else 1
+                    attempt = 0
+                    forwarded_any = False
+
+                    while attempt < max_attempts and (not abort_event.is_set()):
+                        attempt += 1
+
+                        # Track usage for Select Least Used
+                        try:
+                            pair_getter = getattr(self.driver, "ece_active_pair", None)
+                            mark_used = getattr(self.driver, "ece_mark_used", None)
+                            if callable(pair_getter) and callable(mark_used):
+                                pair = pair_getter()
+                                email = getattr(pair, "email", None) if pair else None
+                                if isinstance(email, str) and email.strip():
+                                    mark_used(email)
+                        except Exception:
+                            pass
+
+                        # Optional provider hook: apply configured *real* model selection (UI model picker),
+                        # if the active provider supports it
+                        try:
+                            await self.driver.apply_configured_model()
+                        except Exception as e:
+                            provider_label = getattr(self.driver, "provider_label", None) or "Provider"
+                            Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")
+
+                        meaningful_seen = False
+                        buffered: list[str] = []
+                        early_error_message: str | None = None
+
+                        try:
+                            async for chunk in self.driver.generate_response(
+                                message=request.messages,
+                                model=request.model,
+                                stream=request.stream,
+                                temperature=request.temperature,
+                                top_p=request.top_p,
+                                abort_event=abort_event,
+                            ):
+                                if abort_event.is_set():
+                                    Logger.debug("Request aborted, stopping chunk forwarding...")
+                                    break
+
+                                if not meaningful_seen:
+                                    parsed = _parse_sse_json(chunk)
+                                    if parsed and ("error" in parsed):
+                                        early_error_message = _extract_error_message(parsed)
+                                        # Don't forward the error yet; we may retry after rotating
+                                        break
+
+                                    if parsed and _payload_has_meaningful_content(parsed):
+                                        meaningful_seen = True
+                                        for b in buffered:
+                                            await response_queue.put(b)
+                                            forwarded_any = True
+                                        buffered.clear()
+
+                                if meaningful_seen:
+                                    await response_queue.put(chunk)
+                                    forwarded_any = True
+                                else:
+                                    buffered.append(chunk)
+                        except Exception as e:
+                            early_error_message = str(e)
+
                         if abort_event.is_set():
-                            Logger.debug("Request aborted, stopping chunk forwarding...")
                             break
-                        await response_queue.put(chunk)
+
+                        if early_error_message and meaningful_seen:
+                            await response_queue.put(_make_openai_error_sse_chunk(early_error_message))
+                            forwarded_any = True
+                            break
+
+                        # If we saw meaningful content, keep the existing behavior
+                        if meaningful_seen:
+                            break
+
+                        # No meaningful chunks were produced
+                        is_final_attempt = attempt >= max_attempts
+                        if (not is_final_attempt) and (not forwarded_any):
+                            reason = early_error_message or "no meaningful output"
+                            if early_error_message and _is_rate_limit_like_error(early_error_message):
+                                reason = f"rate-limit-like failure: {early_error_message}"
+
+                            restarted = False
+                            if not abort_event.is_set():
+                                restart = getattr(self.driver, "ece_restart_with_rotation", None)
+                                if callable(restart):
+                                    try:
+                                        restarted = bool(await restart(reason, status_callback=None))
+                                    except Exception:
+                                        restarted = False
+                            if restarted:
+                                continue
+
+                        # Can't / won't retry. Prefer surfacing the early error (if any)
+                        if early_error_message:
+                            await response_queue.put(_make_openai_error_sse_chunk(early_error_message))
+                            forwarded_any = True
+                        else:
+                            for b in buffered:
+                                await response_queue.put(b)
+                                forwarded_any = True
+
+                        break
                 
                 except Exception as e:
                     Logger.error(f"Error in worker: {e}")
-                    error_chunk = {
-                        "error": {
-                            "message": str(e),
-                            "type": "internal_error",
-                            "param": None,
-                            "code": None
-                        }
-                    }
-                    await response_queue.put(f"data: {json.dumps(error_chunk)}\n\n")
+                    await response_queue.put(_make_openai_error_sse_chunk(str(e)))
                 finally:
                     self.current_entry = None
                     self.current_abort_event = None

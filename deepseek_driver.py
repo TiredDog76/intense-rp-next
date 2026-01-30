@@ -51,66 +51,90 @@ class DeepSeekDriver(BaseDriver):
         if is_sign_in_page:
             Logger.info("Redirected to sign in page.")
             
-            auto_login = self.config_manager.get_setting("providers_credentials", "auto_login")
+            auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
             
             if auto_login:
-                Logger.info("Auto-login enabled. Attempting to log in...")
-                
-                # Get credentials from settings
-                email = self.config_manager.get_setting("providers_credentials", "deepseek_email")
-                password = self.config_manager.get_setting("providers_credentials", "deepseek_password")
-                
+                ece_enabled = bool(self.config_manager.get_setting("experimental", "ece_enabled"))
+
+                email = ""
+                password = ""
+                using_ece = False
+
+                if ece_enabled:
+                    pair = self.ece_active_pair()
+                    if not pair:
+                        Logger.warning("ECE is enabled but no DeepSeek credential pairs are configured. Waiting for manual login...")
+                        try:
+                            await self.page.wait_for_selector("textarea", timeout=0)
+                            Logger.success("Manual login detected.")
+                        except Exception as e:
+                            Logger.error(f"Error waiting for manual login: {e}")
+                        return
+
+                    using_ece = True
+                    email = pair.email
+                    password = pair.password
+                else:
+                    # Legacy per-provider settings
+                    email = self.config_manager.get_setting("providers_credentials", "deepseek_email") or ""
+                    password = self.config_manager.get_setting("providers_credentials", "deepseek_password") or ""
+
                 if not email or not password:
                     Logger.error("DeepSeek email or password not found in settings.")
                     return
-                else:
-                    try:
-                        # Wait for the form to appear
-                        await self.page.wait_for_selector(
-                            ".ds-sign-in-form__main, .ds-sign-in-form-wrapper, .ds-auth-form-wrapper, .ds-sign-up-form__main",
-                            timeout=30000,
-                        )
 
-                        form_root = self.page.locator(
-                            ".ds-sign-in-form-wrapper, .ds-sign-up-form-wrapper, .ds-auth-form-wrapper"
-                        )
-                        if await form_root.count() == 0:
-                            form_root = self.page.locator("body")
-                        
-                        # Fill email
-                        Logger.debug(f"Entering email: {email}")
-                        email_input = form_root.first.locator(
-                            "input[autocomplete='username'], "
-                            "input[type='text'][placeholder*='email'], "
-                            "input[type='text'][placeholder*='Email'], "
-                            "input[type='text'][placeholder*='Phone']"
-                        )
-                        if await email_input.count() == 0:
-                            email_input = form_root.first.locator("input[type='text']")
-                        await email_input.first.fill(email)
-                        
-                        # Fill password
-                        Logger.debug("Entering password...")
-                        password_input = form_root.first.locator(
-                            "input[autocomplete='current-password'], input[type='password']"
-                        )
-                        await password_input.first.fill(password)
-                        
-                        # Click login button
-                        Logger.debug("Clicking login button...")
-                        login_button = form_root.first.locator("button", has_text="Log in")
-                        if await login_button.count() == 0:
-                            login_button = form_root.first.locator("button.ds-basic-button--primary")
-                        if await login_button.count() == 0:
-                            login_button = self.page.locator("button", has_text="Log in")
-                        await login_button.first.click()
-                        
-                        # Wait for navigation back to the chat page
-                        await self.page.wait_for_selector("textarea", timeout=60000)
-                        Logger.success("Login successful.")
-                        
-                    except Exception as e:
-                        Logger.error(f"Error during auto-login: {e}")
+                Logger.info("Auto-login enabled. Attempting to log in...")
+
+                try:
+                    # Wait for the form to appear
+                    await self.page.wait_for_selector(
+                        ".ds-sign-in-form__main, .ds-sign-in-form-wrapper, .ds-auth-form-wrapper, .ds-sign-up-form__main",
+                        timeout=30000,
+                    )
+
+                    form_root = self.page.locator(
+                        ".ds-sign-in-form-wrapper, .ds-sign-up-form-wrapper, .ds-auth-form-wrapper"
+                    )
+                    if await form_root.count() == 0:
+                        form_root = self.page.locator("body")
+                    
+                    # Fill email
+                    Logger.debug(f"Entering email: {email}")
+                    email_input = form_root.first.locator(
+                        "input[autocomplete='username'], "
+                        "input[type='text'][placeholder*='email'], "
+                        "input[type='text'][placeholder*='Email'], "
+                        "input[type='text'][placeholder*='Phone']"
+                    )
+                    if await email_input.count() == 0:
+                        email_input = form_root.first.locator("input[type='text']")
+                    await email_input.first.fill(email)
+                    
+                    # Fill password
+                    Logger.debug("Entering password...")
+                    password_input = form_root.first.locator(
+                        "input[autocomplete='current-password'], input[type='password']"
+                    )
+                    await password_input.first.fill(password)
+                    
+                    # Click login button
+                    Logger.debug("Clicking login button...")
+                    login_button = form_root.first.locator("button", has_text="Log in")
+                    if await login_button.count() == 0:
+                        login_button = form_root.first.locator("button.ds-basic-button--primary")
+                    if await login_button.count() == 0:
+                        login_button = self.page.locator("button", has_text="Log in")
+                    await login_button.first.click()
+                    
+                    # Wait for navigation back to the chat page
+                    await self.page.wait_for_selector("textarea", timeout=60000)
+                    Logger.success("Login successful.")
+
+                    if using_ece:
+                        self.ece_mark_used(email)
+                    
+                except Exception as e:
+                    Logger.error(f"Error during auto-login: {e}")
             else:
                 Logger.info("Auto-login disabled. Waiting for manual login...")
                 # Wait indefinitely (or until closed) for the user to log in and reach the chat page

@@ -9,6 +9,8 @@ from typing import Any, Callable, List, Optional, Union
 from patchright.async_api import Browser, BrowserContext, Page, async_playwright
 
 from drivers.providers import DriverProvider, get_playwright_profile_dir
+from ece.manager import EceManager
+from ece.models import CredentialPair
 from utils.logger import Logger
 
 
@@ -34,6 +36,190 @@ class BaseDriver(ABC):
 
         # Optional provider UI language detection (providers may opt in)
         self.last_document_lang: Optional[str] = None
+
+        # ECE state (set during start(), used by login() and re-auth rotation)
+        self._ece_manager: EceManager | None = None
+        self._ece_active_pair: CredentialPair | None = None
+        self._ece_active_profile_slot: int = 0
+        self._ece_pending_pair: CredentialPair | None = None
+        self._ece_pending_profile_slot: int | None = None
+
+    def _ece_is_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("experimental", "ece_enabled"))
+        except Exception:
+            return False
+
+    def _ece_select_least_used(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("experimental", "ece_select_least_used"))
+        except Exception:
+            return False
+
+    def _ece_reauth_on_no_content(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("experimental", "ece_reauth_on_no_content"))
+        except Exception:
+            return False
+
+    def ece_reauth_enabled(self) -> bool:
+        if (not self._ece_is_enabled()) or (not self._ece_reauth_on_no_content()):
+            return False
+        try:
+            return bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
+        except Exception:
+            return False
+
+    def _get_ece_manager(self) -> EceManager:
+        mgr = getattr(self, "_ece_manager", None)
+        if mgr:
+            return mgr
+        config_dir = getattr(self.config_manager, "config_dir", None) or "config_data"
+        mgr = EceManager(config_dir)
+        self._ece_manager = mgr
+        return mgr
+
+    def _ece_prepare_for_start(self) -> None:
+        """
+        Prepare ECE selection state before launching the browser.
+
+        This is called from start() so we can pick a profile directory (ECE uses its own
+        profile base dir under playwright_profiles/ece).
+        """
+        if not self._ece_is_enabled():
+            self._ece_active_pair = None
+            self._ece_active_profile_slot = 0
+            self._ece_pending_pair = None
+            self._ece_pending_profile_slot = None
+            return
+
+        auto_login = False
+        try:
+            auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
+        except Exception:
+            auto_login = False
+
+        pending_pair = getattr(self, "_ece_pending_pair", None)
+        pending_slot = getattr(self, "_ece_pending_profile_slot", None)
+        if pending_pair is not None:
+            self._ece_active_pair = pending_pair
+            self._ece_active_profile_slot = int(pending_slot or 0)
+            self._ece_pending_pair = None
+            self._ece_pending_profile_slot = None
+            return
+
+        # only pick a pair when auto-login is enabled
+        if not auto_login:
+            self._ece_active_pair = None
+            self._ece_active_profile_slot = 0
+            return
+
+        try:
+            pair = self._get_ece_manager().select_pair(
+                self.provider,
+                least_used=self._ece_select_least_used(),
+            )
+        except Exception as exc:
+            Logger.warning(f"ECE: failed to select credential pair: {exc}")
+            pair = None
+
+        self._ece_active_pair = pair
+        self._ece_active_profile_slot = 0
+
+    def ece_active_pair(self) -> CredentialPair | None:
+        if not self._ece_is_enabled():
+            return None
+        return getattr(self, "_ece_active_pair", None)
+
+    def ece_mark_used(self, email: str) -> None:
+        if not self._ece_is_enabled():
+            return
+        if not email:
+            return
+        try:
+            self._get_ece_manager().mark_used(self.provider, email)
+        except Exception:
+            return
+
+    def ece_rotate_identity(self, reason: str) -> bool:
+        """
+        Rotate to a different ECE identity (pair and/or profile slot) for this provider.
+
+        Returns True if a different identity was selected and queued for next start.
+        """
+        if not self._ece_is_enabled():
+            return False
+
+        auto_login = False
+        try:
+            auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
+        except Exception:
+            auto_login = False
+
+        if not auto_login:
+            return False
+
+        current = getattr(self, "_ece_active_pair", None)
+        current_email = current.email if current else None
+
+        next_pair = None
+        try:
+            next_pair = self._get_ece_manager().select_pair(
+                self.provider,
+                least_used=self._ece_select_least_used(),
+                exclude_email=current_email,
+            )
+        except Exception:
+            next_pair = None
+
+        # Prefer switching accounts when possible
+        if next_pair is not None:
+            self._ece_pending_pair = next_pair
+            self._ece_pending_profile_slot = 0
+            Logger.warning(f"ECE: rotating credentials due to: {reason}")
+            return True
+
+        # Fallback: same account, new profile slot
+        if current_email:
+            try:
+                new_slot = self._get_ece_manager().rotate_profile_slot(
+                    self.provider,
+                    current_email,
+                    getattr(self, "_ece_active_profile_slot", 0),
+                )
+            except Exception:
+                new_slot = int(getattr(self, "_ece_active_profile_slot", 0)) + 1
+
+            self._ece_pending_pair = current
+            self._ece_pending_profile_slot = int(new_slot)
+            Logger.warning(f"ECE: rotating profile slot due to: {reason}")
+            return True
+
+        return False
+
+    async def ece_restart_with_rotation(
+        self, reason: str, status_callback: Optional[Callable[[str], None]] = None
+    ) -> bool:
+        """
+        Rotate ECE identity (pair/profile) and restart the driver to re-auth.
+
+        Returns True only when rotation succeeded and the driver restarted successfully.
+        """
+        if not self.ece_rotate_identity(reason):
+            return False
+
+        Logger.warning("ECE: restarting driver to re-auth with a different profile...")
+        try:
+            await self.close()
+        except Exception as e:
+            Logger.warning(f"ECE: driver close failed during restart: {e}")
+
+        try:
+            await self.start(status_callback=status_callback)
+            return True
+        except Exception as e:
+            Logger.error(f"ECE: driver restart failed: {e}")
+            return False
 
     def notify_user(self, title: str, message: str, level: str = "info") -> None:
         cb = getattr(self, "notify_user_callback", None)
@@ -73,6 +259,13 @@ class BaseDriver(ABC):
 
     def _get_persistent_profile_dir(self) -> str:
         config_dir = getattr(self.config_manager, "config_dir", None)
+        if self._ece_is_enabled():
+            pair = getattr(self, "_ece_active_pair", None)
+            slot = int(getattr(self, "_ece_active_profile_slot", 0))
+            try:
+                return str(self._get_ece_manager().get_profile_dir(self.provider, email=pair.email if pair else None, slot=slot))
+            except Exception:
+                pass
         return str(get_playwright_profile_dir(config_dir, self.provider))
 
     async def ensure_browser_installed(
@@ -175,6 +368,8 @@ class BaseDriver(ABC):
             status_callback: Optional callback to report status updates (e.g., for UI updates)
         """
         Logger.info(f"Starting {self.provider_label} Driver...")
+
+        self._ece_prepare_for_start()
 
         await self.ensure_browser_installed(status_callback)
 

@@ -429,8 +429,28 @@ class GLMDriver(BaseDriver):
             Logger.success("GLM Chat: manual login detected.")
             return
 
-        email = self.config_manager.get_setting("providers_credentials", "glm_email")
-        password = self.config_manager.get_setting("providers_credentials", "glm_password")
+        ece_enabled = bool(self.config_manager.get_setting("experimental", "ece_enabled"))
+        using_ece = False
+
+        email = ""
+        password = ""
+
+        if ece_enabled:
+            pair = self.ece_active_pair()
+            if not pair:
+                Logger.warning("ECE is enabled but no GLM credential pairs are configured. Waiting for manual login...")
+                await self.page.goto(self.AUTH_URL)
+                await self._wait_for_chat_ready(timeout_ms=None)
+                Logger.success("GLM Chat: manual login detected.")
+                return
+
+            using_ece = True
+            email = pair.email
+            password = pair.password
+        else:
+            email = self.config_manager.get_setting("providers_credentials", "glm_email") or ""
+            password = self.config_manager.get_setting("providers_credentials", "glm_password") or ""
+
         if not email or not password:
             Logger.error("GLM Chat email or password not found in settings.")
             return
@@ -484,6 +504,9 @@ class GLMDriver(BaseDriver):
 
         await self._wait_for_chat_ready(timeout_ms=None)
         Logger.success("GLM Chat: chat ready.")
+
+        if using_ece:
+            self.ece_mark_used(email)
 
     def _resolve_deepthink_flags(self, model: str) -> tuple[bool, bool]:
         enable_deepthink = bool(self.config_manager.get_setting("glm_behavior", "enable_deepthink"))

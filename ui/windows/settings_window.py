@@ -17,6 +17,8 @@ from config.schema import SCHEMA, SettingType
 from drivers.providers import DriverProvider, get_playwright_profile_dir
 from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, DirectoryEntry
+from ui.widgets.redirect_card import RedirectCard
+from ui.ece.credential_manager_dialog import CredentialManagerDialog
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
@@ -38,6 +40,7 @@ class SettingsWindow(QMainWindow):
         "console_settings": "terminal.svg",
         "console_dumping": "download.svg",
         "network_settings": "share-2.svg",
+        "experimental": "flask-conical.svg",
     }
 
     BEHAVIOR_CATEGORY_BY_PROVIDER = {
@@ -200,6 +203,12 @@ class SettingsWindow(QMainWindow):
         elif field.type == SettingType.INPUT_PAIR:
             widget = InputPairsWidget()
             widget.pairsChanged.connect(self._on_setting_changed)
+
+        elif field.type == SettingType.REDIRECT:
+            btn_text = str(field.default) if field.default else "Open"
+            widget = RedirectCard(field.label, field.tooltip or "", btn_text)
+            if field.action == "open_ece_credential_manager":
+                widget.clicked.connect(self._open_ece_credential_manager)
                 
         elif field.type == SettingType.BUTTON:
             widget = StyledButton(field.label)
@@ -429,6 +438,15 @@ class SettingsWindow(QMainWindow):
                     widget = Description(field.default)
                     self.field_widgets[f"{category.key}.{field.key}"] = widget
                     card_layout.addWidget(widget)
+                    continue
+
+                # No handholding for Redirect Type (it renders its own title/description/button)
+                if field.type == SettingType.REDIRECT:
+                    widget = self._create_field_widget(field, category.key)
+                    if widget:
+                        self.setting_rows[f"{category.key}.{field.key}"] = widget
+                        card_layout.addWidget(widget)
+                        self._add_search_target(category, field, widget)
                     continue
 
                 # Use VBox for Textarea to give it more space
@@ -717,13 +735,13 @@ class SettingsWindow(QMainWindow):
         for dependent_key, field_def in (self.field_defs or {}).items():
             depends_expr = getattr(field_def, "depends", None) if field_def else None
             if not depends_expr:
-                continue
+                depends_expr = None
 
             widget = self.field_widgets.get(dependent_key)
             if not widget:
                 continue
 
-            is_met = self._is_dependency_met(depends_expr)
+            is_met = self._is_dependency_met(depends_expr) if depends_expr else True
             forced_value = getattr(field_def, "force_when_dep_unmet", None) if field_def else None
 
             desired_mode = None
@@ -764,6 +782,14 @@ class SettingsWindow(QMainWindow):
                 widget.setEnabled(is_met)
             if not is_met and isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                 widget.set_error(False) # Clear error if disabled
+
+            visible_expr = getattr(field_def, "visible_depends", None) if field_def else None
+            if visible_expr is not None:
+                should_show = self._is_dependency_met(visible_expr)
+                if row:
+                    row.setVisible(should_show)
+                else:
+                    widget.setVisible(should_show)
 
         self._apply_forced_overrides()
 
@@ -1169,6 +1195,9 @@ class SettingsWindow(QMainWindow):
         provider_setting = self.config_manager.get_setting("providers_credentials", "provider")
         provider = DriverProvider.from_setting(provider_setting)
         config_dir = getattr(self.config_manager, "config_dir", None)
+        base_dir = Path(config_dir) if config_dir is not None else Path("config_data")
+        if bool(self.config_manager.get_setting("experimental", "ece_enabled")):
+            return (base_dir.resolve() / "playwright_profiles" / "ece" / provider.key)
         return get_playwright_profile_dir(config_dir, provider)
 
     def _clear_persistent_profile(self):
@@ -1258,7 +1287,7 @@ class SettingsWindow(QMainWindow):
                         value = widget.currentText()
                     elif field.type == SettingType.INPUT_PAIR:
                         value = widget.get_pairs()
-                    elif field.type in [SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.ROW]:
+                    elif field.type in [SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.ROW, SettingType.REDIRECT]:
                         continue # These don't have values to save
                         
                     # Check dependencies
@@ -1368,6 +1397,16 @@ class SettingsWindow(QMainWindow):
             return
 
     def closeEvent(self, event):
+        dialog = getattr(self, "_ece_credential_manager_dialog", None)
+        if dialog and dialog.isVisible():
+            QMessageBox.information(
+                self,
+                "Credential Manager",
+                "Close the Credential Manager window before closing Settings.",
+            )
+            event.ignore()
+            return
+
         if self.unsaved_changes:
             reply = QMessageBox.question(
                 self, "Unsaved Changes",
@@ -1382,3 +1421,20 @@ class SettingsWindow(QMainWindow):
                 event.ignore()
         else:
             event.accept()
+
+    def _open_ece_credential_manager(self) -> None:
+        existing = getattr(self, "_ece_credential_manager_dialog", None)
+        if existing and existing.isVisible():
+            existing.activateWindow()
+            existing.raise_()
+            return
+
+        dialog = CredentialManagerDialog(self.config_manager, parent=self)
+        self._ece_credential_manager_dialog = dialog
+
+        def _clear_ref(*_args) -> None:
+            if getattr(self, "_ece_credential_manager_dialog", None) is dialog:
+                self._ece_credential_manager_dialog = None
+
+        dialog.finished.connect(_clear_ref)
+        dialog.open()

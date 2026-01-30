@@ -18,6 +18,7 @@ class SettingType(Enum):
     BUTTON = "button"
     ROW = "row"
     INPUT_PAIR = "input_pair"
+    REDIRECT = "redirect"
 
 @dataclass
 class SettingField:
@@ -35,6 +36,7 @@ class SettingField:
     sub_fields: Optional[List["SettingField"]] = None # For ROW type
     ratios: Optional[List[int]] = None # For ROW type (e.g. [70, 30])
     force_when_dep_unmet: Optional[Any] = None
+    visible_depends: Optional[str] = None
 
 @dataclass
 class SettingCategory:
@@ -67,6 +69,16 @@ SCHEMA = [
                 tooltip="Automatically log in using the provided credentials."
             ),
             SettingField(
+                key="ece_credential_manager",
+                label="Credential Manager",
+                type=SettingType.REDIRECT,
+                default="Credential Manager",
+                tooltip="Manage provider credentials in the configurator.",
+                action="open_ece_credential_manager",
+                depends="experimental.ece_enabled",
+                visible_depends="experimental.ece_enabled",
+            ),
+            SettingField(
                 key="deepseek_email",
                 label="DeepSeek Email",
                 type=SettingType.STRING,
@@ -74,7 +86,11 @@ SCHEMA = [
                 tooltip="Email address for DeepSeek login.",
                 validator=validate_email,
                 required=True,
-                depends="providers_credentials.auto_login && providers_credentials.provider==DeepSeek"
+                depends=(
+                    "providers_credentials.auto_login && providers_credentials.provider==DeepSeek "
+                    "&& experimental.ece_enabled==false"
+                ),
+                visible_depends="experimental.ece_enabled==false",
             ),
             SettingField(
                 key="deepseek_password",
@@ -83,7 +99,11 @@ SCHEMA = [
                 default="",
                 tooltip="Password for DeepSeek login.",
                 required=True,
-                depends="providers_credentials.auto_login && providers_credentials.provider==DeepSeek"
+                depends=(
+                    "providers_credentials.auto_login && providers_credentials.provider==DeepSeek "
+                    "&& experimental.ece_enabled==false"
+                ),
+                visible_depends="experimental.ece_enabled==false",
             ),
             SettingField(
                 key="glm_email",
@@ -93,7 +113,11 @@ SCHEMA = [
                 tooltip="Email address for GLM Chat (Z.ai) login.",
                 validator=validate_email,
                 required=True,
-                depends="providers_credentials.auto_login && providers_credentials.provider==GLM Chat"
+                depends=(
+                    "providers_credentials.auto_login && providers_credentials.provider==GLM Chat "
+                    "&& experimental.ece_enabled==false"
+                ),
+                visible_depends="experimental.ece_enabled==false",
             ),
             SettingField(
                 key="glm_password",
@@ -102,7 +126,11 @@ SCHEMA = [
                 default="",
                 tooltip="Password for GLM Chat (Z.ai) login.",
                 required=True,
-                depends="providers_credentials.auto_login && providers_credentials.provider==GLM Chat"
+                depends=(
+                    "providers_credentials.auto_login && providers_credentials.provider==GLM Chat "
+                    "&& experimental.ece_enabled==false"
+                ),
+                visible_depends="experimental.ece_enabled==false",
             ),
         ]
     ),
@@ -474,6 +502,38 @@ SCHEMA = [
                 tooltip="Show an optional Request Queue panel in the main window.",
             ),
         ]
+    ),
+    SettingCategory(
+        name="Experimental",
+        key="experimental",
+        fields=[
+            SettingField(
+                key="ece_enabled",
+                label="Enable Experimental Credential Engine (ECE)",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Use the Experimental Credential Engine instead of the legacy per-provider credential fields.",
+            ),
+            SettingField(
+                key="ece_select_least_used",
+                label="Select Least Used",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Prioritize the credential pair with the oldest last-use date (unused pairs are preferred).",
+                depends="experimental.ece_enabled",
+            ),
+            SettingField(
+                key="ece_reauth_on_no_content",
+                label="Re-auth on no content",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "If a provider returns no meaningful output (or a rate-limit-like failure), "
+                    "restart the browser and rotate to a different ECE profile when possible."
+                ),
+                depends="experimental.ece_enabled",
+            ),
+        ],
     ),
     SettingCategory(
         name="Application Settings",
