@@ -231,6 +231,12 @@ class BaseDriver(ABC):
         except Exception:
             return
 
+    def _notify_on_driver_crash_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("system_settings", "notify_on_driver_crash"))
+        except Exception:
+            return True
+
     @property
     def provider_label(self) -> str:
         return self.provider.value
@@ -547,6 +553,13 @@ class BaseDriver(ABC):
         Logger.warning("Browser crash detected!")
         self.is_running = False
         self.monitoring_active = False
+
+        if self._notify_on_driver_crash_enabled():
+            self.notify_user(
+                f"{self.provider_label} Driver",
+                "Browser was closed or crashed. Click Start to relaunch the driver.",
+                level="warning",
+            )
 
         callback = getattr(self, "on_crash_callback", None)
         if not callback:

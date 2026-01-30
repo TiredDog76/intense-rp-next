@@ -461,6 +461,13 @@ SCHEMA = [
                 tooltip="Delete the saved browser profile used for Persistent Sessions (logs you out)."
             ),
             SettingField(
+                key="notify_on_driver_crash",
+                label="Notify on Driver Crash",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip="Show a notification when the provider browser is closed or crashes unexpectedly.",
+            ),
+            SettingField(
                 key="config_storage_divider",
                 label="Config Storage",
                 type=SettingType.DIVIDER,
