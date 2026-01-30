@@ -146,11 +146,24 @@ class Logger:
             return
             
         try:
+            current_log = None
+            if cls._log_file:
+                current_log = os.path.abspath(cls._log_file)
+
             files = glob.glob(os.path.join(cls._log_dir, "log_*.txt"))
+            files = [os.path.abspath(path) for path in files]
             files.sort(key=os.path.getmtime)
             
-            while len(files) >= cls._max_files:
-                oldest = files.pop(0)
+            while len(files) > cls._max_files:
+                oldest = None
+                for idx, path in enumerate(files):
+                    if current_log and path == current_log:
+                        continue
+                    oldest = files.pop(idx)
+                    break
+
+                if not oldest:
+                    break
                 try:
                     os.remove(oldest)
                 except OSError:
@@ -224,8 +237,13 @@ class Logger:
             # We do NOT put ANSI codes in log file, they don't render well (at all)
 
             with cls._file_lock:
+                created_new_file = not os.path.exists(cls._log_file)
+
                 with open(cls._log_file, "a", encoding="utf-8") as f:
                     f.write(message + "\n")
+
+                if created_new_file:
+                    cls._cleanup_old_files()
 
                 # Check size
                 if cls._max_file_size != float("inf"):
