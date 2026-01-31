@@ -21,6 +21,9 @@ nav:
       - Network & API: features/network-api.md
       - Console & Logging: features/console-logging.md
       - System: features/system.md
+  - Experimental:
+      - Overview: experimental.md
+      - Experimental Credential Engine (ECE): experimental/ece.md
   - Advanced:
       - Overview: advanced.md
       - Provider Support: advanced/provider-support.md

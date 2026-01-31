@@ -34,6 +34,12 @@ icon: material/home
 
     [:arrow_right: See Features](features.md)
 
+-   :material-flask-outline: **Experimental**
+
+    Opt-in features that are still evolving (like ECE).
+
+    [:arrow_right: Experimental](experimental.md)
+
 </div>
 
 ## Why v2?

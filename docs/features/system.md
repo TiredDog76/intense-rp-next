@@ -38,6 +38,15 @@ IntenseRP uses one folder per provider and will read/write the folder for the cu
 
 Next time you start the app, it loads that same profile, so you usually won’t see a login page at all.
 
+!!! note "Using ECE?"
+    If you enabled the Experimental Credential Engine (ECE), Persistent Sessions are stored under:
+    
+    ```
+    [config_dir]/playwright_profiles/ece/<provider>/...
+    ```
+    
+    See [:material-key: ECE](../experimental/ece.md) for details.
+
 !!! tip "Best Reliability"
     Keep **Auto Login** enabled as a fallback. If your session expires, Persistent Sessions won’t help, but Auto Login will still sign you in automatically.
 
@@ -52,6 +61,7 @@ If the saved session gets weird (stuck login, expired cookies, endless redirects
 What this does:
 
 - Deletes the provider profile under `[config_dir]/playwright_profiles/` (based on your selected Provider)
+- If **ECE** is enabled, it clears the provider folder under `[config_dir]/playwright_profiles/ece/` instead
 - Logs you out (cookies/local storage are removed)
 - Forces a fresh login on next start
 
@@ -66,6 +76,7 @@ IntenseRP stores all the important local stuff in a single **config directory**,
 
 - `settings.json.enc` - your settings (encrypted at rest)
 - `settings.key` - the encryption key used to read/write settings
+- `ece/` - ECE credential pairs + usage data (only if ECE is enabled)
 - `playwright_profiles/` - browser profiles (Persistent Sessions)
 
 ### What is `[config_dir]` exactly?
@@ -276,7 +287,7 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
 | Active config directory pointer | `<app-folder>/config_dir.txt` |
 | Encrypted settings file | `[config_dir]/settings.json.enc` |
 | Settings encryption key | `[config_dir]/settings.key` |
-| Persistent browser profile | `[config_dir]/playwright_profiles/<provider>/` (example: `deepseek/`, `glm_chat/`) |
+| Persistent browser profile | `[config_dir]/playwright_profiles/<provider>/` (or `[config_dir]/playwright_profiles/ece/<provider>/...` if ECE is enabled) |
 
 ---
 

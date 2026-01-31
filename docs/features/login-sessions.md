@@ -24,6 +24,13 @@ If you're tired of typing your password every time, Auto Login saves your provid
 
 Next time you start IntenseRP, it'll fill in your credentials and click the login button for you.
 
+!!! tip "Using ECE (Experimental Credential Engine)?"
+    If you enabled **ECE**, the legacy provider email/password fields are hidden. Instead, use:
+    
+    :material-arrow-right: **Settings** → **Providers & Credentials** → **Credential Manager**
+    
+    See [:material-key: ECE](../experimental/ece.md) for how selection and rotation works.
+
 !!! warning "GLM CAPTCHA"
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
     If you don't want to do that every time, enable Persistent Sessions (below).
@@ -66,6 +73,16 @@ The browser profile is saved in your config directory (one folder per provider):
 IntenseRP uses the folder for the currently selected **Provider**.
 
 This folder contains your provider session cookies and browser data. It's automatically created when you first enable Persistent Sessions.
+
+!!! note "ECE changes the profile paths"
+    If you enable **ECE**, Persistent Sessions are stored under:
+    
+    ```
+    [config_dir]/playwright_profiles/ece/deepseek/<hash>/
+    [config_dir]/playwright_profiles/ece/glm_chat/<hash>/
+    ```
+    
+    Each account gets its own hashed folder name, so sessions don't mix.
 
 !!! tip "GLM recommendation"
     Persistent Sessions are strongly recommended for GLM Chat, because login requires a CAPTCHA.
