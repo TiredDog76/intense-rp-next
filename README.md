@@ -223,13 +223,20 @@ Planned (not implemented yet):
 
 - Moonshot
 
-More detail lives in `docs/` (best viewed as the MkDocs site - see below).
+More detail lives in `docs/` (best viewed as the docs site - see below).
 
 ## Documentation
 
 There is a full docs site with screenshots and details if you want to dig a bit deeper:
 
 Check out [the docs site here](https://intense-rp-next.readthedocs.io/en/latest/).
+
+Local preview (Zensical):
+
+```bash
+python3 -m pip install -r docs/requirements.txt
+zensical serve
+```
 
 ## Security and privacy notes
 

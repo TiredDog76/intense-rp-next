@@ -41,6 +41,7 @@ nav:
 
 theme:
   name: material
+  variant: modern
   palette:
     # Dark mode (default)
     - scheme: slate
