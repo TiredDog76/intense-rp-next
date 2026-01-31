@@ -282,3 +282,4 @@ IntenseRP Next v2 is licensed under the MIT License. See the [LICENSE](LICENSE) 
 - IntenseRP API (Omega-Slender) - original inspiration
 - Me (LyubomirT) - for doing all the work :D
 - RossAscends (for STMP)
+- Developers of Zensical (docs generator)
