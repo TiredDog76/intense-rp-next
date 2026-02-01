@@ -238,6 +238,12 @@ python3 -m pip install -r docs/requirements.txt
 zensical serve
 ```
 
+## Support the project ❤️
+
+If IntenseRP Next v2 is useful to you, and you wish to help, thank you!! The easiest support is a [star](https://github.com/LyubomirT/intense-rp-next/stargazers) and a quick [issue report / feature request](https://github.com/LyubomirT/intense-rp-next/issues) when something is missing or broken.
+
+If you want to help financially as well (optional, but appreciated), see: [Support the Project](https://intense-rp-next.readthedocs.io/en/latest/hands/support.md) in the docs.
+
 ## Security and privacy notes
 
 - IntenseRP is designed for local or LAN use. Do not expose it to the public internet unless you know what you're doing.

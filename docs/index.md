@@ -74,3 +74,4 @@ Most of the support resources are still being built. Meanwhile, you can:
 
 [Contact The Dev](hands/contact.md){ .md-button }
 [Report a Bug](https://github.com/LyubomirT/intense-rp-next/issues){ .md-button }
+[Support the Project](hands/support.md){ .md-button }
