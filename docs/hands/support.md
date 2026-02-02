@@ -65,7 +65,7 @@ If you want to support development financially, thank you! It helps me spend mor
 
 ```
 Recipient name: TERNAVSKYI LIUBOMYR
-IBAN: UA823052990262036400971318034
+IBAN: UA873052990262086400972406403
 SWIFT/BIC: PBANUA2X
 Bank name: PrivatBank
 Country: Ukraine
