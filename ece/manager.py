@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import random
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -214,7 +215,7 @@ class EceManager:
             return None
 
         if not least_used:
-            return candidates[0]
+            return random.choice(candidates)
 
         usage = self.get_last_used_map(provider)
 
@@ -322,4 +323,3 @@ class EceManager:
         ok = self._write_usage_payload(providers)
         if not ok:
             Logger.debug("ECE: failed to prune usage file.")
-

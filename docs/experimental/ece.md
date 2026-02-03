@@ -81,12 +81,12 @@ If you're using ECE, you will mostly interact with it through the Settings UI. U
 
 ECE stores credential pairs per provider (DeepSeek / GLM). On driver start, it selects a pair only when **Auto Login** is enabled.
 
-There are two selection modes. If **Select Least Used** is disabled, ECE simply picks the first pair in the list (row 1 in Credential Manager). If **Select Least Used** is enabled, ECE prefers the account that was used the longest time ago, and accounts that have never been used yet are preferred first.
+There are two selection modes. If **Select Least Used** is disabled, ECE picks a random pair from the list. If **Select Least Used** is enabled, ECE prefers the account that was used the longest time ago, and accounts that have never been used yet are preferred first.
 
 This is tracked in an internal "last used" map (stored alongside the encrypted credentials).
 
 !!! tip "Want to force a specific account?"
-    Put it as the first row and keep **Select Least Used** disabled.
+    For now, ECE cannot pin a specific row. If you need a specific account, keep only that credential pair in Credential Manager (and remove the others temporarily).
 
 ---
 
@@ -184,7 +184,7 @@ These files are encrypted using the same `settings.key` used for your main setti
 ??? question "How do I switch accounts?"
     Today it's automatic. Either:
 
-    - Reorder the pairs and keep **Select Least Used** disabled (row 1 will be used), or
+    - Keep **Select Least Used** disabled to pick a random pair on start, or
     - Enable **Select Least Used** to spread usage across accounts, or
     - Enable **Re-auth on no content** so a failure can trigger an automatic rotation.
 

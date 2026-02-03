@@ -526,7 +526,10 @@ SCHEMA = [
                 label="Select Least Used",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Prioritize the credential pair with the oldest last-use date (unused pairs are preferred).",
+                tooltip=(
+                    "Prefer the credential pair with the oldest last-use date (unused pairs are preferred). "
+                    "When disabled, a random pair is selected."
+                ),
                 depends="experimental.ece_enabled",
             ),
             SettingField(
