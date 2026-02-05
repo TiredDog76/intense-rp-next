@@ -4,6 +4,7 @@ from typing import Any, Dict
 from cryptography.fernet import Fernet
 from .schema import SCHEMA, SettingType
 from .migrator import SettingsMigrator
+from .app_flags import AppFlagsStore
 from .location import get_active_config_dir
 from utils.logger import Logger
 
@@ -13,6 +14,7 @@ class ConfigManager:
         self.config_dir = self.config_dir.resolve()
         self.settings_file = self.config_dir / "settings.json.enc"
         self.key_file = self.config_dir / "settings.key"
+        self.app_flags = AppFlagsStore(self.config_dir)
         self.settings: Dict[str, Any] = {}
         
         self._ensure_dir()
@@ -29,6 +31,7 @@ class ConfigManager:
         self.config_dir = self.config_dir.resolve()
         self.settings_file = self.config_dir / "settings.json.enc"
         self.key_file = self.config_dir / "settings.key"
+        self.app_flags = AppFlagsStore(self.config_dir)
         self._ensure_dir()
         self._load_key()
         self.load_settings()

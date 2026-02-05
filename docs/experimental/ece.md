@@ -62,8 +62,15 @@ If you're using ECE, you will mostly interact with it through the Settings UI. U
 
 ![Providers & Credentials settings](../pics/experimental/ece-login.png)
 
-!!! note "If you don't enable Auto Login"
+!!! warning "If you don't enable Auto Login"
     ECE will not pick a stored credential pair, and you'll log in manually like usual.
+
+!!! note "First open migration from legacy fields"
+    The first time you open **Credential Manager**, IntenseRP tries to copy legacy provider credentials (old DeepSeek/GLM email + password fields) into ECE as the first rows when possible.
+
+    If any ECE credentials already exist, this import is skipped.
+
+    Legacy values are not deleted from the old fields.
 
 ### Settings overview
 
@@ -190,6 +197,11 @@ These files are encrypted using the same `settings.key` used for your main setti
 
 ??? question "Can I see which account ECE picked?"
     Not in the UI yet, but you can usually tell from which browser profile stays logged in (when Persistent Sessions are enabled), and from log lines mentioning ECE.
+
+??? question "Will ECE delete my old DeepSeek/GLM credential fields?"
+    No. ECE does not delete legacy credential fields.
+
+    On first open of **Credential Manager**, it may copy existing legacy credentials into ECE as first rows, but the legacy fields remain unchanged.
 
 ---
 

@@ -21,12 +21,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from config.app_flags import AppFlagsStore
 from drivers.providers import DriverProvider
 from ece.manager import EceManager
 from ece.models import CredentialPair
 from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
 from ui.widgets.components import StyledLineEdit
+from utils.logger import Logger
 
 
 @dataclass(frozen=True)
@@ -253,11 +255,15 @@ class _ProviderPage(QWidget):
 
 class CredentialManagerDialog(QDialog):
     saved = Signal()
+    _LEGACY_IMPORT_FLAG_KEY = "ece.legacy_credentials_imported"
 
     def __init__(self, config_manager, parent=None) -> None:
         super().__init__(parent)
         self._config_manager = config_manager
         self._ece = EceManager(getattr(config_manager, "config_dir", "config_data"))
+        self._app_flags = getattr(config_manager, "app_flags", None)
+        if self._app_flags is None:
+            self._app_flags = AppFlagsStore(getattr(config_manager, "config_dir", "config_data"))
 
         self._unsaved_changes = False
         self._loaded_snapshot: Dict[str, List[Tuple[str, str]]] = {}
@@ -417,8 +423,69 @@ class CredentialManagerDialog(QDialog):
 
         root_layout.addLayout(bottom)
 
+        self._maybe_import_legacy_credentials()
         self._load()
         self.sidebar.setCurrentRow(0)
+
+    def _legacy_import_completed(self) -> bool:
+        try:
+            return bool(self._app_flags.get_bool(self._LEGACY_IMPORT_FLAG_KEY, default=False))
+        except Exception as exc:
+            Logger.warning(f"ECE legacy import: failed to read completion flag: {exc}")
+            return False
+
+    def _mark_legacy_import_completed(self) -> None:
+        try:
+            ok = self._app_flags.set(self._LEGACY_IMPORT_FLAG_KEY, True)
+            if not ok:
+                Logger.warning("ECE legacy import: failed to persist completion flag.")
+        except Exception as exc:
+            Logger.warning(f"ECE legacy import: failed to persist completion flag: {exc}")
+
+    def _read_legacy_pair(self, email_key: str, password_key: str) -> Optional[CredentialPair]:
+        email = str(self._config_manager.get_setting("providers_credentials", email_key) or "").strip()
+        password = str(self._config_manager.get_setting("providers_credentials", password_key) or "")
+        if not email or not password:
+            return None
+        return CredentialPair(email=email, password=password)
+
+    def _has_any_ece_credentials(self) -> bool:
+        for entry in self._provider_entries:
+            try:
+                if self._ece.get_provider_pairs(entry.provider):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _maybe_import_legacy_credentials(self) -> None:
+        if self._legacy_import_completed():
+            return
+
+        try:
+            if self._has_any_ece_credentials():
+                Logger.info("ECE legacy import: existing ECE credentials detected, skipping import.")
+                return
+
+            legacy_candidates = [
+                (DriverProvider.DEEPSEEK, self._read_legacy_pair("deepseek_email", "deepseek_password")),
+                (DriverProvider.GLM_CHAT, self._read_legacy_pair("glm_email", "glm_password")),
+            ]
+
+            for provider, legacy_pair in legacy_candidates:
+                if legacy_pair is None:
+                    continue
+
+                ok, errors = self._ece.set_provider_pairs(provider, [legacy_pair])
+                if not ok:
+                    details = "; ".join(errors) if errors else "unknown error"
+                    Logger.warning(
+                        f"ECE legacy import: failed to import legacy credentials for {provider.value}: {details}"
+                    )
+        except Exception as exc:
+            Logger.warning(f"ECE legacy import: unexpected failure: {exc}")
+        finally:
+            self._mark_legacy_import_completed()
 
     def _snapshot_from_pages(self) -> Dict[str, List[Tuple[str, str]]]:
         snap: Dict[str, List[Tuple[str, str]]] = {}

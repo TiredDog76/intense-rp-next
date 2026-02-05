@@ -7,6 +7,10 @@ repo_name: LyubomirT/intense-rp-next
 repo_url: https://github.com/LyubomirT/intense-rp-next
 edit_uri: edit/v2-rewrite/docs/
 
+# NOTE:
+# DESPITE BEING CALLED mkdocs.yml,
+# WE USE ZENSICAL FOR DOCS GENERATION.
+
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
@@ -28,6 +32,7 @@ nav:
       - Overview: advanced.md
       - Provider Support: advanced/provider-support.md
       - API Behavior: advanced/api-behavior.md
+      - App Flags: advanced/app-flags.md
   - Util Reference:
       - Overview: util-reference.md
       - Help & Extras: util-reference/help-extras.md

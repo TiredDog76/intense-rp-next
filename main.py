@@ -33,18 +33,20 @@ import shutil
 import time
 
 
-def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None]:
+def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool]:
     """
-    Parse and remove internal updater cleanup args from argv.
+    Parse and remove internal startup args from argv.
 
     Supported forms:
       --deleteupdater
       --updaterpath <path>
       --updaterpath=<path>
+      --clearFlags
     """
     remaining: list[str] = []
     delete_updater = False
     updater_path: str | None = None
+    clear_flags = False
 
     i = 0
     while i < len(argv):
@@ -67,10 +69,15 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
             i += 1
             continue
 
+        if arg.lower() == "--clearflags":
+            clear_flags = True
+            i += 1
+            continue
+
         remaining.append(arg)
         i += 1
 
-    return remaining, delete_updater, updater_path
+    return remaining, delete_updater, updater_path, clear_flags
 
 
 def _delete_updater_best_effort(cleanup_path: Path) -> None:
@@ -102,6 +109,24 @@ def _delete_updater_best_effort(cleanup_path: Path) -> None:
             return  # Success!
         except Exception:
             time.sleep(0.5)
+
+
+def _clear_app_flags() -> bool:
+    try:
+        from config.app_flags import AppFlagsStore
+        from config.location import get_active_config_dir
+
+        config_dir = get_active_config_dir()
+        store = AppFlagsStore(config_dir)
+        ok = store.clear()
+        if ok:
+            print(f"App flags cleared: {config_dir / AppFlagsStore.FILENAME}")
+        else:
+            print("Failed to clear app flags.")
+        return ok
+    except Exception as exc:
+        print(f"Failed to clear app flags: {exc}")
+        return False
 
 
 def get_version():
@@ -1319,8 +1344,11 @@ def main():
             print(f"Failed to run module {module_name}: {e}")
             sys.exit(1)
 
-    remaining_args, delete_updater, updater_path = _parse_update_cleanup_args(sys.argv[1:])
+    remaining_args, delete_updater, updater_path, clear_flags = _parse_update_cleanup_args(sys.argv[1:])
     sys.argv = [sys.argv[0]] + remaining_args
+
+    if clear_flags:
+        sys.exit(0 if _clear_app_flags() else 1)
 
     app = QApplication(sys.argv)
 

@@ -20,6 +20,12 @@ This section covers deeper/technical docs: internal API behavior, provider roadm
 
     [:arrow_right: API Behavior](advanced/api-behavior.md)
 
+-   :material-flag-outline: **App Flags**
+
+    Hidden persistent app flags, where they are stored, and how to reset them with `--clearFlags`.
+
+    [:arrow_right: App Flags](advanced/app-flags.md)
+
 </div>
 
 ---

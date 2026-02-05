@@ -76,6 +76,7 @@ IntenseRP stores all the important local stuff in a single **config directory**,
 
 - `settings.json.enc` - your settings (encrypted at rest)
 - `settings.key` - the encryption key used to read/write settings
+- `appflags.json.enc` - hidden persistent app flags (encrypted at rest)
 - `ece/` - ECE credential pairs + usage data (only if ECE is enabled)
 - `playwright_profiles/` - browser profiles (Persistent Sessions)
 
@@ -287,6 +288,7 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
 | Active config directory pointer | `<app-folder>/config_dir.txt` |
 | Encrypted settings file | `[config_dir]/settings.json.enc` |
 | Settings encryption key | `[config_dir]/settings.key` |
+| Encrypted app flags file | `[config_dir]/appflags.json.enc` |
 | Persistent browser profile | `[config_dir]/playwright_profiles/<provider>/` (or `[config_dir]/playwright_profiles/ece/<provider>/...` if ECE is enabled) |
 
 ---
