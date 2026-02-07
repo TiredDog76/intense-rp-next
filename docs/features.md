@@ -28,7 +28,7 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](features/glm-behavior.md)
 
--   :material-meteor: **Moonshot / Kimi Behavior**
+-   :material-meteor: **Moonshot Behavior**
 
     Configure Thinking, Search, file uploads, and Kimi-specific notes.
 
@@ -108,9 +108,9 @@ Fine-tune how GLM Chat processes your requests.
 
 ---
 
-### :material-meteor: Moonshot / Kimi Behavior
+### :material-meteor: Moonshot Behavior
 
-Fine-tune how Moonshot / Kimi processes your requests.
+Fine-tune how Moonshot processes your requests.
 
 | Feature | What It Does |
 |---------|-------------|

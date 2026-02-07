@@ -208,7 +208,7 @@ class API:
                         {"id": "glm-reasoner", "object": "model", "created": 0, "owned_by": "glm"},
                     ],
                 }
-            if provider == DriverProvider.MOONSHOT_KIMI:
+            if provider == DriverProvider.MOONSHOT:
                 return {
                     "object": "list",
                     "data": [

@@ -57,7 +57,7 @@ And it's done! It should Just Work™️.
 IntenseRP Next v2 (sometimes shortened to "IRP Next v2") is a local bridge between:
 
 - an OpenAI-style client (like SillyTavern), and
-- a provider web app (currently: DeepSeek, GLM Chat, Moonshot / Kimi)
+- a provider web app (currently: DeepSeek, GLM Chat, Moonshot)
 
 Under the hood it:
 
@@ -183,7 +183,7 @@ Available model IDs (depends on provider):
   - `glm-auto` (uses your IntenseRP settings)
   - `glm-chat` (forces Deep Think off)
   - `glm-reasoner` (forces Deep Think on, Send Deep Think follows your setting)
-- Moonshot / Kimi:
+- Moonshot:
   - `moonshot-auto` (uses your IntenseRP settings)
   - `moonshot-chat` (forces Thinking off, Send Thinking off)
   - `moonshot-reasoner` (forces Thinking on, Send Thinking follows your setting)
@@ -211,7 +211,7 @@ There are a few highlights I think are worth calling out. Most have been in v1 a
 - 🖥️ A desktop UI that starts/stops everything for you (and doesn't require terminal work)
 - 🔌 An OpenAI-compatible API under `/v1` for SillyTavern and other OpenAI-compatibles
 - 🧩 A formatting pipeline: templates, divider, injection, name detection
-- 🧠 Provider behavior toggles: DeepSeek, GLM Chat, and Moonshot / Kimi behavior controls
+- 🧠 Provider behavior toggles: DeepSeek, GLM Chat, and Moonshot behavior controls
 - 🔐 Optional LAN mode and API keys
 - 🪵 Built-in extensive logging: console window, log files, console dump
 - ♻️ Built-in v1 migrator + built-in update flow (when running packaged builds)
@@ -222,7 +222,7 @@ Current:
 
 - DeepSeek (usable; in "verification" stage)
 - GLM Chat (usable; beta-like, Search supported)
-- Moonshot / Kimi (usable; first integration stage)
+- Moonshot (usable; first integration stage)
 
 More detail lives in `docs/` (best viewed as the docs site - see below).
 

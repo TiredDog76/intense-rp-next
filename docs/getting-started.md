@@ -87,7 +87,7 @@ Before hitting Start, pick your provider and (optionally) save your login so you
 
 1. Click the :material-cog: **Settings** button
 2. Go to **Providers & Credentials**
-3. Choose your **Provider** (DeepSeek, GLM Chat, or Moonshot / Kimi)
+3. Choose your **Provider** (DeepSeek, GLM Chat, or Moonshot)
 4. (Optional) Turn on :material-toggle-switch: **Auto Login** (DeepSeek / GLM Chat)
 5. Enter your provider **email** and **password** (used for DeepSeek / GLM auto-login)
 6. Hit :material-content-save: **Save**
@@ -101,8 +101,8 @@ Before hitting Start, pick your provider and (optionally) save your login so you
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
     Persistent Sessions are strongly recommended if you do not want to solve it every start.
 
-!!! note "Moonshot / Kimi login"
-    Moonshot / Kimi uses a manual Google login flow in IntenseRP (no credential autofill step). Depending on your account security settings, manual confirmation/challenge steps may still be required.
+!!! note "Moonshot login"
+    Moonshot uses a manual Google login flow in IntenseRP (no credential autofill step). Depending on your account security settings, manual confirmation/challenge steps may still be required.
 
 ---
 
@@ -112,7 +112,7 @@ Alright, the fun part!
 
 1. Click the big :material-play: **Start** button
 2. A browser window will pop up
-3. DeepSeek / GLM Chat can use auto-login. Moonshot / Kimi requires manual Google login in the browser window.
+3. DeepSeek / GLM Chat can use auto-login. Moonshot requires manual Google login in the browser window.
 4. Once logged in, the status changes to :material-check-circle: **Running (Port 7777)**
 
 <div class="image-grid" markdown>
@@ -158,7 +158,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 
     - DeepSeek -> `deepseek-auto`
     - GLM Chat -> `glm-auto`
-    - Moonshot / Kimi -> `moonshot-auto`
+    - Moonshot -> `moonshot-auto`
 
 !!! info "Model Names"
     The model IDs are behavior presets (modes). Which set you get depends on your active provider.
@@ -184,7 +184,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 
             GLM-4.6v exists, but IntenseRP intentionally does not select it.
 
-    === ":material-meteor: Moonshot / Kimi"
+    === ":material-meteor: Moonshot"
 
         - `moonshot-auto` (default, respects your IntenseRP settings)
         - `moonshot-chat` (forces Thinking off and Send Thinking off)
@@ -192,7 +192,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 
         !!! note "Moonshot model IDs"
             `moonshot-*` IDs are behavior presets (modes), not a separate backend model selector.
-            Thinking/Search behavior still comes from **Moonshot / Kimi Behavior** settings, with these mode overrides.
+            Thinking/Search behavior still comes from **Moonshot Behavior** settings, with these mode overrides.
 
 ![SillyTavern Endpoint Settings](pics/getting-started/preview_of_settings.png)
 

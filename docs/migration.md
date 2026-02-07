@@ -199,7 +199,7 @@ Depends on your active provider:
   - `glm-auto` (respects v2 settings)
   - `glm-chat` (forces Deep Think off)
   - `glm-reasoner` (forces Deep Think on)
-- Moonshot / Kimi:
+- Moonshot:
   - `moonshot-auto` (respects v2 settings)
   - `moonshot-chat` (forces Thinking off)
   - `moonshot-reasoner` (forces Thinking on)

@@ -46,7 +46,7 @@ class SettingsWindow(QMainWindow):
     BEHAVIOR_CATEGORY_BY_PROVIDER = {
         DriverProvider.DEEPSEEK: "deepseek_behavior",
         DriverProvider.GLM_CHAT: "glm_behavior",
-        DriverProvider.MOONSHOT_KIMI: "moonshot_behavior",
+        DriverProvider.MOONSHOT: "moonshot_behavior",
     }
 
     def __init__(self, config_manager: ConfigManager, parent=None):

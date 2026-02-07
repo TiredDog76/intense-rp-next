@@ -19,13 +19,13 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
     - If you're on a provider login page, log in manually.
     - DeepSeek / GLM Chat also support Auto Login.
     - For GLM Chat, login requires solving a CAPTCHA (Persistent Sessions are strongly recommended).
-    - For Moonshot / Kimi, Google login may require manual confirmation/challenge steps.
+    - For Moonshot, Google login may require manual confirmation/challenge steps.
 
 3. **Is the provider UI language set to English?**
     - IntenseRP currently expects the provider UI language to be English.
     - DeepSeek: English (en / en-US)
     - GLM Chat: English (en-US)
-    - Moonshot / Kimi: English (en-US)
+    - Moonshot: English (en-US)
     - If you see a warning/popup about UI language, change it in the provider browser window and **reload the page**, then retry.
     - If that doesn't fix it after changing the language, close IntenseRP and start it again.
     - Persistent Sessions help a lot with managing languages.
@@ -232,7 +232,7 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - **Version** (app title bar)
 - **OS** (Windows/Linux + version)
 - **Install method** (release zip vs from source)
-- **Provider** (DeepSeek, GLM Chat, or Moonshot / Kimi)
+- **Provider** (DeepSeek, GLM Chat, or Moonshot)
 - **Client** (SillyTavern or other client + version)
 - **Endpoint** (example: `http://127.0.0.1:7777/v1`)
 - **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto`)

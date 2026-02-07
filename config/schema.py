@@ -134,33 +134,33 @@ SCHEMA = [
             ),
             SettingField(
                 key="moonshot_email",
-                label="Moonshot / Kimi Email",
+                label="Moonshot Email",
                 type=SettingType.STRING,
                 default="",
                 tooltip=(
-                    "Optional account identifier for Moonshot / Kimi. "
-                    "Not used for Moonshot login automation."
+                    "Optional account identifier for Moonshot. "
+                    "Not used for Moonshot login automation (manual Google sign-in is required)."
                 ),
                 validator=validate_email,
                 required=False,
                 depends=(
-                    "providers_credentials.provider==Moonshot / Kimi "
+                    "providers_credentials.provider==Moonshot "
                     "&& experimental.ece_enabled==false"
                 ),
                 visible_depends="experimental.ece_enabled==false",
             ),
             SettingField(
                 key="moonshot_password",
-                label="Moonshot / Kimi Password",
+                label="Moonshot Password",
                 type=SettingType.PASSWORD,
                 default="",
                 tooltip=(
-                    "Optional account secret/identifier for Moonshot / Kimi. "
-                    "Not used for Moonshot login automation."
+                    "Optional account secret/identifier for Moonshot. "
+                    "Not used for Moonshot login automation (manual Google sign-in is required)."
                 ),
                 required=False,
                 depends=(
-                    "providers_credentials.provider==Moonshot / Kimi "
+                    "providers_credentials.provider==Moonshot "
                     "&& experimental.ece_enabled==false"
                 ),
                 visible_depends="experimental.ece_enabled==false",
@@ -422,7 +422,7 @@ SCHEMA = [
         ]
     ),
     SettingCategory(
-        name="Moonshot / Kimi Behavior",
+        name="Moonshot Behavior",
         key="moonshot_behavior",
         fields=[
             SettingField(

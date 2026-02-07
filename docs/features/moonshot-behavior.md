@@ -2,12 +2,12 @@
 icon: material/meteor
 ---
 
-# :material-meteor: Moonshot / Kimi Behavior
+# :material-meteor: Moonshot Behavior
 
-This page covers the toggles and options that control how IntenseRP interacts with **Moonshot / Kimi** (`kimi.com`).
+This page covers the toggles and options that control how IntenseRP interacts with **Moonshot** (`kimi.com`).
 
 !!! note "Model IDs"
-    Moonshot / Kimi exposes three API behavior presets:
+    Moonshot exposes three API behavior presets:
     `moonshot-auto`, `moonshot-chat`, and `moonshot-reasoner`.
     These are behavior modes, not separate backend model selection.
 
@@ -22,14 +22,14 @@ Kimi exposes reasoning through model mode selection in the web UI.
 Switches Kimi to **K2.5 Thinking** before sending a request.
 When disabled, IntenseRP switches to **K2.5 Instant**.
 
-:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Enable Thinking**
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Enable Thinking**
 
 ### Send Thinking
 
 When enabled, reasoning content is included in API output, wrapped in `<think>` tags.
 When disabled, only final answer text is forwarded.
 
-:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Send Thinking**
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Send Thinking**
 
 !!! warning "Model downgrading"
     As part of a paywall strategy, Kimi will downgrade to K2.5 Instant (if you're on their Free plan) when you enable Thinking mode. This is a provider-side change and not something IntenseRP can control. They say it's because of high demand, but really it probably just means they're trying to force you to pay `¯\_(ツ)_/¯`.
@@ -40,7 +40,7 @@ When disabled, only final answer text is forwarded.
 
 Toggles Kimi search tooling in the web UI.
 
-:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Enable Search**
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Enable Search**
 
 !!! warning "Search + Thinking"
     Kimi can emit multi-stage reasoning when Search and Thinking are both enabled.
@@ -55,13 +55,13 @@ Toggles Kimi search tooling in the web UI.
 
 Instead of typing your message into Kimi's editor, IntenseRP can upload it as a text file attachment.
 
-:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Send As Text File**
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Send As Text File**
 
 ### File Upload Timeout
 
 Controls how long IntenseRP waits (in seconds) for the send button to become enabled after upload.
 
-:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **File Upload Timeout**
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **File Upload Timeout**
 
 Default is 15 seconds.
 
@@ -71,7 +71,7 @@ Default is 15 seconds.
 
 When enabled, IntenseRP suppresses refusal-like stream events (when detected) and closes the response cleanly.
 
-:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Anti-Censorship**
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Anti-Censorship**
 
 !!! warning "What It Doesn't Do"
     This does not bypass provider filtering. It only suppresses refusal-style output from being forwarded to the client.
@@ -87,7 +87,7 @@ When enabled, IntenseRP tries to click Kimi's regenerate action if:
 
 Otherwise it starts a fresh chat.
 
-:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Clean Regeneration**
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Clean Regeneration**
 
 ---
 

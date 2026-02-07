@@ -180,7 +180,7 @@ These files are encrypted using the same `settings.key` used for your main setti
 
 **GLM Chat:** ECE can fill email/password, but GLM still requires a CAPTCHA step. Persistent Sessions are strongly recommended so you don't have to repeat the CAPTCHA every start.
 
-**Moonshot / Kimi:** login is Google-based and may still require manual confirmation/challenges depending on your account security settings.
+**Moonshot:** login is Google-based and may still require manual confirmation/challenges depending on your account security settings.
 
 ---
 

@@ -54,9 +54,9 @@ These map to GLM UI toggles:
 | `glm-chat` | Forced off | Forced off |
 | `glm-reasoner` | Forced on | Uses your settings |
 
-### Moonshot / Kimi
+### Moonshot
 
-Moonshot / Kimi model IDs are behavior presets:
+Moonshot model IDs are behavior presets:
 
 | Model ID | Thinking | Send Thinking |
 |---|---|---|

@@ -24,7 +24,7 @@ def create_driver(config_manager: Any) -> BaseDriver:
         return DeepSeekDriver(config_manager)
     if provider == DriverProvider.GLM_CHAT:
         return GLMDriver(config_manager)
-    if provider == DriverProvider.MOONSHOT_KIMI:
+    if provider == DriverProvider.MOONSHOT:
         return MoonshotDriver(config_manager)
 
     Logger.warning(f"Unknown driver provider '{provider_setting}', falling back to DeepSeek.")

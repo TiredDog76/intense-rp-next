@@ -27,7 +27,7 @@ class MoonshotDriver(DeepSeekDriver):
 
     def __init__(self, config_manager):
         super().__init__(config_manager)
-        self.provider = DriverProvider.MOONSHOT_KIMI
+        self.provider = DriverProvider.MOONSHOT
 
         self.current_model = None
         self.current_send_deepthink = None
@@ -43,7 +43,7 @@ class MoonshotDriver(DeepSeekDriver):
         return "https://www.kimi.com/"
 
     def _ece_requires_auto_login(self) -> bool:
-        # Moonshot/Kimi login is manual Google flow; ECE still helps pick account/profile identity.
+        # Moonshot login uses a manual Google flow; ECE still helps pick account/profile identity.
         return False
 
     @staticmethod
@@ -108,7 +108,7 @@ class MoonshotDriver(DeepSeekDriver):
             timeout_ms=8000,
         )
         if google_button is None:
-            Logger.warning("Moonshot / Kimi: Google login button not found.")
+            Logger.warning("Moonshot: Google login button not found.")
             return None
 
         popup_task = None
@@ -122,7 +122,7 @@ class MoonshotDriver(DeepSeekDriver):
         try:
             await google_button.click()
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: failed to click Google login button: {e}")
+            Logger.warning(f"Moonshot: failed to click Google login button: {e}")
             if popup_task and (not popup_task.done()):
                 popup_task.cancel()
             return None
@@ -142,14 +142,14 @@ class MoonshotDriver(DeepSeekDriver):
         await self.set_sidebar_status(open=True)
 
         if await self._is_logged_in():
-            Logger.info("Moonshot / Kimi: already signed in.")
+            Logger.info("Moonshot: already signed in.")
             self._mark_active_ece_pair_used()
             return
 
         auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
         if auto_login:
             Logger.info(
-                "Moonshot / Kimi: credential-based auto-login is intentionally disabled; "
+                "Moonshot: credential-based auto-login is intentionally disabled; "
                 "manual Google sign-in is required."
             )
 
@@ -161,14 +161,14 @@ class MoonshotDriver(DeepSeekDriver):
             timeout_ms=15000,
         )
         if user_info_container is None:
-            Logger.warning("Moonshot / Kimi: user-info container not found. Waiting for manual login...")
+            Logger.warning("Moonshot: user-info container not found. Waiting for manual login...")
             await self._wait_until_logged_in(timeout_ms=0)
             return
 
         try:
             await user_info_container.click()
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: failed to open login modal: {e}")
+            Logger.warning(f"Moonshot: failed to open login modal: {e}")
             await self._wait_until_logged_in(timeout_ms=0)
             return
 
@@ -176,21 +176,21 @@ class MoonshotDriver(DeepSeekDriver):
             await self.page.wait_for_selector("div.login-modal-content, div.google-login-btn", timeout=8000)
         except Exception:
             if await self._is_logged_in():
-                Logger.info("Moonshot / Kimi: login already completed.")
+                Logger.info("Moonshot: login already completed.")
                 return
-            Logger.warning("Moonshot / Kimi: login modal did not appear in time.")
+            Logger.warning("Moonshot: login modal did not appear in time.")
 
         await self._click_google_login_and_get_popup()
-        Logger.info("Moonshot / Kimi: waiting for manual Google login...")
+        Logger.info("Moonshot: waiting for manual Google login...")
 
         self.notify_user(
-            "Moonshot / Kimi Login",
+            "Moonshot Login",
             "Complete the Google login flow in the browser tab/window, then return to IntenseRP.",
             level="warning",
         )
 
         await self._wait_until_logged_in(timeout_ms=0)
-        Logger.success("Moonshot / Kimi: login detected.")
+        Logger.success("Moonshot: login detected.")
         self._mark_active_ece_pair_used()
 
     async def _get_document_lang(self) -> str:
@@ -206,7 +206,7 @@ class MoonshotDriver(DeepSeekDriver):
                 "}"
             )
         except Exception as e:
-            Logger.debug(f"Failed to read Moonshot / Kimi document language: {e}")
+            Logger.debug(f"Failed to read Moonshot document language: {e}")
             return ""
 
         if not isinstance(lang, str):
@@ -246,12 +246,12 @@ class MoonshotDriver(DeepSeekDriver):
 
             detected = lang or "<unset>"
             Logger.warning(
-                f"Moonshot / Kimi UI language detected as '{detected}'. "
+                f"Moonshot UI language detected as '{detected}'. "
                 "IntenseRP currently expects English UI (en-US). "
                 "Please change Kimi language to English in the browser window, then refresh/reload."
             )
             if status_callback:
-                status_callback("Moonshot / Kimi UI language is not English. Please change it to English (en-US).")
+                status_callback("Moonshot UI language is not English. Please change it to English (en-US).")
 
         return False
 
@@ -262,8 +262,8 @@ class MoonshotDriver(DeepSeekDriver):
 
         detected = self.last_document_lang or "<unset>"
         raise RuntimeError(
-            f"Moonshot / Kimi UI language is not English (detected: {detected}). "
-            "IntenseRP currently requires Moonshot / Kimi UI language to be English (en-US). "
+            f"Moonshot UI language is not English (detected: {detected}). "
+            "IntenseRP currently requires Moonshot UI language to be English (en-US). "
             "Please change Kimi language to English and reload the page."
         )
 
@@ -300,7 +300,7 @@ class MoonshotDriver(DeepSeekDriver):
         if settings["deepthink_enabled"] and settings["search_enabled"] and (not self._search_and_think_warned):
             self._search_and_think_warned = True
             Logger.warning(
-                "Moonshot / Kimi: Search and Thinking are both enabled. "
+                "Moonshot: Search and Thinking are both enabled. "
                 "This can produce multi-stage reasoning streams that some clients (including SillyTavern) may not parse cleanly."
             )
 
@@ -469,7 +469,7 @@ class MoonshotDriver(DeepSeekDriver):
             message_for_formatting, macros_overrides = self._extract_moonshot_macros_from_text(message)
 
         if macros_overrides:
-            Logger.debug(f"Moonshot / Kimi macros applied: {macros_overrides}")
+            Logger.debug(f"Moonshot macros applied: {macros_overrides}")
 
         effective_settings = self._resolve_moonshot_request_settings(resolved_model, overrides=macros_overrides)
         effective_deepthink = effective_settings["deepthink_enabled"]
@@ -480,7 +480,7 @@ class MoonshotDriver(DeepSeekDriver):
 
         async def handle_route(route):
             request = route.request
-            Logger.info("Intercepting Moonshot / Kimi API request...")
+            Logger.info("Intercepting Moonshot API request...")
             Logger.debug(f"Intercepted request to: {request.url}")
 
             headers = await request.all_headers()
@@ -536,17 +536,17 @@ class MoonshotDriver(DeepSeekDriver):
                     await response_queue.put({"error": str(e)})
 
             if aborted or self.abort_requested:
-                Logger.warning("Moonshot / Kimi generation aborted by user.")
+                Logger.warning("Moonshot generation aborted by user.")
                 await self._click_stop_button()
 
             try:
                 await route.fulfill(body=bytes(full_response_body), status=response_status, headers=response_headers)
             except Exception as e:
-                Logger.error(f"Moonshot / Kimi: error fulfilling route: {e}")
+                Logger.error(f"Moonshot: error fulfilling route: {e}")
 
             await response_queue.put(None)
             if not aborted and not self.abort_requested:
-                Logger.success("Moonshot / Kimi response streaming completed.")
+                Logger.success("Moonshot response streaming completed.")
 
         await self.page.route(self.CHAT_ROUTE_GLOB, handle_route)
         await self.page.route(self.REGEN_ROUTE_GLOB, handle_route)
@@ -583,7 +583,7 @@ class MoonshotDriver(DeepSeekDriver):
                         Logger.warning("Clean Regeneration (Moonshot): Button not found. Falling back to new chat.")
 
             if not regenerated:
-                Logger.info("Moonshot / Kimi: preparing new chat session...")
+                Logger.info("Moonshot: preparing new chat session...")
                 await self._click_new_chat()
                 await asyncio.sleep(0.4)
                 await self.set_sidebar_status(open=False)
@@ -593,7 +593,7 @@ class MoonshotDriver(DeepSeekDriver):
                 await asyncio.sleep(0.2)
 
                 if send_as_text_file:
-                    Logger.info("Moonshot / Kimi: sending message as text file...")
+                    Logger.info("Moonshot: sending message as text file...")
                     file_payload = {
                         "name": "prompt.txt",
                         "mimeType": "text/plain",
@@ -602,11 +602,11 @@ class MoonshotDriver(DeepSeekDriver):
                     await self._upload_file(file_payload)
                     await self._enter_message(".")
                     upload_timeout = int(self.config_manager.get_setting("moonshot_behavior", "file_upload_timeout") or 15)
-                    Logger.info("Moonshot / Kimi: sending request...")
+                    Logger.info("Moonshot: sending request...")
                     await self._send_message(timeout=upload_timeout)
                 else:
                     await self._enter_message(formatted_message)
-                    Logger.info("Moonshot / Kimi: sending request...")
+                    Logger.info("Moonshot: sending request...")
                     await self._send_message()
 
                 if clean_regeneration:
@@ -634,14 +634,14 @@ class MoonshotDriver(DeepSeekDriver):
                 except asyncio.TimeoutError:
                     wait_phase = "intercepted first chunk" if not received_stream_item else "next stream chunk"
                     Logger.error(
-                        f"Moonshot / Kimi: timed out waiting for {wait_phase} "
+                        f"Moonshot: timed out waiting for {wait_phase} "
                         f"({wait_timeout_s:.0f}s)."
                     )
                     self.abort_requested = True
                     await self._click_stop_button()
                     timeout_err = {
                         "error": (
-                            f"Moonshot / Kimi timeout: no {wait_phase} within "
+                            f"Moonshot timeout: no {wait_phase} within "
                             f"{wait_timeout_s:.0f}s."
                         )
                     }
@@ -674,7 +674,7 @@ class MoonshotDriver(DeepSeekDriver):
                 pass
 
     async def abort_generation(self):
-        Logger.info("Moonshot / Kimi: abort generation requested...")
+        Logger.info("Moonshot: abort generation requested...")
         self.abort_requested = True
         if self.current_abort_event:
             self.current_abort_event.set()
@@ -690,7 +690,7 @@ class MoonshotDriver(DeepSeekDriver):
                 return True
             return False
         except Exception as e:
-            Logger.debug(f"Moonshot / Kimi: stop button click failed: {e}")
+            Logger.debug(f"Moonshot: stop button click failed: {e}")
             return False
 
     def _iter_connect_payloads(self, chunk: bytes) -> List[bytes]:
@@ -784,7 +784,7 @@ class MoonshotDriver(DeepSeekDriver):
 
                 if note_type == "TYPE_MODEL_DEGRADE" and note_msg and (not self._degrade_notice_logged):
                     self._degrade_notice_logged = True
-                    Logger.warning(f"Moonshot / Kimi model degrade notice: {note_msg}")
+                    Logger.warning(f"Moonshot model degrade notice: {note_msg}")
 
                 if anti_censorship:
                     lowered_type = note_type.strip().lower()
@@ -888,7 +888,7 @@ class MoonshotDriver(DeepSeekDriver):
     async def _select_kimi_model(self, target_model: str) -> bool:
         trigger = await self._find_first_visible(["div.current-model"], timeout_ms=8000)
         if trigger is None:
-            Logger.warning("Moonshot / Kimi: model selector trigger not found.")
+            Logger.warning("Moonshot: model selector trigger not found.")
             return False
 
         try:
@@ -896,14 +896,14 @@ class MoonshotDriver(DeepSeekDriver):
             await self.page.wait_for_selector("div.models-container", timeout=5000, state="visible")
             await self.page.wait_for_selector("div.models-container div.model-item", timeout=5000, state="attached")
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: model picker did not open: {e}")
+            Logger.warning(f"Moonshot: model picker did not open: {e}")
             return False
 
         target_norm = self._normalize_text(target_model)
         items = self.page.locator("div.models-container div.model-item")
         count = await items.count()
         if count == 0:
-            Logger.warning("Moonshot / Kimi: no model items found in picker.")
+            Logger.warning("Moonshot: no model items found in picker.")
             return False
 
         for idx in range(min(count, 30)):
@@ -921,7 +921,7 @@ class MoonshotDriver(DeepSeekDriver):
             try:
                 await item.click()
             except Exception as e:
-                Logger.warning(f"Moonshot / Kimi: failed to click model '{target_model}': {e}")
+                Logger.warning(f"Moonshot: failed to click model '{target_model}': {e}")
                 return False
 
             deadline = time.time() + 5.0
@@ -933,12 +933,12 @@ class MoonshotDriver(DeepSeekDriver):
 
             current_after = await self._read_current_model_name()
             Logger.warning(
-                "Moonshot / Kimi: model selection click finished but "
+                "Moonshot: model selection click finished but "
                 f"did not confirm '{target_model}' (current: '{current_after or '<unknown>'}')."
             )
             return False
 
-        Logger.warning(f"Moonshot / Kimi: target model '{target_model}' not found in picker.")
+        Logger.warning(f"Moonshot: target model '{target_model}' not found in picker.")
         return False
 
     async def set_deepthink_state(self, state: bool):
@@ -959,7 +959,7 @@ class MoonshotDriver(DeepSeekDriver):
         switched = await self._select_kimi_model(target_model)
         if not switched:
             Logger.warning(
-                f"Moonshot / Kimi: failed to set Thinking mode target model '{target_model}'."
+                f"Moonshot: failed to set Thinking mode target model '{target_model}'."
             )
 
     async def _is_search_enabled(self) -> bool:
@@ -1085,14 +1085,14 @@ class MoonshotDriver(DeepSeekDriver):
     async def _set_search_state_via_toolkit(self, state: bool) -> bool:
         toolkit_button = await self._find_first_visible(["div.toolkit-trigger-btn"], timeout_ms=8000)
         if toolkit_button is None:
-            Logger.warning("Moonshot / Kimi: toolkit trigger button not found.")
+            Logger.warning("Moonshot: toolkit trigger button not found.")
             return False
 
         try:
             await toolkit_button.click()
             await self.page.wait_for_selector("div.toolkit-container", timeout=3000, state="visible")
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: toolkit menu did not open: {e}")
+            Logger.warning(f"Moonshot: toolkit menu did not open: {e}")
             return False
 
         parent_tool = await self._find_nth_visible(
@@ -1107,18 +1107,18 @@ class MoonshotDriver(DeepSeekDriver):
             timeout_ms=3000,
         )
         if parent_tool is None:
-            Logger.warning("Moonshot / Kimi: search toolkit entry not found.")
+            Logger.warning("Moonshot: search toolkit entry not found.")
             return False
 
         opened = await self._open_search_connect_menu(parent_tool)
         if not opened:
-            Logger.warning("Moonshot / Kimi: search submenu did not appear after hover/click/event fallbacks.")
+            Logger.warning("Moonshot: search submenu did not appear after hover/click/event fallbacks.")
             return False
 
         connect_items = self.page.locator("div.connect-container div.connect-item")
         has_connect_items = await self._wait_for_locator_count(connect_items, minimum_count=2, timeout_ms=3000)
         if not has_connect_items:
-            Logger.warning("Moonshot / Kimi: search submenu items not found.")
+            Logger.warning("Moonshot: search submenu items not found.")
             return False
 
         target_index = 0 if state else 1
@@ -1126,7 +1126,7 @@ class MoonshotDriver(DeepSeekDriver):
             await connect_items.nth(target_index).click()
             return True
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: failed to click search state option: {e}")
+            Logger.warning(f"Moonshot: failed to click search state option: {e}")
             return False
 
     async def set_search_state(self, state: bool):
@@ -1150,13 +1150,13 @@ class MoonshotDriver(DeepSeekDriver):
 
         ok = await self._set_search_state_via_toolkit(state)
         if not ok:
-            Logger.warning(f"Moonshot / Kimi: could not set Search to {state}.")
+            Logger.warning(f"Moonshot: could not set Search to {state}.")
             return
 
         await asyncio.sleep(0.2)
         after = await self._is_search_enabled()
         if after != state:
-            Logger.warning(f"Moonshot / Kimi: Search state mismatch after toggle (wanted={state}, actual={after}).")
+            Logger.warning(f"Moonshot: Search state mismatch after toggle (wanted={state}, actual={after}).")
 
     async def _is_sidebar_open(self) -> Optional[bool]:
         if not self.page:
@@ -1335,7 +1335,7 @@ class MoonshotDriver(DeepSeekDriver):
                     timeout_ms=1500,
                 )
                 if button is None:
-                    Logger.warning("Moonshot / Kimi: open sidebar button not found.")
+                    Logger.warning("Moonshot: open sidebar button not found.")
                     return
             else:
                 button = await self._find_first_visible(
@@ -1358,7 +1358,7 @@ class MoonshotDriver(DeepSeekDriver):
                 await button.click(timeout=2000)
             except Exception as e:
                 action = "open" if target_open else "close"
-                Logger.warning(f"Moonshot / Kimi: failed to {action} sidebar: {e}")
+                Logger.warning(f"Moonshot: failed to {action} sidebar: {e}")
                 return
 
             deadline = time.time() + 2.0
@@ -1371,7 +1371,7 @@ class MoonshotDriver(DeepSeekDriver):
         final_state = await self._is_sidebar_open()
         if final_state != target_open:
             Logger.warning(
-                f"Moonshot / Kimi: sidebar state mismatch after toggle "
+                f"Moonshot: sidebar state mismatch after toggle "
                 f"(wanted_open={target_open}, is_open={final_state})."
             )
 
@@ -1386,14 +1386,14 @@ class MoonshotDriver(DeepSeekDriver):
             timeout_ms=8000,
         )
         if new_chat_button is None:
-            Logger.warning("Moonshot / Kimi: New Chat button not found.")
+            Logger.warning("Moonshot: New Chat button not found.")
             await self.set_sidebar_status(open=False)
             return
 
         try:
             await new_chat_button.click(timeout=2000)
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: failed to click New Chat: {e}")
+            Logger.warning(f"Moonshot: failed to click New Chat: {e}")
         finally:
             await asyncio.sleep(0.1)
             await self.set_sidebar_status(open=False)
@@ -1415,7 +1415,7 @@ class MoonshotDriver(DeepSeekDriver):
             timeout_ms=10000,
         )
         if editor is None:
-            Logger.warning("Moonshot / Kimi: message editor not found.")
+            Logger.warning("Moonshot: message editor not found.")
             return
 
         try:
@@ -1440,12 +1440,12 @@ class MoonshotDriver(DeepSeekDriver):
                 if not pasted:
                     await editor.type(message, delay=0)
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: failed to enter message: {e}")
+            Logger.warning(f"Moonshot: failed to enter message: {e}")
 
     async def _send_message(self, timeout: int = None):
         send_button = await self._find_first_visible(["div.send-button-container"], timeout_ms=10000)
         if send_button is None:
-            Logger.warning("Moonshot / Kimi: send button not found.")
+            Logger.warning("Moonshot: send button not found.")
             return
 
         if timeout and timeout > 0:
@@ -1458,13 +1458,13 @@ class MoonshotDriver(DeepSeekDriver):
 
         class_attr = await send_button.get_attribute("class") or ""
         if "disabled" in class_attr.split():
-            Logger.warning("Moonshot / Kimi: send button is disabled. Cannot send message.")
+            Logger.warning("Moonshot: send button is disabled. Cannot send message.")
             return
 
         try:
             await send_button.click()
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: failed to click send button: {e}")
+            Logger.warning(f"Moonshot: failed to click send button: {e}")
 
     async def _click_new_chat(self):
         await self.click_new_chat(source="auto")
@@ -1473,7 +1473,7 @@ class MoonshotDriver(DeepSeekDriver):
         actions = self.page.locator("div.segment-assistant-actions-content")
         has_actions = await self._wait_for_locator_count(actions, minimum_count=1, timeout_ms=8000)
         if not has_actions:
-            Logger.warning("Moonshot / Kimi: regenerate action container not found.")
+            Logger.warning("Moonshot: regenerate action container not found.")
             return False
         count = await actions.count()
 
@@ -1514,7 +1514,7 @@ class MoonshotDriver(DeepSeekDriver):
             break
 
         if target_bar is None:
-            Logger.warning("Moonshot / Kimi: no visible regenerate action bar found.")
+            Logger.warning("Moonshot: no visible regenerate action bar found.")
             return False
 
         # This is desperate. Sometimes the actions belt only shows up after a hover, perhaps due to a bug or something
@@ -1532,14 +1532,14 @@ class MoonshotDriver(DeepSeekDriver):
         refresh_btn = target_bar.locator(":scope > div.icon-button:has(svg[name='Refresh'])")
         refresh_count = await refresh_btn.count()
         if refresh_count == 0:
-            Logger.warning("Moonshot / Kimi: strict regenerate target (Refresh icon) not found.")
+            Logger.warning("Moonshot: strict regenerate target (Refresh icon) not found.")
             return False
 
         for idx in range(min(refresh_count, 3)):
             if await _click_if_enabled(refresh_btn.nth(idx)):
                 return True
 
-        Logger.warning("Moonshot / Kimi: strict regenerate target found but unavailable.")
+        Logger.warning("Moonshot: strict regenerate target found but unavailable.")
         return False
 
     async def upload_file(self, file_spec: Any) -> None:
@@ -1562,11 +1562,11 @@ class MoonshotDriver(DeepSeekDriver):
             timeout_ms=8000,
         )
         if file_input is None:
-            Logger.warning("Moonshot / Kimi: file input not found.")
+            Logger.warning("Moonshot: file input not found.")
             return
 
         try:
             await file_input.set_input_files(file_spec)
             await asyncio.sleep(0.8)
         except Exception as e:
-            Logger.warning(f"Moonshot / Kimi: file upload failed: {e}")
+            Logger.warning(f"Moonshot: file upload failed: {e}")

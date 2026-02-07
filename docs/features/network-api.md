@@ -151,7 +151,7 @@ These IDs are behavior presets (modes), not true model selection.
     | `glm-chat` | Forces Deep Think off |
     | `glm-reasoner` | Forces Deep Think on |
 
-=== ":material-meteor: Moonshot / Kimi"
+=== ":material-meteor: Moonshot"
 
     | Model ID | Behavior |
     |----------|----------|

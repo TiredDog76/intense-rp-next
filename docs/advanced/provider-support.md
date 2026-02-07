@@ -6,7 +6,7 @@ icon: material/cloud
 
 IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
 
-Today, **DeepSeek**, **GLM Chat (Z.ai)**, and **Moonshot / Kimi** are implemented and usable.
+Today, **DeepSeek**, **GLM Chat (Z.ai)**, and **Moonshot** are implemented and usable.
 
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
@@ -63,10 +63,10 @@ Providers are prioritized in this order:
 |---|---:|---|
 | **DeepSeek** | 1 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
 | **GLM Chat** | 2 | :material-check-circle:{ style="color: #51CF66" } **Stable (mostly)** |
-| **Moonshot / Kimi** | 3 | :material-shield-check:{ style="color: #FFD43B" } **Verification (early)** |
+| **Moonshot** | 3 | :material-shield-check:{ style="color: #FFD43B" } **Verification (early)** |
 
-!!! note "What 'Verification' means for Moonshot / Kimi"
-    Moonshot / Kimi is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
+!!! note "What 'Verification' means for Moonshot"
+    Moonshot is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
 
 ---
 
@@ -86,11 +86,11 @@ Providers are prioritized in this order:
 
     [:arrow_right: GLM Behavior](../features/glm-behavior.md)
 
--   :material-meteor: **Moonshot / Kimi Behavior**
+-   :material-meteor: **Moonshot Behavior**
 
     Thinking, Search, file uploads, and Kimi-specific caveats.
 
-    [:arrow_right: Moonshot / Kimi Behavior](../features/moonshot-behavior.md)
+    [:arrow_right: Moonshot Behavior](../features/moonshot-behavior.md)
 
 -   :material-key: **Login & Sessions**
 

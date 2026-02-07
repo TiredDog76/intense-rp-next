@@ -9,7 +9,9 @@ from typing import Optional
 class DriverProvider(str, Enum):
     DEEPSEEK = "DeepSeek"
     GLM_CHAT = "GLM Chat"
-    MOONSHOT_KIMI = "Moonshot / Kimi"
+    MOONSHOT = "Moonshot"
+    # Backwards compatible alias (legacy label was "Moonshot / Kimi")
+    MOONSHOT_KIMI = "Moonshot"
 
     @classmethod
     def from_setting(cls, value: Optional[str]) -> "DriverProvider":
@@ -35,12 +37,16 @@ class DriverProvider(str, Enum):
             "kimi ai",
             "kimi-ai",
         }:
-            return cls.MOONSHOT_KIMI
+            return cls.MOONSHOT
 
         return cls.DEEPSEEK
 
     @property
     def key(self) -> str:
+        # Keep a stable storage key for Moonshot so we don't break existing
+        # persistent sessions and ECE data when renaming display labels
+        if self is DriverProvider.MOONSHOT:
+            return "moonshot_kimi"
         raw = (self.value or "").strip().lower()
         return re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
 

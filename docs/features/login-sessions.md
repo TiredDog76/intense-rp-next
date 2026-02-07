@@ -4,7 +4,7 @@ icon: material/key
 
 # :material-key: Login & Sessions
 
-Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot / Kimi) and keeping your session alive between restarts. These two features work together to make your life easier.
+Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot) and keeping your session alive between restarts. These two features work together to make your life easier.
 
 ---
 
@@ -35,8 +35,8 @@ Next time you start IntenseRP, DeepSeek / GLM Chat can fill credentials and clic
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
     If you don't want to do that every time, enable Persistent Sessions (below).
 
-!!! note "Moonshot / Kimi login"
-    Moonshot / Kimi uses a manual Google login flow in IntenseRP.
+!!! note "Moonshot login"
+    Moonshot uses a manual Google login flow in IntenseRP.
     Auto Login does not submit Moonshot credentials.
     Depending on your account security settings, manual confirmation/challenge steps can still be required.
 
@@ -125,7 +125,7 @@ This deletes the saved profile folder, which:
     - **Just Persistent Sessions**: Stays logged in until the session expires
     - **Both**: Best reliability - persistent session when it works, auto login as fallback
 
-    For Moonshot / Kimi, login is manual Google flow. Persistent Sessions still help reduce repeated manual logins.
+    For Moonshot, login is manual Google flow. Persistent Sessions still help reduce repeated manual logins.
 
 ??? question "My session keeps expiring?"
     Provider sessions do expire eventually. If Persistent Sessions isn't keeping you logged in long enough, make sure you also have Auto Login configured as a backup.

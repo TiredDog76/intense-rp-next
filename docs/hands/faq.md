@@ -44,7 +44,7 @@ Quick answers to the questions that come up the most. If you need a step-by-step
 
     - DeepSeek: `deepseek-auto` / `deepseek-chat` / `deepseek-reasoner`
     - GLM Chat: `glm-auto` / `glm-chat` / `glm-reasoner`
-    - Moonshot / Kimi: `moonshot-auto` / `moonshot-chat` / `moonshot-reasoner`
+    - Moonshot: `moonshot-auto` / `moonshot-chat` / `moonshot-reasoner`
 
 ??? question "Why are responses slow sometimes?"
     Two common reasons:
