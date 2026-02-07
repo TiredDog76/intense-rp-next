@@ -16,13 +16,16 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
 
 2. **Is the browser open and logged in?**
     - A Chromium window should be open.
-    - If you're on a provider login page, log in (or enable Auto Login).
+    - If you're on a provider login page, log in manually.
+    - DeepSeek / GLM Chat also support Auto Login.
     - For GLM Chat, login requires solving a CAPTCHA (Persistent Sessions are strongly recommended).
+    - For Moonshot / Kimi, Google login may require manual confirmation/challenge steps.
 
 3. **Is the provider UI language set to English?**
     - IntenseRP currently expects the provider UI language to be English.
     - DeepSeek: English (en / en-US)
     - GLM Chat: English (en-US)
+    - Moonshot / Kimi: English (en-US)
     - If you see a warning/popup about UI language, change it in the provider browser window and **reload the page**, then retry.
     - If that doesn't fix it after changing the language, close IntenseRP and start it again.
     - Persistent Sessions help a lot with managing languages.
@@ -144,10 +147,11 @@ See: [:material-cog: System](../features/system.md)
 Fixes, in order:
 
 1. If you use Auto Login, double-check your provider selection + email/password in **Providers & Credentials**.
+   (DeepSeek / GLM Chat)
 2. GLM Chat requires a CAPTCHA during login. Auto Login can fill credentials, but you still need to solve the CAPTCHA in the browser window.
 3. Try toggling **Persistent Sessions** off and back on (then Start again).
 4. If Persistent Sessions is enabled but things feel "stuck", use **Clear Profile** to reset the saved browser profile.
-5. Try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
+5. For DeepSeek / GLM Chat, try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:
 
@@ -220,7 +224,7 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 
 - [ ] Reproduce once (so you can describe exact steps).
 - [ ] If possible, reproduce with logs enabled (console and/or logfiles).
-- [ ] Note whether it happens on `deepseek-*` or `glm-*` (depending on your provider).
+- [ ] Note whether it happens on `deepseek-*`, `glm-*`, or `moonshot-*` (depending on your provider).
 - [ ] If you are using LAN, try locally too (to rule out firewall/network issues).
 
 ### :material-clipboard-text-outline: What to include
@@ -228,16 +232,16 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - **Version** (app title bar)
 - **OS** (Windows/Linux + version)
 - **Install method** (release zip vs from source)
-- **Provider** (DeepSeek or GLM Chat)
+- **Provider** (DeepSeek, GLM Chat, or Moonshot / Kimi)
 - **Client** (SillyTavern or other client + version)
 - **Endpoint** (example: `http://127.0.0.1:7777/v1`)
-- **Model** (example: `deepseek-auto` / `glm-auto`)
+- **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto`)
 - **Streaming** (`stream: true` or `stream: false`)
 - **Expected vs actual**
 - **Logs** (console dump or `logs/log_*.txt`)
 
 !!! danger "Redact secrets"
-    Logs can contain your DeepSeek email, file paths, message content, and API keys. Always redact personal data before posting publicly.
+    Logs can contain provider emails, file paths, message content, and API keys. Always redact personal data before posting publicly.
 
 ### :material-text-box-outline: Copy/paste template
 

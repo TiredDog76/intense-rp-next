@@ -11,19 +11,19 @@ Quick answers to the questions that come up the most. If you need a step-by-step
 ## :material-help-circle: General
 
 ??? question "What is IntenseRP Next v2?"
-    A local desktop app + OpenAI-compatible API that lets clients like SillyTavern talk to DeepSeek by driving the DeepSeek web app in a real browser.
+    A local desktop app + OpenAI-compatible API that lets clients like SillyTavern talk to provider web chats (DeepSeek / GLM / Moonshot) by driving them in a real browser.
 
 ??? question "Is this an official DeepSeek or SillyTavern project?"
     Nope. This is a third-party tool and is not affiliated with DeepSeek, SillyTavern, or any provider.
 
-??? question "Do I need a paid DeepSeek API key?"
-    No. IntenseRP uses the DeepSeek web app you log into in the browser. (DeepSeek itself has a free chat website and a paid API, but this project does not use the API.)
+??? question "Do I need a paid provider API key?"
+    No. IntenseRP uses provider web apps you log into in the browser (DeepSeek / GLM / Moonshot). This project does not use paid official provider APIs.
 
 ??? question "What platforms are supported?"
     Windows and Linux are the supported targets right now. A graphical desktop is required because it launches a real browser.
 
 ??? question "Why does it open a browser window?"
-    Because that's how it works: IntenseRP actually drives the DeepSeek UI (and intercepts the underlying network stream). It is not a headless, server-only API.
+    Because that's how it works: IntenseRP actually drives the provider UI (and intercepts the underlying network stream). It is not a headless, server-only API.
 
 ---
 
@@ -37,12 +37,14 @@ Quick answers to the questions that come up the most. If you need a step-by-step
     If you change the port in Settings, update the endpoint to match.
 
 ??? question "Do I need to keep the browser open?"
-    Yes - keep the DeepSeek browser window open while you use IntenseRP. You can minimize it, but if you close it you'll usually need to press Start again.
+    Yes - keep the provider browser window open while you use IntenseRP. You can minimize it, but if you close it you'll usually need to press Start again.
 
 ??? question "Which model should I pick?"
-    - `deepseek-auto` - respects your IntenseRP settings (recommended)
-    - `deepseek-chat` - forces DeepThink off
-    - `deepseek-reasoner` - forces DeepThink on
+    Use the preset that matches your active provider:
+
+    - DeepSeek: `deepseek-auto` / `deepseek-chat` / `deepseek-reasoner`
+    - GLM Chat: `glm-auto` / `glm-chat` / `glm-reasoner`
+    - Moonshot / Kimi: `moonshot-auto` / `moonshot-chat` / `moonshot-reasoner`
 
 ??? question "Why are responses slow sometimes?"
     Two common reasons:
@@ -72,11 +74,11 @@ Quick answers to the questions that come up the most. If you need a step-by-step
 
 ## :material-lock: Privacy & data
 
-??? question "Does IntenseRP store my DeepSeek password?"
+??? question "Does IntenseRP store my provider password?"
     Only if you enable Auto Login. Your config directory contains sensitive data (credentials, API keys, cookies), so treat it like a password vault. If you prefer, keep Auto Login off and just log in manually.
 
 ??? question "Where are my settings and sessions saved?"
-    In your config directory (`[config_dir]`). If you enabled Persistent Sessions, it can also contain a saved browser profile for DeepSeek. See :material-cog: [System](../features/system.md).
+    In your config directory (`[config_dir]`). If you enabled Persistent Sessions, it can also contain saved browser profiles for your providers. See :material-cog: [System](../features/system.md).
 
 ---
 

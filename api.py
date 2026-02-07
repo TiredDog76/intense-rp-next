@@ -208,6 +208,30 @@ class API:
                         {"id": "glm-reasoner", "object": "model", "created": 0, "owned_by": "glm"},
                     ],
                 }
+            if provider == DriverProvider.MOONSHOT_KIMI:
+                return {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": "moonshot-auto",
+                            "object": "model",
+                            "created": 0,
+                            "owned_by": "moonshot",
+                        },
+                        {
+                            "id": "moonshot-chat",
+                            "object": "model",
+                            "created": 0,
+                            "owned_by": "moonshot",
+                        },
+                        {
+                            "id": "moonshot-reasoner",
+                            "object": "model",
+                            "created": 0,
+                            "owned_by": "moonshot",
+                        },
+                    ],
+                }
 
             return {
                 "object": "list",

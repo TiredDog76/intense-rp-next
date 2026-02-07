@@ -39,16 +39,16 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 
 ## Welcome 👋
 
-If you're here because you want DeepSeek (DS) in SillyTavern without wiring up the paid official API: Welcome to the club!
-IntenseRP Next v2 drives the official DeepSeek/GLM web apps in a real browser, and re-exposes them as an OpenAI-compatible endpoint.
+If you're here because you want DeepSeek / GLM / Moonshot in SillyTavern without wiring up the paid official API: Welcome to the club!
+IntenseRP Next v2 drives the official DeepSeek / GLM / Moonshot (Kimi) web apps in a real browser, and re-exposes them as an OpenAI-compatible endpoint.
 
-Unlike the official API, this is usually free (DeepSeek/GLM are entirely free to use with limits, and paid plans aren't added yet) and it gives you access to the full web UI experience (including DeepThink, file uploads, and more). Not without tradeoffs, of course - see below.
+Unlike the official API, this is usually free (DeepSeek / GLM / Kimi are free to use with limits, and paid plans aren't added yet) and it gives you access to the full web UI experience (including reasoning toggles, search, file uploads, and more). Not without tradeoffs, of course - see below.
 
 ## Start here! 🎁
 
 1. Download a release (see [Releases](https://github.com/LyubomirT/intense-rp-next/releases)) and run it (or run from source)
 2. Click **Start** and log in when the browser opens
-3. Point your SillyTavern client at `http://127.0.0.1:7777/v1` (default) and pick `deepseek-auto`
+3. Point your SillyTavern client at `http://127.0.0.1:7777/v1` (default) and pick `deepseek-*` / `glm-*` / `moonshot-*` mode IDs
 
 And it's done! It should Just Work™️.
 
@@ -57,7 +57,7 @@ And it's done! It should Just Work™️.
 IntenseRP Next v2 (sometimes shortened to "IRP Next v2") is a local bridge between:
 
 - an OpenAI-style client (like SillyTavern), and
-- a provider web app (currently: DeepSeek, GLM Chat)
+- a provider web app (currently: DeepSeek, GLM Chat, Moonshot / Kimi)
 
 Under the hood it:
 
@@ -67,9 +67,9 @@ Under the hood it:
 4. Intercepts the provider's streaming network responses
 5. Re-emits them as OpenAI-style SSE deltas for your client
 
-In normal human terms: it makes "use DeepSeek/GLM from SillyTavern" feel like a normal API connection, even though they are web apps.
+In normal human terms: it makes "use DeepSeek/GLM/Kimi from SillyTavern" feel like a normal API connection, even though they are web apps.
 
-DeepSeek/GLM also have official APIs (paid), but not everyone can pay for them, so this is kind of a free alternative. 🙂
+DeepSeek / GLM / Moonshot also have official APIs (paid), but not everyone can pay for them, so this is kind of a free alternative. 🙂
 
 ## Should you use it? 🎯
 
@@ -77,7 +77,7 @@ If you read this far, you probably have a use case in mind! But here's the objec
 
 It would work well for you if you:
 
-- want free-ish access to the official DeepSeek models via the web app
+- want free-ish access to provider web models via the official web apps
 - prefer a clicky desktop app over a pile of scripts
 - are OK with the occasional wait or hiccup (web apps change)
 
@@ -171,7 +171,7 @@ Once the app says **Running (Port 7777)**:
 | Endpoint | `http://127.0.0.1:7777/v1` |
 | API | OpenAI-compatible chat completions |
 | API key | Leave blank (unless you enabled API keys) |
-| Model | `deepseek-auto` / `glm-auto` |
+| Model | `deepseek-*` / `glm-*` / `moonshot-*` |
 
 Available model IDs (depends on provider):
 
@@ -183,8 +183,12 @@ Available model IDs (depends on provider):
   - `glm-auto` (uses your IntenseRP settings)
   - `glm-chat` (forces Deep Think off)
   - `glm-reasoner` (forces Deep Think on, Send Deep Think follows your setting)
+- Moonshot / Kimi:
+  - `moonshot-auto` (uses your IntenseRP settings)
+  - `moonshot-chat` (forces Thinking off, Send Thinking off)
+  - `moonshot-reasoner` (forces Thinking on, Send Thinking follows your setting)
 
-Note: these IDs are behavior presets (modes). For GLM, IntenseRP currently drives only GLM-4.7 (other GLM models are not selectable yet).
+Note: these IDs are behavior presets (modes). GLM has separate real model selection in Settings. Moonshot `moonshot-*` IDs are still behavior presets, not a separate backend model selector.
 
 If you change the port in Settings, update the endpoint to match (example: `http://127.0.0.1:YOUR_PORT/v1`).
 
@@ -207,7 +211,7 @@ There are a few highlights I think are worth calling out. Most have been in v1 a
 - 🖥️ A desktop UI that starts/stops everything for you (and doesn't require terminal work)
 - 🔌 An OpenAI-compatible API under `/v1` for SillyTavern and other OpenAI-compatibles
 - 🧩 A formatting pipeline: templates, divider, injection, name detection
-- 🧠 DeepSeek behavior toggles: DeepThink, Search, file upload mode, clean regeneration, anti-censorship
+- 🧠 Provider behavior toggles: DeepSeek, GLM Chat, and Moonshot / Kimi behavior controls
 - 🔐 Optional LAN mode and API keys
 - 🪵 Built-in extensive logging: console window, log files, console dump
 - ♻️ Built-in v1 migrator + built-in update flow (when running packaged builds)
@@ -218,10 +222,7 @@ Current:
 
 - DeepSeek (usable; in "verification" stage)
 - GLM Chat (usable; beta-like, Search supported)
-
-Planned (not implemented yet):
-
-- Moonshot
+- Moonshot / Kimi (usable; first integration stage)
 
 More detail lives in `docs/` (best viewed as the docs site - see below).
 

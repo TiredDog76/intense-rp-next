@@ -21,6 +21,7 @@ nav:
       - STMP Support: features/stmp-support.md
       - DeepSeek Behavior: features/deepseek-behavior.md
       - GLM Behavior: features/glm-behavior.md
+      - Kimi Behavior: features/moonshot-behavior.md
       - Login & Sessions: features/login-sessions.md
       - Network & API: features/network-api.md
       - Console & Logging: features/console-logging.md

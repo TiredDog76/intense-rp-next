@@ -356,6 +356,7 @@ class CredentialManagerDialog(QDialog):
         self._provider_entries: List[_ProviderEntry] = [
             _ProviderEntry(label="DeepSeek", provider=DriverProvider.DEEPSEEK),
             _ProviderEntry(label="GLM", provider=DriverProvider.GLM_CHAT),
+            _ProviderEntry(label="Moonshot / Kimi", provider=DriverProvider.MOONSHOT_KIMI),
         ]
 
         self._page_by_provider_key: Dict[str, _ProviderPage] = {}
@@ -470,6 +471,7 @@ class CredentialManagerDialog(QDialog):
             legacy_candidates = [
                 (DriverProvider.DEEPSEEK, self._read_legacy_pair("deepseek_email", "deepseek_password")),
                 (DriverProvider.GLM_CHAT, self._read_legacy_pair("glm_email", "glm_password")),
+                (DriverProvider.MOONSHOT_KIMI, self._read_legacy_pair("moonshot_email", "moonshot_password")),
             ]
 
             for provider, legacy_pair in legacy_candidates:

@@ -15,7 +15,7 @@ Before we dive in, make sure you have:
 | | |
 |---|---|
 | :material-microsoft-windows: **Windows 10/11** or :material-linux: **Linux** | 64-bit with a graphical desktop |
-| :material-account-plus: **DeepSeek or GLM account** | [DeepSeek](https://chat.deepseek.com) or [GLM Chat (Z.ai)](https://chat.z.ai/) |
+| :material-account-plus: **DeepSeek, GLM, or Moonshot account** | [DeepSeek](https://chat.deepseek.com), [GLM Chat (Z.ai)](https://chat.z.ai/), or [Kimi](https://www.kimi.com/) |
 | :material-chat: **SillyTavern** (or similar) | Any OpenAI-compatible client works |
 
 ---
@@ -87,9 +87,9 @@ Before hitting Start, pick your provider and (optionally) save your login so you
 
 1. Click the :material-cog: **Settings** button
 2. Go to **Providers & Credentials**
-3. Choose your **Provider** (DeepSeek or GLM Chat)
-4. Turn on :material-toggle-switch: **Auto Login**
-5. Enter your provider **email** and **password**
+3. Choose your **Provider** (DeepSeek, GLM Chat, or Moonshot / Kimi)
+4. (Optional) Turn on :material-toggle-switch: **Auto Login** (DeepSeek / GLM Chat)
+5. Enter your provider **email** and **password** (used for DeepSeek / GLM auto-login)
 6. Hit :material-content-save: **Save**
 
 ![Settings Credentials](pics/getting-started/settings_credentials.png)
@@ -101,6 +101,9 @@ Before hitting Start, pick your provider and (optionally) save your login so you
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
     Persistent Sessions are strongly recommended if you do not want to solve it every start.
 
+!!! note "Moonshot / Kimi login"
+    Moonshot / Kimi uses a manual Google login flow in IntenseRP (no credential autofill step). Depending on your account security settings, manual confirmation/challenge steps may still be required.
+
 ---
 
 ## :material-play-circle: Step 3: Start the Server
@@ -109,7 +112,7 @@ Alright, the fun part!
 
 1. Click the big :material-play: **Start** button
 2. A browser window will pop up
-3. If you set up auto-login, it'll sign in for you. Otherwise, log in manually.
+3. DeepSeek / GLM Chat can use auto-login. Moonshot / Kimi requires manual Google login in the browser window.
 4. Once logged in, the status changes to :material-check-circle: **Running (Port 7777)**
 
 <div class="image-grid" markdown>
@@ -148,10 +151,14 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 |-------|-------|
 | :material-web: **Custom Endpoint** | `http://127.0.0.1:7777/v1` |
 | :material-key: **API Key** | Leave blank |
-| :material-robot: **Model** | `deepseek-auto` |
+| :material-robot: **Model** | `deepseek-*` / `glm-*` / `moonshot-*` |
 
 !!! note
-    If your active provider is **GLM Chat**, use `glm-auto` here instead.
+    Use the model ID that matches your active provider:
+
+    - DeepSeek -> `deepseek-auto`
+    - GLM Chat -> `glm-auto`
+    - Moonshot / Kimi -> `moonshot-auto`
 
 !!! info "Model Names"
     The model IDs are behavior presets (modes). Which set you get depends on your active provider.
@@ -176,6 +183,16 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
             :material-arrow-right: **Settings** -> **GLM Behavior** -> **Model** (GLM-4.7 or GLM-4.6)
 
             GLM-4.6v exists, but IntenseRP intentionally does not select it.
+
+    === ":material-meteor: Moonshot / Kimi"
+
+        - `moonshot-auto` (default, respects your IntenseRP settings)
+        - `moonshot-chat` (forces Thinking off and Send Thinking off)
+        - `moonshot-reasoner` (forces Thinking on, respects `Send Thinking` setting)
+
+        !!! note "Moonshot model IDs"
+            `moonshot-*` IDs are behavior presets (modes), not a separate backend model selector.
+            Thinking/Search behavior still comes from **Moonshot / Kimi Behavior** settings, with these mode overrides.
 
 ![SillyTavern Endpoint Settings](pics/getting-started/preview_of_settings.png)
 
@@ -204,9 +221,9 @@ Don't forget to update your SillyTavern endpoint too!
 
 ### :material-brain: Enable DeepThink
 
-And just as before, we support DeepSeek's reasoning feature. In simple words, it makes the model "smarter" by letting it think through problems step-by-step before answering (but also makes it slower and can change the tone).
+And just as before, we support provider reasoning features. In simple words, it makes the model "smarter" by letting it think through problems step-by-step before answering (but also makes it slower and can change the tone).
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior**
+:material-arrow-right: **Settings** → **DeepSeek Behavior** (or GLM/Moonshot Behavior, depending on your provider)
 
 | Option | What It Does |
 |--------|-------------|

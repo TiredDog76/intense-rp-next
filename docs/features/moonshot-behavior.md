@@ -1,0 +1,126 @@
+---
+icon: material/meteor
+---
+
+# :material-meteor: Moonshot / Kimi Behavior
+
+This page covers the toggles and options that control how IntenseRP interacts with **Moonshot / Kimi** (`kimi.com`).
+
+!!! note "Model IDs"
+    Moonshot / Kimi exposes three API behavior presets:
+    `moonshot-auto`, `moonshot-chat`, and `moonshot-reasoner`.
+    These are behavior modes, not separate backend model selection.
+
+---
+
+## :material-head-cog: Thinking
+
+Kimi exposes reasoning through model mode selection in the web UI.
+
+### Enable Thinking
+
+Switches Kimi to **K2.5 Thinking** before sending a request.
+When disabled, IntenseRP switches to **K2.5 Instant**.
+
+:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Enable Thinking**
+
+### Send Thinking
+
+When enabled, reasoning content is included in API output, wrapped in `<think>` tags.
+When disabled, only final answer text is forwarded.
+
+:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Send Thinking**
+
+!!! warning "Model downgrading"
+    As part of a paywall strategy, Kimi will downgrade to K2.5 Instant (if you're on their Free plan) when you enable Thinking mode. This is a provider-side change and not something IntenseRP can control. They say it's because of high demand, but really it probably just means they're trying to force you to pay `¯\_(ツ)_/¯`.
+
+---
+
+## :material-magnify: Search
+
+Toggles Kimi search tooling in the web UI.
+
+:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Enable Search**
+
+!!! warning "Search + Thinking"
+    Kimi can emit multi-stage reasoning when Search and Thinking are both enabled.
+    Some clients (including SillyTavern) may not parse this perfectly.
+
+!!! danger "On a personal note"
+    Do not enable Search and Thinking at the same time. Just don't. It's a mess and IntenseRP sometimes breaks trying to handle it.
+
+---
+
+## :material-file-upload: File Upload Mode
+
+Instead of typing your message into Kimi's editor, IntenseRP can upload it as a text file attachment.
+
+:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Send As Text File**
+
+### File Upload Timeout
+
+Controls how long IntenseRP waits (in seconds) for the send button to become enabled after upload.
+
+:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **File Upload Timeout**
+
+Default is 15 seconds.
+
+---
+
+## :material-shield-off: Anti-Censorship
+
+When enabled, IntenseRP suppresses refusal-like stream events (when detected) and closes the response cleanly.
+
+:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Anti-Censorship**
+
+!!! warning "What It Doesn't Do"
+    This does not bypass provider filtering. It only suppresses refusal-style output from being forwarded to the client.
+
+---
+
+## :material-refresh: Clean Regeneration
+
+When enabled, IntenseRP tries to click Kimi's regenerate action if:
+
+1. The new prompt is identical to the cached last prompt
+2. Effective behavior settings are also identical
+
+Otherwise it starts a fresh chat.
+
+:material-arrow-right: **Settings** -> **Moonshot / Kimi Behavior** -> **Clean Regeneration**
+
+---
+
+## :material-code-tags: Per-Message Macros
+
+You can add `[[...]]` macros to the latest user message to override behavior for that request only.
+All macros are stripped before sending.
+
+| Macro | Effect |
+|------|--------|
+| `[[think]]`, `[[r1]]` | Force Thinking on |
+| `[[nothink]]`, `[[r0]]` | Force Thinking off |
+| `[[search]]` | Force Search on |
+| `[[nosearch]]`, `[[no_search]]` | Force Search off |
+| `[[file]]` | Force Send As Text File on |
+| `[[nofile]]` | Force Send As Text File off |
+
+---
+
+## :material-format-list-checks: Quick Reference
+
+| Setting | What It Does | Default |
+|---------|--------------|---------|
+| **Enable Thinking** | Switches Kimi mode between Instant and Thinking | Off |
+| **Send Thinking** | Includes reasoning in response | Off |
+| **Enable Search** | Toggles Kimi search | Off |
+| **Send As Text File** | Uploads prompt as .txt | Off |
+| **File Upload Timeout** | Seconds to wait for upload | 15 |
+| **Anti-Censorship** | Suppresses refusal-like outputs | Off |
+| **Clean Regeneration** | Regenerates on duplicate prompts | Off |
+
+---
+
+## :material-arrow-left: Back to Features
+
+[:material-arrow-left: Features Overview](../features.md)

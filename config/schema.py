@@ -132,6 +132,39 @@ SCHEMA = [
                 ),
                 visible_depends="experimental.ece_enabled==false",
             ),
+            SettingField(
+                key="moonshot_email",
+                label="Moonshot / Kimi Email",
+                type=SettingType.STRING,
+                default="",
+                tooltip=(
+                    "Optional account identifier for Moonshot / Kimi. "
+                    "Not used for Moonshot login automation."
+                ),
+                validator=validate_email,
+                required=False,
+                depends=(
+                    "providers_credentials.provider==Moonshot / Kimi "
+                    "&& experimental.ece_enabled==false"
+                ),
+                visible_depends="experimental.ece_enabled==false",
+            ),
+            SettingField(
+                key="moonshot_password",
+                label="Moonshot / Kimi Password",
+                type=SettingType.PASSWORD,
+                default="",
+                tooltip=(
+                    "Optional account secret/identifier for Moonshot / Kimi. "
+                    "Not used for Moonshot login automation."
+                ),
+                required=False,
+                depends=(
+                    "providers_credentials.provider==Moonshot / Kimi "
+                    "&& experimental.ece_enabled==false"
+                ),
+                visible_depends="experimental.ece_enabled==false",
+            ),
         ]
     ),
     SettingCategory(
@@ -387,6 +420,72 @@ SCHEMA = [
                 tooltip="If enabled, attempts to regenerate the last message instead of creating a new chat if the prompt is identical."
             ),
         ]
+    ),
+    SettingCategory(
+        name="Moonshot / Kimi Behavior",
+        key="moonshot_behavior",
+        fields=[
+            SettingField(
+                key="enable_deepthink",
+                label="Enable Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Switch Kimi between K2.5 Instant and K2.5 Thinking before sending.",
+            ),
+            SettingField(
+                key="send_deepthink",
+                label="Send Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include Kimi's thinking content in the response sent to the API.",
+            ),
+            SettingField(
+                key="search_and_think_note",
+                label="Search + Thinking (Note)",
+                type=SettingType.DESCRIPTION,
+                default=(
+                    "Kimi can emit multi-stage reasoning when Search and Thinking are both enabled. "
+                    "Some clients (including SillyTavern) may not parse this cleanly."
+                ),
+                tooltip=None,
+            ),
+            SettingField(
+                key="enable_search",
+                label="Enable Search",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Toggle Kimi's internet search tool in the web UI.",
+            ),
+            SettingField(
+                key="send_as_text_file",
+                label="Send As Text File",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Upload message as a text file instead of typing it.",
+            ),
+            SettingField(
+                key="file_upload_timeout",
+                label="File Upload Timeout",
+                type=SettingType.INTEGER,
+                default=15,
+                tooltip="Max seconds to wait for the send button to become enabled after file upload.",
+                depends="moonshot_behavior.send_as_text_file",
+            ),
+            SettingField(
+                key="anti_censorship",
+                label="Anti-Censorship",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Suppress refusal-like messages in the stream when a content-filter-style event is detected.",
+            ),
+            SettingField(
+                key="clean_regeneration",
+                label="Clean Regeneration",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="If enabled, attempts to regenerate the last message instead of creating a new chat if the prompt is identical.",
+            ),
+        ],
     ),
     SettingCategory(
         name="Logfiles",

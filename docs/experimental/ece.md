@@ -6,7 +6,7 @@ icon: material/key
 
 ECE (Experimental Credential Engine) is an opt-in alternative to the legacy "one email/password per provider" setup.
 
-Instead of storing a single DeepSeek/GLM login in Settings, ECE lets you store **multiple credential pairs per provider**, pick which one is used on start, and (optionally) **retry a failed request by restarting the browser and rotating to a different identity**.
+Instead of storing a single provider login in Settings, ECE lets you store **multiple credential pairs per provider**, pick which one is used on start, and (optionally) **retry a failed request by restarting the browser and rotating to a different identity**.
 
 It's mainly meant for two things:
 
@@ -66,7 +66,7 @@ If you're using ECE, you will mostly interact with it through the Settings UI. U
     ECE will not pick a stored credential pair, and you'll log in manually like usual.
 
 !!! note "First open migration from legacy fields"
-    The first time you open **Credential Manager**, IntenseRP tries to copy legacy provider credentials (old DeepSeek/GLM email + password fields) into ECE as the first rows when possible.
+    The first time you open **Credential Manager**, IntenseRP tries to copy legacy provider credentials (old DeepSeek / GLM / Moonshot email + password fields) into ECE as the first rows when possible.
 
     If any ECE credentials already exist, this import is skipped.
 
@@ -86,7 +86,7 @@ If you're using ECE, you will mostly interact with it through the Settings UI. U
 
 ## :material-account-switch: How ECE picks a credential pair
 
-ECE stores credential pairs per provider (DeepSeek / GLM). On driver start, it selects a pair only when **Auto Login** is enabled.
+ECE stores credential pairs per provider (DeepSeek / GLM / Moonshot). On driver start, it selects a pair only when **Auto Login** is enabled.
 
 There are two selection modes. If **Select Least Used** is disabled, ECE picks a random pair from the list. If **Select Least Used** is enabled, ECE prefers the account that was used the longest time ago, and accounts that have never been used yet are preferred first.
 
@@ -106,6 +106,7 @@ Without ECE, profiles live here:
 ```
 [config_dir]/playwright_profiles/deepseek/
 [config_dir]/playwright_profiles/glm_chat/
+[config_dir]/playwright_profiles/moonshot_kimi/
 ```
 
 With ECE enabled, profiles live under an ECE namespace, and each account gets its own folder:
@@ -113,6 +114,7 @@ With ECE enabled, profiles live under an ECE namespace, and each account gets it
 ```
 [config_dir]/playwright_profiles/ece/deepseek/<hash>/
 [config_dir]/playwright_profiles/ece/glm_chat/<hash>/
+[config_dir]/playwright_profiles/ece/moonshot_kimi/<hash>/
 ```
 
 The `<hash>` is derived from your email (SHA-256, truncated). It's only there so your email doesn't show up in folder names.
@@ -178,11 +180,13 @@ These files are encrypted using the same `settings.key` used for your main setti
 
 **GLM Chat:** ECE can fill email/password, but GLM still requires a CAPTCHA step. Persistent Sessions are strongly recommended so you don't have to repeat the CAPTCHA every start.
 
+**Moonshot / Kimi:** login is Google-based and may still require manual confirmation/challenges depending on your account security settings.
+
 ---
 
 ## :material-frequently-asked-questions: Quick FAQ
 
-??? question "I enabled ECE, but I still see the old DeepSeek/GLM email/password fields"
+??? question "I enabled ECE, but I still see the old provider email/password fields"
     Make sure **Experimental -> Enable Experimental Credential Engine (ECE)** is on, then reopen Settings. When ECE is enabled, the legacy fields are hidden and a **Credential Manager** entry appears instead.
 
 ??? question "ECE is enabled, but nothing changes when I start the driver"
@@ -198,7 +202,7 @@ These files are encrypted using the same `settings.key` used for your main setti
 ??? question "Can I see which account ECE picked?"
     Not in the UI yet, but you can usually tell from which browser profile stays logged in (when Persistent Sessions are enabled), and from log lines mentioning ECE.
 
-??? question "Will ECE delete my old DeepSeek/GLM credential fields?"
+??? question "Will ECE delete my old provider credential fields?"
     No. ECE does not delete legacy credential fields.
 
     On first open of **Credential Manager**, it may copy existing legacy credentials into ECE as first rows, but the legacy fields remain unchanged.

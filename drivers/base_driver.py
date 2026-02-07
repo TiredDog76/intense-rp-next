@@ -62,9 +62,22 @@ class BaseDriver(ABC):
         except Exception:
             return False
 
+    def _ece_requires_auto_login(self) -> bool:
+        """
+        Whether this provider requires Auto Login to enable ECE account/profile selection.
+
+        Default is True for providers where credentials are actively used in login flow.
+        Providers with manual-only auth flows can override this to False.
+        """
+        return True
+
     def ece_reauth_enabled(self) -> bool:
         if (not self._ece_is_enabled()) or (not self._ece_reauth_on_no_content()):
             return False
+
+        if not self._ece_requires_auto_login():
+            return True
+
         try:
             return bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
         except Exception:
@@ -108,8 +121,9 @@ class BaseDriver(ABC):
             self._ece_pending_profile_slot = None
             return
 
-        # only pick a pair when auto-login is enabled
-        if not auto_login:
+        # Providers can require Auto Login for ECE selection. Some providers have to work manually though, so we
+        # allow bypassing this requirement for them (right now Moonshot does this)
+        if self._ece_requires_auto_login() and (not auto_login):
             self._ece_active_pair = None
             self._ece_active_profile_slot = 0
             return
@@ -156,7 +170,7 @@ class BaseDriver(ABC):
         except Exception:
             auto_login = False
 
-        if not auto_login:
+        if self._ece_requires_auto_login() and (not auto_login):
             return False
 
         current = getattr(self, "_ece_active_pair", None)
@@ -366,6 +380,70 @@ class BaseDriver(ABC):
         """
         return None
 
+    async def _navigate_to_start_url(self, start_url: str) -> None:
+        """
+        Navigate to provider start URL with tolerant readiness rules.
+
+        Some provider pages keep the tab spinner active indefinitely due to long-lived
+        network connections. Waiting for full `load` can timeout despite a usable UI.
+        """
+        if not self.page:
+            raise RuntimeError("Page is not initialized.")
+
+        nav_timeout_ms = 45000
+
+        try:
+            await self.page.goto(
+                start_url,
+                wait_until="domcontentloaded",
+                timeout=nav_timeout_ms,
+            )
+            return
+        except Exception as e:
+            msg = str(e)
+            is_timeout = ("timeout" in msg.lower())
+            if not is_timeout:
+                raise
+
+            Logger.warning(
+                f"Navigation to {start_url} timed out waiting for DOM content "
+                f"({nav_timeout_ms}ms). Checking page usability..."
+            )
+
+            # Best-effort fallback: continue if page is clearly usable
+            current_url = ""
+            try:
+                current_url = str(self.page.url or "")
+            except Exception:
+                current_url = ""
+
+            ready_state = ""
+            try:
+                ready_state = str(await self.page.evaluate("() => document.readyState || ''"))
+            except Exception:
+                ready_state = ""
+
+            body_present = False
+            try:
+                body_present = bool(await self.page.evaluate("() => !!document.body"))
+            except Exception:
+                body_present = False
+
+            looks_usable = (
+                bool(current_url)
+                and (current_url != "about:blank")
+                and body_present
+                and (ready_state in {"interactive", "complete"})
+            )
+            if looks_usable:
+                Logger.warning(
+                    f"Proceeding after navigation timeout because page appears usable "
+                    f"(url='{current_url}', readyState='{ready_state}')."
+                )
+                return
+
+            raise
+
     async def start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         """
         Starts the browser and navigates to the provider.
@@ -420,7 +498,7 @@ class BaseDriver(ABC):
 
         start_url = self.get_start_url()
         Logger.info(f"Navigating to {start_url} ...")
-        await self.page.goto(start_url)
+        await self._navigate_to_start_url(start_url)
 
         await self.login()
         await self.after_start(status_callback=status_callback)

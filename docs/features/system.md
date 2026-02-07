@@ -32,6 +32,7 @@ When enabled, IntenseRP launches Chromium using a **persistent browser context**
 ```
 [config_dir]/playwright_profiles/deepseek/
 [config_dir]/playwright_profiles/glm_chat/
+[config_dir]/playwright_profiles/moonshot_kimi/
 ```
 
 IntenseRP uses one folder per provider and will read/write the folder for the currently selected **Provider**.

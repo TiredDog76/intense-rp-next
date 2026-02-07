@@ -151,6 +151,14 @@ These IDs are behavior presets (modes), not true model selection.
     | `glm-chat` | Forces Deep Think off |
     | `glm-reasoner` | Forces Deep Think on |
 
+=== ":material-meteor: Moonshot / Kimi"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `moonshot-auto` | Uses your IntenseRP settings |
+    | `moonshot-chat` | Forces Thinking off |
+    | `moonshot-reasoner` | Forces Thinking on |
+
 ---
 
 ## :material-frequently-asked-questions: Quick FAQ

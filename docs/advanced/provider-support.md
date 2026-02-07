@@ -6,7 +6,7 @@ icon: material/cloud
 
 IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
 
-Today, **DeepSeek** and **GLM Chat (Z.ai)** are implemented and usable.
+Today, **DeepSeek**, **GLM Chat (Z.ai)**, and **Moonshot / Kimi** are implemented and usable.
 
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
@@ -61,15 +61,12 @@ Providers are prioritized in this order:
 
 | Provider | Priority | Current stage |
 |---|---:|---|
-| **DeepSeek** | 1 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
-| **GLM Chat** | 2 | :material-shield-check:{ style="color: #FFD43B" } **Verification (beta)** |
-| **Moonshot** | 3 | :material-clock-outline:{ style="color: #ADB5BD" } **Queued** |
+| **DeepSeek** | 1 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
+| **GLM Chat** | 2 | :material-check-circle:{ style="color: #51CF66" } **Stable (mostly)** |
+| **Moonshot / Kimi** | 3 | :material-shield-check:{ style="color: #FFD43B" } **Verification (early)** |
 
-!!! note "What 'Verification' means for DeepSeek"
-    DeepSeek is implemented and usable, but it is still being validated for stability (provider UI changes, edge cases, cancellation, long prompts, etc.).
-
-!!! note "What 'Verification' means for GLM"
-    GLM Chat is implemented and usable, but it is still being stabilized. Expect occasional quirks.
+!!! note "What 'Verification' means for Moonshot / Kimi"
+    Moonshot / Kimi is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
 
 ---
 
@@ -88,6 +85,12 @@ Providers are prioritized in this order:
     Deep Think, modes, Search status, and GLM-specific notes.
 
     [:arrow_right: GLM Behavior](../features/glm-behavior.md)
+
+-   :material-meteor: **Moonshot / Kimi Behavior**
+
+    Thinking, Search, file uploads, and Kimi-specific caveats.
+
+    [:arrow_right: Moonshot / Kimi Behavior](../features/moonshot-behavior.md)
 
 -   :material-key: **Login & Sessions**
 

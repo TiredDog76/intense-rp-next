@@ -1,4 +1,5 @@
 from typing import Dict, Any
+from drivers.providers import DriverProvider
 
 class SettingsMigrator:
     @staticmethod
@@ -37,6 +38,12 @@ class SettingsMigrator:
             providers_credentials = settings.setdefault("providers_credentials", {})
             if isinstance(providers_credentials, dict) and not providers_credentials.get("provider"):
                 providers_credentials["provider"] = provider
+
+        # Migration: normalize provider value to canonical enum label
+        providers_credentials = settings.get("providers_credentials")
+        if isinstance(providers_credentials, dict):
+            raw_provider = providers_credentials.get("provider")
+            providers_credentials["provider"] = DriverProvider.from_setting(raw_provider).value
                     
         # Future migrations will be added here
         # e.g. v1 to v2

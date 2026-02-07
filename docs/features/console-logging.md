@@ -165,7 +165,7 @@ If you need to share logs with the developer or community:
 !!! danger "Review Before Sharing!"
     Log files and console dumps can contain sensitive stuff:
     
-    - **Your DeepSeek email address** (shows up during auto-login)
+    - **Your provider email address** (shows up during auto-login)
     - **File paths** that might reveal your username or folder structure
     - **Message content** in debug logs
     - **API keys** if you're debugging auth issues

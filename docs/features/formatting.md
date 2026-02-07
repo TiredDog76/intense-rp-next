@@ -4,7 +4,7 @@ icon: material/format-text
 
 # :material-format-text: Formatting
 
-When SillyTavern sends messages to IntenseRP, it doesn't just forward them straight to DeepSeek. Instead, it squishes everything into a single, neatly formatted prompt that the model can understand better. This page explains how that magic works.
+When SillyTavern sends messages to IntenseRP, it doesn't just forward them straight to the active provider. Instead, it squishes everything into a single, neatly formatted prompt that the model can understand better. This page explains how that magic works.
 
 ---
 
@@ -18,14 +18,14 @@ flowchart LR
     B --> C[Apply Template]
     C --> D[Join with Divider]
     D --> E[Add Injection]
-    E --> F[Send to DeepSeek]
+    E --> F[Send to Provider]
 ```
 
 1. **Name Detection** — Figure out who's talking (your character, the AI character, etc.)
 2. **Apply Template** — Format each message using your chosen template
 3. **Join with Divider** — Combine all messages with a separator (usually a newline)
 4. **Add Injection** — Optionally prepend or append extra instructions
-5. **Send to DeepSeek** — Off it goes!
+5. **Send to Provider** - Off it goes!
 
 ---
 

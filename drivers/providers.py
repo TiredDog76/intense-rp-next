@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+import re
 from typing import Optional
 
 
 class DriverProvider(str, Enum):
     DEEPSEEK = "DeepSeek"
     GLM_CHAT = "GLM Chat"
+    MOONSHOT_KIMI = "Moonshot / Kimi"
 
     @classmethod
     def from_setting(cls, value: Optional[str]) -> "DriverProvider":
@@ -23,12 +25,24 @@ class DriverProvider(str, Enum):
             return cls.DEEPSEEK
         if normalized in {"glm", "glm_chat", "glm chat", "z.ai", "zai", "zhipu", "zhipuai"}:
             return cls.GLM_CHAT
+        if normalized in {
+            "moonshot",
+            "moonshot_kimi",
+            "moonshot kimi",
+            "moonshot / kimi",
+            "moonshot/kimi",
+            "kimi",
+            "kimi ai",
+            "kimi-ai",
+        }:
+            return cls.MOONSHOT_KIMI
 
         return cls.DEEPSEEK
 
     @property
     def key(self) -> str:
-        return (self.value or "").strip().lower().replace(" ", "_")
+        raw = (self.value or "").strip().lower()
+        return re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
 
 
 def provider_options() -> list[str]:

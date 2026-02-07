@@ -28,6 +28,12 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](features/glm-behavior.md)
 
+-   :material-meteor: **Moonshot / Kimi Behavior**
+
+    Configure Thinking, Search, file uploads, and Kimi-specific notes.
+
+    [:arrow_right: Learn More](features/moonshot-behavior.md)
+
 -   :material-key: **Login & Sessions**
 
     Auto-login and persistent browser sessions.
@@ -99,6 +105,21 @@ Fine-tune how GLM Chat processes your requests.
 | **Search** | Toggle GLM Search (search results are not sent to the client) |
 | **File Upload Mode** | Send long prompts as a text file to bypass input limits |
 | **Clean Regeneration** | Regenerate on duplicate prompts (currently unreliable for GLM) |
+
+---
+
+### :material-meteor: Moonshot / Kimi Behavior
+
+Fine-tune how Moonshot / Kimi processes your requests.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Enable Thinking** | Switches Kimi between Instant and Thinking modes |
+| **Send Thinking** | Include reasoning in response (wrapped in `<think>` tags) |
+| **Search** | Toggle Kimi search tooling |
+| **File Upload Mode** | Send long prompts as a text file |
+| **Anti-Censorship** | Suppress refusal-like stream outputs when detected |
+| **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
 
 ---
 

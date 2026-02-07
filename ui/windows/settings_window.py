@@ -33,6 +33,7 @@ class SettingsWindow(QMainWindow):
         "formatting": "type.svg",
         "deepseek_behavior": "pen-tool.svg",
         "glm_behavior": "pen-tool.svg",
+        "moonshot_behavior": "pen-tool.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
         "system_settings": "monitor.svg",
@@ -45,6 +46,7 @@ class SettingsWindow(QMainWindow):
     BEHAVIOR_CATEGORY_BY_PROVIDER = {
         DriverProvider.DEEPSEEK: "deepseek_behavior",
         DriverProvider.GLM_CHAT: "glm_behavior",
+        DriverProvider.MOONSHOT_KIMI: "moonshot_behavior",
     }
 
     def __init__(self, config_manager: ConfigManager, parent=None):

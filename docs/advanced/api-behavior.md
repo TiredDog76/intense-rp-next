@@ -7,7 +7,7 @@ icon: material/api
 This page documents how the built-in OpenAI-compatible API behaves at runtime: what routes exist, how streaming works, and why requests are queued instead of running in parallel.
 
 !!! note "Implementation detail"
-    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
+    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
 
 ---
 
@@ -30,7 +30,7 @@ Authorization: Bearer YOUR_KEY
 
 ## :material-robot: Models and what they mean
 
-The API reports three "models", but they are best thought of as **behavior presets**.
+The API reports provider-specific "model" IDs, but they are best thought of as **behavior presets**.
 
 Which IDs you get from `GET /v1/models` depends on the currently selected provider in **Settings -> Providers & Credentials**.
 
@@ -54,6 +54,16 @@ These map to GLM UI toggles:
 | `glm-chat` | Forced off | Forced off |
 | `glm-reasoner` | Forced on | Uses your settings |
 
+### Moonshot / Kimi
+
+Moonshot / Kimi model IDs are behavior presets:
+
+| Model ID | Thinking | Send Thinking |
+|---|---|---|
+| `moonshot-auto` | Uses your settings | Uses your settings |
+| `moonshot-chat` | Forced off | Forced off |
+| `moonshot-reasoner` | Forced on | Uses your settings |
+
 !!! info "What these IDs are (and are not)"
     These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
@@ -68,7 +78,7 @@ At a high level, a request goes through these layers:
 1. Client calls `POST /v1/chat/completions`
 2. IntenseRP enqueues the request (FIFO)
 3. A single worker dequeues one request at a time
-4. The driver formats messages, drives the DeepSeek UI, and intercepts DeepSeek's network stream
+4. The driver formats messages, drives the selected provider UI, and intercepts its network stream
 5. IntenseRP forwards the stream to the client (or accumulates it and returns a single JSON response)
 
 ```mermaid
@@ -148,7 +158,7 @@ If a streaming client disconnects, IntenseRP will:
 
 1. Mark the request as aborted
 2. Stop forwarding chunks
-3. Ask the driver to stop the generation in the DeepSeek UI
+3. Ask the driver to stop the generation in the active provider UI
 
 ---
 
@@ -160,7 +170,7 @@ When you set `stream: false`, the server still generates via streaming internall
 - `usage` is currently returned as zeros
 
 !!! note "Compatibility fields"
-    `temperature` and `top_p` are accepted for OpenAI compatibility, but the current DeepSeek driver does not apply them yet.
+    `temperature` and `top_p` are accepted for OpenAI compatibility, but current provider drivers do not apply them yet.
 
 ---
 

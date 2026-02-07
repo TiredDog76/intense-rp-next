@@ -4,13 +4,13 @@ icon: material/key
 
 # :material-key: Login & Sessions
 
-Managing how you log in to your active provider (DeepSeek / GLM Chat) and keeping your session alive between restarts. These two features work together to make your life easier.
+Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot / Kimi) and keeping your session alive between restarts. These two features work together to make your life easier.
 
 ---
 
 ## :material-login: Auto Login
 
-If you're tired of typing your password every time, Auto Login saves your provider credentials and enters them automatically when the browser opens.
+If you're tired of typing your password every time, Auto Login saves your provider credentials and enters them automatically when the browser opens (DeepSeek / GLM Chat).
 
 ![Login settings](../pics/features/login_settings.png)
 
@@ -19,10 +19,10 @@ If you're tired of typing your password every time, Auto Login saves your provid
 1. Go to **Settings** → **Providers & Credentials**
 2. Select your **Provider**
 3. Toggle on **Auto Login**
-4. Enter the email/password for your provider
+4. Enter the email/password for your provider (used by DeepSeek / GLM Chat auto-login)
 5. Click **Save**
 
-Next time you start IntenseRP, it'll fill in your credentials and click the login button for you.
+Next time you start IntenseRP, DeepSeek / GLM Chat can fill credentials and click login for you.
 
 !!! tip "Using ECE (Experimental Credential Engine)?"
     If you enabled **ECE**, the legacy provider email/password fields are hidden. Instead, use:
@@ -35,9 +35,14 @@ Next time you start IntenseRP, it'll fill in your credentials and click the logi
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
     If you don't want to do that every time, enable Persistent Sessions (below).
 
+!!! note "Moonshot / Kimi login"
+    Moonshot / Kimi uses a manual Google login flow in IntenseRP.
+    Auto Login does not submit Moonshot credentials.
+    Depending on your account security settings, manual confirmation/challenge steps can still be required.
+
 ### How It Works
 
-When IntenseRP detects you've been redirected to the provider sign-in page:
+When IntenseRP detects you've been redirected to the provider sign-in page (DeepSeek / GLM Chat):
 
 1. It waits for the login form to appear
 2. Fills in your email and password
@@ -68,6 +73,7 @@ The browser profile is saved in your config directory (one folder per provider):
 ```
 [config_dir]/playwright_profiles/deepseek/
 [config_dir]/playwright_profiles/glm_chat/
+[config_dir]/playwright_profiles/moonshot_kimi/
 ```
 
 IntenseRP uses the folder for the currently selected **Provider**.
@@ -80,6 +86,7 @@ This folder contains your provider session cookies and browser data. It's automa
     ```
     [config_dir]/playwright_profiles/ece/deepseek/<hash>/
     [config_dir]/playwright_profiles/ece/glm_chat/<hash>/
+    [config_dir]/playwright_profiles/ece/moonshot_kimi/<hash>/
     ```
     
     Each account gets its own hashed folder name, so sessions don't mix.
@@ -88,7 +95,7 @@ This folder contains your provider session cookies and browser data. It's automa
     Persistent Sessions are strongly recommended for GLM Chat, because login requires a CAPTCHA.
 
 !!! tip "Best of Both Worlds"
-    You can use both features together! Enable Persistent Sessions so you're usually already logged in, and keep Auto Login as a backup for when the session expires.
+    You can use both features together! Enable Persistent Sessions so you're usually already logged in, and keep Auto Login as a backup for when the session expires (especially on DeepSeek / GLM Chat).
 
 ---
 
@@ -118,14 +125,17 @@ This deletes the saved profile folder, which:
     - **Just Persistent Sessions**: Stays logged in until the session expires
     - **Both**: Best reliability - persistent session when it works, auto login as fallback
 
+    For Moonshot / Kimi, login is manual Google flow. Persistent Sessions still help reduce repeated manual logins.
+
 ??? question "My session keeps expiring?"
     Provider sessions do expire eventually. If Persistent Sessions isn't keeping you logged in long enough, make sure you also have Auto Login configured as a backup.
 
 ??? question "Is my password stored securely?"
-    Your credentials are saved in the config file on your local machine. IntenseRP doesn't send them anywhere except to the provider's login form. If you're concerned, you can skip Auto Login and log in manually each time.
+    Your credentials are saved in the config file on your local machine. IntenseRP doesn't send them anywhere except to provider login flows that support credential autofill. If you're concerned, you can skip Auto Login and log in manually each time.
 
 ??? question "Can I use this with multiple accounts?"
-    Not directly - the app supports one set of credentials per provider at a time. To switch accounts, clear the profile and change credentials.
+    Yes. Use **ECE (Experimental Credential Engine)** to store multiple credential pairs per provider and rotate between them.
+    See [:material-key: ECE](../experimental/ece.md).
 
 ---
 
