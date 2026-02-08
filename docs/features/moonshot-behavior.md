@@ -13,6 +13,13 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ---
 
+## :material-login: Authentication
+
+Unfortunately, Kimi has no support for an email/password login flow, so to auth IntenseRP will ask you to manually log in with Google. **Because of this, Persistent Sessions are almost a requirement for Kimi users.** Without them, you'll have to go through the google auth flow every time you start IntenseRP with Kimi selected as the provider.
+
+!!! info "Multiple profiles"
+    There's rate limiting as well, so if you're using ECE, you can set up multiple profiles even without email/password login to get around this. Just create multiple rows in the ECE credential config manager with any text at all. IntenseRP won't use those credentials for your google account, but it will treat them as separate profiles and thus separate sessions. You may wish to login with different google accounts in each profile to further reduce the risk of rate limits.
+
 ## :material-head-cog: Thinking
 
 Kimi exposes reasoning through model mode selection in the web UI.
