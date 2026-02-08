@@ -32,6 +32,7 @@ class SettingField:
     nullable: bool = False
     depends: Optional[str] = None
     options: Optional[List[str]] = None # For dropdowns
+    transient: bool = False # For UI-only fields (not persisted)
     action: Optional[str] = None # For buttons (function name to call)
     sub_fields: Optional[List["SettingField"]] = None # For ROW type
     ratios: Optional[List[int]] = None # For ROW type (e.g. [70, 30])
@@ -552,12 +553,39 @@ SCHEMA = [
                 tooltip="Reuse a persistent Playwright browser profile so logins persist between restarts."
             ),
             SettingField(
-                key="clear_persistent_profile",
-                label="Clear Profile",
+                key="delete_persistent_profile_row",
+                label="Delete Profile",
+                type=SettingType.ROW,
+                default=None,
+                ratios=[80, 20],
+                tooltip="Delete a specific saved browser profile used for Persistent Sessions (logs you out).",
+                sub_fields=[
+                    SettingField(
+                        key="persistent_profile_to_delete",
+                        label="Profile",
+                        type=SettingType.DROPDOWN,
+                        default="",
+                        options=[],
+                        transient=True,
+                        tooltip="Choose which saved profile to delete.",
+                    ),
+                    SettingField(
+                        key="delete_persistent_profile_btn",
+                        label="Delete",
+                        type=SettingType.BUTTON,
+                        default="Delete",
+                        action="delete_selected_persistent_profile",
+                        tooltip="Delete the selected profile.",
+                    ),
+                ],
+            ),
+            SettingField(
+                key="clear_all_persistent_profiles",
+                label="Clear All Profiles",
                 type=SettingType.BUTTON,
-                default="Clear",
-                action="clear_persistent_profile",
-                tooltip="Delete the saved browser profile used for Persistent Sessions (logs you out)."
+                default="Clear All",
+                action="clear_all_persistent_profiles",
+                tooltip="Delete all saved browser profiles used for Persistent Sessions (ECE + Legacy).",
             ),
             SettingField(
                 key="notify_on_driver_crash",

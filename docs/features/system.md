@@ -53,21 +53,40 @@ Next time you start the app, it loads that same profile, so you usually won’t 
 
 ---
 
-## :material-delete: Clear Profile
+## :material-delete: Delete Profile
 
-If the saved session gets weird (stuck login, expired cookies, endless redirects), Clear Profile deletes the saved browser profile for your active provider so you can start fresh.
+If the saved session gets weird (stuck login, expired cookies, endless redirects), Delete Profile lets you remove a specific saved browser profile so you can start fresh.
 
-:material-arrow-right: **Settings** → **System Settings** → **Clear Profile**
+:material-arrow-right: **Settings** → **System Settings** → **Delete Profile**
 
 What this does:
 
-- Deletes the provider profile under `[config_dir]/playwright_profiles/` (based on your selected Provider)
-- If **ECE** is enabled, it clears the provider folder under `[config_dir]/playwright_profiles/ece/` instead
+- Lets you pick a profile from a dropdown:
+  - `[Legacy] <Provider>`
+  - `[ECE] <Provider> - <email>`
+- Deletes the selected profile folder under `[config_dir]/playwright_profiles/`
 - Logs you out (cookies/local storage are removed)
 - Forces a fresh login on next start
 
-!!! warning "This can’t be undone"
-    Clearing the profile wipes the saved session data. If you don’t have Auto Login enabled, you’ll need to log in manually next time.
+!!! warning "This can't be undone"
+    Deleting a profile wipes the saved session data. If you don’t have Auto Login enabled, you’ll need to log in manually next time.
+
+---
+
+## :material-mop: Clear All Profiles
+
+If you want a full reset, Clear All Profiles deletes **all** saved browser profiles (Legacy and ECE).
+
+:material-arrow-right: **Settings** → **System Settings** → **Clear All Profiles**
+
+What this does:
+
+- Deletes `[config_dir]/playwright_profiles/`
+- Logs you out of all providers and ECE identities
+- Forces a fresh login on next start
+
+!!! danger "This can't be undone"
+    This is a fresh start for Persistent Sessions. If you don’t have Auto Login enabled, you’ll need to log in manually next time.
 
 ---
 
@@ -253,7 +272,7 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
     Provider sessions can expire. If it happens frequently:
 
     - Enable **Auto Login** as a fallback (Providers & Credentials)
-    - Use **Clear Profile** if the stored profile is corrupted or stuck
+    - Use **Delete Profile** (or **Clear All Profiles**) if the stored profile is corrupted or stuck
 
 ??? question "Config migration failed / was refused"
     Common reasons:

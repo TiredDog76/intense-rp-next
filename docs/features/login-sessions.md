@@ -99,20 +99,21 @@ This folder contains your provider session cookies and browser data. It's automa
 
 ---
 
-## :material-delete: Clearing Your Profile
+## :material-delete: Deleting Profiles
 
-If you want to start fresh or log out completely, you can wipe the saved browser profile:
+If you want to start fresh or log out completely, you can delete a specific saved browser profile (or wipe them all):
 
-:material-arrow-right: **Settings** → **System Settings** → **Clear Profile**
+- **Delete Profile**: :material-arrow-right: **Settings** → **System Settings** → **Delete Profile** (pick one, click **Delete**)
+- **Clear All Profiles**: :material-arrow-right: **Settings** → **System Settings** → **Clear All Profiles**
 
-This deletes the saved profile folder, which:
+Deleting a profile folder:
 
 - Removes all cookies and session data
-- Logs you out of the active provider
+- Logs you out (of that provider, or all providers if you clear all)
 - Forces a fresh login next time
 
 !!! warning "This Can't Be Undone"
-    Once cleared, you'll need to log in again. If you have Auto Login enabled, this happens automatically. Otherwise, you'll log in manually.
+    Once deleted, you'll need to log in again. If you have Auto Login enabled, this happens automatically. Otherwise, you'll log in manually.
 
 ---
 

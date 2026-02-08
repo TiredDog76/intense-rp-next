@@ -125,8 +125,8 @@ If ECE is enabled but no account is selected (for example Auto Login is off), th
 [config_dir]/playwright_profiles/ece/<provider>/manual/
 ```
 
-!!! note "Clear Profile deletes all ECE profiles for the provider"
-    When ECE is enabled, **Clear Profile** removes `[config_dir]/playwright_profiles/ece/<provider>/` which logs you out of all ECE identities for that provider.
+!!! note "Deleting ECE profiles"
+    **Delete Profile** lets you remove a single ECE identity folder (or slot) for a provider. **Clear All Profiles** wipes both Legacy and ECE profile folders.
 
 ---
 

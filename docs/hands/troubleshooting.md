@@ -150,7 +150,7 @@ Fixes, in order:
    (DeepSeek / GLM Chat)
 2. GLM Chat requires a CAPTCHA during login. Auto Login can fill credentials, but you still need to solve the CAPTCHA in the browser window.
 3. Try toggling **Persistent Sessions** off and back on (then Start again).
-4. If Persistent Sessions is enabled but things feel "stuck", use **Clear Profile** to reset the saved browser profile.
+4. If Persistent Sessions is enabled but things feel "stuck", use **Delete Profile** (or **Clear All Profiles**) to reset the saved browser profile.
 5. For DeepSeek / GLM Chat, try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:

@@ -13,7 +13,7 @@ from pathlib import Path
 from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
 from config.schema import SCHEMA, SettingType
-from drivers.providers import DriverProvider, get_playwright_profile_dir
+from drivers.providers import DriverProvider
 from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, DirectoryEntry
 from ui.widgets.redirect_card import RedirectCard
@@ -61,6 +61,7 @@ class SettingsWindow(QMainWindow):
         self.setting_rows = {} # Map "category.key" -> SettingRow (for dependency toggling)
         self.category_widgets_by_key = {}  # Map category key -> card widget
         self.category_items_by_key = {}  # Map category key -> QListWidgetItem
+        self._persistent_profile_entries = {}
 
         self._init_ui()
         self._load_values()
@@ -167,7 +168,8 @@ class SettingsWindow(QMainWindow):
             widget = StyledComboBox()
             if field.options:
                 widget.addItems(field.options)
-            widget.currentTextChanged.connect(self._on_setting_changed)
+            if not getattr(field, "transient", False):
+                widget.currentTextChanged.connect(self._on_setting_changed)
 
             if category_key == "providers_credentials" and field.key == "provider":
                 widget.currentTextChanged.connect(self._sync_behavior_category_visibility)
@@ -197,8 +199,10 @@ class SettingsWindow(QMainWindow):
                 widget.clicked.connect(self._reset_injection)
             elif field.action == "reset_formatting":
                 widget.clicked.connect(self._reset_formatting)
-            elif field.action == "clear_persistent_profile":
-                widget.clicked.connect(self._clear_persistent_profile)
+            elif field.action == "delete_selected_persistent_profile":
+                widget.clicked.connect(self._delete_selected_persistent_profile)
+            elif field.action == "clear_all_persistent_profiles":
+                widget.clicked.connect(self._clear_all_persistent_profiles)
             elif field.action == "check_for_updates":
                 widget.clicked.connect(self._check_for_updates)
         
@@ -580,6 +584,8 @@ class SettingsWindow(QMainWindow):
 
         for category in SCHEMA:
             for field in self._iter_fields(category.fields):
+                if getattr(field, "transient", False):
+                    continue
                 key = f"{category.key}.{field.key}"
                 value = self.config_manager.get_setting(category.key, field.key)
                 widget = self.field_widgets.get(key)
@@ -607,6 +613,7 @@ class SettingsWindow(QMainWindow):
 
         self._sync_config_storage_from_active_dir()
         self._sync_behavior_category_visibility()
+        self._refresh_persistent_profile_options()
             
         self.unsaved_changes = False
 
@@ -1172,17 +1179,178 @@ class SettingsWindow(QMainWindow):
         if content_widget:
             content_widget.setPlainText("[Important Instructions]")
 
-    def _get_persistent_profile_dir(self) -> Path:
-        provider_setting = self.config_manager.get_setting("providers_credentials", "provider")
-        provider = DriverProvider.from_setting(provider_setting)
-        config_dir = getattr(self.config_manager, "config_dir", None)
-        base_dir = Path(config_dir) if config_dir is not None else Path("config_data")
-        if bool(self.config_manager.get_setting("experimental", "ece_enabled")):
-            return (base_dir.resolve() / "playwright_profiles" / "ece" / provider.key)
-        return get_playwright_profile_dir(config_dir, provider)
+    def _get_profiles_root_dir(self) -> Path:
+        base_dir = Path(getattr(self.config_manager, "config_dir", "config_data")).resolve()
+        return (base_dir / "playwright_profiles").resolve()
 
-    def _clear_persistent_profile(self):
-        profile_dir = self._get_persistent_profile_dir()
+    def _format_provider_label(self, provider_key: str) -> str:
+        for provider in DriverProvider:
+            if provider.key == provider_key:
+                if provider is DriverProvider.GLM_CHAT:
+                    return "GLM"
+                return provider.value
+
+        raw = str(provider_key or "").strip()
+        if not raw:
+            return "Unknown"
+        return raw.replace("_", " ").title()
+
+    def _build_persistent_profile_entries(self) -> list[tuple[str, str, Path]]:
+        legacy: list[tuple[tuple[str], tuple[str, str, Path]]] = []
+        ece: list[tuple[tuple[str, str, int], tuple[str, str, Path]]] = []
+
+        profiles_root = self._get_profiles_root_dir()
+
+        # Legacy profiles: [config_dir]/playwright_profiles/<provider_key>/
+        try:
+            if profiles_root.exists() and profiles_root.is_dir():
+                for child in profiles_root.iterdir():
+                    if not child.is_dir():
+                        continue
+                    if child.name == "ece":
+                        continue
+                    provider_name = self._format_provider_label(child.name)
+                    label = f"[Legacy] {provider_name}"
+                    token = str(child.resolve())
+                    legacy.append(((provider_name.lower(),), (token, label, child)))
+        except Exception:
+            pass
+
+        # ECE profiles: [config_dir]/playwright_profiles/ece/<provider_key>/<hash>[_slot]/
+        config_dir = Path(getattr(self.config_manager, "config_dir", "config_data")).resolve()
+        ece_root = profiles_root / "ece"
+        ece_manager = None
+
+        if ece_root.exists() and ece_root.is_dir():
+            try:
+                from ece.manager import EceManager
+
+                ece_manager = EceManager(config_dir)
+            except Exception as exc:
+                Logger.debug(f"ECE: unable to read credentials for profile labels: {exc}")
+                ece_manager = None
+
+            try:
+                provider_dirs = [p for p in ece_root.iterdir() if p.is_dir()]
+            except Exception:
+                provider_dirs = []
+
+            for provider_dir in provider_dirs:
+                provider_key = provider_dir.name
+                provider_name = self._format_provider_label(provider_key)
+
+                hash_to_email: dict[str, str] = {}
+                if ece_manager is not None:
+                    try:
+                        pairs = ece_manager.get_provider_pairs(provider_key)
+                        for pair in pairs:
+                            email = (pair.email or "").strip()
+                            if not email:
+                                continue
+                            ident = ece_manager.get_profile_dir(provider_key, email=email, slot=0).name
+                            hash_to_email[ident] = email
+                    except Exception:
+                        hash_to_email = {}
+
+                try:
+                    ident_dirs = [p for p in provider_dir.iterdir() if p.is_dir()]
+                except Exception:
+                    ident_dirs = []
+
+                for ident_dir in ident_dirs:
+                    ident_name = ident_dir.name
+                    base_ident = ident_name
+                    slot = 0
+                    if "_" in ident_name:
+                        maybe_base, maybe_slot = ident_name.rsplit("_", 1)
+                        if maybe_slot.isdigit():
+                            base_ident = maybe_base
+                            try:
+                                slot = int(maybe_slot)
+                            except Exception:
+                                slot = 0
+
+                    email = None
+                    if base_ident != "manual":
+                        email = hash_to_email.get(base_ident)
+
+                    if base_ident == "manual":
+                        label = f"[ECE] {provider_name} - manual"
+                    elif email:
+                        label = f"[ECE] {provider_name} - {email}"
+                    else:
+                        label = f"[ECE] {provider_name} - {base_ident}"
+
+                    if slot > 0:
+                        label = f"{label} (slot {slot})"
+
+                    token = str(ident_dir.resolve())
+                    sort_ident = (email or base_ident or "").lower()
+                    ece.append(((provider_name.lower(), sort_ident, slot), (token, label, ident_dir)))
+
+        legacy_sorted = [item for _k, item in sorted(legacy, key=lambda t: t[0])]
+        ece_sorted = [item for _k, item in sorted(ece, key=lambda t: t[0])]
+        return legacy_sorted + ece_sorted
+
+    def _refresh_persistent_profile_options(self):
+        select_widget = self.field_widgets.get("system_settings.persistent_profile_to_delete")
+        delete_btn = self.field_widgets.get("system_settings.delete_persistent_profile_btn")
+
+        if not isinstance(select_widget, StyledComboBox):
+            return
+
+        old_token = select_widget.currentData(Qt.UserRole)
+        entries = self._build_persistent_profile_entries()
+        self._persistent_profile_entries = {token: (label, path) for token, label, path in entries}
+
+        select_widget.blockSignals(True)
+        try:
+            select_widget.clear()
+
+            if not entries:
+                select_widget.addItem("(No saved profiles found)", "")
+                select_widget.setEnabled(False)
+                if isinstance(delete_btn, QPushButton):
+                    delete_btn.setEnabled(False)
+                return
+
+            select_widget.setEnabled(True)
+            if isinstance(delete_btn, QPushButton):
+                delete_btn.setEnabled(True)
+
+            for token, label, _path in entries:
+                select_widget.addItem(label, token)
+
+            if old_token and str(old_token) in self._persistent_profile_entries:
+                idx = select_widget.findData(old_token, Qt.UserRole)
+                if idx >= 0:
+                    select_widget.setCurrentIndex(idx)
+        finally:
+            select_widget.blockSignals(False)
+
+    def _get_selected_persistent_profile(self) -> tuple[str, str, Path] | None:
+        select_widget = self.field_widgets.get("system_settings.persistent_profile_to_delete")
+        if not isinstance(select_widget, StyledComboBox):
+            return None
+
+        token = select_widget.currentData(Qt.UserRole)
+        if token is None:
+            token = ""
+
+        entry = self._persistent_profile_entries.get(str(token))
+        if not entry:
+            return None
+
+        label, path = entry
+        return (str(token), label, path)
+
+    def _delete_selected_persistent_profile(self):
+        selected = self._get_selected_persistent_profile()
+        if not selected:
+            QMessageBox.information(self, "Delete Profile", "No saved browser profile is selected.")
+            return
+
+        _token, label, profile_dir = selected
         base_dir = Path(getattr(self.config_manager, "config_dir", "config_data")).resolve()
 
         try:
@@ -1190,23 +1358,25 @@ class SettingsWindow(QMainWindow):
         except Exception:
             QMessageBox.warning(
                 self,
-                "Clear Profile",
-                "Refusing to clear profile: resolved path is outside the config directory."
+                "Delete Profile",
+                "Refusing to delete profile: resolved path is outside the config directory.",
             )
             return
 
         if not profile_dir.exists():
-            QMessageBox.information(self, "Clear Profile", "No saved browser profile was found.")
+            QMessageBox.information(self, "Delete Profile", "That profile folder no longer exists.")
+            self._refresh_persistent_profile_options()
             return
 
         reply = QMessageBox.question(
             self,
-            "Clear Profile",
-            "This will delete the saved browser profile used for Persistent Sessions.\n\n"
+            "Delete Profile",
+            "This will permanently delete the selected saved browser profile:\n\n"
+            f"{label}\n\n"
             "This removes cookies/local storage and will log you out.\n\n"
             "Continue?",
             QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.No,
         )
 
         if reply != QMessageBox.Yes:
@@ -1214,11 +1384,55 @@ class SettingsWindow(QMainWindow):
 
         try:
             shutil.rmtree(profile_dir)
-            Logger.success("Persistent profile cleared.")
-            QMessageBox.information(self, "Clear Profile", "Profile cleared successfully.")
+            Logger.success(f"Deleted persistent profile: {label}")
+            QMessageBox.information(self, "Delete Profile", "Profile deleted successfully.")
         except Exception as e:
-            Logger.error(f"Error clearing persistent profile: {e}")
-            QMessageBox.warning(self, "Clear Profile", f"Failed to clear profile:\n\n{e}")
+            Logger.error(f"Error deleting persistent profile: {e}")
+            QMessageBox.warning(self, "Delete Profile", f"Failed to delete profile:\n\n{e}")
+        finally:
+            self._refresh_persistent_profile_options()
+
+    def _clear_all_persistent_profiles(self):
+        profiles_root = self._get_profiles_root_dir()
+        base_dir = Path(getattr(self.config_manager, "config_dir", "config_data")).resolve()
+
+        try:
+            profiles_root.resolve().relative_to(base_dir)
+        except Exception:
+            QMessageBox.warning(
+                self,
+                "Clear All Profiles",
+                "Refusing to clear profiles: resolved path is outside the config directory.",
+            )
+            return
+
+        if not profiles_root.exists():
+            QMessageBox.information(self, "Clear All Profiles", "No saved browser profiles were found.")
+            self._refresh_persistent_profile_options()
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Clear All Profiles",
+            "This will delete ALL saved browser profiles used for Persistent Sessions.\n\n"
+            "This removes cookies/local storage and will log you out of all providers and ECE identities.\n\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            shutil.rmtree(profiles_root)
+            Logger.success("Cleared all persistent profiles.")
+            QMessageBox.information(self, "Clear All Profiles", "All profiles cleared successfully.")
+        except Exception as e:
+            Logger.error(f"Error clearing all persistent profiles: {e}")
+            QMessageBox.warning(self, "Clear All Profiles", f"Failed to clear profiles:\n\n{e}")
+        finally:
+            self._refresh_persistent_profile_options()
 
     def save_settings(self):
         validation_errors = []
@@ -1246,6 +1460,8 @@ class SettingsWindow(QMainWindow):
         
         for category in SCHEMA:
             for field in self._iter_fields(category.fields):
+                if getattr(field, "transient", False):
+                    continue
                 key = f"{category.key}.{field.key}"
                 widget = self.field_widgets.get(key)
                 
