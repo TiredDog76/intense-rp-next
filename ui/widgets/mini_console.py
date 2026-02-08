@@ -26,10 +26,10 @@ class LogGroup(QWidget):
     # Based on the Modern palette + some darker tweaks for better contrast
     
     LEVEL_ICONS = {
-        "INFO": "info-cyan.svg",
-        "SUCCESS": "check-green.svg",
-        "WARNING": "alert-triangle-yellow.svg",
-        "ERROR": "x-red.svg",
+        "INFO": "info.svg",
+        "SUCCESS": "check.svg",
+        "WARNING": "alert-triangle.svg",
+        "ERROR": "x.svg",
     }
     
     def __init__(self, level: str, parent=None):
@@ -107,7 +107,7 @@ class LogGroup(QWidget):
         if self._loaded_level_icon:
             return
 
-        icon_filename = self.LEVEL_ICONS.get(self.level, "info-cyan.svg")
+        icon_filename = self.LEVEL_ICONS.get(self.level, "info.svg")
         pixmap = IconUtils.get_pixmap(
             icon_filename,
             color=self.text_color,

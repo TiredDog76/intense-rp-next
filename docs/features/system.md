@@ -73,7 +73,7 @@ What this does:
 
 ---
 
-## :material-mop: Clear All Profiles
+## :material-skull-scan: Clear All Profiles
 
 If you want a full reset, Clear All Profiles deletes **all** saved browser profiles (Legacy and ECE).
 
