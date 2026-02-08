@@ -76,6 +76,7 @@ theme:
     - search.suggest
     - search.highlight
     - search.share
+    - navigation.top
     - content.action.edit
     - content.action.view
     - content.code.copy
