@@ -58,4 +58,4 @@ typing_extensions==4.15.0
 urllib3==2.6.3
 uvicorn==0.38.0
 watchdog==6.0.0
-zensical==0.0.20
+zensical==0.0.21
