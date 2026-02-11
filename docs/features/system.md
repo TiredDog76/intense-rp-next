@@ -208,6 +208,16 @@ For what it shows (and why requests queue in the first place), see [:material-ap
 
 ---
 
+## :material-filter: Logging Levels
+
+Also under System Settings, you can set a minimum severity threshold for each logging target (Stdout, Console Window, Mini-Console, Logfiles) independently.
+
+:material-arrow-right: **Settings** → **System Settings** → **Logging Levels**
+
+For full details and the severity order, see [:material-console: Console & Logging — Logging Levels](console-logging.md#logging-levels).
+
+---
+
 ## :material-update: Updates
 
 :material-arrow-right: **Settings** → **Application Settings**

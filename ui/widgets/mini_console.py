@@ -18,14 +18,16 @@ class LogGroup(QWidget):
     
     # Colors for each log type
     LEVEL_COLORS = {
+        "DEBUG": {"bg": "#2a2a2a", "header": "#3d3d3d", "text": "#ADB5BD"},
         "INFO": {"bg": "#1a3a4a", "header": "#2a5a7a", "text": "#66D9EF"},
         "SUCCESS": {"bg": "#1a3a2a", "header": "#2a5a3a", "text": "#51CF66"},
         "WARNING": {"bg": "#3a3a1a", "header": "#5a5a2a", "text": "#FFD43B"},
         "ERROR": {"bg": "#3a1a1a", "header": "#5a2a2a", "text": "#FF6B6B"},
     }
     # Based on the Modern palette + some darker tweaks for better contrast
-    
+
     LEVEL_ICONS = {
+        "DEBUG": "bug.svg",
         "INFO": "info.svg",
         "SUCCESS": "check.svg",
         "WARNING": "alert-triangle.svg",
@@ -342,10 +344,6 @@ class MiniConsole(QWidget):
         if not self._main_logging_enabled:
             return
 
-        # Skip DEBUG logs
-        if level == LogLevel.DEBUG:
-            return
-        
         level_name = level.value
         
         # Determine if we need a new group

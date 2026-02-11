@@ -25,7 +25,7 @@ from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstalledInfo
-from utils.logger import Logger, LogLevel
+from utils.logger import Logger, LogLevel, LEVEL_NAME_MAP
 from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
 from utils.resource_path import resolve_resource_path
@@ -347,7 +347,9 @@ class MainWindow(QMainWindow):
         self.console_window = None
         self.help_window = None
         self._main_logging_enabled = True
-        
+        self._console_log_level = LogLevel.DEBUG
+        self._mini_console_log_level = LogLevel.SUCCESS
+
         # Initialize logging based on settings
         self._setup_logging()
         
@@ -586,6 +588,17 @@ class MainWindow(QMainWindow):
         if size_unit is None: size_unit = "MB"
         
         Logger.configure_file_logging(bool(enable_files), str(log_dir), int(max_files) if max_files is not None else 5, int(max_size_val) if max_size_val is not None else 10, str(size_unit))
+
+        # Logging levels
+        stdout_lvl = self.config_manager.get_setting("system_settings", "stdout_log_level") or "Debug"
+        console_lvl = self.config_manager.get_setting("system_settings", "console_log_level") or "Debug"
+        mini_lvl = self.config_manager.get_setting("system_settings", "mini_console_log_level") or "Success"
+        file_lvl = self.config_manager.get_setting("system_settings", "logfile_log_level") or "Debug"
+
+        Logger.set_stdout_level(LEVEL_NAME_MAP.get(stdout_lvl, LogLevel.DEBUG))
+        Logger.set_file_level(LEVEL_NAME_MAP.get(file_lvl, LogLevel.DEBUG))
+        self._console_log_level = LEVEL_NAME_MAP.get(console_lvl, LogLevel.DEBUG)
+        self._mini_console_log_level = LEVEL_NAME_MAP.get(mini_lvl, LogLevel.SUCCESS)
     
     def _show_console(self):
         """Show the console window."""
@@ -603,11 +616,10 @@ class MainWindow(QMainWindow):
     
     def _on_log_message(self, level: LogLevel, message: str):
         """Callback for logger to send messages to console."""
-        if self.console_window:
+        if self.console_window and Logger.should_log(level, self._console_log_level):
             self.console_window.append_log(level.value, message)
-        
-        # Also route to mini-console when enabled (DEBUG is filtered inside)
-        if self._main_logging_enabled:
+
+        if self._main_logging_enabled and Logger.should_log(level, self._mini_console_log_level):
             self.mini_console.add_log(level, message)
     
     def _update_status(self, text: str, status_type: str = "info"):

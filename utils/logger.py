@@ -17,6 +17,25 @@ class LogLevel(Enum):
     ERROR = "ERROR"
 
 
+# Severity ordering (lowest to highest): Debug → Success → Info → Warning → Error
+LOG_LEVEL_SEVERITY = {
+    LogLevel.DEBUG: 0,
+    LogLevel.SUCCESS: 1,
+    LogLevel.INFO: 2,
+    LogLevel.WARNING: 3,
+    LogLevel.ERROR: 4,
+}
+
+# Map display names (used in settings dropdowns) to LogLevel
+LEVEL_NAME_MAP = {
+    "Debug": LogLevel.DEBUG,
+    "Success": LogLevel.SUCCESS,
+    "Info": LogLevel.INFO,
+    "Warning": LogLevel.WARNING,
+    "Error": LogLevel.ERROR,
+}
+
+
 class LogColors:
     """ANSI color codes for terminal output."""
     RESET = "\033[0m"
@@ -50,7 +69,10 @@ class Logger:
     _qt_dispatcher: Any = None
     _show_timestamps: bool = True
     _stdout_enabled: bool = True
-    
+
+    _stdout_level: LogLevel = LogLevel.DEBUG
+    _file_level: LogLevel = LogLevel.DEBUG
+
     _log_file: Optional[str] = None
     _max_file_size: float = 0.0
     _max_files: float = 0.0
@@ -100,7 +122,22 @@ class Logger:
     def set_stdout_enabled(cls, enabled: bool):
         """Enable/disable stdout logging."""
         cls._stdout_enabled = bool(enabled)
-        
+
+    @classmethod
+    def set_stdout_level(cls, level: LogLevel):
+        """Set the minimum severity for stdout output."""
+        cls._stdout_level = level
+
+    @classmethod
+    def set_file_level(cls, level: LogLevel):
+        """Set the minimum severity for file logging."""
+        cls._file_level = level
+
+    @classmethod
+    def should_log(cls, message_level: LogLevel, threshold: LogLevel) -> bool:
+        """Return True if message_level meets or exceeds the threshold severity."""
+        return LOG_LEVEL_SEVERITY[message_level] >= LOG_LEVEL_SEVERITY[threshold]
+
     @classmethod
     def configure_file_logging(cls, enabled: bool, log_dir: str, max_files: int, max_size_val: int, size_unit: str):
         """Configure file logging settings."""
@@ -276,27 +313,30 @@ class Logger:
     @classmethod
     def _log(cls, level: LogLevel, message: str):
         """Internal logging method."""
-        # Print to stdout with ANSI colors (if enabled)
-        if cls._stdout_enabled:
+        # Print to stdout with ANSI colors (if enabled and level meets threshold)
+        if cls._stdout_enabled and cls.should_log(level, cls._stdout_level):
             formatted_stdout = cls._format_message(level, message, include_ansi=True)
             print(formatted_stdout)
-        
-        # If console callback is set, send there too (without ANSI)
-        if cls._console_callback or cls._log_file:
+
+        # Console callback (filtering for console window / mini-console
+        # happens at the UI layer, so always forward here)
+        need_callback = cls._console_callback is not None
+        need_file = cls._log_file and cls.should_log(level, cls._file_level)
+
+        if need_callback or need_file:
             formatted_clean = cls._format_message(level, message, include_ansi=False)
-            
-            if cls._console_callback:
+
+            if need_callback:
                 if cls._qt_dispatcher is not None:
                     try:
                         cls._qt_dispatcher.log_message.emit(level, formatted_clean)
                     except Exception:
-                        # Fallback to direct call.
                         cls._console_callback(level, formatted_clean)
                 else:
                     cls._console_callback(level, formatted_clean)
-            
-            if cls._log_file:
-                 cls._log_to_file(formatted_clean)
+
+            if need_file:
+                cls._log_to_file(formatted_clean)
     
     @classmethod
     def debug(cls, message: str):

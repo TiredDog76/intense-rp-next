@@ -80,6 +80,32 @@ When the console is enabled, you get some control over where logs end up:
 
 ---
 
+## :material-filter: Logging Levels
+
+Each output target has its own minimum severity threshold. Messages below the chosen level are silently dropped for that target, so you can keep your terminal quiet while still logging everything to a file, for example.
+
+:material-arrow-right: **Settings** → **System Settings** → **Logging Levels**
+
+| Setting | Controls | Default |
+|---------|----------|---------|
+| **Stdout** | What gets printed to the terminal | Debug |
+| **Console Window** | What appears in the console window | Debug |
+| **Mini-Console** | What shows up in the Activity Log (main window) | Success |
+| **Logfiles** | What gets written to log files | Debug |
+
+### Severity Order
+
+Levels are ordered from most verbose to least verbose:
+
+**Debug** → **Success** → **Info** → **Warning** → **Error**
+
+Setting a target to "Warning" means it only receives Warning and Error messages. Setting it to "Debug" means it gets everything.
+
+!!! tip "Practical Defaults"
+    The defaults are tuned so the Mini-Console stays clean (no debug noise) while everything else captures full detail. If you're hunting a specific issue, try setting the relevant target to Debug temporarily.
+
+---
+
 ## :material-file-document: File Logging
 
 But what if you want to keep logs for later? Enter Logfiles - IntenseRP can save logs to timestamped files for you to review or share.
@@ -212,6 +238,15 @@ If you need to share logs with the developer or community:
 | Auto-Scroll Mode | Always | Auto-scroll behavior |
 | Color Palette | Modern | Color scheme |
 | Always On Top | Off | Keeps console above other windows |
+
+### Logging Levels
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| Stdout | Debug | Minimum severity for terminal output |
+| Console Window | Debug | Minimum severity for the console window |
+| Mini-Console | Success | Minimum severity for the Activity Log |
+| Logfiles | Debug | Minimum severity for log files |
 
 ### Logfiles
 
