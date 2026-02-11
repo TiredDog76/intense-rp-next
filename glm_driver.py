@@ -23,9 +23,13 @@ class GLMDriver(BaseDriver):
     MODEL_DROPDOWN_ID = "f8T9iEf1QC"
     MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
     MODEL_DATA_VALUE_BY_FRIENDLY: Dict[str, str] = {
+        "GLM-5": "glm-5",
         "GLM-4.7": "glm-4.7",
         "GLM-4.6": "GLM-4-6-API-V1",
     }
+
+    # Models hidden behind a collapsible section in the dropdown
+    MODELS_IN_COLLAPSIBLE: set = {"GLM-4.6"}
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.GLM_CHAT)
@@ -151,7 +155,27 @@ class GLMDriver(BaseDriver):
         except Exception:
             return
 
-    async def _click_glm_model_option(self, data_value: str) -> bool:
+    async def _expand_collapsible_section(self) -> bool:
+        """Expand the collapsible section in the model dropdown (houses older models like GLM-4.6)."""
+        if not self.page:
+            return False
+
+        try:
+            trigger = self.page.locator("button[data-melt-collapsible-trigger]")
+            if await trigger.count() == 0:
+                return False
+
+            await trigger.first.click(timeout=2000)
+
+            # Wait for the content to appear
+            content = self.page.locator("div[data-melt-collapsible-content]")
+            await content.first.wait_for(state="visible", timeout=2000)
+            return True
+        except Exception as e:
+            Logger.warning(f"GLM Chat: failed to expand collapsible section: {e}")
+            return False
+
+    async def _click_glm_model_option(self, data_value: str, friendly_name: str = "") -> bool:
         if not self.page:
             return False
 
@@ -166,6 +190,18 @@ class GLMDriver(BaseDriver):
             option = self.page.locator(f"button[data-value='{safe_value}']")
 
         count = await option.count()
+
+        # If the option is not visible, it may be inside a collapsed section
+        if count == 0 and friendly_name in self.MODELS_IN_COLLAPSIBLE:
+            if await self._expand_collapsible_section():
+                # Re-query after expanding
+                option = self.page.locator(
+                    f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value='{safe_value}']"
+                )
+                if await option.count() == 0:
+                    option = self.page.locator(f"button[data-value='{safe_value}']")
+                count = await option.count()
+
         if count == 0:
             return False
 
@@ -245,7 +281,7 @@ class GLMDriver(BaseDriver):
             return
 
         try:
-            clicked = await self._click_glm_model_option(desired_data_value)
+            clicked = await self._click_glm_model_option(desired_data_value, friendly_name=desired)
             if not clicked:
                 Logger.error(
                     f"GLM Chat: desired model '{desired}' not found in dropdown (data-value '{desired_data_value}'). "
@@ -890,49 +926,56 @@ class GLMDriver(BaseDriver):
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to click New Chat: {e}")
 
-    async def _find_toggle_button(self, label: str):
+    async def _find_deepthink_button(self):
+        """Find the DeepThink button by its ``data-autothink`` attribute."""
         if not self.page:
             return None
 
         try:
-            candidates = self.page.locator("button", has=self.page.locator("span", has_text=label))
+            candidates = self.page.locator("button[data-autothink]")
             count = await candidates.count()
         except Exception:
             return None
 
-        if count == 0:
-            return None
-
-        # Prefer a visible button that actually carries Tailwind classes. In GLM, some buttons
-        # are wrapped by an outer <button> (e.g. tooltip trigger) that has no meaningful class
-        # list, while the inner <button> carries bg-transparent/bg-[#...] etc.
-        best_fallback = None
         for idx in range(min(count, 25)):
             cand = candidates.nth(idx)
             try:
-                if not await cand.is_visible():
-                    continue
+                if await cand.is_visible():
+                    return cand
             except Exception:
                 pass
 
-            if best_fallback is None:
-                best_fallback = cand
+        return candidates.first if count > 0 else None
 
+    async def _find_search_button(self):
+        """Find the Search button by its ``data-melt-tooltip-trigger`` attribute,
+        excluding the DeepThink button (which carries ``data-autothink``)."""
+        if not self.page:
+            return None
+
+        try:
+            candidates = self.page.locator(
+                "button[data-melt-tooltip-trigger]:not([data-autothink])"
+            )
+            count = await candidates.count()
+        except Exception:
+            return None
+
+        for idx in range(min(count, 25)):
+            cand = candidates.nth(idx)
             try:
-                class_attr = (await cand.get_attribute("class")) or ""
+                if await cand.is_visible():
+                    return cand
             except Exception:
-                class_attr = ""
+                pass
 
-            if class_attr.strip():
-                return cand
-
-        return best_fallback or candidates.first
+        return candidates.first if count > 0 else None
 
     async def set_deepthink_state(self, state: bool) -> None:
         if not self.page:
             return
 
-        button = await self._find_toggle_button("Deep Think")
+        button = await self._find_deepthink_button()
         if not button:
             Logger.warning("GLM Chat: Deep Think button not found.")
             return
@@ -955,16 +998,17 @@ class GLMDriver(BaseDriver):
         if not self.page:
             return
 
-        button = await self._find_toggle_button("Search")
-        if not button:
+        wrapper = await self._find_search_button()
+        if not wrapper:
             Logger.warning("GLM Chat: Search button not found.")
             return
 
+        # The outer element (data-melt-tooltip-trigger) wraps an inner <button>
+        # that is the actual toggle and carries the "bg-black/6" class when active
+        inner = wrapper.locator("button").first
+
         try:
-            # Important: check Tailwind class token, not substring.
-            # e.g. "hover:bg-transparent" should NOT count as "bg-transparent".
-            is_disabled = bool(await button.evaluate("el => el.classList.contains('bg-transparent')"))
-            is_enabled = not is_disabled
+            is_enabled = bool(await inner.evaluate("el => el.classList.contains('bg-black/6')"))
         except Exception:
             is_enabled = False
 
@@ -972,7 +1016,7 @@ class GLMDriver(BaseDriver):
             return
 
         try:
-            await button.click()
+            await inner.click(timeout=2000)
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to toggle Search: {e}")
 
@@ -1480,77 +1524,40 @@ class GLMDriver(BaseDriver):
         await self.page.route("**/api/v2/chat/completions**", handle_route)
 
         try:
+            # NOTE: Clean Regeneration is currently disabled as the GLM UI does not
+            # work in GLM properly (with how we intercept requests)
+
+            Logger.info("GLM Chat: preparing new chat session...")
+            await self.click_new_chat(source="auto")
+            await asyncio.sleep(0.4)
+
             await self.apply_configured_model()
 
-            clean_regeneration = bool(self.config_manager.get_setting("glm_behavior", "clean_regeneration"))
-            regenerated = False
+            await self.set_deepthink_state(effective_deepthink)
+            await self.set_search_state(enable_search)
+            await asyncio.sleep(0.2)
 
-            if clean_regeneration:
-                clean_regen_state = {
-                    "deepthink_enabled": bool(effective_deepthink),
-                    "search_enabled": bool(enable_search),
-                    "send_as_text_file": bool(send_as_text_file),
+            if send_as_text_file:
+                Logger.info("GLM Chat: sending message as text file...")
+                file_payload = {
+                    "name": "prompt.txt",
+                    "mimeType": "text/plain",
+                    "buffer": formatted_message.encode("utf-8"),
                 }
+                await self._upload_file(file_payload)
 
-                last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
-                last_state = self._read_clean_regeneration_state()
+                # GLM requires some text alongside the file to enable the send button
+                await self._enter_message(".")
+                # It Just Works™
+                # Copyright © ONCE IN A LIFETIME Bethesda Softworks LLC
 
-                message_matches = last_message == formatted_message
-                state_matches = last_state == clean_regen_state
-
-                if message_matches and state_matches:
-                    Logger.info("Clean Regeneration (GLM): Message and settings match cache. Attempting to regenerate...")
-                    await self.set_deepthink_state(effective_deepthink)
-                    await self.set_search_state(enable_search)
-                    if await self._click_regenerate():
-                        Logger.info("Clean Regeneration (GLM): Button clicked. Regenerating...")
-                        regenerated = True
-                        self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
-                        self._write_clean_regeneration_state(clean_regen_state)
-                    else:
-                        Logger.warning("Clean Regeneration (GLM): Button not found. Falling back to new chat.")
-
-            if not regenerated:
-                Logger.info("GLM Chat: preparing new chat session...")
-                await self.click_new_chat(source="auto")
-                await asyncio.sleep(0.4)
-
-                await self.apply_configured_model()
-
-                await self.set_deepthink_state(effective_deepthink)
-                await self.set_search_state(enable_search)
-                await asyncio.sleep(0.2)
-
-                if send_as_text_file:
-                    Logger.info("GLM Chat: sending message as text file...")
-                    file_payload = {
-                        "name": "prompt.txt",
-                        "mimeType": "text/plain",
-                        "buffer": formatted_message.encode("utf-8"),
-                    }
-                    await self._upload_file(file_payload)
-
-                    # GLM requires some text alongside the file to enable the send button
-                    await self._enter_message(".")
-                    # It Just Works™
-                    # Copyright © ONCE IN A LIFETIME Bethesda Softworks LLC
-
-                    upload_timeout = int(self.config_manager.get_setting("glm_behavior", "file_upload_timeout") or 15)
-                    Logger.info("GLM Chat: sending request...")
-                    await self._send_message(timeout=upload_timeout)
-                else:
-                    await self._enter_message(formatted_message)
-                    Logger.info("GLM Chat: sending request...")
-                    await self._send_message()
-
-                if clean_regeneration:
-                    clean_regen_state = {
-                        "deepthink_enabled": bool(effective_deepthink),
-                        "search_enabled": bool(enable_search),
-                        "send_as_text_file": bool(send_as_text_file),
-                    }
-                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
-                    self._write_clean_regeneration_state(clean_regen_state)
+                upload_timeout = int(self.config_manager.get_setting("glm_behavior", "file_upload_timeout") or 15)
+                Logger.info("GLM Chat: sending request...")
+                await self._send_message(timeout=upload_timeout)
+            else:
+                await self._enter_message(formatted_message)
+                Logger.info("GLM Chat: sending request...")
+                await self._send_message()
 
             while True:
                 if self.abort_requested or (abort_event and abort_event.is_set()):

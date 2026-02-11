@@ -356,8 +356,8 @@ SCHEMA = [
                 key="model",
                 label="Model",
                 type=SettingType.DROPDOWN,
-                default="GLM-4.7",
-                options=["GLM-4.7", "GLM-4.6"],
+                default="GLM-5",
+                options=["GLM-5", "GLM-4.7", "GLM-4.6"],
                 tooltip=(
                     "Select which GLM model to use in the GLM Chat web UI. "
                     "This is separate from the API 'glm-*' model IDs (those are behavior presets)."
