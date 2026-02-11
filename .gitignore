@@ -6,6 +6,7 @@ linuxvenv/
 .agent/ 
 AGENTS.md
 GEMINI.md
+CLAUDE.md
 config_data/
 cache/
 logs/
