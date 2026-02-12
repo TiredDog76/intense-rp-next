@@ -1052,6 +1052,37 @@ class GLMDriver(BaseDriver):
     async def send_message(self, timeout: int | None = None) -> None:
         await self._send_message(timeout=timeout)
 
+    async def _verify_send_clicked(self, poll_timeout: float = 1.5) -> bool:
+        """
+        Verify that the send button click actually registered.
+
+        After a successful send, the send button's parent container changes its
+        aria-label from "Send Message" to "Stop" (and the send button itself
+        disappears). Poll for this state change to confirm the click went through.
+        """
+        if not self.page:
+            return False
+
+        deadline = time.time() + poll_timeout
+        while time.time() < deadline:
+            try:
+                result = await self.page.evaluate(
+                    "() => {"
+                    "  const btn = document.querySelector('button#send-message-button');"
+                    "  if (!btn) return 'gone';"
+                    "  const parent = btn.parentElement;"
+                    "  if (!parent) return 'unknown';"
+                    "  return (parent.getAttribute('aria-label') || '').trim().toLowerCase();"
+                    "}"
+                )
+                if result == "gone" or result == "stop":
+                    return True
+            except Exception:
+                pass
+            await asyncio.sleep(0.15)
+
+        return False
+
     async def _send_message(self, timeout: int | None = None) -> None:
         if not self.page:
             return
@@ -1108,10 +1139,33 @@ class GLMDriver(BaseDriver):
             except Exception:
                 pass
 
-            # No "still uploading" toast = send went through
-            return
+            # Verify the click actually registered (parent aria-label changes to "Stop")
+            if await self._verify_send_clicked(poll_timeout=1.5):
+                return
 
-        Logger.warning("GLM Chat: file still uploading after all retry attempts, giving up.")
+            # Playwright click didn't register -> try a direct JS click as fallback
+            Logger.debug(
+                f"GLM Chat: send click may not have registered (attempt {attempt + 1}/{max_retries}), "
+                f"retrying with JS click..."
+            )
+            try:
+                await self.page.evaluate(
+                    "() => {"
+                    "  const btn = document.querySelector('button#send-message-button');"
+                    "  if (btn) btn.click();"
+                    "}"
+                )
+            except Exception as e:
+                Logger.debug(f"GLM Chat: JS click fallback failed: {e}")
+
+            await asyncio.sleep(0.5)
+            if await self._verify_send_clicked(poll_timeout=1.5):
+                return
+
+            Logger.debug(f"GLM Chat: send click not confirmed (attempt {attempt + 1}/{max_retries}).")
+            await asyncio.sleep(0.3)
+
+        Logger.warning("GLM Chat: send button click did not register after all retry attempts, giving up.")
 
     async def _click_regenerate(self) -> bool:
         if not self.page:
