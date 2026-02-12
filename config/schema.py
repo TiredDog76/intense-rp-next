@@ -414,6 +414,14 @@ SCHEMA = [
                 depends="glm_behavior.send_as_text_file"
             ),
             SettingField(
+                key="text_file_filler",
+                label="Text File Filler",
+                type=SettingType.TEXTAREA,
+                default=".",
+                tooltip="Text pasted into the textbox alongside the uploaded file. GLM refuses to send a file with no text in the message.",
+                depends="glm_behavior.send_as_text_file"
+            ),
+            SettingField(
                 key="clean_regeneration",
                 label="Clean Regeneration",
                 type=SettingType.BOOLEAN,
@@ -470,6 +478,14 @@ SCHEMA = [
                 type=SettingType.INTEGER,
                 default=15,
                 tooltip="Max seconds to wait for the send button to become enabled after file upload.",
+                depends="moonshot_behavior.send_as_text_file",
+            ),
+            SettingField(
+                key="text_file_filler",
+                label="Text File Filler",
+                type=SettingType.TEXTAREA,
+                default=".",
+                tooltip="Text pasted into the textbox alongside the uploaded file. Kimi refuses to send a file with no text in the message.",
                 depends="moonshot_behavior.send_as_text_file",
             ),
             SettingField(

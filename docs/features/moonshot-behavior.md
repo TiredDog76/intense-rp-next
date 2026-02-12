@@ -72,6 +72,14 @@ Controls how long IntenseRP waits (in seconds) for the send button to become ena
 
 Default is 15 seconds.
 
+### Text File Filler
+
+Kimi won't let you send a file with an empty textbox as it needs *some* text alongside it. By default IntenseRP pastes a single `.` (dot) as filler, but you can change this to whatever you want.
+
+:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Text File Filler**
+
+This setting only appears when **Send As Text File** is enabled.
+
 ---
 
 ## :material-shield-off: Anti-Censorship
@@ -123,6 +131,7 @@ All macros are stripped before sending.
 | **Enable Search** | Toggles Kimi search | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
+| **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Anti-Censorship** | Suppresses refusal-like outputs | Off |
 | **Clean Regeneration** | Regenerates on duplicate prompts | Off |
 

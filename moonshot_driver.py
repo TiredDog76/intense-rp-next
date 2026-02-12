@@ -600,7 +600,8 @@ class MoonshotDriver(DeepSeekDriver):
                         "buffer": formatted_message.encode("utf-8"),
                     }
                     await self._upload_file(file_payload)
-                    await self._enter_message(".")
+                    filler = self.config_manager.get_setting("moonshot_behavior", "text_file_filler") or "."
+                    await self._enter_message(str(filler))
                     upload_timeout = int(self.config_manager.get_setting("moonshot_behavior", "file_upload_timeout") or 15)
                     Logger.info("Moonshot: sending request...")
                     await self._send_message(timeout=upload_timeout)

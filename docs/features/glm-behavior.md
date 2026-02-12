@@ -83,6 +83,14 @@ When uploading files, GLM can take a moment before the send button becomes activ
 
 Default is 15 seconds. Increase it if you're on a slow connection/PC or uploading very large prompts.
 
+### Text File Filler
+
+GLM won't let you send a file with an empty textbox as it needs *some* text alongside it. By default IntenseRP pastes a single `.` (dot) as filler, but you can change this to whatever you want.
+
+:material-arrow-right: **Settings** -> **GLM Behavior** -> **Text File Filler**
+
+This setting only appears when **Send As Text File** is enabled.
+
 ---
 
 ## :material-refresh: Clean Regeneration (known issues)
@@ -152,6 +160,7 @@ All macros are stripped from the message before sending it to GLM.
 | **Enable Search** | Enables GLM search | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
+| **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Clean Regeneration** | Regenerates on duplicate prompts | Off (unstable for GLM) |
 
 ---

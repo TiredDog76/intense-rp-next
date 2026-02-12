@@ -1078,7 +1078,40 @@ class GLMDriver(BaseDriver):
         except Exception:
             pass
 
-        await send_button.first.click()
+        # Brief stabilization delay to let the UI settle before clicking,
+        # helps with long RPs where the button may not be fully interactive yet
+        await asyncio.sleep(0.3)
+
+        toaster = self.page.locator("ol[data-sonner-toaster]")
+        max_retries = 5
+
+        for attempt in range(max_retries):
+            try:
+                await send_button.first.click()
+            except Exception as e:
+                Logger.debug(f"GLM Chat: send button click failed: {e}")
+                await asyncio.sleep(0.4)
+                continue
+
+            # Check if a "still uploading" toast appeared
+            await asyncio.sleep(0.8)
+            try:
+                if await toaster.count() > 0:
+                    toast_text = (await toaster.first.inner_text() or "").lower()
+                    if "still uploading" in toast_text:
+                        Logger.info(
+                            f"GLM Chat: file still uploading (attempt {attempt + 1}/{max_retries}), "
+                            f"waiting 3s before retry..."
+                        )
+                        await asyncio.sleep(3)
+                        continue
+            except Exception:
+                pass
+
+            # No "still uploading" toast = send went through
+            return
+
+        Logger.warning("GLM Chat: file still uploading after all retry attempts, giving up.")
 
     async def _click_regenerate(self) -> bool:
         if not self.page:
@@ -1547,7 +1580,8 @@ class GLMDriver(BaseDriver):
                 await self._upload_file(file_payload)
 
                 # GLM requires some text alongside the file to enable the send button
-                await self._enter_message(".")
+                filler = self.config_manager.get_setting("glm_behavior", "text_file_filler") or "."
+                await self._enter_message(str(filler))
                 # It Just Works™
                 # Copyright © ONCE IN A LIFETIME Bethesda Softworks LLC
 
