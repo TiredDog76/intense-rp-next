@@ -48,6 +48,27 @@ class GLMDriver(BaseDriver):
         self.clean_regen_message_cache_key = "glm_last_message.txt"
         self.clean_regen_state_cache_key = "glm_last_message_state.json"
 
+        self._refresh_quirks()
+
+    def _refresh_quirks(self) -> None:
+        """Read quirks settings from config and cache them as instance attributes."""
+        try:
+            ui_timeout = int(self.config_manager.get_setting("glm_behavior", "ui_click_timeout") or 3000)
+        except Exception:
+            ui_timeout = 3000
+        try:
+            post_delay = int(self.config_manager.get_setting("glm_behavior", "post_action_delay") or 500)
+        except Exception:
+            post_delay = 500
+        try:
+            msg_send_timeout = int(self.config_manager.get_setting("glm_behavior", "message_send_timeout") or 5)
+        except Exception:
+            msg_send_timeout = 5
+
+        self._ui_timeout = max(ui_timeout, 500)
+        self._post_delay_s = max(post_delay, 0) / 1000.0
+        self._msg_send_timeout = max(msg_send_timeout, 1)
+
     @property
     def required_ui_language_label(self) -> str:
         return "English (en-US)"
@@ -113,7 +134,7 @@ class GLMDriver(BaseDriver):
             return False
 
         try:
-            await button.first.click(timeout=2000)
+            await button.first.click(timeout=self._ui_timeout)
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to click model selector button: {e}")
             return False
@@ -146,12 +167,12 @@ class GLMDriver(BaseDriver):
             return
 
         try:
-            await button.first.click(timeout=2000)
+            await button.first.click(timeout=self._ui_timeout)
         except Exception:
             return
 
         try:
-            await self.page.wait_for_selector(self.MODEL_DROPDOWN_SELECTOR, timeout=1500, state="hidden")
+            await self.page.wait_for_selector(self.MODEL_DROPDOWN_SELECTOR, timeout=self._ui_timeout, state="hidden")
         except Exception:
             return
 
@@ -165,11 +186,11 @@ class GLMDriver(BaseDriver):
             if await trigger.count() == 0:
                 return False
 
-            await trigger.first.click(timeout=2000)
+            await trigger.first.click(timeout=self._ui_timeout)
 
             # Wait for the content to appear
             content = self.page.locator("div[data-melt-collapsible-content]")
-            await content.first.wait_for(state="visible", timeout=2000)
+            await content.first.wait_for(state="visible", timeout=self._ui_timeout)
             return True
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to expand collapsible section: {e}")
@@ -209,13 +230,13 @@ class GLMDriver(BaseDriver):
             cand = option.nth(idx)
             try:
                 if await cand.is_visible():
-                    await cand.click(timeout=2000)
+                    await cand.click(timeout=self._ui_timeout)
                     return True
             except Exception:
                 continue
 
         try:
-            await option.first.click(timeout=2000)
+            await option.first.click(timeout=self._ui_timeout)
             return True
         except Exception:
             return False
@@ -246,7 +267,7 @@ class GLMDriver(BaseDriver):
                 data_value = ""
 
             try:
-                await cand.click(timeout=2000)
+                await cand.click(timeout=self._ui_timeout)
             except Exception:
                 continue
 
@@ -879,7 +900,7 @@ class GLMDriver(BaseDriver):
             return
 
         try:
-            await toggle.first.click(timeout=2000)
+            await toggle.first.click(timeout=self._ui_timeout)
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to click sidebar toggle: {e}")
             return
@@ -922,7 +943,7 @@ class GLMDriver(BaseDriver):
             return
 
         try:
-            await btn.first.click(timeout=2000)
+            await btn.first.click(timeout=self._ui_timeout)
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to click New Chat: {e}")
 
@@ -1016,7 +1037,7 @@ class GLMDriver(BaseDriver):
             return
 
         try:
-            await inner.click(timeout=2000)
+            await inner.click(timeout=self._ui_timeout)
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to toggle Search: {e}")
 
@@ -1047,7 +1068,27 @@ class GLMDriver(BaseDriver):
             Logger.warning("GLM Chat: message textarea not found.")
             return
 
-        await textarea.first.fill(message)
+        # Use JS to set the value through the native property setter and dispatch
+        # events so that Svelte's reactive bindings pick up the change. This is
+        # more reliable than Playwright's .fill() for large inputs on slow machines.
+        try:
+            await self.page.evaluate(
+                """(msg) => {
+                    const ta = document.querySelector('textarea#chat-input');
+                    if (!ta) return;
+                    ta.focus();
+                    const setter = Object.getOwnPropertyDescriptor(
+                        HTMLTextAreaElement.prototype, 'value'
+                    ).set;
+                    setter.call(ta, msg);
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
+                    ta.dispatchEvent(new Event('change', { bubbles: true }));
+                }""",
+                message,
+            )
+        except Exception as e:
+            Logger.debug(f"GLM Chat: JS text entry failed ({e}), falling back to .fill()")
+            await textarea.first.fill(message)
 
     async def send_message(self, timeout: int | None = None) -> None:
         await self._send_message(timeout=timeout)
@@ -1341,6 +1382,7 @@ class GLMDriver(BaseDriver):
         response_queue: asyncio.Queue = asyncio.Queue()
 
         await self.require_english_ui()
+        self._refresh_quirks()
 
         # Reset state for new generation
         self.thinking_active = False
@@ -1616,13 +1658,13 @@ class GLMDriver(BaseDriver):
 
             Logger.info("GLM Chat: preparing new chat session...")
             await self.click_new_chat(source="auto")
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(self._post_delay_s)
 
             await self.apply_configured_model()
 
             await self.set_deepthink_state(effective_deepthink)
             await self.set_search_state(enable_search)
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(self._post_delay_s)
 
             if send_as_text_file:
                 Logger.info("GLM Chat: sending message as text file...")
@@ -1644,8 +1686,9 @@ class GLMDriver(BaseDriver):
                 await self._send_message(timeout=upload_timeout)
             else:
                 await self._enter_message(formatted_message)
+                await asyncio.sleep(self._post_delay_s)
                 Logger.info("GLM Chat: sending request...")
-                await self._send_message()
+                await self._send_message(timeout=self._msg_send_timeout)
 
             while True:
                 if self.abort_requested or (abort_event and abort_event.is_set()):

@@ -428,6 +428,40 @@ SCHEMA = [
                 default=False,
                 tooltip="If enabled, attempts to regenerate the last message instead of creating a new chat if the prompt is identical."
             ),
+            SettingField(
+                key="quirks_divider",
+                label="Quirks",
+                type=SettingType.DIVIDER,
+                default=None
+            ),
+            SettingField(
+                key="quirks_desc",
+                label="Description",
+                type=SettingType.DESCRIPTION,
+                default="Timing and interaction tweaks for slower machines or flaky UI behavior.",
+                tooltip=None
+            ),
+            SettingField(
+                key="ui_click_timeout",
+                label="UI Click Timeout (ms)",
+                type=SettingType.INTEGER,
+                default=3000,
+                tooltip="Timeout in milliseconds for UI element clicks (buttons, dropdowns, etc.)."
+            ),
+            SettingField(
+                key="post_action_delay",
+                label="Post-Action Delay (ms)",
+                type=SettingType.INTEGER,
+                default=500,
+                tooltip="Delay in milliseconds after UI actions (new chat, model switch) to let the interface settle."
+            ),
+            SettingField(
+                key="message_send_timeout",
+                label="Message Send Timeout (s)",
+                type=SettingType.INTEGER,
+                default=5,
+                tooltip="Max seconds to wait for the send button to become enabled after text entry (non-file mode)."
+            ),
         ]
     ),
     SettingCategory(
