@@ -861,6 +861,15 @@ class DeepSeekDriver(BaseDriver):
                                             content = v
                                     else:
                                         content = v
+                                elif isinstance(v, dict):
+                                    # Initial response payload: {"response": {"fragments": [...]}}
+                                    # DeepSeek now sends the first fragment inline in the
+                                    # opening payload rather than as a separate APPEND event
+                                    response_obj = v.get("response", v)
+                                    if isinstance(response_obj, dict):
+                                        fragments = response_obj.get("fragments")
+                                        if isinstance(fragments, list) and fragments:
+                                            ops = [{"p": "response/fragments", "o": "APPEND", "v": fragments}]
                             
                             # Case 2: Single Path-based update
                             else:
@@ -881,7 +890,7 @@ class DeepSeekDriver(BaseDriver):
 
                             # Check for Anti-Censorship (CONTENT_FILTER)
                             if anti_censorship:
-                                if item_p == "status" and item_v == "CONTENT_FILTER":
+                                if item_p in ("status", "response/status") and item_v == "CONTENT_FILTER":
                                     Logger.info("Anti-Censorship triggered: Suppressing refusal message.")
                                     finish_reason = "stop"
                                     if getattr(self, "thinking_active", False):
@@ -892,7 +901,7 @@ class DeepSeekDriver(BaseDriver):
                                     break
 
                             # Status update
-                            if item_p == "status":
+                            if item_p in ("status", "response/status"):
                                 if item_v == "FINISHED":
                                     finish_reason = "stop"
                                     # Close think tag if open
