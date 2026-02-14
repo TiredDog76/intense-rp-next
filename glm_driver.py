@@ -476,6 +476,7 @@ class GLMDriver(BaseDriver):
         needs_auth = await self._chat_page_contains_sign_in()
         if not needs_auth:
             Logger.info("GLM Chat: already signed in (or Sign in not detected).")
+            self._mark_active_ece_pair_used()
             return
 
         auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))

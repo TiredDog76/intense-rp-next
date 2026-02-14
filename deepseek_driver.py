@@ -145,6 +145,7 @@ class DeepSeekDriver(BaseDriver):
                     Logger.error(f"Error waiting for manual login: {e}")
         else:
             Logger.info("Not redirected to sign in. Continuing...")
+            self._mark_active_ece_pair_used()
 
     async def _get_document_lang(self) -> str:
         if not self.page:

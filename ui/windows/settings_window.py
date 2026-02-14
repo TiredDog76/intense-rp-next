@@ -24,7 +24,7 @@ from utils.logger import Logger
 from utils.update_checker import check_for_updates, read_local_version
 
 class SettingsWindow(QMainWindow):
-    settings_saved = Signal()
+    settings_saved = Signal(set)
     restart_requested = Signal()
     update_check_finished = Signal(object, str)
 
@@ -1437,6 +1437,18 @@ class SettingsWindow(QMainWindow):
     def save_settings(self):
         validation_errors = []
 
+        # Snapshot old values for fields with "affects" so we can detect changes later
+        _affects_snapshot = {}
+        for _cat in SCHEMA:
+            for _field in self._iter_fields(_cat.fields):
+                _affects_list = getattr(_field, "affects", None)
+                if _affects_list:
+                    _key = f"{_cat.key}.{_field.key}"
+                    _affects_snapshot[_key] = (
+                        self.config_manager.get_setting(_cat.key, _field.key),
+                        _affects_list,
+                    )
+
         active_config_dir = Path(getattr(self.config_manager, "config_dir", "config_data")).resolve()
         storage_preset_widget = self.field_widgets.get("system_settings.config_storage_location")
         storage_custom_widget = self.field_widgets.get("system_settings.config_storage_custom_path")
@@ -1559,7 +1571,16 @@ class SettingsWindow(QMainWindow):
 
         self.config_manager.save_settings()
         self.unsaved_changes = False
-        self.settings_saved.emit()
+
+        # Determine which UI components are affected by the changes
+        _affected = set()
+        for _key, (_old_val, _affects_list) in _affects_snapshot.items():
+            _cat, _fld = _key.split(".", 1)
+            _new_val = self.config_manager.get_setting(_cat, _fld)
+            if _new_val != _old_val:
+                _affected.update(_affects_list)
+
+        self.settings_saved.emit(_affected)
 
         if not perform_migration:
             self.close()

@@ -155,6 +155,13 @@ class BaseDriver(ABC):
         except Exception:
             return
 
+    def _mark_active_ece_pair_used(self) -> None:
+        """Mark the currently active ECE pair as used (timestamp update)."""
+        pair = self.ece_active_pair()
+        email = getattr(pair, "email", None) if pair else None
+        if isinstance(email, str) and email.strip():
+            self.ece_mark_used(email)
+
     def ece_rotate_identity(self, reason: str) -> bool:
         """
         Rotate to a different ECE identity (pair and/or profile slot) for this provider.

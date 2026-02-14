@@ -21,6 +21,7 @@ from ui.windows.console_window import ConsoleWindow
 from ui.windows.help_window import HelpWindow
 from ui.widgets.mini_console import MiniConsole
 from ui.widgets.request_queue_preview import RequestQueuePreview
+from ui.widgets.split_button import SplitButton
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
@@ -267,7 +268,7 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
         
-        self.start_button = QPushButton("Start")
+        self.start_button = SplitButton("Start")
         self.start_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {BrandColors.ACCENT};
@@ -285,10 +286,10 @@ class MainWindow(QMainWindow):
                 background-color: {BrandColors.TEXT_DISABLED};
             }}
         """)
-        IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
+        self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
         self.start_button.setCursor(Qt.PointingHandCursor)
         self.start_button.clicked.connect(self.on_start_clicked)
-        button_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.start_button, 1)
 
         self.settings_button = QPushButton("Settings")
         self.settings_button.setStyleSheet(f"""
@@ -307,7 +308,7 @@ class MainWindow(QMainWindow):
         IconUtils.apply_icon(self.settings_button, IconType.SETTINGS, BrandColors.TEXT_PRIMARY)
         self.settings_button.setCursor(Qt.PointingHandCursor)
         self.settings_button.clicked.connect(self.open_settings)
-        button_layout.addWidget(self.settings_button)
+        button_layout.addWidget(self.settings_button, 1)
         
         self.layout.addLayout(button_layout)
 
@@ -852,19 +853,97 @@ class MainWindow(QMainWindow):
         self.help_window.show()
         self.help_window.activateWindow()
 
-    def on_settings_saved(self):
+    def on_settings_saved(self, affected=None):
+        affected = affected or set()
         Logger.info("Settings saved.")
         # Handle logging toggle
         self._setup_logging()
         self._apply_queue_preview_setting()
-        
+
         # Update console settings if it exists
         # Rule 43 of The Internet: If it exists, then it exists
         if self.console_window:
             self.console_window.apply_settings()
-            
+
+        # Refresh affected UI components
+        if "chevron_dropdown" in affected and self.start_button.text() == "Stop":
+            self._refresh_chevron_menu()
+
         # If driver is running, it will pick up changes on next generation
         # All thanks to the config manager being dynamic
+
+    # ------------------------------------------------------------------
+    # Chevron dropdown menu + handlers
+    # ------------------------------------------------------------------
+
+    def _refresh_chevron_menu(self):
+        menu = self.start_button.menu
+        menu.clear()
+
+        restart_action = menu.addAction("Restart")
+        restart_action.triggered.connect(self._on_restart_services)
+
+        ece_enabled = bool(self.config_manager.get_setting("experimental", "ece_enabled"))
+        if ece_enabled:
+            ece_action = menu.addAction("ECE Switch")
+            ece_action.triggered.connect(self._on_ece_switch)
+
+            # Disable if fewer than 2 credential pairs for the current provider
+            driver = getattr(self, "driver", None)
+            if driver:
+                try:
+                    mgr = driver._get_ece_manager()
+                    pairs = mgr.get_provider_pairs(driver.provider)
+                    if len(pairs) < 2:
+                        ece_action.setEnabled(False)
+                except Exception:
+                    ece_action.setEnabled(False)
+
+    def _on_restart_services(self):
+        asyncio.create_task(self._restart_services_impl())
+
+    async def _restart_services_impl(self):
+        self.start_button.setEnabled(False)
+        self._update_status("Restarting...", "info")
+        try:
+            await self.stop_services()
+        except Exception as e:
+            Logger.error(f"Restart: stop failed: {e}")
+        # stop_services resets button to "Start" state; now re-start
+        await self.start_services()
+
+    def _on_ece_switch(self):
+        asyncio.create_task(self._ece_switch_impl())
+
+    async def _ece_switch_impl(self):
+        self.start_button.setEnabled(False)
+        self._update_status("ECE: Switching account...", "info")
+        driver = getattr(self, "driver", None)
+        if not driver:
+            Logger.warning("No driver for ECE switch.")
+            self.start_button.setEnabled(True)
+            return
+        try:
+            success = await driver.ece_restart_with_rotation(
+                reason="manual ECE switch",
+                status_callback=lambda msg: self._update_status(msg, "info"),
+            )
+            if success:
+                port_setting = self.config_manager.get_setting("network_settings", "port")
+                try:
+                    port = int(port_setting) if port_setting else 7777
+                except (TypeError, ValueError):
+                    port = 7777
+                self._update_status(f"Running (Port {port})", "running")
+                Logger.success("ECE switch completed.")
+            else:
+                Logger.warning("ECE switch failed (no alternative identity available).")
+                self._update_status("ECE switch failed", "warning")
+            self.start_button.setEnabled(True)
+        except Exception as e:
+            Logger.error(f"ECE switch failed: {e}")
+            self._update_status(f"ECE switch failed: {e}", "error")
+            await self.stop_services()
 
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")
@@ -998,9 +1077,11 @@ class MainWindow(QMainWindow):
             
             self._update_status(f"Running (Port {port})", "running")
             self.start_button.setText("Stop")
-            IconUtils.apply_icon(self.start_button, IconType.STOP, BrandColors.TEXT_PRIMARY)
+            self.start_button.apply_icon(IconType.STOP, BrandColors.TEXT_PRIMARY)
             self.start_button.setEnabled(True)
-            
+            self.start_button.set_chevron_visible(True)
+            self._refresh_chevron_menu()
+
         except Exception as e:
             self._update_status(f"Error: {e}", "error")
             Logger.error(f"Error starting services: {e}")
@@ -1009,8 +1090,9 @@ class MainWindow(QMainWindow):
             except Exception as cleanup_error:
                 Logger.error(f"Error cleaning up after failed start: {cleanup_error}")
             self.start_button.setText("Start")
-            IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
+            self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
             self.start_button.setEnabled(True)
+            self.start_button.set_chevron_visible(False)
 
     async def _ensure_driver_ui_language_is_compatible(self) -> bool:
         driver = getattr(self, "driver", None)
@@ -1170,8 +1252,9 @@ class MainWindow(QMainWindow):
             if update_ui:
                 self._update_status("Stopped", "ready")
                 self.start_button.setText("Start")
-                IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
+                self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
                 self.start_button.setEnabled(True)
+                self.start_button.set_chevron_visible(False)
             if had_warnings:
                 Logger.warning("Services stopped with warnings.")
             else:
@@ -1254,9 +1337,10 @@ class MainWindow(QMainWindow):
             
             # Reset UI
             self.start_button.setText("Start")
-            IconUtils.apply_icon(self.start_button, IconType.START, BrandColors.TEXT_PRIMARY)
+            self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
             self.start_button.setEnabled(True)
-            
+            self.start_button.set_chevron_visible(False)
+
         except Exception as e:
             Logger.error(f"Error handling crash cleanup: {e}")
             self._update_status(f"Error: {e}", "error")

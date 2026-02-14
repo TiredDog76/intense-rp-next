@@ -38,6 +38,7 @@ class SettingField:
     ratios: Optional[List[int]] = None # For ROW type (e.g. [70, 30])
     force_when_dep_unmet: Optional[Any] = None
     visible_depends: Optional[str] = None
+    affects: Optional[List[str]] = None # UI components to refresh when this field changes
 
 @dataclass
 class SettingCategory:
@@ -735,6 +736,7 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Use the Experimental Credential Engine instead of the legacy per-provider credential fields.",
+                affects=["chevron_dropdown"],
             ),
             SettingField(
                 key="ece_select_least_used",

@@ -50,12 +50,6 @@ class MoonshotDriver(DeepSeekDriver):
     def _normalize_text(value: str) -> str:
         return re.sub(r"\s+", " ", str(value or "")).strip().lower()
 
-    def _mark_active_ece_pair_used(self) -> None:
-        pair = self.ece_active_pair()
-        email = getattr(pair, "email", None) if pair else None
-        if isinstance(email, str) and email.strip():
-            self.ece_mark_used(email)
-
     async def _read_user_name(self) -> str:
         if not self.page:
             return ""
