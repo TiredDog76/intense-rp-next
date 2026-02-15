@@ -25,6 +25,7 @@ nav:
       - Login & Sessions: features/login-sessions.md
       - Network & API: features/network-api.md
       - Console & Logging: features/console-logging.md
+      - Hotswaps: features/hotswaps.md
       - System: features/system.md
   - Experimental:
       - Overview: experimental.md
@@ -33,6 +34,7 @@ nav:
       - Overview: advanced.md
       - Provider Support: advanced/provider-support.md
       - API Behavior: advanced/api-behavior.md
+      - GLM Quirks: advanced/glm-quirks.md
       - App Flags: advanced/app-flags.md
   - Util Reference:
       - Overview: util-reference.md

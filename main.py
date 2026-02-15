@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
     QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon
 )
-from PySide6.QtCore import Signal, Slot, Qt, QProcess
+from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize
 from PySide6.QtCore import QTimer
 import qasync
 
@@ -24,6 +24,7 @@ from ui.widgets.request_queue_preview import RequestQueuePreview
 from ui.widgets.split_button import SplitButton
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
+from ui.niche.hotswap_dialog import HotswapDialog, PROVIDER_ICON_MAP
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstalledInfo
 from utils.logger import Logger, LogLevel, LEVEL_NAME_MAP
@@ -312,6 +313,28 @@ class MainWindow(QMainWindow):
         
         self.layout.addLayout(button_layout)
 
+        help_row = QHBoxLayout()
+        help_row.setSpacing(10)
+
+        self.hotswap_button = QPushButton()
+        self.hotswap_button.setFixedWidth(44)
+        self.hotswap_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                color: {BrandColors.TEXT_PRIMARY};
+                border: none;
+                padding: 10px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+            }}
+        """)
+        self.hotswap_button.setCursor(Qt.PointingHandCursor)
+        self.hotswap_button.clicked.connect(self._on_hotswap)
+        self.hotswap_button.setVisible(False)
+        help_row.addWidget(self.hotswap_button)
+
         self.help_button = QPushButton("Help")
         self.help_button.setStyleSheet(f"""
             QPushButton {{
@@ -329,7 +352,9 @@ class MainWindow(QMainWindow):
         IconUtils.apply_icon(self.help_button, IconType.HELP, BrandColors.TEXT_PRIMARY)
         self.help_button.setCursor(Qt.PointingHandCursor)
         self.help_button.clicked.connect(self.open_help)
-        self.layout.addWidget(self.help_button)
+        help_row.addWidget(self.help_button, 1)
+
+        self.layout.addLayout(help_row)
 
         self._queue_preview_enabled = False
         self._queue_preview_last_width = 360
@@ -869,6 +894,9 @@ class MainWindow(QMainWindow):
         if "chevron_dropdown" in affected and self.start_button.text() == "Stop":
             self._refresh_chevron_menu()
 
+        if "hotswap_button" in affected:
+            self._sync_hotswap_button()
+
         # If driver is running, it will pick up changes on next generation
         # All thanks to the config manager being dynamic
 
@@ -898,6 +926,11 @@ class MainWindow(QMainWindow):
                         ece_action.setEnabled(False)
                 except Exception:
                     ece_action.setEnabled(False)
+
+        hotswap_mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
+        if (hotswap_mode or "Stop Menu") == "Stop Menu":
+            hotswap_action = menu.addAction("Hotswap")
+            hotswap_action.triggered.connect(self._on_hotswap)
 
     def _on_restart_services(self):
         asyncio.create_task(self._restart_services_impl())
@@ -944,6 +977,43 @@ class MainWindow(QMainWindow):
             Logger.error(f"ECE switch failed: {e}")
             self._update_status(f"ECE switch failed: {e}", "error")
             await self.stop_services()
+
+    # ------------------------------------------------------------------
+    # Hotswap
+    # ------------------------------------------------------------------
+
+    def _sync_hotswap_button(self):
+        """Show or hide the discrete hotswap button based on setting + running state."""
+        mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
+        running = self.start_button.text() == "Stop"
+        show = (mode == "Discrete") and running
+
+        self.hotswap_button.setVisible(show)
+        if show:
+            provider = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
+            icon_file = PROVIDER_ICON_MAP.get(provider)
+            if icon_file:
+                icon = IconUtils.get_icon(
+                    icon_file, color=BrandColors.TEXT_PRIMARY, size=18,
+                    widget=self.hotswap_button,
+                )
+                if not icon.isNull():
+                    self.hotswap_button.setIcon(icon)
+                    self.hotswap_button.setIconSize(QSize(18, 18))
+
+    def _on_hotswap(self):
+        current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
+        dialog = HotswapDialog(current, parent=self)
+        if dialog.exec() != HotswapDialog.Accepted:
+            return
+        new_provider = dialog.selected_provider
+        if not new_provider or new_provider == current:
+            return
+
+        Logger.info(f"Hotswap: {current} -> {new_provider}")
+        self.config_manager.set_setting("providers_credentials", "provider", new_provider)
+        self.config_manager.save_settings()
+        asyncio.create_task(self._restart_services_impl())
 
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")
@@ -1081,6 +1151,7 @@ class MainWindow(QMainWindow):
             self.start_button.setEnabled(True)
             self.start_button.set_chevron_visible(True)
             self._refresh_chevron_menu()
+            self._sync_hotswap_button()
 
         except Exception as e:
             self._update_status(f"Error: {e}", "error")
@@ -1093,6 +1164,7 @@ class MainWindow(QMainWindow):
             self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
             self.start_button.setEnabled(True)
             self.start_button.set_chevron_visible(False)
+            self._sync_hotswap_button()
 
     async def _ensure_driver_ui_language_is_compatible(self) -> bool:
         driver = getattr(self, "driver", None)
@@ -1255,6 +1327,7 @@ class MainWindow(QMainWindow):
                 self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
                 self.start_button.setEnabled(True)
                 self.start_button.set_chevron_visible(False)
+                self._sync_hotswap_button()
             if had_warnings:
                 Logger.warning("Services stopped with warnings.")
             else:
@@ -1340,6 +1413,7 @@ class MainWindow(QMainWindow):
             self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
             self.start_button.setEnabled(True)
             self.start_button.set_chevron_visible(False)
+            self._sync_hotswap_button()
 
         except Exception as e:
             Logger.error(f"Error handling crash cleanup: {e}")

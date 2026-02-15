@@ -805,6 +805,19 @@ SCHEMA = [
                     "If disabled, all provider Behavior categories are shown."
                 ),
             ),
+            SettingField(
+                key="hotswap_experience",
+                label="Hotswap Experience",
+                type=SettingType.DROPDOWN,
+                default="Stop Menu",
+                options=["Stop Menu", "Discrete"],
+                tooltip=(
+                    "How the Hotswap shortcut is presented. "
+                    "Stop Menu adds it to the chevron dropdown on the Stop button. "
+                    "Discrete adds a small icon button next to Help."
+                ),
+                affects=["chevron_dropdown", "hotswap_button"],
+            ),
         ],
     ),
     SettingCategory(

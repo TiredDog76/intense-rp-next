@@ -52,6 +52,12 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](features/console-logging.md)
 
+-   :material-swap-horizontal: **Hotswaps**
+
+    Switch providers on the fly without touching Settings.
+
+    [:arrow_right: Learn More](features/hotswaps.md)
+
 -   :material-cog: **System**
 
     Config storage, updates, and application settings.
@@ -156,6 +162,17 @@ Keep track of what's happening under the hood.
 | **Color Palettes** | Choose between Modern, Classic, or Bright color schemes |
 | **File Logging** | Save logs to files with automatic rotation |
 | **Console Dumping** | Export console contents to a file |
+
+---
+
+### :material-swap-horizontal: Hotswaps
+
+Switch AI providers without leaving the main window.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Stop Menu mode** | Adds a Hotswap option to the chevron dropdown on the Stop button |
+| **Discrete mode** | Shows a small provider-icon button next to Help |
 
 ---
 

@@ -7,7 +7,7 @@ icon: material/chat-processing
 This page covers the toggles and options that control how IntenseRP interacts with **GLM Chat** (chat.z.ai).
 
 !!! warning "Beta quality"
-    The GLM driver is still somewhat beta-like. It is mostly usable for daily driving, but you may occasionally run into quirks or instability.
+    The GLM driver is still somewhat beta-like. It is mostly usable for daily driving, but you may occasionally run into quirks or instability. For a deep dive into known quirks and timing settings, see [:material-wrench-clock: GLM Quirks](../advanced/glm-quirks.md).
 
 ---
 
@@ -147,6 +147,14 @@ All macros are stripped from the message before sending it to GLM.
 
 !!! note "Scope"
     Only macros from the latest user message apply. They do not persist across requests.
+
+---
+
+## :material-wrench-clock: Quirks & Timing
+
+GLM has a few quirks worth knowing about, that could look as broken (but really they can be pretty easy to work around). These are covered briefly on this page (see individual sections above), but if you want the full picture including all the timing knobs and workarounds:
+
+:material-arrow-right: [:material-wrench-clock: GLM Quirks (full page)](../advanced/glm-quirks.md)
 
 ---
 
