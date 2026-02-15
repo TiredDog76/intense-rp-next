@@ -209,6 +209,16 @@ Click :material-connection: **Connect** and look for the green indicator.
 
 Here are some handy tweaks you might want to know about.
 
+### :material-tag-multiple: Set up Names
+
+So that IntenseRP knows the names of your characters and personas, you'll want to set up a way to send names to it.
+
+The recommended way is to set **Character Names Behavior** to **Completion Object**. This automatically sends character names to the API with every message, so IntenseRP can use them in formatting and injections.
+
+![Character Names Setting](pics/getting-started/completion_object.png)
+
+---
+
 ### :material-lan: Change the Port
 
 By default IntenseRP listens on port `7777`. If that happens to be taken, you can change it:
