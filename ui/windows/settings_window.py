@@ -31,9 +31,9 @@ class SettingsWindow(QMainWindow):
     SIDEBAR_ICON_MAP = {
         "providers_credentials": "key.svg",
         "formatting": "type.svg",
-        "deepseek_behavior": "pen-tool.svg",
-        "glm_behavior": "pen-tool.svg",
-        "moonshot_behavior": "pen-tool.svg",
+        "deepseek_behavior": "providers/whale.svg",
+        "glm_behavior": "providers/z.svg",
+        "moonshot_behavior": "providers/eclipse.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
         "system_settings": "monitor.svg",
@@ -70,12 +70,13 @@ class SettingsWindow(QMainWindow):
         self._sync_application_settings_info()
 
     def _get_sidebar_icon(self, icon_file: str, color: str, size: int = 18) -> QIcon:
+        use_sidebar_subdir = ("/" not in icon_file) and ("\\" not in icon_file)
         return IconUtils.get_icon(
             icon_file,
             color=color,
             size=size,
             widget=self,
-            subdir="sidebar",
+            subdir="sidebar" if use_sidebar_subdir else None,
         )
 
     def _create_card_header(self, category_key: str, title: str) -> QWidget:
