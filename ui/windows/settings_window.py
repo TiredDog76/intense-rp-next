@@ -31,9 +31,9 @@ class SettingsWindow(QMainWindow):
     SIDEBAR_ICON_MAP = {
         "providers_credentials": "key.svg",
         "formatting": "type.svg",
-        "deepseek_behavior": "providers/whale.svg",
-        "glm_behavior": "providers/z.svg",
-        "moonshot_behavior": "providers/eclipse.svg",
+        "deepseek_behavior": "providers/deepseek.svg",
+        "glm_behavior": "providers/zai.svg",
+        "moonshot_behavior": "providers/moonshot.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
         "system_settings": "monitor.svg",

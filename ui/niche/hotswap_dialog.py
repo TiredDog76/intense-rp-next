@@ -10,9 +10,9 @@ from ui.core.icons import IconType, IconUtils
 
 
 PROVIDER_ICON_MAP: dict[str, str] = {
-    "DeepSeek": "providers/whale.svg",
-    "GLM Chat": "providers/z.svg",
-    "Moonshot": "providers/eclipse.svg",
+    "DeepSeek": "providers/deepseek.svg",
+    "GLM Chat": "providers/zai.svg",
+    "Moonshot": "providers/moonshot.svg",
 }
 
 ALL_PROVIDERS: list[str] = ["DeepSeek", "GLM Chat", "Moonshot"]

@@ -323,7 +323,7 @@ class MainWindow(QMainWindow):
                 background-color: {BrandColors.SIDEBAR_BG};
                 color: {BrandColors.TEXT_PRIMARY};
                 border: none;
-                padding: 10px;
+                padding: 12px 0px;
                 border-radius: 6px;
             }}
             QPushButton:hover {{
