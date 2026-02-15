@@ -12,6 +12,8 @@ For the main GLM settings and behavior toggles, see [:material-chat-processing: 
 
 ## :material-timer-sand: Timeout & Timing Settings
 
+![GLM Timing Settings](../pics/advanced/glm-quirks.png)
+
 GLM's web UI can be a bit sluggish sometimes, especially on slower machines or unstable connections. IntenseRP exposes three timing knobs under **GLM Behavior** so you can tune things to your setup.
 
 :material-arrow-right: **Settings** -> **GLM Behavior** -> (Quirks section)

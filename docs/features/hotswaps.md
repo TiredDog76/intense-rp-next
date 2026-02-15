@@ -10,6 +10,8 @@ Hotswaps let you switch between AI providers without opening the Settings window
 
 ## :material-cog-outline: How It Works
 
+![Hotswap Modal](../pics/features/hotswap_modal.png)
+
 When you trigger a Hotswap, IntenseRP shows a small dialog with the two providers you're **not** currently using. Pick one, and IntenseRP will:
 
 1. Update your **Provider** setting to the new provider
