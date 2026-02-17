@@ -268,6 +268,29 @@ class SettingsWindow(QMainWindow):
                 background-color: {BrandColors.ITEM_HOVER};
                 color: {BrandColors.TEXT_PRIMARY};
             }}
+            QScrollBar:vertical {{
+                border: none;
+                background: {BrandColors.SIDEBAR_BG};
+                width: 12px;
+                margin: 0px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: #555555;
+                min-height: 20px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: #666666;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+                subcontrol-position: bottom;
+                subcontrol-origin: margin;
+            }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+                background: none;
+            }}
         """)
         self.category_list.itemClicked.connect(self._on_category_clicked)
         self.category_list.currentItemChanged.connect(self._on_category_selection_changed)
