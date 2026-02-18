@@ -190,6 +190,17 @@ class LogGroup(QWidget):
         self._update_expand_styles()
         self._update_chevron()
     
+    @staticmethod
+    def _break_long_words(text: str, max_word_len: int = 40) -> str:
+        """Insert zero-width spaces into long unbroken sequences so Qt can wrap them."""
+        parts = []
+        for word in text.split(' '):
+            if len(word) > max_word_len:
+                chunks = [word[i:i + max_word_len] for i in range(0, len(word), max_word_len)]
+                word = '\u200b'.join(chunks)
+            parts.append(word)
+        return ' '.join(parts)
+
     def add_log(self, message: str) -> bool:
         """
         Add a log message to this group.
@@ -197,11 +208,14 @@ class LogGroup(QWidget):
         """
         if len(self.logs) >= self.MAX_LOGS_PER_GROUP:
             return False
-        
+
+        if len(message) > 256:
+            message = message[:253] + "..."
+
         self.logs.append(message)
-        
+
         # Create label for the log
-        log_label = QLabel(message)
+        log_label = QLabel(self._break_long_words(message))
         log_label.setWordWrap(True)
         log_label.setStyleSheet(f"""
             color: {self.text_color};
