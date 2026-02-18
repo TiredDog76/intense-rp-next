@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import tempfile
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
-from PySide6.QtCore import Qt, QSize, QThread, Signal, QObject, QProcess, QTimer
+from PySide6.QtCore import Qt, QSize, QThread, Signal, QObject, QTimer
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -27,6 +28,32 @@ from utils.auto_update import AutoUpdateError, PreparedUpdate, prepare_update_fr
 
 class MissingUpdaterError(RuntimeError):
     pass
+
+
+class _UpdaterLauncher(QObject):
+    """Launches the updater executable off the main thread so the UI stays responsive."""
+
+    succeeded = Signal()
+    failed = Signal()
+
+    def __init__(self, cmd: List[str], cwd: str, parent=None):
+        super().__init__(parent)
+        self._cmd = cmd
+        self._cwd = cwd
+
+    def run(self) -> None:
+        try:
+            kwargs: dict = {"cwd": self._cwd}
+            if sys.platform.startswith("win"):
+                kwargs["creationflags"] = (
+                    subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+            else:
+                kwargs["start_new_session"] = True
+            subprocess.Popen(self._cmd, **kwargs)
+            self.succeeded.emit()
+        except Exception:
+            self.failed.emit()
 
 
 def _find_staged_updater(prepared: PreparedUpdate) -> Path:
@@ -375,15 +402,22 @@ class UpdateDownloadDialog(QDialog):
         if reply != QMessageBox.Yes:
             return
 
-        install_dir = Path(sys.executable).resolve().parent
-        exe_name = Path(sys.executable).name
         try:
             updater_exe = _find_staged_updater(prepared)
         except Exception as exc:
             QMessageBox.warning(self, "Auto-Update", f"Update package is missing the updater.\n\n{exc}")
             return
 
-        args = [
+        # lock ui and launch the updater off the main thread so the UI stays responsive while the updater starts
+        self._status_label.setText("Launching Updater...")
+        self._install_btn.setEnabled(False)
+        self._cancel_btn.setEnabled(False)
+        self._progress.setRange(0, 0)  # indeterminate spinner
+
+        install_dir = Path(sys.executable).resolve().parent
+        exe_name = Path(sys.executable).name
+        cmd = [
+            str(updater_exe),
             "--install-dir",
             str(install_dir),
             "--app-pid",
@@ -394,30 +428,40 @@ class UpdateDownloadDialog(QDialog):
             str(prepared.extracted_app_root),
         ]
 
-        detached_result = QProcess.startDetached(str(updater_exe), args, tempfile.gettempdir())
-        ok = detached_result[0] if isinstance(detached_result, tuple) else bool(detached_result)
-        if not ok:
-            QMessageBox.warning(
-                self,
-                "Auto-Update",
-                "Failed to start the updater.\n\n"
-                "You can still download manually from the release page.",
-            )
-            from PySide6.QtCore import QUrl
+        self._launcher_thread = QThread(self)
+        self._launcher_worker = _UpdaterLauncher(cmd, tempfile.gettempdir())
+        self._launcher_worker.moveToThread(self._launcher_thread)
+        self._launcher_thread.started.connect(self._launcher_worker.run)
+        self._launcher_worker.succeeded.connect(self._on_updater_started)
+        self._launcher_worker.failed.connect(
+            lambda: self._on_updater_start_failed(prepared)
+        )
+        self._launcher_thread.start()
 
-            QDesktopServices.openUrl(QUrl(prepared.release_html_url))
-            return
-
-        # The updater waits for our process to exit before performing the update,
-        # so we can safely force-exit without async cleanup (which can hang/crash).
+    def _on_updater_started(self) -> None:
+        """Called on the main thread once the updater process is running."""
         self._status_label.setText("Running Updater...")
-        self._install_btn.setEnabled(False)
-        self._cancel_btn.setEnabled(False)
-        self._progress.setRange(0, 0)  # indeterminate spinner
 
         def force_exit():
             os._exit(0)
 
         QTimer.singleShot(500, force_exit)
+
+    def _on_updater_start_failed(self, prepared: PreparedUpdate) -> None:
+        """Called on the main thread if the updater failed to launch."""
+        self._status_label.setText("Ready to install.")
+        self._install_btn.setEnabled(True)
+        self._cancel_btn.setEnabled(True)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(100)
+        QMessageBox.warning(
+            self,
+            "Auto-Update",
+            "Failed to start the updater.\n\n"
+            "You can still download manually from the release page.",
+        )
+        from PySide6.QtCore import QUrl
+
+        QDesktopServices.openUrl(QUrl(prepared.release_html_url))
 
     # Icon rendering is handled centrally by IconUtils
