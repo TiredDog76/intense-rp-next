@@ -1,5 +1,5 @@
 {
-  "version": "2.4.4-patch",
+  "version": "2.4.5-patch",
   "aua": true,
-  "severity": 2
+  "severity": 1
 }
