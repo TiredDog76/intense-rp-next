@@ -760,6 +760,14 @@ SCHEMA = [
                 ),
                 depends="experimental.ece_enabled",
             ),
+            SettingField(
+                key="classic_title",
+                label="Classic Title Bar",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Use the classic title layout instead of the new logo + styled title.",
+                affects=["title_bar"],
+            ),
         ],
     ),
     SettingCategory(

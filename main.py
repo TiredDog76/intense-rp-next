@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QPixmap
 import qasync
 
 from drivers.factory import create_driver
@@ -191,7 +192,7 @@ def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
 class MainWindow(QMainWindow):
     update_available_found = Signal(object)
     DEFAULT_WINDOW_WIDTH = 450
-    DEFAULT_WINDOW_HEIGHT = 500
+    DEFAULT_WINDOW_HEIGHT = 520
 
     def __init__(self):
         super().__init__()
@@ -237,14 +238,10 @@ class MainWindow(QMainWindow):
         self.splitter.splitterMoved.connect(self._on_splitter_moved)
 
         # 1. Title Area
-        title_label = QLabel(f"Welcome to IntenseRP Next (v{version})!")
-        title_label.setStyleSheet(f"""
-            font-size: {BrandColors.FONT_SIZE_TITLE};
-            font-weight: bold;
-            color: {BrandColors.TEXT_PRIMARY};
-        """)
-        title_label.setAlignment(Qt.AlignCenter)
-        self.layout.addWidget(title_label)
+        self._title_widget = QWidget()
+        self._title_widget.setStyleSheet("background: transparent;")
+        self.layout.addWidget(self._title_widget)
+        self._build_title_area()
 
         # 1.5. Readiness Status
         self.status_label = QLabel("● Ready")
@@ -735,6 +732,74 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.main_panel)
         splitter.setCollapsible(0, False)
 
+    def _build_title_area(self):
+        """Build (or rebuild) the title area inside self._title_widget."""
+        version = get_version()
+        old_layout = self._title_widget.layout()
+        if old_layout is not None:
+            while old_layout.count():
+                item = old_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+                elif item.layout():
+                    while item.layout().count():
+                        child = item.layout().takeAt(0)
+                        if child.widget():
+                            child.widget().deleteLater()
+                    item.layout().deleteLater()
+            QWidget().setLayout(old_layout)
+
+        classic = self.config_manager.get_setting("experimental", "classic_title")
+        if classic:
+            layout = QHBoxLayout(self._title_widget)
+            layout.setContentsMargins(0, 0, 0, 0)
+            title_label = QLabel(f"Welcome to IntenseRP Next (v{version})!")
+            title_label.setStyleSheet(f"""
+                font-size: {BrandColors.FONT_SIZE_TITLE};
+                font-weight: bold;
+                color: {BrandColors.TEXT_PRIMARY};
+            """)
+            title_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(title_label)
+        else:
+            layout = QHBoxLayout(self._title_widget)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(10)
+
+            layout.addStretch()
+
+            logo_path = os.path.join(os.path.dirname(__file__), "ui", "assets", "brand", "newlogo-nobg.png")
+            logo_label = QLabel()
+            logo_pixmap = QPixmap(logo_path)
+            if not logo_pixmap.isNull():
+                scaled = logo_pixmap.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                scaled.setDevicePixelRatio(2.0)
+                logo_label.setPixmap(scaled)
+            logo_label.setFixedSize(40, 40)
+            logo_label.setStyleSheet("background: transparent;")
+            layout.addWidget(logo_label, alignment=Qt.AlignVCenter)
+
+            title_label = QLabel()
+            title_label.setTextFormat(Qt.RichText)
+            title_label.setText(
+                f'<span style="font-size: 28px; font-weight: bold; color: {BrandColors.TEXT_PRIMARY};">IntenseRP </span>'
+                f'<span style="font-size: 28px; font-weight: bold; color: {BrandColors.ACCENT};">Next</span>'
+            )
+            title_label.setStyleSheet("background: transparent;")
+            layout.addWidget(title_label, alignment=Qt.AlignVCenter)
+
+            version_label = QLabel(f"v{version}")
+            version_label.setStyleSheet(f"""
+                font-size: {BrandColors.FONT_SIZE_SMALL};
+                font-weight: bold;
+                color: {BrandColors.TEXT_SECONDARY};
+                background: transparent;
+                padding-top: 4px;
+            """)
+            layout.addWidget(version_label, alignment=Qt.AlignVCenter)
+
+            layout.addStretch()
+
     def _apply_queue_preview_setting(self, force: bool = False):
         enabled = bool(self.config_manager.get_setting("system_settings", "show_request_queue_preview"))
 
@@ -896,6 +961,9 @@ class MainWindow(QMainWindow):
 
         if "hotswap_button" in affected:
             self._sync_hotswap_button()
+
+        if "title_bar" in affected:
+            self._build_title_area()
 
         # If driver is running, it will pick up changes on next generation
         # All thanks to the config manager being dynamic
