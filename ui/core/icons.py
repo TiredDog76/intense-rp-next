@@ -21,6 +21,7 @@ class IconType(Enum):
     CONTRIBUTORS = "user-check.svg"
     PATCHER = "terminal.svg"
     BACKUP = "download-cloud.svg"
+    DONATE = "heart.svg"
 
 class IconUtils:
     _SVG_TEXT_CACHE: dict[str, str] = {}

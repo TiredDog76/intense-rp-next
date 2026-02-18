@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, 
-    QMessageBox, QFileDialog
+    QMainWindow, QWidget, QVBoxLayout, QGridLayout, QLabel,
+    QMessageBox, QFileDialog, QFrame
 )
-from PySide6.QtCore import Qt, QSize, Signal, QUrl
-from PySide6.QtGui import QIcon, QDesktopServices
+from PySide6.QtCore import Qt, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
 
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
@@ -13,6 +13,64 @@ from ui.niche.stmp_patcher_window import STMPPatcherWindow
 from utils.v1_migrator import V1Migrator
 from utils.logger import Logger
 
+
+class HelpTile(QFrame):
+    clicked = Signal()
+
+    def __init__(self, label: str, icon_type: IconType, tooltip: str = "", parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+        if tooltip:
+            self.setToolTip(tooltip)
+
+        self.setStyleSheet(f"""
+            HelpTile {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border-radius: 8px;
+                border: 1px solid transparent;
+            }}
+            HelpTile:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+                border: 1px solid {BrandColors.ACCENT};
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setContentsMargins(10, 16, 10, 12)
+        layout.setSpacing(8)
+
+        # Icon (large, centered)
+        icon_label = QLabel()
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet("background-color: transparent;")
+        pixmap = IconUtils.get_pixmap(
+            icon_type,
+            color=BrandColors.TEXT_PRIMARY,
+            size=36,
+            dpr=self.devicePixelRatioF(),
+        )
+        icon_label.setPixmap(pixmap)
+        layout.addWidget(icon_label)
+
+        # Text label (centered, below icon)
+        text_label = QLabel(label)
+        text_label.setAlignment(Qt.AlignCenter)
+        text_label.setWordWrap(True)
+        text_label.setStyleSheet(f"""
+            font-size: {BrandColors.FONT_SIZE_SMALL};
+            font-weight: 600;
+            color: {BrandColors.TEXT_PRIMARY};
+            background-color: transparent;
+        """)
+        layout.addWidget(text_label)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 class HelpWindow(QMainWindow):
     settings_reloaded = Signal()
 
@@ -20,13 +78,13 @@ class HelpWindow(QMainWindow):
         super().__init__(parent)
         self.config_manager = config_manager
         self.setWindowTitle("Help & Extras")
-        self.resize(360, 520)
+        self.resize(420, 380)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG};")
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
-        layout.setSpacing(12)
+        layout.setSpacing(16)
         layout.setContentsMargins(20, 20, 20, 20)
 
         # Title
@@ -49,70 +107,32 @@ class HelpWindow(QMainWindow):
             padding: 4px 4px;
         """)
         layout.addWidget(desc)
-        
-        # Backup / Import Button
-        self.backup_btn = self._create_button("Backup / Import Settings", IconType.BACKUP)
-        self.backup_btn.setToolTip("Backup or restore your config directory (settings/key/profiles) using a .zip file.")
-        self.backup_btn.clicked.connect(self.show_backup_import)
-        layout.addWidget(self.backup_btn)
 
-        # STMP Patcher Button
-        self.stmp_btn = self._create_button("STMP Patcher", IconType.PATCHER)
-        self.stmp_btn.setToolTip("Patches RossAscends's STMP to include per-message names.")
-        self.stmp_btn.clicked.connect(self.show_stmp_patcher)
-        layout.addWidget(self.stmp_btn)
+        # Tile grid
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        layout.addLayout(grid)
 
-        # Migrate Button
-        self.migrate_btn = self._create_button("Migrate from v1", IconType.MIGRATE)
-        self.migrate_btn.clicked.connect(self.start_migration)
-        layout.addWidget(self.migrate_btn)
+        tiles = [
+            ("Backup / Import",    IconType.BACKUP,       "Backup or restore your config directory (settings/key/profiles) using a .zip file.", self.show_backup_import),
+            ("STMP Patcher",       IconType.PATCHER,      "Patches RossAscends's STMP to include per-message names.",                          self.show_stmp_patcher),
+            ("Migrate from v1",    IconType.MIGRATE,      "",                                                                                  self.start_migration),
+            ("Contributors",       IconType.CONTRIBUTORS, "",                                                                                  self.show_contributors),
+            ("Contact & Support",  IconType.SUPPORT,      "Open the Contact & Support page.",                                                  self.open_contact_support),
+            ("Donate",             IconType.DONATE,       "Support the project financially.",                                                  self.open_donate),
+        ]
 
-        # Contributors Button
-        self.contrib_btn = self._create_button("Contributors", IconType.CONTRIBUTORS)
-        self.contrib_btn.clicked.connect(self.show_contributors)
-        layout.addWidget(self.contrib_btn)
+        for i, (label, icon_type, tooltip, handler) in enumerate(tiles):
+            tile = HelpTile(label, icon_type, tooltip=tooltip, parent=self)
+            tile.clicked.connect(handler)
+            row, col = divmod(i, 3)
+            grid.addWidget(tile, row, col)
 
-        # Contact & Support Button
-        self.support_btn = self._create_button("Contact && Support", IconType.SUPPORT)
-        self.support_btn.setToolTip("Open the Contact & Support page.")
-        self.support_btn.clicked.connect(self.open_contact_support)
-        layout.addWidget(self.support_btn)
-        
         layout.addStretch()
-
-
 
         self.contributors_window = None
         self.stmp_patcher_window = None
         self.backup_import_window = None
-
-    def _create_button(self, text, icon_type):
-        btn = QPushButton(text)
-        btn.setCursor(Qt.PointingHandCursor)
-        btn.setFixedHeight(60)
-        
-        # Apply icon using util
-        IconUtils.apply_icon(btn, icon_type, BrandColors.TEXT_PRIMARY)
-        
-        btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {BrandColors.SIDEBAR_BG};
-                color: {BrandColors.TEXT_PRIMARY};
-                border: none;
-                padding: 15px 20px;
-                border-radius: 8px;
-                font-size: {BrandColors.FONT_SIZE_REGULAR};
-                text-align: left;
-                padding-left: 20px;
-            }}
-            QPushButton:hover {{
-                background-color: {BrandColors.ITEM_HOVER};
-            }}
-            QPushButton:pressed {{
-                background-color: {BrandColors.ACCENT};
-            }}
-        """)
-        return btn
 
     def start_migration(self):
         msg = QMessageBox(self)
@@ -122,7 +142,7 @@ class HelpWindow(QMainWindow):
                     "This directory must contain the 'save' folder with 'config.enc' and 'secret.key'.")
         msg.setIcon(QMessageBox.Information)
         msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-        
+
         if msg.exec() != QMessageBox.Ok:
             return
 
@@ -160,3 +180,8 @@ class HelpWindow(QMainWindow):
 
     def open_contact_support(self):
         QDesktopServices.openUrl(QUrl("https://intense-rp-next.readthedocs.io/en/latest/hands/contact/"))
+
+    def open_donate(self):
+        QDesktopServices.openUrl(QUrl(
+            "https://intense-rp-next.readthedocs.io/en/latest/hands/support/#financial-support-optional"
+        ))
