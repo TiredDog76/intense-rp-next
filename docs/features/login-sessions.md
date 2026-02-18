@@ -60,6 +60,9 @@ If anything goes wrong (wrong password, captcha, etc.), you'll see an error in t
 
 This one's even better. Instead of logging in every time (even automatically), Persistent Sessions saves your browser profile so you stay logged in between restarts.
 
+!!! note "On by default"
+    Persistent Sessions is **enabled by default**. You don't need to do anything to turn it on.
+
 ### How It Works
 
 When enabled, IntenseRP uses a "persistent browser context" - basically saving cookies, local storage, and session data to a folder on your computer. Next time you start the app, it loads that profile and you're already logged in.

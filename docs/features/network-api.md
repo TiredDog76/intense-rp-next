@@ -52,6 +52,9 @@ By default, IntenseRP only accepts connections from your own computer (`localhos
 
 To connect from another device, you'll need your computer's local IP address. On most networks this looks like `192.168.x.x` or `10.x.x.x`.
 
+!!! tip "Show IP"
+    If **Show IP** is enabled (see below), IntenseRP automatically logs all server addresses to the console when it starts - including your LAN IP. No need to run `ipconfig` or `ip addr`.
+
 === ":material-microsoft-windows: Windows"
 
     Open Command Prompt and run:
@@ -78,6 +81,29 @@ http://192.168.1.100:7777/v1
 
 !!! tip "Security Note"
     Enabling LAN access means anyone on your local network could potentially use your IntenseRP instance. Consider enabling API keys (below) if you're on a shared network.
+
+---
+
+## :material-monitor-eye: Show IP
+
+When enabled, IntenseRP prints the server address(es) to the console each time the API server starts. This is on by default.
+
+:material-arrow-right: **Settings** → **Network Settings** → **Show IP**
+
+With **Available on LAN** off, you'll see:
+
+```
+Server running at http://127.0.0.1:7777
+```
+
+With **Available on LAN** on, all detected local IPv4 addresses are printed as well:
+
+```
+Server running at http://127.0.0.1:7777
+Server running at http://192.168.1.100:7777
+```
+
+Disable this if you'd rather not have the address logged on every start.
 
 ---
 

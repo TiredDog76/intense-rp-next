@@ -600,7 +600,7 @@ SCHEMA = [
                 key="persistent_sessions",
                 label="Persistent Sessions",
                 type=SettingType.BOOLEAN,
-                default=False,
+                default=True,
                 tooltip="Reuse a persistent Playwright browser profile so logins persist between restarts."
             ),
             SettingField(
@@ -943,6 +943,13 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Make the API server accessible from other devices on the local network.",
+            ),
+            SettingField(
+                key="show_ip",
+                label="Show IP",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip="Print the server address(es) to the console when the API server starts.",
             ),
             SettingField(
                 key="use_api_keys",

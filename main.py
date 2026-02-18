@@ -33,6 +33,7 @@ from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
 from utils.resource_path import resolve_resource_path
 import shutil
+import socket
 import time
 
 
@@ -1214,6 +1215,21 @@ class MainWindow(QMainWindow):
             self.server_task = asyncio.create_task(self.server.serve())
             
             self._update_status(f"Running (Port {port})", "running")
+
+            if self.config_manager.get_setting("network_settings", "show_ip"):
+                addrs = [f"http://127.0.0.1:{port}"]
+                if available_on_lan:
+                    try:
+                        hostname = socket.gethostname()
+                        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+                            ip = info[4][0]
+                            if not ip.startswith("127."):
+                                addrs.append(f"http://{ip}:{port}")
+                    except Exception:
+                        pass
+                for addr in set(addrs):
+                    Logger.success(f"Server running at {addr}")
+
             self.start_button.setText("Stop")
             self.start_button.apply_icon(IconType.STOP, BrandColors.TEXT_PRIMARY)
             self.start_button.setEnabled(True)
