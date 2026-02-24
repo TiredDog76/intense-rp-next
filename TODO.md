@@ -1,4 +1,4 @@
-- [ ] Tray icon controls (Show/Hide, Start/Stop, Settings, Help, Exit)
+- [x] Tray icon controls (Show/Hide, Start/Stop, Settings, Help, Exit)
 - [ ] Queue controls (abort current, clear everything)
 - [ ] API Key UX: Generate key (will create a name of random adjective + noun and a random key)
 - [ ] Port in use: Detect if the selected port is already in use and show a warning with the option to change it if so.
