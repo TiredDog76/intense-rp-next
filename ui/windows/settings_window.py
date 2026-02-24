@@ -21,6 +21,7 @@ from ui.ece.credential_manager_dialog import CredentialManagerDialog
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
+from utils.api_key_generator import generate_api_key
 from utils.update_checker import check_for_updates, read_local_version
 
 class SettingsWindow(QMainWindow):
@@ -181,8 +182,13 @@ class SettingsWindow(QMainWindow):
             elif field.key == "config_storage_location":
                 widget.currentTextChanged.connect(self._on_config_storage_location_changed)
         elif field.type == SettingType.INPUT_PAIR:
-            widget = InputPairsWidget()
+            widget = InputPairsWidget(alternative_actions=field.alternative_actions)
             widget.pairsChanged.connect(self._on_setting_changed)
+            widget.alternativeActionTriggered.connect(
+                lambda action_name, field_key=field.key, widget=widget: self._on_input_pair_alternative_action(
+                    category_key, field_key, widget, action_name
+                )
+            )
 
         elif field.type == SettingType.REDIRECT:
             btn_text = str(field.default) if field.default else "Open"
@@ -657,6 +663,45 @@ class SettingsWindow(QMainWindow):
     def _on_setting_changed(self):
         self.unsaved_changes = True
         self.update_timer.start()
+
+    def _on_input_pair_alternative_action(
+        self,
+        category_key: str,
+        field_key: str,
+        widget: InputPairsWidget,
+        action_name: str,
+    ) -> None:
+        action_name = str(action_name or "").strip()
+        if not action_name:
+            return
+
+        if (category_key == "network_settings") and (field_key == "api_keys") and (action_name == "generate_api_key"):
+            self._generate_api_key(widget)
+            return
+
+        Logger.warning(f"Unhandled input pair alternative action: {category_key}.{field_key} -> {action_name}")
+
+    def _generate_api_key(self, widget: InputPairsWidget) -> None:
+        existing: set[str] = set()
+        for pair in (widget.get_pairs() or []):
+            if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                key_val = str(pair[1] or "").strip()
+                if key_val:
+                    existing.add(key_val)
+
+        for _ in range(25):
+            name, key_val = generate_api_key(prefix="intenserp")
+            if key_val in existing:
+                continue
+
+            widget.upsert_pair(name, key_val, emit_change=True)
+            return
+
+        QMessageBox.warning(
+            self,
+            "Generate Key",
+            "Failed to generate a unique key. Please try again.",
+        )
 
     def _get_widget_value(self, widget):
         if isinstance(widget, Tumbler):

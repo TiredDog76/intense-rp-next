@@ -21,6 +21,12 @@ class SettingType(Enum):
     REDIRECT = "redirect"
 
 @dataclass
+class AlternativeAction:
+    name: str
+    action: str
+    icon: Optional[str] = None
+
+@dataclass
 class SettingField:
     key: str
     label: str
@@ -39,6 +45,7 @@ class SettingField:
     force_when_dep_unmet: Optional[Any] = None
     visible_depends: Optional[str] = None
     affects: Optional[List[str]] = None # UI components to refresh when this field changes
+    alternative_actions: Optional[List[AlternativeAction]] = None # For INPUT_PAIR fields
 
 @dataclass
 class SettingCategory:
@@ -981,6 +988,13 @@ SCHEMA = [
                 type=SettingType.INPUT_PAIR,
                 default=[],
                 tooltip="List of API key name/value pairs.",
+                alternative_actions=[
+                    AlternativeAction(
+                        name="Generate Key",
+                        icon="dices.svg",
+                        action="generate_api_key",
+                    ),
+                ],
                 depends="network_settings.use_api_keys",
                 required=True,
             ),

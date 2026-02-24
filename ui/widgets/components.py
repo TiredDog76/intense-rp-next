@@ -556,15 +556,23 @@ class InputPairRow(QWidget):
 
 
 class InputPairsWidget(QWidget):
-    """A vertical list of InputPairRow items with an Add Pair button."""
+    """A vertical list of InputPairRow items with a Create New button."""
 
     pairsChanged = Signal()
+    alternativeActionTriggered = Signal(str)
 
-    def __init__(self, parent=None, left_placeholder: str = "Name", right_placeholder: str = "Key"):
+    def __init__(
+        self,
+        parent=None,
+        left_placeholder: str = "Name",
+        right_placeholder: str = "Key",
+        alternative_actions: list[object] | None = None,
+    ):
         super().__init__(parent)
         self._rows: list[InputPairRow] = []
         self._left_placeholder = left_placeholder
         self._right_placeholder = right_placeholder
+        self._alternative_buttons: list[QPushButton] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -575,12 +583,57 @@ class InputPairsWidget(QWidget):
         self._rows_layout.setSpacing(6)
         layout.addLayout(self._rows_layout)
 
-        self.add_button = StyledButton("Add Pair")
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(0, 0, 0, 0)
+        actions_row.setSpacing(8)
+
+        self.add_button = StyledButton("Create New")
         IconUtils.apply_icon(self.add_button, IconType.PLUS, BrandColors.TEXT_PRIMARY, size=14)
         self.add_button.setIconSize(QSize(14, 14))
         # clicked(bool) passes a checked arg; ignore it.
         self.add_button.clicked.connect(lambda: self.add_pair())
-        layout.addWidget(self.add_button, 0, Qt.AlignLeft)
+
+        actions_row.addWidget(self.add_button, 0)
+
+        for action_def in (alternative_actions or []):
+            name = ""
+            action = ""
+            icon = None
+            if isinstance(action_def, dict):
+                name = str(action_def.get("name") or action_def.get("label") or "")
+                action = str(action_def.get("action") or "")
+                icon = action_def.get("icon")
+            else:
+                name = str(getattr(action_def, "name", "") or getattr(action_def, "label", "") or "")
+                action = str(getattr(action_def, "action", "") or "")
+                icon = getattr(action_def, "icon", None)
+
+            name = name.strip()
+            action = action.strip()
+            if not name or not action:
+                continue
+
+            btn = StyledButton(name)
+            if icon:
+                btn_icon = IconUtils.get_icon(
+                    str(icon),
+                    color=BrandColors.TEXT_PRIMARY,
+                    size=14,
+                    widget=btn,
+                )
+                if not btn_icon.isNull():
+                    btn.setIcon(btn_icon)
+                    btn.setIconSize(QSize(14, 14))
+
+            # clicked(bool) passes a checked arg; ignore it
+            btn.clicked.connect(
+                lambda _checked=False, action_name=action: self.alternativeActionTriggered.emit(action_name)
+            )
+            actions_row.addWidget(btn, 0)
+            self._alternative_buttons.append(btn)
+
+        actions_row.addStretch(1)
+        layout.addLayout(actions_row)
 
         # Ensure at least one pair exists by default.
         self.add_pair(emit_change=False)
@@ -605,6 +658,25 @@ class InputPairsWidget(QWidget):
 
         if emit_change:
             self.pairsChanged.emit()
+
+    def upsert_pair(self, left_text: str = "", right_text: str = "", emit_change: bool = True):
+        for row in reversed(self._rows):
+            existing_left, existing_right = row.get_pair()
+            if str(existing_left).strip() or str(existing_right).strip():
+                continue
+
+            row.left_input.blockSignals(True)
+            row.right_input.blockSignals(True)
+            row.set_pair(left_text, right_text)
+            row.left_input.blockSignals(False)
+            row.right_input.blockSignals(False)
+
+            self.updateGeometry()
+            if emit_change:
+                self.pairsChanged.emit()
+            return
+
+        self.add_pair(left_text=left_text, right_text=right_text, emit_change=emit_change)
 
     def remove_pair(self, row: InputPairRow):
         if len(self._rows) <= 1:
@@ -661,6 +733,8 @@ class InputPairsWidget(QWidget):
             r.right_input.setEnabled(enabled)
             r.remove_button.setEnabled(enabled and len(self._rows) > 1)
         self.add_button.setEnabled(enabled)
+        for btn in self._alternative_buttons:
+            btn.setEnabled(enabled)
 
 
 class SettingRow(QWidget):
