@@ -1,8 +1,4 @@
-- [x] Reformat DeepSeek to be an extension of the base driver instead of a separate thing.
-- [x] Implement the base driver (obviously).
-- [ ] Add GLM support
-  - Should be easy to do since apparently GLM uses no obfuscation in their interface.
-  - Which means... I can probably just use their IDs directly?
-  - YES!!
-- [ ] Die inside.
-- [ ] Add easter eggs into the updater.
+- [ ] Tray icon controls (Show/Hide, Start/Stop, Settings, Help, Exit)
+- [ ] Queue controls (abort current, clear everything)
+- [ ] API Key UX: Generate key (will create a name of random adjective + noun and a random key)
+- [ ] Port in use: Detect if the selected port is already in use and show a warning with the option to change it if so.
