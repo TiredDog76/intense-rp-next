@@ -197,8 +197,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        version = get_version()
-        self.setWindowTitle(f"IntenseRP Next v{version}")
+        self.setWindowTitle("IntenseRP Next")
         self.resize(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG}; color: {BrandColors.TEXT_PRIMARY};")
 
