@@ -814,6 +814,13 @@ SCHEMA = [
                 tooltip="Automatically check for updates when the app starts.",
             ),
             SettingField(
+                key="collapse_to_tray_on_close",
+                label="Collapse to Tray (when closed)",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="When enabled, closing the main window hides it to the tray instead of exiting.",
+            ),
+            SettingField(
                 key="show_only_active_provider_behavior",
                 label="Show Only Active Provider Behavior",
                 type=SettingType.BOOLEAN,

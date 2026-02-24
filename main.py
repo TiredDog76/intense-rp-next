@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
-    QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon
+    QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon, QMenu
 )
 from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize
 from PySide6.QtCore import QTimer
@@ -382,17 +382,16 @@ class MainWindow(QMainWindow):
         self.update_available_found.connect(self._show_update_available_dialog)
 
         self._tray_icon = None
-        try:
-            if QSystemTrayIcon.isSystemTrayAvailable():
-                tray_icon = QSystemTrayIcon(self)
-                icon = self.windowIcon() if not self.windowIcon().isNull() else QApplication.windowIcon()
-                if not icon.isNull():
-                    tray_icon.setIcon(icon)
-                tray_icon.setToolTip(self.windowTitle())
-                tray_icon.show()
-                self._tray_icon = tray_icon
-        except Exception:
-            self._tray_icon = None
+        self._tray_menu = None
+        self._tray_restore_windows = []
+        self._tray_action_hide = None
+        self._tray_action_show = None
+        self._tray_action_start = None
+        self._tray_action_stop = None
+        self._tray_action_restart = None
+        self._tray_action_exit = None
+        self._exit_requested = False
+        self._setup_tray_icon()
 
         self._post_update_info = _consume_postupdate_installed_info()
         self._maybe_show_update_installed_dialog()
@@ -421,6 +420,225 @@ class MainWindow(QMainWindow):
             pass
 
         self._tray_icon = None
+        tray_menu = getattr(self, "_tray_menu", None)
+        if tray_menu is not None:
+            try:
+                tray_menu.deleteLater()
+            except Exception:
+                pass
+
+        self._tray_menu = None
+        self._tray_restore_windows = []
+        self._tray_action_hide = None
+        self._tray_action_show = None
+        self._tray_action_start = None
+        self._tray_action_stop = None
+        self._tray_action_restart = None
+        self._tray_action_exit = None
+
+    def _setup_tray_icon(self) -> None:
+        try:
+            if not QSystemTrayIcon.isSystemTrayAvailable():
+                return
+
+            tray_icon = QSystemTrayIcon(self)
+            icon = self.windowIcon() if not self.windowIcon().isNull() else QApplication.windowIcon()
+            if not icon.isNull():
+                tray_icon.setIcon(icon)
+
+            tray_icon.setToolTip(self.windowTitle())
+
+            menu = QMenu(self)
+            menu.aboutToShow.connect(self._update_tray_menu_state)
+
+            hide_action = menu.addAction("Hide")
+            hide_action.triggered.connect(self._hide_to_tray)
+
+            show_action = menu.addAction("Show")
+            show_action.triggered.connect(self._show_from_tray)
+
+            menu.addSeparator()
+
+            start_action = menu.addAction("Start")
+            start_action.triggered.connect(self._tray_start_services)
+
+            stop_action = menu.addAction("Stop")
+            stop_action.triggered.connect(self._tray_stop_services)
+
+            restart_action = menu.addAction("Restart")
+            restart_action.triggered.connect(self._tray_restart_services)
+
+            menu.addSeparator()
+
+            exit_action = menu.addAction("Exit")
+            exit_action.triggered.connect(self._tray_exit_requested)
+
+            tray_icon.setContextMenu(menu)
+            tray_icon.activated.connect(self._on_tray_icon_activated)
+            tray_icon.show()
+
+            self._tray_icon = tray_icon
+            self._tray_menu = menu
+            self._tray_action_hide = hide_action
+            self._tray_action_show = show_action
+            self._tray_action_start = start_action
+            self._tray_action_stop = stop_action
+            self._tray_action_restart = restart_action
+            self._tray_action_exit = exit_action
+
+            self._update_tray_menu_state()
+        except Exception:
+            self._tray_icon = None
+            self._tray_menu = None
+
+    def _iter_tray_windows(self):
+        windows = [self]
+        for attr in ("settings_window", "help_window", "console_window"):
+            win = getattr(self, attr, None)
+            if win is not None:
+                windows.append(win)
+        return windows
+
+    def _hide_to_tray(self) -> None:
+        restore = []
+        for win in self._iter_tray_windows():
+            try:
+                if win.isVisible():
+                    restore.append(win)
+            except Exception:
+                continue
+
+        self._tray_restore_windows = restore
+
+        for win in restore:
+            try:
+                win.hide()
+            except Exception:
+                pass
+
+        self._update_tray_menu_state()
+
+    def _show_from_tray(self) -> None:
+        restore = list(getattr(self, "_tray_restore_windows", None) or [])
+        targets = restore or [self]
+
+        for win in targets:
+            if win is None:
+                continue
+            try:
+                win.show()
+                if hasattr(win, "showNormal"):
+                    win.showNormal()
+                if hasattr(win, "raise_"):
+                    win.raise_()
+                if hasattr(win, "activateWindow"):
+                    win.activateWindow()
+            except Exception:
+                pass
+
+        self._tray_restore_windows = []
+        self._update_tray_menu_state()
+
+    def _on_tray_icon_activated(self, reason) -> None:
+        if reason not in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            return
+
+        if not self.isVisible():
+            self._show_from_tray()
+            return
+
+        try:
+            self.raise_()
+            self.activateWindow()
+        except Exception:
+            pass
+
+    def _are_services_running(self) -> bool:
+        server_task = getattr(self, "server_task", None)
+        if server_task is not None:
+            try:
+                if not server_task.done():
+                    return True
+            except Exception:
+                return True
+
+        return any(getattr(self, attr, None) is not None for attr in ("driver", "api", "server"))
+
+    def _update_tray_menu_state(self) -> None:
+        if not getattr(self, "_tray_icon", None):
+            return
+
+        hide_action = getattr(self, "_tray_action_hide", None)
+        show_action = getattr(self, "_tray_action_show", None)
+        start_action = getattr(self, "_tray_action_start", None)
+        stop_action = getattr(self, "_tray_action_stop", None)
+        restart_action = getattr(self, "_tray_action_restart", None)
+
+        hidden = not bool(self.isVisible())
+        if hide_action is not None:
+            hide_action.setVisible(not hidden)
+        if show_action is not None:
+            show_action.setVisible(hidden)
+
+        is_busy = not bool(self.start_button.isEnabled())
+        is_running = self._are_services_running()
+
+        if start_action is not None:
+            start_action.setEnabled((not is_busy) and (not is_running))
+        if stop_action is not None:
+            stop_action.setEnabled((not is_busy) and is_running)
+        if restart_action is not None:
+            restart_action.setEnabled((not is_busy) and is_running)
+
+    def _tray_start_services(self) -> None:
+        if self._are_services_running():
+            return
+
+        self.start_button.setEnabled(False)
+        self._update_status("Starting...", "info")
+        asyncio.create_task(self.start_services())
+        self._update_tray_menu_state()
+
+    def _tray_stop_services(self) -> None:
+        if not self._are_services_running():
+            return
+
+        self.start_button.setEnabled(False)
+        self._update_status("Stopping...", "info")
+        asyncio.create_task(self.stop_services())
+        self._update_tray_menu_state()
+
+    def _tray_restart_services(self) -> None:
+        if not self._are_services_running():
+            return
+
+        asyncio.create_task(self._restart_services_impl())
+        self._update_tray_menu_state()
+
+    def _tray_exit_requested(self) -> None:
+        self._exit_requested = True
+        try:
+            should_close = bool(self.close())
+        except Exception:
+            should_close = False
+
+        if should_close:
+            return
+
+        shutdown_task = getattr(self, "_shutdown_task", None)
+        if shutdown_task and (not shutdown_task.done()):
+            return
+
+        self._exit_requested = False
+        try:
+            self._show_from_tray()
+            settings_window = getattr(self, "settings_window", None)
+            if settings_window is not None and getattr(settings_window, "unsaved_changes", False):
+                settings_window.show()
+                settings_window.raise_()
+                settings_window.activateWindow()
+        except Exception:
+            pass
 
     def _request_application_quit(self, force_after_s: float = 8.0) -> None:
         """
@@ -1007,12 +1225,21 @@ class MainWindow(QMainWindow):
     async def _restart_services_impl(self):
         self.start_button.setEnabled(False)
         self._update_status("Restarting...", "info")
+        self._update_tray_menu_state()
         try:
             await self.stop_services()
         except Exception as e:
             Logger.error(f"Restart: stop failed: {e}")
-        # stop_services resets button to "Start" state; now re-start
-        await self.start_services()
+
+        # stop_services resets the UI; keep the app in a "busy" state while restarting
+        self.start_button.setEnabled(False)
+        self._update_status("Restarting...", "info")
+        self._update_tray_menu_state()
+
+        try:
+            await self.start_services()
+        finally:
+            self._update_tray_menu_state()
 
     def _on_ece_switch(self):
         asyncio.create_task(self._ece_switch_impl())
@@ -1141,11 +1368,13 @@ class MainWindow(QMainWindow):
         if self.start_button.text() == "Start":
             self.start_button.setEnabled(False)
             self._update_status("Starting...", "info")
+            self._update_tray_menu_state()
             # Schedule the start_services coroutine
             asyncio.create_task(self.start_services())
         else:
             self.start_button.setEnabled(False)
             self._update_status("Stopping...", "info")
+            self._update_tray_menu_state()
             asyncio.create_task(self.stop_services())
 
     async def start_services(self):
@@ -1236,6 +1465,7 @@ class MainWindow(QMainWindow):
             self.start_button.set_chevron_visible(True)
             self._refresh_chevron_menu()
             self._sync_hotswap_button()
+            self._update_tray_menu_state()
 
         except Exception as e:
             self._update_status(f"Error: {e}", "error")
@@ -1249,6 +1479,7 @@ class MainWindow(QMainWindow):
             self.start_button.setEnabled(True)
             self.start_button.set_chevron_visible(False)
             self._sync_hotswap_button()
+            self._update_tray_menu_state()
 
     async def _ensure_driver_ui_language_is_compatible(self) -> bool:
         driver = getattr(self, "driver", None)
@@ -1416,6 +1647,7 @@ class MainWindow(QMainWindow):
                 Logger.warning("Services stopped with warnings.")
             else:
                 Logger.success("Services stopped.")
+            self._update_tray_menu_state()
 
         self._stop_task = asyncio.create_task(_stop_impl())
         try:
@@ -1498,21 +1730,44 @@ class MainWindow(QMainWindow):
             self.start_button.setEnabled(True)
             self.start_button.set_chevron_visible(False)
             self._sync_hotswap_button()
+            self._update_tray_menu_state()
 
         except Exception as e:
             Logger.error(f"Error handling crash cleanup: {e}")
             self._update_status(f"Error: {e}", "error")
             self.start_button.setEnabled(True)
+            self._update_tray_menu_state()
 
     def closeEvent(self, event):
+        tray_icon = getattr(self, "_tray_icon", None)
+        exit_requested = bool(getattr(self, "_exit_requested", False))
+        collapse_to_tray = False
+
+        if (not exit_requested) and tray_icon and tray_icon.isVisible():
+            try:
+                collapse_to_tray = bool(
+                    self.config_manager.get_setting(
+                        "application_settings", "collapse_to_tray_on_close"
+                    )
+                )
+            except Exception:
+                collapse_to_tray = False
+
+        if collapse_to_tray:
+            Logger.info("Close requested; collapsing to tray.")
+            self._hide_to_tray()
+            event.ignore()
+            return
+
         # Cleanup on close
         Logger.info("Window closing, shutting down...")
         # qasync loop runs until the window closes usually, but we need to await the cleanup.
         
         # If the settings window is open, close it too. If the user cancels the
         # "unsaved changes" prompt, abort quitting the app.
-        if self.settings_window and self.settings_window.isVisible():
+        if self.settings_window:
             if not self.settings_window.close():
+                self._exit_requested = False
                 event.ignore()
                 return
         
@@ -1653,9 +1908,11 @@ def main():
 
     def _request_quit() -> None:
         try:
-            if window.isVisible():
-                window.close()
+            window._exit_requested = True
+            if window.close():
                 return
+            window._exit_requested = False
+            return
         except Exception:
             pass
 
