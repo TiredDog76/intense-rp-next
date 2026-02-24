@@ -232,6 +232,8 @@ class MainWindow(QMainWindow):
         self.queue_preview.setMinimumWidth(0)
         self.queue_preview.setMaximumWidth(0)
         self.queue_preview.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.queue_preview.stop_requested.connect(self._on_queue_preview_stop_requested)
+        self.queue_preview.clear_after_current_requested.connect(self._on_queue_preview_clear_requested)
 
         self.splitter.addWidget(self.main_panel)
         self.splitter.setCollapsible(0, False)
@@ -1142,6 +1144,40 @@ class MainWindow(QMainWindow):
             self.queue_preview.set_requests(rendered)
         finally:
             self._queue_preview_refresh_inflight = False
+
+    def _on_queue_preview_stop_requested(self) -> None:
+        asyncio.create_task(self._abort_queue_current_request())
+
+    def _on_queue_preview_clear_requested(self) -> None:
+        asyncio.create_task(self._cancel_queue_after_current())
+
+    async def _abort_queue_current_request(self) -> None:
+        api = getattr(self, "api", None)
+        if api is None:
+            return
+
+        try:
+            aborted = await api.abort_current_request(reason="Request aborted from UI.")
+            if aborted:
+                Logger.warning("Queue: Current request aborted from UI.")
+        except Exception as e:
+            Logger.error(f"Queue: Failed to abort current request: {e}")
+
+        self._schedule_queue_preview_refresh()
+
+    async def _cancel_queue_after_current(self) -> None:
+        api = getattr(self, "api", None)
+        if api is None:
+            return
+
+        try:
+            cancelled = await api.cancel_queued_requests(reason="Request queue cleared from UI.")
+            if cancelled:
+                Logger.warning(f"Queue: Cancelled {cancelled} queued request(s) from UI.")
+        except Exception as e:
+            Logger.error(f"Queue: Failed to clear request queue: {e}")
+
+        self._schedule_queue_preview_refresh()
 
     def open_settings(self):
         if not self.settings_window:

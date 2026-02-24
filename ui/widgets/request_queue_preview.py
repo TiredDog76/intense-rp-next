@@ -7,11 +7,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QStackedLayout,
@@ -183,11 +184,16 @@ class RequestQueueItemCard(QFrame):
 
 
 class RequestQueuePreview(QWidget):
+    stop_requested = Signal()
+    clear_after_current_requested = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._item_widgets: dict[str, RequestQueueItemCard] = {}
         self._last_order: list[str] = []
         self._last_payload_by_id: dict[str, dict[str, Any]] = {}
+        self._stop_button: QPushButton | None = None
+        self._trash_button: QPushButton | None = None
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -292,10 +298,131 @@ class RequestQueuePreview(QWidget):
         self._scroll_area.setWidget(self._stack_root)
         container_layout.addWidget(self._scroll_area)
 
+        container_layout.addWidget(self._build_queue_ui_controls())
+
         main_layout.addWidget(container)
+
+    def _build_queue_ui_controls(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("requestQueueControlsBar")
+        bar.setStyleSheet(
+            f"""
+            QFrame#requestQueueControlsBar {{
+                background-color: #222222;
+                border-top: 1px solid {BrandColors.INPUT_BORDER};
+                border-top-left-radius: 0px;
+                border-top-right-radius: 0px;
+                border-bottom-left-radius: 7px;
+                border-bottom-right-radius: 7px;
+            }}
+            """
+        )
+
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(8)
+
+        layout.addStretch(1)
+
+        self._stop_button = QPushButton()
+        self._stop_button.setCursor(Qt.PointingHandCursor)
+        self._stop_button.setFixedSize(32, 32)
+        self._stop_button.setIconSize(QSize(16, 16))
+        self._stop_button.setToolTip("Abort current request and disconnect the client")
+        self._stop_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 6px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+                border: 1px solid {BrandColors.ACCENT};
+            }}
+            QPushButton:pressed {{
+                background-color: {BrandColors.ITEM_SELECTED};
+            }}
+            QPushButton:disabled {{
+                background-color: transparent;
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                opacity: 0.4;
+            }}
+            """
+        )
+        stop_icon = IconUtils.get_icon(
+            "square.svg",
+            color=BrandColors.TEXT_SECONDARY,
+            size=16,
+            widget=self._stop_button,
+        )
+        if not stop_icon.isNull():
+            self._stop_button.setIcon(stop_icon)
+        self._stop_button.clicked.connect(self.stop_requested.emit)
+        layout.addWidget(self._stop_button, 0, Qt.AlignVCenter)
+
+        self._trash_button = QPushButton()
+        self._trash_button.setCursor(Qt.PointingHandCursor)
+        self._trash_button.setFixedSize(32, 32)
+        self._trash_button.setIconSize(QSize(16, 16))
+        self._trash_button.setToolTip("Cancel all queued requests after the current one")
+        self._trash_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 6px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+                border: 1px solid {BrandColors.DANGER};
+            }}
+            QPushButton:pressed {{
+                background-color: {BrandColors.ITEM_SELECTED};
+            }}
+            QPushButton:disabled {{
+                background-color: transparent;
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                opacity: 0.4;
+            }}
+            """
+        )
+        trash_icon = IconUtils.get_icon(
+            "trash-2.svg",
+            color=BrandColors.DANGER,
+            size=16,
+            widget=self._trash_button,
+        )
+        if not trash_icon.isNull():
+            self._trash_button.setIcon(trash_icon)
+        self._trash_button.clicked.connect(self.clear_after_current_requested.emit)
+        layout.addWidget(self._trash_button, 0, Qt.AlignVCenter)
+
+        self._stop_button.setEnabled(False)
+        self._trash_button.setEnabled(False)
+
+        return bar
+
+    def _set_controls_state(self, requests: list[dict[str, Any]]) -> None:
+        stop_button = getattr(self, "_stop_button", None)
+        trash_button = getattr(self, "_trash_button", None)
+        if stop_button is None and trash_button is None:
+            return
+
+        statuses = {str(r.get("status") or "").lower() for r in (requests or [])}
+        has_processing = "processing" in statuses
+        has_pending = "pending" in statuses
+
+        if stop_button is not None:
+            stop_button.setEnabled(bool(has_processing))
+        if trash_button is not None:
+            trash_button.setEnabled(bool(has_pending))
 
     def set_requests(self, requests: list[dict[str, Any]]) -> None:
         requests = list(requests or [])
+        self._set_controls_state(requests)
         if not requests:
             if not self._last_order:
                 self._stack.setCurrentIndex(1)

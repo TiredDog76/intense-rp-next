@@ -126,7 +126,12 @@ Once enabled, it shows the request currently being processed (if any), plus any 
 
 Each entry includes a short request ID (useful when matching things up with logs), when it was added, message count, model, streaming mode, and the API key name (if you have API keys enabled).
 
-It's read-only, but you can drag the divider to resize it if you don't like the default width.
+You can drag the divider to resize it if you don't like the default width.
+
+At the bottom of the panel, there are 2 queue controls:
+
+- **Stop** (square) - aborts the currently active request and disconnects the client
+- **Clear Queue** (trash) - cancels all queued requests after the current one
 
 ---
 

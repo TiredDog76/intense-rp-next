@@ -206,6 +206,11 @@ If you have requests piling up or taking a while, this panel can help you see wh
 
 For what it shows (and why requests queue in the first place), see [:material-api: API Behavior](../advanced/api-behavior.md#request-queue-preview).
 
+It also includes 2 quick actions at the bottom:
+
+- **Stop** (square) - abort the current request and disconnect the client
+- **Clear Queue** (trash) - cancel everything queued after the current request
+
 ---
 
 ## :material-filter: Logging Levels

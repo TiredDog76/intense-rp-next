@@ -133,6 +133,12 @@ class RequestQueue:
         async with self._condition:
             return list(self._items)
 
+    async def drain(self) -> list[QueueEntry]:
+        async with self._condition:
+            drained = list(self._items)
+            self._items.clear()
+            return drained
+
     async def remove_by_abort_event(self, abort_event: asyncio.Event) -> bool:
         async with self._condition:
             if not self._items:
@@ -159,6 +165,67 @@ class API:
         self.current_abort_event: asyncio.Event = None  # Track current request's abort event
         self.setup_routes()
         self.start_worker()
+
+    async def abort_current_request(self, reason: str | None = None) -> bool:
+        entry = getattr(self, "current_entry", None)
+        abort_event = getattr(self, "current_abort_event", None)
+        if not entry or not abort_event:
+            return False
+
+        message = (reason or "Request aborted.").strip() or "Request aborted."
+
+        try:
+            abort_event.set()
+        except Exception:
+            pass
+
+        try:
+            self.driver.request_abort()
+        except Exception:
+            pass
+
+        try:
+            await entry.response_queue.put(_make_openai_error_sse_chunk(message))
+        except Exception:
+            pass
+
+        try:
+            await entry.response_queue.put(None)
+        except Exception:
+            pass
+
+        return True
+
+    async def cancel_queued_requests(self, reason: str | None = None) -> int:
+        message = (reason or "Request cancelled.").strip() or "Request cancelled."
+
+        try:
+            entries = await self.request_queue.drain()
+        except Exception:
+            entries = []
+
+        cancelled = 0
+        for entry in entries:
+            abort_event = getattr(entry, "abort_event", None)
+            if abort_event is not None:
+                try:
+                    abort_event.set()
+                except Exception:
+                    pass
+
+            try:
+                await entry.response_queue.put(_make_openai_error_sse_chunk(message))
+            except Exception:
+                pass
+
+            try:
+                await entry.response_queue.put(None)
+            except Exception:
+                pass
+
+            cancelled += 1
+
+        return cancelled
 
     def _authenticate_request(self, raw_request: Request) -> Optional[str]:
         cfg = getattr(self.driver, "config_manager", None)
