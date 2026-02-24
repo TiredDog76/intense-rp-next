@@ -14,7 +14,7 @@ For the main GLM settings and behavior toggles, see [:material-chat-processing: 
 
 ![GLM Timing Settings](../pics/advanced/glm-quirks.png)
 
-GLM's web UI can be a bit sluggish sometimes, especially on slower machines or unstable connections. IntenseRP exposes three timing knobs under **GLM Behavior** so you can tune things to your setup.
+GLM's web UI can be a bit sluggish sometimes, especially on slower machines or unstable connections. IntenseRP exposes a few timing knobs under **GLM Behavior** so you can tune things to your setup.
 
 :material-arrow-right: **Settings** -> **GLM Behavior** -> (Quirks section)
 
@@ -53,6 +53,21 @@ How long (in seconds) IntenseRP waits for the send button to become active after
 | **Minimum** | 1 second |
 
 GLM occasionally takes a moment to "process" the pasted text before the send button lights up. If you're getting send-timeout errors, try raising this to 10 or 15.
+
+### Refresh After Generation
+
+If enabled, IntenseRP waits 2 seconds after GLM finishes a response, then refreshes (reloads) the GLM Chat page.
+
+This can sometimes restore GLM's front-end state and make Clean Regeneration less flaky.
+
+| | |
+|---|---|
+| **Setting** | Refresh After Generation |
+| **Default** | Off |
+| **Delay** | 2 seconds (fixed) |
+
+!!! warning "Tradeoff"
+    This reloads the GLM page after every request, which can feel slower and may briefly flicker the UI.
 
 ---
 
@@ -100,7 +115,7 @@ See: [:material-key: Login & Sessions](../features/login-sessions.md)
 
 Clean Regeneration (reusing the same chat when you send an identical prompt) is **unreliable** with GLM Chat. The "Regenerate" action sometimes errors out even though GLM actually processes the request normally. In 99.9% of cases it will not even appear at all.
 
-Currently Clean Regeneration is ignored for GLM, but generally it's recommended to keep it off either way.
+If you want to experiment with it anyway, try enabling **Refresh After Generation** under GLM Behavior -> Quirks. This reloads the page after every response and can sometimes restore the UI state so Regenerate becomes available again.
 
 ---
 
@@ -156,7 +171,7 @@ This is a minor quirk, but worth knowing about if you notice a stray dot in your
 |---|---|---|
 | **CAPTCHA on login** | Must solve manually | Use Persistent Sessions |
 | **UI language must be English** | Buttons not found | Change GLM UI to en-US |
-| **Clean Regen unreliable** | Spurious errors | Disable Clean Regeneration |
+| **Clean Regen unreliable** | Spurious errors | Disable Clean Regeneration (or try Refresh After Generation) |
 | **Model not in dropdown** | Silent fallback | Check logs, update IntenseRP |
 | **Slow UI clicks** | Timeout errors | Increase UI Click Timeout |
 | **Send button delayed** | Send timeout | Increase Message Send Timeout |

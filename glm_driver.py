@@ -19,6 +19,8 @@ class GLMDriver(BaseDriver):
     CHAT_URL = "https://chat.z.ai/"
     AUTH_URL = "https://chat.z.ai/auth"
 
+    REFRESH_AFTER_GENERATION_DELAY_S = 2.0
+
     MODEL_SELECTOR_BUTTON_SELECTOR = "button.modelSelectorButton"
     MODEL_DROPDOWN_ID = "f8T9iEf1QC"
     MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
@@ -48,6 +50,9 @@ class GLMDriver(BaseDriver):
         self.clean_regen_message_cache_key = "glm_last_message.txt"
         self.clean_regen_state_cache_key = "glm_last_message_state.json"
 
+        self._refresh_after_generation = False
+        self._refresh_after_generation_task: asyncio.Task | None = None
+
         self._refresh_quirks()
 
     def _refresh_quirks(self) -> None:
@@ -64,10 +69,99 @@ class GLMDriver(BaseDriver):
             msg_send_timeout = int(self.config_manager.get_setting("glm_behavior", "message_send_timeout") or 5)
         except Exception:
             msg_send_timeout = 5
+        try:
+            refresh_after_generation = bool(
+                self.config_manager.get_setting("glm_behavior", "refresh_after_generation")
+            )
+        except Exception:
+            refresh_after_generation = False
 
         self._ui_timeout = max(ui_timeout, 500)
         self._post_delay_s = max(post_delay, 0) / 1000.0
         self._msg_send_timeout = max(msg_send_timeout, 1)
+        self._refresh_after_generation = bool(refresh_after_generation)
+
+    async def _await_pending_refresh_after_generation(self, abort_event: asyncio.Event | None = None) -> None:
+        task = getattr(self, "_refresh_after_generation_task", None)
+        if not task:
+            return
+
+        if abort_event and abort_event.is_set():
+            try:
+                if not task.done():
+                    task.cancel()
+            except Exception:
+                pass
+            self._refresh_after_generation_task = None
+            return
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            Logger.warning(f"GLM Chat: Refresh After Generation task failed: {e}")
+        finally:
+            self._refresh_after_generation_task = None
+
+    def _schedule_refresh_after_generation(self) -> None:
+        if not self.page:
+            return
+        if not getattr(self, "_refresh_after_generation", False):
+            return
+
+        try:
+            if self.page.is_closed():
+                return
+        except Exception:
+            pass
+
+        existing = getattr(self, "_refresh_after_generation_task", None)
+        if existing and (not existing.done()):
+            try:
+                existing.cancel()
+            except Exception:
+                pass
+
+        self._refresh_after_generation_task = asyncio.create_task(self._refresh_page_after_generation())
+
+    async def _refresh_page_after_generation(self) -> None:
+        if not self.page:
+            return
+
+        try:
+            await asyncio.sleep(self.REFRESH_AFTER_GENERATION_DELAY_S)
+        except asyncio.CancelledError:
+            return
+
+        try:
+            if self.page.is_closed():
+                return
+        except Exception:
+            pass
+
+        Logger.info("GLM Chat: Refresh After Generation enabled, reloading page...")
+
+        try:
+            await self.page.reload(wait_until="domcontentloaded", timeout=45000)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            Logger.warning(f"GLM Chat: failed to reload after generation: {e}")
+            return
+
+        try:
+            await self._wait_for_chat_shell_ready(timeout_ms=60000)
+        except Exception as e:
+            Logger.warning(f"GLM Chat: page reload completed but chat shell was not ready: {e}")
+            return
+
+        # Best-effort: if the session expired, warn early so the next request isn't a surprise
+        try:
+            if await self._chat_page_contains_sign_in():
+                Logger.warning("GLM Chat: after reload, Sign in was detected - you may need to log in again.")
+        except Exception:
+            pass
 
     @property
     def required_ui_language_label(self) -> str:
@@ -1125,7 +1219,9 @@ class GLMDriver(BaseDriver):
 
         return False
 
-    async def _send_message(self, timeout: int | None = None) -> None:
+    async def _send_message(
+        self, timeout: int | None = None, arm_event: asyncio.Event | None = None
+    ) -> None:
         if not self.page:
             return
 
@@ -1157,6 +1253,12 @@ class GLMDriver(BaseDriver):
 
         toaster = self.page.locator("ol[data-sonner-toaster]")
         max_retries = 5
+
+        if arm_event:
+            try:
+                arm_event.set()
+            except Exception:
+                pass
 
         for attempt in range(max_retries):
             try:
@@ -1209,23 +1311,73 @@ class GLMDriver(BaseDriver):
 
         Logger.warning("GLM Chat: send button click did not register after all retry attempts, giving up.")
 
-    async def _click_regenerate(self) -> bool:
+    async def _click_regenerate(
+        self,
+        timeout_ms: int | None = None,
+        arm_event: asyncio.Event | None = None,
+    ) -> bool:
         if not self.page:
             return False
 
-        try:
-            regen = self.page.locator("div[aria-label='Regenerate'] button")
-            if await regen.count() == 0:
-                regen = self.page.locator("[aria-label='Regenerate'] button")
-            if await regen.count() == 0:
+        timeout = self._ui_timeout if timeout_ms is None else max(int(timeout_ms), 0)
+        deadline = time.time() + (float(timeout) / 1000.0 if timeout > 0 else 0.0)
+
+        regen = self.page.locator("div[aria-label='Regenerate'] button")
+        if await regen.count() == 0:
+            regen = self.page.locator("[aria-label='Regenerate'] button")
+
+        last_error: Exception | None = None
+
+        while True:
+            try:
+                if await regen.count() > 0 and await regen.first.is_visible():
+                    try:
+                        aria_disabled = (await regen.first.get_attribute("aria-disabled") or "").strip().lower()
+                        if aria_disabled == "true":
+                            return False
+                    except Exception:
+                        pass
+
+                    if arm_event:
+                        try:
+                            arm_event.set()
+                        except Exception:
+                            pass
+
+                    try:
+                        await regen.first.scroll_into_view_if_needed(timeout=self._ui_timeout)
+                    except Exception:
+                        pass
+
+                    try:
+                        await regen.first.click(timeout=self._ui_timeout)
+                        return True
+                    except Exception as e:
+                        last_error = e
+
+                    # Fallback: JS click (Playwright click can be swallowed by GLM's UI)
+                    try:
+                        clicked = await self.page.evaluate(
+                            "() => {"
+                            "  const btn = document.querySelector(\"div[aria-label='Regenerate'] button, [aria-label='Regenerate'] button\");"
+                            "  if (!btn) return false;"
+                            "  btn.click();"
+                            "  return true;"
+                            "}"
+                        )
+                        if clicked:
+                            return True
+                    except Exception as e:
+                        last_error = e
+            except Exception as e:
+                last_error = e
+
+            if timeout <= 0 or time.time() >= deadline:
+                if last_error:
+                    Logger.debug(f"GLM Chat: regenerate click failed: {last_error}")
                 return False
-            if not await regen.first.is_visible():
-                return False
-            await regen.first.click()
-            return True
-        except Exception as e:
-            Logger.warning(f"GLM Chat: failed to click Regenerate: {e}")
-            return False
+
+            await asyncio.sleep(0.25)
 
     @staticmethod
     def _strip_details_tags(text: str) -> str:
@@ -1381,6 +1533,12 @@ class GLMDriver(BaseDriver):
         abort_event: asyncio.Event | None = None,
     ):
         response_queue: asyncio.Queue = asyncio.Queue()
+        completion_armed = asyncio.Event()
+        completion_started = asyncio.Event()
+        completion_claim_lock = asyncio.Lock()
+        completion_claimed = False
+
+        await self._await_pending_refresh_after_generation(abort_event=abort_event)
 
         await self.require_english_ui()
         self._refresh_quirks()
@@ -1412,7 +1570,30 @@ class GLMDriver(BaseDriver):
         formatted_message = self._format_messages(message_for_formatting)
 
         async def handle_route(route):
+            nonlocal completion_claimed
             request = route.request
+
+            # Ignore preflight and any requests we aren't actively expecting to stream.
+            # GLM can sometimes fire background requests to the same endpoint.
+            try:
+                method = str(request.method or "").upper()
+            except Exception:
+                method = ""
+            if method == "OPTIONS":
+                await route.continue_()
+                return
+
+            if not completion_armed.is_set():
+                await route.continue_()
+                return
+
+            async with completion_claim_lock:
+                if completion_claimed:
+                    await route.continue_()
+                    return
+                completion_claimed = True
+                completion_started.set()
+
             Logger.info("Intercepting GLM Chat API request...")
             Logger.debug(f"Intercepted request to: {request.url}")
 
@@ -1431,8 +1612,10 @@ class GLMDriver(BaseDriver):
             thinking_emitted = ""
             answer_emitted = False
             glm_block_active = False
+            emitted_openai_chunk = False
 
             def enqueue_openai_delta(content: str, finish_reason: str | None = None) -> None:
+                nonlocal emitted_openai_chunk
                 if (not content) and (not finish_reason):
                     return
                 model_name = self.current_model or "glm-auto"
@@ -1450,6 +1633,7 @@ class GLMDriver(BaseDriver):
                     ],
                 }
                 response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
+                emitted_openai_chunk = True
 
             def process_sse_line(line: str) -> None:
                 nonlocal thinking_emitted, answer_emitted, glm_block_active
@@ -1469,7 +1653,9 @@ class GLMDriver(BaseDriver):
                 if not isinstance(payload, dict):
                     return
 
-                if payload.get("type") != "chat:completion":
+                payload_type = str(payload.get("type") or "").strip().lower()
+                # Regeneration can use the same endpoint with slightly different type labels.
+                if not payload_type.startswith("chat:completion"):
                     return
 
                 data = payload.get("data")
@@ -1642,6 +1828,15 @@ class GLMDriver(BaseDriver):
             if aborted or self.abort_requested:
                 Logger.warning("GLM Chat generation aborted by user.")
 
+            if (not aborted) and (not self.abort_requested) and (not emitted_openai_chunk):
+                # Surface a helpful error instead of silently returning an empty stream.
+                msg = (
+                    "GLM Chat: intercepted completion produced no streamable output. "
+                    "This may indicate a GLM API / frontend change."
+                )
+                Logger.warning(msg)
+                response_queue.put_nowait(f"data: {json.dumps({'error': msg})}\n\n")
+
             try:
                 await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
             except Exception as e:
@@ -1651,46 +1846,119 @@ class GLMDriver(BaseDriver):
             if not aborted and not self.abort_requested:
                 Logger.success("GLM Chat response streaming completed.")
 
-        await self.page.route("**/api/v2/chat/completions**", handle_route)
+        route_owner = self.context or self.page
+        if not route_owner:
+            raise RuntimeError("GLM Chat: browser context is not available.")
+
+        await route_owner.route("**/api/v2/chat/completions**", handle_route)
 
         try:
-            # NOTE: Clean Regeneration is currently disabled as the GLM UI does not
-            # work in GLM properly (with how we intercept requests)
+            clean_regeneration = bool(self.config_manager.get_setting("glm_behavior", "clean_regeneration"))
+            regenerated = False
+            clean_regen_state: Dict[str, bool] | None = None
 
-            Logger.info("GLM Chat: preparing new chat session...")
-            await self.click_new_chat(source="auto")
-            await asyncio.sleep(self._post_delay_s)
-
-            await self.apply_configured_model()
-
-            await self.set_deepthink_state(effective_deepthink)
-            await self.set_search_state(enable_search)
-            await asyncio.sleep(self._post_delay_s)
-
-            if send_as_text_file:
-                Logger.info("GLM Chat: sending message as text file...")
-                file_payload = {
-                    "name": "prompt.txt",
-                    "mimeType": "text/plain",
-                    "buffer": formatted_message.encode("utf-8"),
+            if clean_regeneration:
+                clean_regen_state = {
+                    "deepthink_enabled": bool(effective_deepthink),
+                    "search_enabled": bool(enable_search),
+                    "send_as_text_file": bool(send_as_text_file),
                 }
-                await self._upload_file(file_payload)
 
-                # GLM requires some text alongside the file to enable the send button
-                filler = self.config_manager.get_setting("glm_behavior", "text_file_filler") or "."
-                await self._enter_message(str(filler))
-                # It Just Works™
-                # Copyright © ONCE IN A LIFETIME Bethesda Softworks LLC
+                last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
+                last_state = self._read_clean_regeneration_state()
 
-                upload_timeout = int(self.config_manager.get_setting("glm_behavior", "file_upload_timeout") or 15)
-                Logger.info("GLM Chat: sending request...")
-                await self._send_message(timeout=upload_timeout)
-            else:
-                await self._enter_message(formatted_message)
+                message_matches = last_message == formatted_message
+                state_matches = last_state == clean_regen_state
+
+                if message_matches and state_matches:
+                    Logger.info(
+                        "Clean Regeneration (GLM): Message and settings match cache. Attempting to regenerate..."
+                    )
+
+                    #  toggles must match before regenerating (GLM UI can reset them on refresh)
+                    try:
+                        await self.set_deepthink_state(effective_deepthink)
+                        await self.set_search_state(enable_search)
+                        await asyncio.sleep(self._post_delay_s)
+                    except Exception:
+                        pass
+
+                    regen_timeout = max(int(getattr(self, "_ui_timeout", 3000)), 5000)
+                    if await self._click_regenerate(timeout_ms=regen_timeout, arm_event=completion_armed):
+                        Logger.info("Clean Regeneration (GLM): Regenerate clicked. Regenerating...")
+                        try:
+                            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                        except asyncio.TimeoutError:
+                            Logger.warning(
+                                "Clean Regeneration (GLM): completion request not observed after clicking "
+                                "Regenerate. Falling back to new chat."
+                            )
+                        else:
+                            regenerated = True
+                            self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                            self._write_clean_regeneration_state(clean_regen_state)
+                    else:
+                        Logger.warning(
+                            "Clean Regeneration (GLM): Regenerate button not found/visible. Falling back to new chat."
+                        )
+                elif message_matches and not state_matches:
+                    Logger.info(
+                        "Clean Regeneration (GLM): Message matches cache but settings changed. Creating new chat."
+                    )
+                else:
+                    Logger.debug("Clean Regeneration (GLM): Message differs from cache. Creating new chat.")
+
+            if not regenerated:
+                Logger.info("GLM Chat: preparing new chat session...")
+                await self.click_new_chat(source="auto")
                 await asyncio.sleep(self._post_delay_s)
-                Logger.info("GLM Chat: sending request...")
-                await self._send_message(timeout=self._msg_send_timeout)
 
+                await self.apply_configured_model()
+
+                await self.set_deepthink_state(effective_deepthink)
+                await self.set_search_state(enable_search)
+                await asyncio.sleep(self._post_delay_s)
+
+                if send_as_text_file:
+                    Logger.info("GLM Chat: sending message as text file...")
+                    file_payload = {
+                        "name": "prompt.txt",
+                        "mimeType": "text/plain",
+                        "buffer": formatted_message.encode("utf-8"),
+                    }
+                    await self._upload_file(file_payload)
+
+                    # GLM requires some text alongside the file to enable the send button
+                    filler = self.config_manager.get_setting("glm_behavior", "text_file_filler") or "."
+                    await self._enter_message(str(filler))
+                    # It Just Works™
+                    # Copyright © ONCE IN A LIFETIME Bethesda Softworks LLC
+
+                    upload_timeout = int(self.config_manager.get_setting("glm_behavior", "file_upload_timeout") or 15)
+                    Logger.info("GLM Chat: sending request...")
+                    await self._send_message(timeout=upload_timeout, arm_event=completion_armed)
+                else:
+                    await self._enter_message(formatted_message)
+                    await asyncio.sleep(self._post_delay_s)
+                    Logger.info("GLM Chat: sending request...")
+                    await self._send_message(timeout=self._msg_send_timeout, arm_event=completion_armed)
+
+                if clean_regeneration and clean_regen_state:
+                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_clean_regeneration_state(clean_regen_state)
+
+            if not completion_started.is_set():
+                try:
+                    await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    Logger.error(
+                        "GLM Chat: completion request was not observed. "
+                        "The UI may have swallowed the click or the endpoint changed."
+                    )
+                    yield f"data: {json.dumps({'error': 'GLM: completion request not observed'})}\n\n"
+                    return
+
+            stream_completed = False
             while True:
                 if self.abort_requested or (abort_event and abort_event.is_set()):
                     Logger.debug("Abort detected in GLM response loop, breaking...")
@@ -1698,11 +1966,15 @@ class GLMDriver(BaseDriver):
 
                 item = await response_queue.get()
                 if item is None:
+                    stream_completed = True
                     break
                 if isinstance(item, dict) and "error" in item:
                     yield f"data: {json.dumps(item)}\n\n"
                     break
                 yield item
+
+            if stream_completed:
+                self._schedule_refresh_after_generation()
 
         finally:
             self.current_abort_event = None
@@ -1710,4 +1982,10 @@ class GLMDriver(BaseDriver):
             self.current_model = None
             self.current_send_deepthink = None
             self.thinking_active = False
-            await self.page.unroute("**/api/v2/chat/completions**")
+            try:
+                await route_owner.unroute("**/api/v2/chat/completions**", handle_route)
+            except Exception:
+                try:
+                    await route_owner.unroute("**/api/v2/chat/completions**")
+                except Exception:
+                    pass

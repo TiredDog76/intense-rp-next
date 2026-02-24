@@ -100,7 +100,9 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
 :material-arrow-right: **Settings** -> **GLM Behavior** -> **Clean Regeneration**
 
 !!! warning "Known issue (GLM)"
-    Clean Regeneration is currently unreliable with GLM Chat. The option may error out even though your request still completes normally. If this annoys you, keep it disabled for GLM for now.
+    Clean Regeneration is currently unreliable with GLM Chat. The option may error out even though your request still completes normally.
+
+    If you want to experiment with it anyway, try enabling **Refresh After Generation** under GLM Behavior -> Quirks. This reloads the page after each response and can sometimes restore the UI state so Regenerate becomes available again.
 
 ---
 
@@ -170,6 +172,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Clean Regeneration** | Regenerates on duplicate prompts | Off (unstable for GLM) |
+| **Refresh After Generation** | Reloads the GLM page after each response | Off |
 
 ---
 

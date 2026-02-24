@@ -463,6 +463,16 @@ SCHEMA = [
                 default=5,
                 tooltip="Max seconds to wait for the send button to become enabled after text entry (non-file mode)."
             ),
+            SettingField(
+                key="refresh_after_generation",
+                label="Refresh After Generation",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "After a response finishes streaming, wait 2 seconds and refresh the GLM Chat page. "
+                    "This can sometimes restore GLM's UI state and improve Clean Regeneration stability."
+                ),
+            ),
         ]
     ),
     SettingCategory(
