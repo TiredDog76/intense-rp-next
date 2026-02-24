@@ -660,6 +660,39 @@ class SettingsWindow(QMainWindow):
         self._sync_application_settings_info()
         return True
 
+    def select_category_by_key(self, category_key: str) -> bool:
+        item = self.category_items_by_key.get(category_key)
+        card = self.category_widgets_by_key.get(category_key)
+        if not item or not card:
+            return False
+
+        if item.isHidden():
+            item.setHidden(False)
+        if not card.isVisible():
+            card.setVisible(True)
+
+        self.is_auto_scrolling = True
+        self.category_list.setCurrentItem(item)
+        self.scroll_area.ensureWidgetVisible(card)
+        QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+        return True
+
+    def focus_setting(self, category_key: str, field_key: str) -> bool:
+        category_key = str(category_key or "").strip()
+        field_key = str(field_key or "").strip()
+        if not category_key or not field_key:
+            return False
+
+        full_key = f"{category_key}.{field_key}"
+        target = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
+        if not target:
+            return False
+
+        self.select_category_by_key(category_key)
+        self.scroll_area.ensureWidgetVisible(target)
+        self._flash_widget(target)
+        return True
+
     def _on_setting_changed(self):
         self.unsaved_changes = True
         self.update_timer.start()

@@ -4,6 +4,7 @@ import uvicorn
 import logging
 import os
 import threading
+import errno
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
@@ -1412,6 +1413,159 @@ class MainWindow(QMainWindow):
             self._update_tray_menu_state()
             asyncio.create_task(self.stop_services())
 
+    def _is_port_in_use_error(self, exc: OSError) -> bool:
+        if exc is None:
+            return False
+
+        in_use_errnos = {
+            getattr(errno, "EADDRINUSE", None),
+            getattr(errno, "WSAEADDRINUSE", None),
+        }
+        if exc.errno in in_use_errnos:
+            return True
+
+        winerror = getattr(exc, "winerror", None)
+        if winerror in in_use_errnos:
+            return True
+
+        msg = str(exc).lower()
+        return ("address already in use" in msg) or ("only one usage of each socket address" in msg)
+
+    def _is_tcp_port_listening(self, host: str, port: int, timeout_s: float = 0.25) -> bool:
+        host = str(host or "").strip()
+        if not host:
+            return False
+
+        try:
+            family = socket.AF_INET6 if ":" in host else socket.AF_INET
+            with socket.socket(family=family, type=socket.SOCK_STREAM) as sock:
+                sock.settimeout(float(timeout_s))
+                return sock.connect_ex((host, int(port))) == 0
+        except Exception:
+            return False
+
+    def _has_listening_socket_for_port_psutil(self, port: int) -> bool:
+        try:
+            import psutil  # type: ignore
+        except Exception:
+            return False
+
+        try:
+            target_port = int(port)
+        except Exception:
+            return False
+
+        try:
+            connections = psutil.net_connections(kind="inet")
+        except Exception:
+            return False
+
+        for conn in connections or []:
+            try:
+                if getattr(conn, "status", None) != psutil.CONN_LISTEN:
+                    continue
+
+                laddr = getattr(conn, "laddr", None)
+                if not laddr:
+                    continue
+
+                port_val = getattr(laddr, "port", None)
+                if port_val is None and isinstance(laddr, (list, tuple)) and len(laddr) >= 2:
+                    port_val = laddr[1]
+
+                if int(port_val) == target_port:
+                    return True
+            except Exception:
+                continue
+
+        return False
+
+    def _check_port_available(self, host: str, port: int) -> tuple[bool, str]:
+        """
+        Returns (ok, reason).
+
+        When ok is False:
+          - reason == "in_use" indicates the port is already in use.
+          - otherwise, reason contains a short error message.
+        """
+        if not isinstance(port, int) or port < 1 or port > 65535:
+            return False, f"Invalid port: {port}. Choose a number between 1 and 65535."
+
+        probe_hosts = ["127.0.0.1", "::1"]
+        if host and host not in {"127.0.0.1", "0.0.0.0", "::"}:
+            probe_hosts.insert(0, host)
+
+        for probe_host in probe_hosts:
+            if self._is_tcp_port_listening(probe_host, port):
+                return False, "in_use"
+
+        try:
+            family = socket.AF_INET6 if (host and ":" in host) else socket.AF_INET
+            with socket.socket(family=family, type=socket.SOCK_STREAM) as sock:
+                sock.bind((host, port))
+        except OSError as exc:
+            if self._is_port_in_use_error(exc):
+                if self._has_listening_socket_for_port_psutil(port):
+                    return False, "in_use"
+
+                try:
+                    family = socket.AF_INET6 if (host and ":" in host) else socket.AF_INET
+                    with socket.socket(family=family, type=socket.SOCK_STREAM) as sock:
+                        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        sock.bind((host, port))
+                    return True, ""
+                except OSError as exc2:
+                    if self._is_port_in_use_error(exc2):
+                        return False, "in_use"
+                    return False, str(exc2)
+            return False, str(exc)
+
+        return True, ""
+
+    def _open_settings_to_network_port(self) -> None:
+        try:
+            self.open_settings()
+        except Exception:
+            return
+
+        settings_window = getattr(self, "settings_window", None)
+        if settings_window is None:
+            return
+
+        def focus() -> None:
+            try:
+                if hasattr(settings_window, "focus_setting"):
+                    settings_window.focus_setting("network_settings", "port")
+            except Exception:
+                pass
+
+        QTimer.singleShot(0, focus)
+
+    def _warn_port_in_use(self, port: int) -> None:
+        title = "Port In Use"
+        text = f"Port {port} is already in use."
+        details = "Free the port (close the other application) or change it in Settings -> Network Settings."
+
+        if not (self.isVisible() and self.isActiveWindow()):
+            self._notify_user(title, f"{text}\n\n{details}", level="warning")
+            return
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Warning)
+        dialog.setWindowTitle(title)
+        dialog.setText(text)
+        dialog.setInformativeText(details)
+
+        open_settings = dialog.addButton("Open Settings", QMessageBox.ActionRole)
+        dialog.addButton(QMessageBox.Ok)
+
+        def on_clicked(button) -> None:
+            if button is open_settings:
+                self._open_settings_to_network_port()
+
+        dialog.buttonClicked.connect(on_clicked)
+        dialog.open()
+
     async def start_services(self):
         if (
             getattr(self, "api", None) is not None
@@ -1426,11 +1580,6 @@ class MainWindow(QMainWindow):
                 Logger.error(f"Pre-start cleanup failed: {e}")
 
         try:
-            # Pass config manager to driver
-            self.driver = create_driver(self.config_manager)
-            self.driver.notify_user_callback = self._notify_user
-            self.driver.on_crash_callback = self.on_browser_crashed
-
             # Configure Uvicorn
             port_setting = self.config_manager.get_setting("network_settings", "port")
             try:
@@ -1440,6 +1589,34 @@ class MainWindow(QMainWindow):
 
             available_on_lan = self.config_manager.get_setting("network_settings", "available_on_lan")
             host = "0.0.0.0" if available_on_lan else "127.0.0.1"
+
+            port_ok, reason = self._check_port_available(host, port)
+            if not port_ok:
+                if reason == "in_use":
+                    Logger.warning(f"Port {port} is already in use; refusing to start services.")
+                    self._update_status(f"Port {port} is already in use", "warning")
+                    self._warn_port_in_use(port)
+                else:
+                    Logger.error(f"Port {port} is not available; refusing to start services. ({reason})")
+                    self._update_status(f"Port {port} is not available", "error")
+                    self._notify_user(
+                        "Port Unavailable",
+                        f"Port {port} is not available.\n\n{reason}\n\nFree the port or change it in Settings -> Network Settings.",
+                        level="error",
+                    )
+
+                self.start_button.setText("Start")
+                self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
+                self.start_button.setEnabled(True)
+                self.start_button.set_chevron_visible(False)
+                self._sync_hotswap_button()
+                self._update_tray_menu_state()
+                return
+
+            # Pass config manager to driver
+            self.driver = create_driver(self.config_manager)
+            self.driver.notify_user_callback = self._notify_user
+            self.driver.on_crash_callback = self.on_browser_crashed
 
             # Silence uvicorn loggers to avoid noisy console output.
             for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
