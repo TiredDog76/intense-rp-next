@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import threading
 
 import requests
-from PySide6.QtCore import Qt, QTimer, QUrl, QSize
+from PySide6.QtCore import Qt, Signal, Slot, QUrl, QSize
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
@@ -35,10 +35,14 @@ class UpdateInstalledInfo:
 
 
 class UpdateInstalledDialog(QDialog):
+    _survey_link_ready = Signal(object, object)  # url, error_text
+
     def __init__(self, info: UpdateInstalledInfo, parent=None):
         super().__init__(parent)
         self._info = info
         self._vote_button: QPushButton | None = None
+        self._vote_button_original_text: str = ""
+        self._survey_link_ready.connect(self._on_survey_link_ready, Qt.QueuedConnection)
 
         self.setWindowTitle("Update Installed")
         self.setModal(True)
@@ -203,7 +207,7 @@ class UpdateInstalledDialog(QDialog):
             return
 
         btn.setEnabled(False)
-        original_text = btn.text()
+        self._vote_button_original_text = btn.text()
         btn.setText("Loading survey link...")
 
         def worker() -> None:
@@ -214,24 +218,29 @@ class UpdateInstalledDialog(QDialog):
             except Exception as exc:
                 error_text = str(exc)
 
-            def finish() -> None:
-                if btn is None:
-                    return
-                btn.setEnabled(True)
-                btn.setText(original_text)
-
-                if url:
-                    QDesktopServices.openUrl(QUrl(url))
-                    return
-
-                msg = "Couldn't fetch the survey link right now. Please try again later."
-                if error_text:
-                    msg = f"{msg}\n\n{error_text}"
-                QMessageBox.warning(self, "Survey Link Unavailable", msg)
-
-            QTimer.singleShot(0, finish)
+            self._survey_link_ready.emit(url, error_text)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    @Slot(object, object)
+    def _on_survey_link_ready(self, url: object, error_text: object) -> None:
+        btn = getattr(self, "_vote_button", None)
+        if btn is None:
+            return
+
+        btn.setEnabled(True)
+        btn.setText(self._vote_button_original_text or "Vote for the Next Update")
+
+        url_str = str(url or "").strip()
+        if url_str:
+            QDesktopServices.openUrl(QUrl(url_str))
+            return
+
+        msg = "Couldn't fetch the survey link right now. Please try again later."
+        err = str(error_text or "").strip()
+        if err:
+            msg = f"{msg}\n\n{err}"
+        QMessageBox.warning(self, "Survey Link Unavailable", msg)
 
 
 def _parse_first_url(text: str) -> str | None:
