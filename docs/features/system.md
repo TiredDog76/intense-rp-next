@@ -276,6 +276,32 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
     !!! warning "Not available in the .exe/.zip build"
         Packaged builds don’t include a git checkout, so Git updating is disabled there.
 
+### Debug: `--fakeUpdate`
+
+You can force-show the "Update Installed" dialog (without actually installing an update) by launching IntenseRP with:
+
+```bash
+--fakeUpdate
+```
+
+=== ":material-microsoft-windows: Packaged build (Windows)"
+
+    ```powershell
+    .\\intenserp-next-v2.exe --fakeUpdate
+    ```
+
+=== ":material-linux: Packaged build (Linux)"
+
+    ```bash
+    ./intenserp-next-v2 --fakeUpdate
+    ```
+
+=== ":material-language-python: Source run"
+
+    ```bash
+    python main.py --fakeUpdate
+    ```
+
 ---
 
 ## :material-bug: Troubleshooting

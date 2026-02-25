@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import threading
 
-from PySide6.QtCore import Qt, QUrl, QSize
+import requests
+from PySide6.QtCore import Qt, QTimer, QUrl, QSize
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
+
+
+REMOTE_LATEST_SURVEY_URL = (
+    "https://raw.githubusercontent.com/LyubomirT/intense-rp-next/refs/heads/v2-rewrite/latestsurvey.txt"
+)
 
 
 def _format_version(version: str) -> str:
@@ -31,6 +38,7 @@ class UpdateInstalledDialog(QDialog):
     def __init__(self, info: UpdateInstalledInfo, parent=None):
         super().__init__(parent)
         self._info = info
+        self._vote_button: QPushButton | None = None
 
         self.setWindowTitle("Update Installed")
         self.setModal(True)
@@ -82,6 +90,7 @@ class UpdateInstalledDialog(QDialog):
         layout.addWidget(subtitle)
 
         layout.addWidget(self._build_button_row())
+        layout.addWidget(self._build_vote_button())
 
     def _build_button_row(self) -> QFrame:
         row = QFrame()
@@ -140,8 +149,112 @@ class UpdateInstalledDialog(QDialog):
 
         return row
 
+    def _build_vote_button(self) -> QPushButton:
+        vote_btn = QPushButton("Vote for the Next Update")
+        vote_btn.setCursor(Qt.PointingHandCursor)
+        vote_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {BrandColors.TEXT_PRIMARY};
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+                border: 1px solid {BrandColors.ACCENT};
+            }}
+            QPushButton:pressed {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border: 1px solid {BrandColors.INPUT_BORDER};
+            }}
+            QPushButton:disabled {{
+                color: {BrandColors.TEXT_DISABLED};
+            }}
+            """
+        )
+
+        icon = IconUtils.get_icon(
+            "external-link.svg",
+            color=BrandColors.TEXT_PRIMARY,
+            size=16,
+            widget=vote_btn,
+        )
+        if not icon.isNull():
+            vote_btn.setIcon(icon)
+            vote_btn.setIconSize(QSize(16, 16))
+
+        vote_btn.clicked.connect(self._on_vote_clicked)
+        self._vote_button = vote_btn
+        return vote_btn
+
     def _on_release_notes_clicked(self) -> None:
         url = (self._info.release_notes_url or "").strip()
         if url:
             QDesktopServices.openUrl(QUrl(url))
         self.accept()
+
+    def _on_vote_clicked(self) -> None:
+        btn = getattr(self, "_vote_button", None)
+        if btn is None:
+            return
+
+        btn.setEnabled(False)
+        original_text = btn.text()
+        btn.setText("Loading survey link...")
+
+        def worker() -> None:
+            url: str | None = None
+            error_text: str | None = None
+            try:
+                url = _fetch_latest_survey_url()
+            except Exception as exc:
+                error_text = str(exc)
+
+            def finish() -> None:
+                if btn is None:
+                    return
+                btn.setEnabled(True)
+                btn.setText(original_text)
+
+                if url:
+                    QDesktopServices.openUrl(QUrl(url))
+                    return
+
+                msg = "Couldn't fetch the survey link right now. Please try again later."
+                if error_text:
+                    msg = f"{msg}\n\n{error_text}"
+                QMessageBox.warning(self, "Survey Link Unavailable", msg)
+
+            QTimer.singleShot(0, finish)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+def _parse_first_url(text: str) -> str | None:
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            continue
+        if line.startswith(("http://", "https://")):
+            return line
+        return None
+    return None
+
+
+def _fetch_latest_survey_url(timeout_s: float = 5.0) -> str:
+    response = requests.get(
+        REMOTE_LATEST_SURVEY_URL,
+        timeout=timeout_s,
+        headers={"User-Agent": "IntenseRP-Next-SurveyLink"},
+    )
+    response.raise_for_status()
+    url = _parse_first_url(response.text)
+    if not url:
+        raise ValueError("The survey link file is empty or invalid.")
+    return url

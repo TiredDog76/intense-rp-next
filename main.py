@@ -38,7 +38,7 @@ import socket
 import time
 
 
-def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool]:
+def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool]:
     """
     Parse and remove internal startup args from argv.
 
@@ -47,11 +47,13 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
       --updaterpath <path>
       --updaterpath=<path>
       --clearFlags
+      --fakeUpdate
     """
     remaining: list[str] = []
     delete_updater = False
     updater_path: str | None = None
     clear_flags = False
+    fake_update = False
 
     i = 0
     while i < len(argv):
@@ -79,10 +81,15 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
             i += 1
             continue
 
+        if arg.lower() == "--fakeupdate":
+            fake_update = True
+            i += 1
+            continue
+
         remaining.append(arg)
         i += 1
 
-    return remaining, delete_updater, updater_path, clear_flags
+    return remaining, delete_updater, updater_path, clear_flags, fake_update
 
 
 def _delete_updater_best_effort(cleanup_path: Path) -> None:
@@ -196,7 +203,7 @@ class MainWindow(QMainWindow):
     DEFAULT_WINDOW_WIDTH = 450
     DEFAULT_WINDOW_HEIGHT = 520
 
-    def __init__(self):
+    def __init__(self, *, fake_update: bool = False):
         super().__init__()
         self.setWindowTitle("IntenseRP Next")
         self.resize(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT)
@@ -396,6 +403,21 @@ class MainWindow(QMainWindow):
         self._setup_tray_icon()
 
         self._post_update_info = _consume_postupdate_installed_info()
+        if self._post_update_info is None and fake_update:
+            try:
+                version = get_version()
+            except Exception:
+                version = "unknown"
+
+            try:
+                release_notes_url = _release_notes_url_for_version(version)
+            except Exception:
+                release_notes_url = "https://github.com/LyubomirT/intense-rp-next/releases"
+
+            self._post_update_info = UpdateInstalledInfo(
+                version=str(version or "unknown"),
+                release_notes_url=str(release_notes_url or ""),
+            )
         self._maybe_show_update_installed_dialog()
 
         self._maybe_check_for_updates_on_startup()
@@ -2065,7 +2087,7 @@ def main():
             print(f"Failed to run module {module_name}: {e}")
             sys.exit(1)
 
-    remaining_args, delete_updater, updater_path, clear_flags = _parse_update_cleanup_args(sys.argv[1:])
+    remaining_args, delete_updater, updater_path, clear_flags, fake_update = _parse_update_cleanup_args(sys.argv[1:])
     sys.argv = [sys.argv[0]] + remaining_args
 
     if clear_flags:
@@ -2115,7 +2137,7 @@ def main():
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    window = MainWindow()
+    window = MainWindow(fake_update=fake_update)
     window.show()
 
     def _request_quit() -> None:
