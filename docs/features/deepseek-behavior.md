@@ -48,6 +48,17 @@ You can also control DeepThink per-request using the model name in SillyTavern:
 | `deepseek-chat` | Forces DeepThink **off** |
 | `deepseek-reasoner` | Forces DeepThink **on** |
 
+!!! tip "Better Model Names (Experimental)"
+    If you enable **Settings -> Experimental -> Better Model Names**, you'll see (and can use) these equivalent IDs:
+
+    | Model Name | Behavior |
+    |------------|----------|
+    | `deepseek-v3.2-auto` | Uses your IntenseRP settings |
+    | `deepseek-v3.2` | Forces DeepThink **off** |
+    | `deepseek-v3.2-think` | Forces DeepThink **on** |
+
+    Legacy IDs like `deepseek-auto` still work either way.
+
 This is handy if you want to quickly switch modes without digging into settings.
 
 ---

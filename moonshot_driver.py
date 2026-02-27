@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from deepseek_driver import DeepSeekDriver
 from drivers.providers import DriverProvider
 from utils.logger import Logger
+from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
 
 load_dotenv()
 
@@ -264,11 +265,11 @@ class MoonshotDriver(DeepSeekDriver):
     def _resolve_deepthink_flags(self, model: str) -> tuple[bool, bool]:
         enable_deepthink = bool(self.config_manager.get_setting("moonshot_behavior", "enable_deepthink"))
         send_deepthink = bool(self.config_manager.get_setting("moonshot_behavior", "send_deepthink"))
-        normalized = (model or "").strip().lower()
 
-        if normalized == self.MODEL_CHAT_API:
+        mode = resolve_behavior_mode(model, self.provider)
+        if mode == MODE_CHAT:
             return False, False
-        if normalized == self.MODEL_REASONER_API:
+        if mode == MODE_REASONER:
             return True, send_deepthink
 
         return enable_deepthink, send_deepthink

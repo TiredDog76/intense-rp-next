@@ -11,6 +11,7 @@ from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
+from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
 
 load_dotenv()
 
@@ -663,11 +664,11 @@ class GLMDriver(BaseDriver):
     def _resolve_deepthink_flags(self, model: str) -> tuple[bool, bool]:
         enable_deepthink = bool(self.config_manager.get_setting("glm_behavior", "enable_deepthink"))
         send_deepthink = bool(self.config_manager.get_setting("glm_behavior", "send_deepthink"))
-        normalized = (model or "").strip().lower()
 
-        if normalized == "glm-chat":
+        mode = resolve_behavior_mode(model, self.provider)
+        if mode == MODE_CHAT:
             return False, False
-        if normalized == "glm-reasoner":
+        if mode == MODE_REASONER:
             return True, send_deepthink
 
         return enable_deepthink, send_deepthink

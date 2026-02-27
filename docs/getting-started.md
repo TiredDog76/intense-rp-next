@@ -180,7 +180,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 
             The *real* GLM model is selected in IntenseRP:
 
-            :material-arrow-right: **Settings** -> **GLM Behavior** -> **Model** (GLM-4.7 or GLM-4.6)
+            :material-arrow-right: **Settings** -> **GLM Behavior** -> **Model** (GLM-5, GLM-4.7, or GLM-4.6)
 
             GLM-4.6v exists, but IntenseRP intentionally does not select it.
 

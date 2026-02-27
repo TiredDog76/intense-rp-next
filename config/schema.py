@@ -778,6 +778,16 @@ SCHEMA = [
                 depends="experimental.ece_enabled",
             ),
             SettingField(
+                key="better_model_names",
+                label="Better Model Names",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Expose friendlier OpenAI-style model IDs (based on the real base model names). "
+                    "This changes what you see in GET /v1/models; legacy IDs remain accepted."
+                ),
+            ),
+            SettingField(
                 key="classic_title",
                 label="Classic Title Bar",
                 type=SettingType.BOOLEAN,

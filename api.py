@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from utils.logger import Logger
+from utils.model_ids import build_openai_model_list, get_model_ids_for_provider
 
 _RATE_LIMIT_LIKE_RE = re.compile(
     r"(rate\s*limit|too\s*many\s*requests|\b429\b|quota|limit\s*reached)",
@@ -265,48 +266,22 @@ class API:
         async def list_models(raw_request: Request):
             self._authenticate_request(raw_request)
 
+            cfg = getattr(self.driver, "config_manager", None)
             provider = getattr(self.driver, "provider", None)
-            if provider == DriverProvider.GLM_CHAT:
-                return {
-                    "object": "list",
-                    "data": [
-                        {"id": "glm-auto", "object": "model", "created": 0, "owned_by": "glm"},
-                        {"id": "glm-chat", "object": "model", "created": 0, "owned_by": "glm"},
-                        {"id": "glm-reasoner", "object": "model", "created": 0, "owned_by": "glm"},
-                    ],
-                }
-            if provider == DriverProvider.MOONSHOT:
-                return {
-                    "object": "list",
-                    "data": [
-                        {
-                            "id": "moonshot-auto",
-                            "object": "model",
-                            "created": 0,
-                            "owned_by": "moonshot",
-                        },
-                        {
-                            "id": "moonshot-chat",
-                            "object": "model",
-                            "created": 0,
-                            "owned_by": "moonshot",
-                        },
-                        {
-                            "id": "moonshot-reasoner",
-                            "object": "model",
-                            "created": 0,
-                            "owned_by": "moonshot",
-                        },
-                    ],
-                }
+            effective_provider = provider if isinstance(provider, DriverProvider) else DriverProvider.DEEPSEEK
+
+            if effective_provider == DriverProvider.GLM_CHAT:
+                owned_by = "glm"
+            elif effective_provider == DriverProvider.MOONSHOT:
+                owned_by = "moonshot"
+            else:
+                owned_by = "deepseek"
+
+            model_ids = get_model_ids_for_provider(effective_provider, cfg)
 
             return {
                 "object": "list",
-                "data": [
-                    {"id": "deepseek-auto", "object": "model", "created": 0, "owned_by": "deepseek"},
-                    {"id": "deepseek-chat", "object": "model", "created": 0, "owned_by": "deepseek"},
-                    {"id": "deepseek-reasoner", "object": "model", "created": 0, "owned_by": "deepseek"},
-                ],
+                "data": build_openai_model_list(model_ids, owned_by=owned_by),
             }
 
         @self.app.post("/v1/chat/completions")

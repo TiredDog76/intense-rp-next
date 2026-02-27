@@ -30,6 +30,7 @@ nav:
   - Experimental:
       - Overview: experimental.md
       - Experimental Credential Engine (ECE): experimental/ece.md
+      - Better Model Names: experimental/better-model-names.md
   - Advanced:
       - Overview: advanced.md
       - Provider Support: advanced/provider-support.md

@@ -67,7 +67,7 @@ Moonshot model IDs are behavior presets:
 !!! info "What these IDs are (and are not)"
     These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
-    For GLM specifically, the *real* GLM model is selected via **Settings -> GLM Behavior -> Model** (GLM-4.7 or GLM-4.6). The API `glm-*` IDs still remain behavior presets.
+    For GLM specifically, the *real* GLM model is selected via **Settings -> GLM Behavior -> Model** (GLM-5 / GLM-4.7 / GLM-4.6). The API `glm-*` IDs still remain behavior presets.
 
 ---
 
