@@ -42,5 +42,6 @@ class BrandColors:
     BUTTON_MIN_WIDTH = 80  # Minimum width for buttons
     CARD_PADDING = 20  # Internal card padding
     CARD_SPACING = 24  # Space between cards
+    CONTENT_MAX_WIDTH = 820  # Max width for settings content (readability)
     DIVIDER_MARGIN_TOP = 16  # Top margin for section dividers
     DIVIDER_MARGIN_BOTTOM = 8  # Bottom margin for section dividers

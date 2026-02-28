@@ -389,6 +389,7 @@ class SettingsWindow(QMainWindow):
         """)
         
         self.scroll_content = QWidget()
+        self.scroll_content.setMaximumWidth(BrandColors.CONTENT_MAX_WIDTH)
         self.scroll_layout = QVBoxLayout(self.scroll_content)
         self.scroll_layout.setContentsMargins(0, 0, 10, 0) # Add right margin for scrollbar space
         self.scroll_layout.setSpacing(BrandColors.CARD_SPACING)
@@ -523,6 +524,7 @@ class SettingsWindow(QMainWindow):
             self.scroll_layout.addWidget(card)
 
         self.scroll_area.setWidget(self.scroll_content)
+        self.scroll_area.setAlignment(Qt.AlignHCenter)
         right_layout.addWidget(self.scroll_area)
 
         # Bottom Buttons
