@@ -386,6 +386,15 @@ SCHEMA = [
                 tooltip="Include the thinking process in the response sent to the API."
             ),
             SettingField(
+                key="count_tokens",
+                label="Count Tokens",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip=(
+                    "Include a token count in the response metadata for each message."
+                ),
+            ),
+            SettingField(
                 key="search_forced_off_note",
                 label="Search (Note)",
                 type=SettingType.DESCRIPTION,

@@ -157,6 +157,9 @@ The stream ends with:
 data: [DONE]
 ```
 
+!!! note "Usage in streams"
+    For GLM Chat, if **GLM Behavior -> Count Tokens** is enabled, IntenseRP emits one extra final chunk with `usage` (and `choices: []`) right before `data: [DONE]`.
+
 ### Disconnect behavior
 
 If a streaming client disconnects, IntenseRP will:
@@ -172,7 +175,7 @@ If a streaming client disconnects, IntenseRP will:
 When you set `stream: false`, the server still generates via streaming internally, but it accumulates all `delta.content` pieces into one final response:
 
 - `choices[0].message.content` is the concatenated text
-- `usage` is currently returned as zeros
+- `usage` GLM Chat can populate it when **GLM Behavior -> Count Tokens** is enabled
 
 !!! note "Compatibility fields"
     `temperature` and `top_p` are accepted for OpenAI compatibility, but current provider drivers do not apply them yet.

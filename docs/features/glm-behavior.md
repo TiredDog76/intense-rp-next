@@ -78,6 +78,17 @@ GLM streams internal tool/search payloads into the same response stream (wrapped
 
 ---
 
+## :material-calculator: Count Tokens
+
+GLM's backend reports token usage near the end of a response stream. When enabled, IntenseRP captures these values and returns them in the OpenAI-style `usage` fields (`prompt_tokens`, `completion_tokens`, `total_tokens`). This is enabled by default.
+
+:material-arrow-right: **Settings** -> **GLM Behavior** -> **Count Tokens**
+
+!!! note "Caching"
+    Sometimes GLM reports cached prompt tokens as `usage.prompt_tokens_details.cached_tokens`.
+
+---
+
 ## :material-file-upload: File Upload Mode
 
 Instead of typing your message into GLM's chat box, IntenseRP can upload it as a text file attachment. This is useful for very long prompts that might hit input limits.
@@ -176,6 +187,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **Model** | Selects GLM's real model picker (UI) | GLM-5 |
 | **Enable Deep Think** | Toggles GLM reasoning mode | Off |
 | **Send Deep Think** | Includes thinking in response | Off |
+| **Count Tokens** | Returns token usage in API responses | On |
 | **Enable Search** | Enables GLM search | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |

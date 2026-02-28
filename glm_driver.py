@@ -1614,6 +1614,56 @@ class GLMDriver(BaseDriver):
             answer_emitted = False
             glm_block_active = False
             emitted_openai_chunk = False
+            openai_usage: dict[str, Any] | None = None
+            openai_usage_emitted = False
+            openai_finish_emitted = False
+
+            try:
+                count_tokens_setting = self.config_manager.get_setting("glm_behavior", "count_tokens")
+            except Exception:
+                count_tokens_setting = None
+            # Default to enabled, even if the setting isn't present (older configs)
+            count_tokens_enabled = True if count_tokens_setting is None else bool(count_tokens_setting)
+
+            def _normalize_openai_usage(raw: Any) -> dict[str, Any] | None:
+                if not isinstance(raw, dict):
+                    return None
+
+                def _to_int(value: Any) -> int | None:
+                    try:
+                        return int(value)
+                    except Exception:
+                        return None
+
+                prompt_tokens = _to_int(raw.get("prompt_tokens"))
+                completion_tokens = _to_int(raw.get("completion_tokens"))
+                total_tokens = _to_int(raw.get("total_tokens"))
+
+                if prompt_tokens is None and completion_tokens is None and total_tokens is None:
+                    return None
+
+                prompt_tokens = 0 if prompt_tokens is None else max(prompt_tokens, 0)
+                completion_tokens = 0 if completion_tokens is None else max(completion_tokens, 0)
+                if total_tokens is None:
+                    total_tokens = prompt_tokens + completion_tokens
+                else:
+                    total_tokens = max(total_tokens, 0)
+
+                usage: dict[str, Any] = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                }
+
+                prompt_details = raw.get("prompt_tokens_details")
+                if isinstance(prompt_details, dict):
+                    usage["prompt_tokens_details"] = prompt_details
+
+                completion_details = raw.get("completion_tokens_details")
+                if isinstance(completion_details, dict):
+                    usage["completion_tokens_details"] = completion_details
+
+                return usage
 
             def enqueue_openai_delta(content: str, finish_reason: str | None = None) -> None:
                 nonlocal emitted_openai_chunk
@@ -1636,8 +1686,26 @@ class GLMDriver(BaseDriver):
                 response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
                 emitted_openai_chunk = True
 
+            def enqueue_openai_usage(usage: dict[str, Any]) -> None:
+                nonlocal emitted_openai_chunk, openai_usage_emitted
+                if openai_usage_emitted:
+                    return
+
+                model_name = self.current_model or "glm-auto"
+                openai_chunk = {
+                    "id": "chatcmpl-custom",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name,
+                    "choices": [],
+                    "usage": usage,
+                }
+                response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
+                emitted_openai_chunk = True
+                openai_usage_emitted = True
+
             def process_sse_line(line: str) -> None:
-                nonlocal thinking_emitted, answer_emitted, glm_block_active
+                nonlocal thinking_emitted, answer_emitted, glm_block_active, openai_usage, openai_finish_emitted
                 line = line.strip()
                 if not line.startswith("data:"):
                     return
@@ -1665,11 +1733,18 @@ class GLMDriver(BaseDriver):
 
                 phase = str(data.get("phase") or "").strip().lower()
 
+                if count_tokens_enabled:
+                    normalized_usage = _normalize_openai_usage(data.get("usage"))
+                    if normalized_usage:
+                        openai_usage = normalized_usage
+
                 if phase == "done" and bool(data.get("done")):
-                    if self.thinking_active and self.current_send_deepthink:
-                        enqueue_openai_delta("</think>")
-                        self.thinking_active = False
-                    enqueue_openai_delta("", finish_reason="stop")
+                    if not openai_finish_emitted:
+                        if self.thinking_active and self.current_send_deepthink:
+                            enqueue_openai_delta("</think>")
+                            self.thinking_active = False
+                        enqueue_openai_delta("", finish_reason="stop")
+                        openai_finish_emitted = True
                     return
 
                 delta_content = data.get("delta_content")
@@ -1812,6 +1887,15 @@ class GLMDriver(BaseDriver):
                                 process_sse_line(tail.decode("utf-8", errors="ignore"))
                             text_buffer.clear()
                             text_buffer_pos = 0
+
+                            if (
+                                (not aborted)
+                                and (not self.abort_requested)
+                                and count_tokens_enabled
+                                and (openai_usage is not None)
+                                and (not openai_usage_emitted)
+                            ):
+                                enqueue_openai_usage(openai_usage)
                     except httpx.ReadError as e:
                         if not aborted and not self.abort_requested:
                             Logger.error(f"Read error during GLM intercepted request: {e}")

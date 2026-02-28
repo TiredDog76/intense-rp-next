@@ -1,0 +1,10 @@
+
+data: {"type":"chat:completion","data":{"delta_content":" you today?\"","phase":"thinking"}}
+
+data: {"type":"chat:completion","data":{"delta_content":"Hello! How can I","phase":"answer"}}
+
+data: {"type":"chat:completion","data":{"phase":"other","usage":{"prompt_tokens":7,"completion_tokens":103,"total_tokens":110,"prompt_tokens_details":{}}}}
+
+data: {"type":"chat:completion","data":{"delta_content":" help you today?","phase":"answer"}}
+
+data: {"type":"chat:completion","data":{"phase":"done","done":true}}

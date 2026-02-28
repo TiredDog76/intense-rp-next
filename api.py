@@ -324,6 +324,7 @@ class API:
                 content_parts: list[str] = []
                 finish_reason = None
                 error_message: str | None = None
+                usage: dict | None = None
                 
                 while True:
                     chunk_str = await response_queue.get()
@@ -339,6 +340,9 @@ class API:
                         if not error_message:
                             error_message = "request failed"
                         break
+
+                    if isinstance(parsed.get("usage"), dict):
+                        usage = parsed.get("usage")
 
                     choices = parsed.get("choices")
                     if isinstance(choices, list) and choices:
@@ -368,6 +372,28 @@ class API:
                     else:
                         raise HTTPException(status_code=500, detail=error_message)
 
+                usage_obj: dict[str, Any]
+                if isinstance(usage, dict):
+                    usage_obj = dict(usage)
+                    try:
+                        usage_obj["prompt_tokens"] = int(usage_obj.get("prompt_tokens") or 0)
+                    except Exception:
+                        usage_obj["prompt_tokens"] = 0
+                    try:
+                        usage_obj["completion_tokens"] = int(usage_obj.get("completion_tokens") or 0)
+                    except Exception:
+                        usage_obj["completion_tokens"] = 0
+                    try:
+                        usage_obj["total_tokens"] = int(usage_obj.get("total_tokens") or 0)
+                    except Exception:
+                        usage_obj["total_tokens"] = usage_obj["prompt_tokens"] + usage_obj["completion_tokens"]
+                else:
+                    usage_obj = {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                    }
+
                 return {
                     "id": "chatcmpl-custom",
                     "object": "chat.completion",
@@ -383,11 +409,7 @@ class API:
                             "finish_reason": finish_reason or "stop"
                         }
                     ],
-                    "usage": {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "total_tokens": 0
-                    }
+                    "usage": usage_obj,
                 }
 
     async def stream_generator(self, response_queue: asyncio.Queue, abort_event: asyncio.Event, raw_request: Request):
