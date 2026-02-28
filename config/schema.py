@@ -857,6 +857,16 @@ SCHEMA = [
                 ),
             ),
             SettingField(
+                key="paged_settings_view",
+                label="Paged Settings View",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Show only the selected Settings category in the main pane. "
+                    "Scrolling will not change the selected category; use the sidebar to switch categories."
+                ),
+            ),
+            SettingField(
                 key="hotswap_experience",
                 label="Hotswap Experience",
                 type=SettingType.DROPDOWN,

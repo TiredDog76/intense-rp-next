@@ -64,6 +64,7 @@ class SettingsWindow(QMainWindow):
         self.category_widgets_by_key = {}  # Map category key -> card widget
         self.category_items_by_key = {}  # Map category key -> QListWidgetItem
         self._persistent_profile_entries = {}
+        self._paged_settings_view_enabled = None
 
         self._init_ui()
         self._load_values()
@@ -136,6 +137,7 @@ class SettingsWindow(QMainWindow):
     def _on_category_selection_changed(self, current: QListWidgetItem, previous: QListWidgetItem):
         self._apply_category_item_icon(previous, active=False)
         self._apply_category_item_icon(current, active=True)
+        self._sync_paged_settings_view(scroll_to_top=self._should_use_paged_settings_view())
 
     def _create_field_widget(self, field, category_key):
         widget = None
@@ -144,6 +146,8 @@ class SettingsWindow(QMainWindow):
             widget.stateChanged.connect(self._on_setting_changed)
             if category_key == "application_settings" and field.key == "show_only_active_provider_behavior":
                 widget.stateChanged.connect(self._sync_behavior_category_visibility)
+            if category_key == "application_settings" and field.key == "paged_settings_view":
+                widget.stateChanged.connect(self._sync_paged_settings_view)
         elif field.type == SettingType.DIRECTORY:
             dialog_title = f"Select {field.label}" if field.label else "Select Directory"
             widget = DirectoryEntry(dialog_title=dialog_title)
@@ -647,6 +651,7 @@ class SettingsWindow(QMainWindow):
         self._sync_config_storage_from_active_dir()
         self._sync_behavior_category_visibility()
         self._refresh_persistent_profile_options()
+        self._sync_paged_settings_view()
             
         self.unsaved_changes = False
 
@@ -669,13 +674,19 @@ class SettingsWindow(QMainWindow):
         if not item or not card:
             return False
 
+        paged_view = self._should_use_paged_settings_view()
+
         if item.isHidden():
             item.setHidden(False)
         if not card.isVisible():
             card.setVisible(True)
 
-        self.is_auto_scrolling = True
         self.category_list.setCurrentItem(item)
+        if paged_view:
+            self._sync_paged_settings_view(scroll_to_top=True)
+            return True
+
+        self.is_auto_scrolling = True
         self.scroll_area.ensureWidgetVisible(card)
         QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
         return True
@@ -900,6 +911,7 @@ class SettingsWindow(QMainWindow):
             "key_lower": (field.key or "").lower(),
             "category_lower": (category.name or "").lower(),
             "category_key_lower": (category.key or "").lower(),
+            "category_key": category.key,
             "extra_lower": extra_labels.lower(),
             "widget": widget,
         })
@@ -945,13 +957,25 @@ class SettingsWindow(QMainWindow):
         if not query:
             return
 
+        paged_view = self._should_use_paged_settings_view()
         best_target = None
         best_score = 0.0
 
         for target in self.search_targets:
             widget = target.get("widget")
-            if not widget or not widget.isVisible():
+            if not widget:
                 continue
+
+            if paged_view:
+                category_key = target.get("category_key")
+                item = self.category_items_by_key.get(category_key) if category_key else None
+                if item and item.isHidden():
+                    continue
+                if widget.isHidden():
+                    continue
+            elif not widget.isVisible():
+                continue
+
             score = self._score_match(query, target)
             if score > best_score:
                 best_score = score
@@ -959,6 +983,10 @@ class SettingsWindow(QMainWindow):
 
         if best_target and best_score >= 0.25:
             widget = best_target["widget"]
+            if paged_view:
+                category_key = best_target.get("category_key")
+                if category_key:
+                    self.select_category_by_key(category_key)
             self.scroll_area.ensureWidgetVisible(widget)
             self._flash_widget(widget)
 
@@ -999,6 +1027,12 @@ class SettingsWindow(QMainWindow):
         self._flashed_original_effect = None
 
     def _on_category_clicked(self, item):
+        if self._should_use_paged_settings_view():
+            if item and item != self.category_list.currentItem():
+                self.category_list.setCurrentItem(item)
+            self._sync_paged_settings_view(scroll_to_top=True)
+            return
+
         self.is_auto_scrolling = True
         category_name = item.text()
         widget = self.category_widgets.get(category_name)
@@ -1007,10 +1041,23 @@ class SettingsWindow(QMainWindow):
 
             # Let's just use a timer to reset the flag to be safe against race conditions
             # I spent WAY too long trying to do this with signals alone
-            QTimer.singleShot(100, lambda: setattr(self, 'is_auto_scrolling', False))
-
+            QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+            # Random bullshit go!
+            # This line literally had just 1 change (double quotes instead of single) because
+            # I was trying to find some edge cases where we might need different timing
+            # but then figured out that this is pointless and just returned the same thing
+            # HOWEVER, the undo buffer was full and henceforth I just rewrote the line
+            # while I could copy it from the git diff
+            # stupid, right?
+            # but oh well, that's the story of this line of code
+            # why double quotes though? reflex, I guess? who knows
+            # anyway, let's call it "Harald's Great Scroll Flag Reset Adventure of 2026"
+            # with Harald being the name of the trigger flag
+            # also, if you read this, have a one (1) 🍪 cookie
     def _on_scroll(self, value):
         if self.is_auto_scrolling:
+            return
+        if self._should_use_paged_settings_view():
             return
 
         # Check if we are at the very bottom
@@ -1086,6 +1133,69 @@ class SettingsWindow(QMainWindow):
     def _is_behavior_category(self, category_key: str) -> bool:
         return bool(category_key) and str(category_key).endswith("_behavior")
 
+    def _get_selected_category_key(self) -> str | None:
+        item = self.category_list.currentItem() if hasattr(self, "category_list") else None
+        if not item:
+            return None
+        key = item.data(Qt.UserRole)
+        if key is None:
+            return None
+        return str(key)
+
+    def _should_use_paged_settings_view(self) -> bool:
+        widget = self.field_widgets.get("application_settings.paged_settings_view")
+        if isinstance(widget, Tumbler):
+            return widget.isChecked()
+        return bool(self.config_manager.get_setting("application_settings", "paged_settings_view"))
+
+    def _sync_paged_settings_view(self, *_args, scroll_to_top: bool = False) -> None:
+        enabled = self._should_use_paged_settings_view()
+        selected_key = self._get_selected_category_key()
+        if not selected_key:
+            return
+
+        prev_enabled = getattr(self, "_paged_settings_view_enabled", None)
+        initial_apply = prev_enabled is None
+        mode_changed = (not initial_apply) and (prev_enabled != enabled)
+        self._paged_settings_view_enabled = enabled
+
+        for key, card in (self.category_widgets_by_key or {}).items():
+            if not card:
+                continue
+
+            item = self.category_items_by_key.get(key)
+            base_visible = (item is None) or (not item.isHidden())
+
+            if enabled:
+                desired_visible = base_visible and (key == selected_key)
+            else:
+                desired_visible = base_visible
+
+            # was done for paged_settings_view
+            # because the show_only_active_provider_behavior setting
+            # showed the active provider behavior cat anyway
+            # even if it's not selected (overridden)
+            desired_hidden = not desired_visible
+            if card.isHidden() != desired_hidden:
+                card.setHidden(desired_hidden)
+
+        if enabled:
+            if scroll_to_top or mode_changed or (initial_apply and enabled):
+                self.is_auto_scrolling = True
+                try:
+                    self.scroll_area.verticalScrollBar().setValue(0)
+                finally:
+                    QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+        else:
+            if mode_changed:
+                card = self.category_widgets_by_key.get(selected_key)
+                if card:
+                    self.is_auto_scrolling = True
+                    try:
+                        self.scroll_area.ensureWidgetVisible(card)
+                    finally:
+                        QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+
     def _should_show_only_active_provider_behavior(self) -> bool:
         widget = self.field_widgets.get("application_settings.show_only_active_provider_behavior")
         if isinstance(widget, Tumbler):
@@ -1117,12 +1227,14 @@ class SettingsWindow(QMainWindow):
         if not self._should_show_only_active_provider_behavior():
             for key in behavior_keys:
                 self._set_category_visible(key, True)
+            self._sync_paged_settings_view()
             return
 
         active_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider())
         if not active_key:
             for key in behavior_keys:
                 self._set_category_visible(key, True)
+            self._sync_paged_settings_view()
             return
 
         for key in behavior_keys:
@@ -1136,6 +1248,7 @@ class SettingsWindow(QMainWindow):
                 preferred_card = self.category_widgets_by_key.get(active_key)
                 if preferred_card:
                     self.scroll_area.ensureWidgetVisible(preferred_card)
+                self._sync_paged_settings_view()
                 return
 
             for i in range(self.category_list.count()):
@@ -1145,7 +1258,10 @@ class SettingsWindow(QMainWindow):
                     card = self.category_widgets.get(item.text())
                     if card:
                         self.scroll_area.ensureWidgetVisible(card)
+                    self._sync_paged_settings_view()
                     return
+
+        self._sync_paged_settings_view()
 
     def _on_config_storage_location_changed(self, text: str):
         is_custom = text == "Custom"
