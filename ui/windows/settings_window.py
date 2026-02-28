@@ -17,6 +17,7 @@ from drivers.providers import DriverProvider
 from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, DirectoryEntry
 from ui.widgets.redirect_card import RedirectCard
+from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
 from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
@@ -349,7 +350,7 @@ class SettingsWindow(QMainWindow):
         right_layout.setContentsMargins(30, 30, 30, 30)
         
         # Scroll Area for Settings
-        self.scroll_area = QScrollArea()
+        self.scroll_area = SmoothScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         
