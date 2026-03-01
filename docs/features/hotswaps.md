@@ -15,8 +15,8 @@ Hotswaps let you switch between AI providers without opening the Settings window
 When you trigger a Hotswap, IntenseRP shows a small dialog with the two providers you're **not** currently using. Pick one, and IntenseRP will:
 
 1. Update your **Provider** setting to the new provider
-2. Automatically restart the browser (stop + start)
-3. Launch the new provider's web UI
+2. If services are running, automatically restart the browser (stop + start)
+3. If services are running, launch the new provider's web UI
 
 That's it. Your other settings (credentials, behavior toggles, etc.) are untouched.
 
@@ -49,6 +49,13 @@ Adds a small icon button to the **left of the Help button**. The button shows yo
 
 The button is only visible while services are running. Click it to open the same provider-selection dialog.
 
+### Persistent Discrete
+
+Uses the same small icon button as **Discrete**, but it stays visible even when services are stopped.
+
+- If services are running: behavior is identical to **Discrete** (it restarts to apply the new provider).
+- If services are stopped: it just switches your Provider setting (no restart, and it will not start anything).
+
 !!! note "Switching modes"
     Changing the Hotswap Experience setting takes effect immediately (you won't need to restart). If you switch from **Stop Menu** to **Discrete** (or vice versa) while services are running, the UI updates right away. Thanks to the magic of Qt6!
 
@@ -60,7 +67,9 @@ The button is only visible while services are running. Click it to open the same
     Not by itself. If you have **Persistent Sessions** enabled, each provider keeps its own browser profile, so switching providers is seamless. If you **don't** have Persistent Sessions, you'll need to log in to the new provider (same as a normal restart with a different provider selected).
 
 ??? question "Can I Hotswap while the browser is stopped?"
-    No. The Hotswap option only appears when services are running. If the browser is stopped, just change the Provider in Settings and click **Start**.
+    By default, no. The Hotswap option only appears when services are running.
+
+    If you set **Hotswap Experience** to **Persistent Discrete**, the Hotswap button stays visible while stopped and will switch your Provider setting without starting or restarting services.
 
 ??? question "What about ECE credentials?"
     Hotswap changes the provider but doesn't rotate ECE identities. If you want to switch ECE profiles, use the **ECE Switch** option in the chevron menu instead.
@@ -77,6 +86,7 @@ The button is only visible while services are running. Click it to open the same
 |---|---|---|
 | Stop Menu | Chevron dropdown (Stop button) | Services running |
 | Discrete | Small button left of Help | Services running |
+| Persistent Discrete | Small button left of Help | Always |
 
 ---
 

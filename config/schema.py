@@ -871,11 +871,12 @@ SCHEMA = [
                 label="Hotswap Experience",
                 type=SettingType.DROPDOWN,
                 default="Stop Menu",
-                options=["Stop Menu", "Discrete"],
+                options=["Stop Menu", "Discrete", "Persistent Discrete"],
                 tooltip=(
                     "How the Hotswap shortcut is presented. "
                     "Stop Menu adds it to the chevron dropdown on the Stop button. "
-                    "Discrete adds a small icon button next to Help."
+                    "Discrete adds a small icon button next to Help (only while running). "
+                    "Persistent Discrete keeps that button visible even when services are stopped."
                 ),
                 affects=["chevron_dropdown", "hotswap_button"],
             ),

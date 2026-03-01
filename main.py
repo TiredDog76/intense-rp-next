@@ -422,6 +422,7 @@ class MainWindow(QMainWindow):
 
         self._maybe_check_for_updates_on_startup()
         self._apply_queue_preview_setting(force=True)
+        self._sync_hotswap_button()
 
     def _cleanup_tray_icon(self) -> None:
         tray_icon = getattr(self, "_tray_icon", None)
@@ -1340,7 +1341,7 @@ class MainWindow(QMainWindow):
         """Show or hide the discrete hotswap button based on setting + running state."""
         mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
         running = self.start_button.text() == "Stop"
-        show = (mode == "Discrete") and running
+        show = (mode == "Persistent Discrete") or ((mode == "Discrete") and running)
 
         self.hotswap_button.setVisible(show)
         if show:
@@ -1367,7 +1368,11 @@ class MainWindow(QMainWindow):
         Logger.info(f"Hotswap: {current} -> {new_provider}")
         self.config_manager.set_setting("providers_credentials", "provider", new_provider)
         self.config_manager.save_settings()
-        asyncio.create_task(self._restart_services_impl())
+        running = self.start_button.text() == "Stop"
+        if running:
+            asyncio.create_task(self._restart_services_impl())
+        else:
+            self._sync_hotswap_button()
 
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")
