@@ -146,10 +146,7 @@ SCHEMA = [
                 label="Moonshot Email",
                 type=SettingType.STRING,
                 default="",
-                tooltip=(
-                    "Optional account identifier for Moonshot. "
-                    "Not used for Moonshot login automation (manual Google sign-in is required)."
-                ),
+                tooltip="Optional identifier. Not used for login (Moonshot requires manual Google sign-in).",
                 validator=validate_email,
                 required=False,
                 depends=(
@@ -163,10 +160,7 @@ SCHEMA = [
                 label="Moonshot Password",
                 type=SettingType.PASSWORD,
                 default="",
-                tooltip=(
-                    "Optional account secret/identifier for Moonshot. "
-                    "Not used for Moonshot login automation (manual Google sign-in is required)."
-                ),
+                tooltip="Optional secret. Not used for login (Moonshot requires manual Google sign-in).",
                 required=False,
                 depends=(
                     "providers_credentials.provider==Moonshot "
@@ -345,14 +339,14 @@ SCHEMA = [
                 label="Anti-Censorship",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="If enabled, suppresses the 'Sorry, that's beyond my current scope' message when content filtering is triggered."
+                tooltip="Suppress the refusal message when content filtering is triggered."
             ),
             SettingField(
                 key="clean_regeneration",
                 label="Clean Regeneration",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="If enabled, attempts to regenerate the last message instead of creating a new chat if the prompt is identical."
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical."
             ),
         ]
     ),
@@ -366,10 +360,7 @@ SCHEMA = [
                 type=SettingType.DROPDOWN,
                 default="GLM-5",
                 options=["GLM-5", "GLM-4.7", "GLM-4.6"],
-                tooltip=(
-                    "Select which GLM model to use in the GLM Chat web UI. "
-                    "This is separate from the API 'glm-*' model IDs (those are behavior presets)."
-                ),
+                tooltip="Select which GLM model to use in the web UI. Not related to the API model IDs.",
             ),
             SettingField(
                 key="enable_deepthink",
@@ -399,9 +390,8 @@ SCHEMA = [
                 label="Search (Note)",
                 type=SettingType.DESCRIPTION,
                 default=(
-                    "Note: GLM Chat Search streams internal tool/search payloads into the response stream."
-                    "IntenseRP does *not forward* these search results to the client for stability reasons."
-                    "Despite that, you might still get citations or references in the response."
+                    "Note: GLM Search results are not forwarded to the client for stability reasons. "
+                    "You may still see citations in the response."
                 ),
                 tooltip=None,
             ),
@@ -435,7 +425,7 @@ SCHEMA = [
                 label="Text File Filler",
                 type=SettingType.TEXTAREA,
                 default=".",
-                tooltip="Text pasted into the textbox alongside the uploaded file. GLM refuses to send a file with no text in the message.",
+                tooltip="Text sent alongside the uploaded file. Required because GLM won't send a file-only message.",
                 depends="glm_behavior.send_as_text_file"
             ),
             SettingField(
@@ -443,7 +433,7 @@ SCHEMA = [
                 label="Clean Regeneration",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="If enabled, attempts to regenerate the last message instead of creating a new chat if the prompt is identical."
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical."
             ),
             SettingField(
                 key="quirks_divider",
@@ -484,10 +474,7 @@ SCHEMA = [
                 label="Refresh After Generation",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip=(
-                    "After a response finishes streaming, wait 2 seconds and refresh the GLM Chat page. "
-                    "This can sometimes restore GLM's UI state and improve Clean Regeneration stability."
-                ),
+                tooltip="Refresh the page after a response finishes. Can help restore UI state and improve Clean Regeneration.",
             ),
         ]
     ),
@@ -546,7 +533,7 @@ SCHEMA = [
                 label="Text File Filler",
                 type=SettingType.TEXTAREA,
                 default=".",
-                tooltip="Text pasted into the textbox alongside the uploaded file. Kimi refuses to send a file with no text in the message.",
+                tooltip="Text sent alongside the uploaded file. Required because Kimi won't send a file-only message.",
                 depends="moonshot_behavior.send_as_text_file",
             ),
             SettingField(
@@ -561,7 +548,7 @@ SCHEMA = [
                 label="Clean Regeneration",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="If enabled, attempts to regenerate the last message instead of creating a new chat if the prompt is identical.",
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
             ),
         ],
     ),
@@ -693,10 +680,7 @@ SCHEMA = [
                 label="Custom Config Directory",
                 type=SettingType.DIRECTORY,
                 default="",
-                tooltip=(
-                    "Used when Config Storage Location is Custom. "
-                    "Absolute paths are recommended; relative paths are resolved from the app folder."
-                ),
+                tooltip="Absolute paths recommended. Relative paths resolve from the app folder.",
                 validator=validate_directory_path,
             ),
             SettingField(
@@ -769,10 +753,7 @@ SCHEMA = [
                 label="Select Least Used",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip=(
-                    "Prefer the credential pair with the oldest last-use date (unused pairs are preferred). "
-                    "When disabled, a random pair is selected."
-                ),
+                tooltip="Prefer the least recently used credential pair. Otherwise, a random pair is selected.",
                 depends="experimental.ece_enabled",
             ),
             SettingField(
@@ -780,10 +761,7 @@ SCHEMA = [
                 label="Re-auth on no content",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip=(
-                    "If a provider returns no meaningful output (or a rate-limit-like failure), "
-                    "restart the browser and rotate to a different ECE profile when possible."
-                ),
+                tooltip="Restart and rotate to a different ECE profile on empty or rate-limited responses.",
                 depends="experimental.ece_enabled",
             ),
             SettingField(
@@ -791,10 +769,7 @@ SCHEMA = [
                 label="Better Model Names",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip=(
-                    "Expose friendlier OpenAI-style model IDs (based on the real base model names). "
-                    "This changes what you see in GET /v1/models; legacy IDs remain accepted."
-                ),
+                tooltip="Use friendlier model IDs in /v1/models. Legacy IDs are still accepted.",
             ),
             SettingField(
                 key="classic_title",
@@ -830,7 +805,7 @@ SCHEMA = [
                 type=SettingType.BUTTON,
                 default="Check",
                 action="check_for_updates",
-                tooltip="Compare local version.json with the latest version on GitHub (version, aua, severity).",
+                tooltip="Check for available updates on GitHub.",
             ),
             SettingField(
                 key="check_for_updates_on_startup",
@@ -851,20 +826,14 @@ SCHEMA = [
                 label="Show Only Active Provider Behavior",
                 type=SettingType.BOOLEAN,
                 default=True,
-                tooltip=(
-                    "If enabled, only the Behavior category for the selected Provider is shown. "
-                    "If disabled, all provider Behavior categories are shown."
-                ),
+                tooltip="Only show the Behavior category for the currently selected Provider.",
             ),
             SettingField(
                 key="paged_settings_view",
                 label="Paged Settings View",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip=(
-                    "Show only the selected Settings category in the main pane. "
-                    "Scrolling will not change the selected category; use the sidebar to switch categories."
-                ),
+                tooltip="Show one category at a time. Use the sidebar to switch between them.",
             ),
             SettingField(
                 key="hotswap_experience",
@@ -873,10 +842,10 @@ SCHEMA = [
                 default="Stop Menu",
                 options=["Stop Menu", "Discrete", "Persistent Discrete"],
                 tooltip=(
-                    "How the Hotswap shortcut is presented. "
-                    "Stop Menu adds it to the chevron dropdown on the Stop button. "
-                    "Discrete adds a small icon button next to Help (only while running). "
-                    "Persistent Discrete keeps that button visible even when services are stopped."
+                    "How the Hotswap shortcut appears. "
+                    "Stop Menu: in the Stop button dropdown. "
+                    "Discrete: icon next to Help (while running). "
+                    "Persistent Discrete: always visible."
                 ),
                 affects=["chevron_dropdown", "hotswap_button"],
             ),
