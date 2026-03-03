@@ -299,6 +299,7 @@ class CredentialManagerDialog(QDialog):
         self.sidebar = QListWidget()
         self.sidebar.setFixedWidth(220)
         self.sidebar.setSpacing(4)
+        self.sidebar.setIconSize(QSize(18, 18))
         self.sidebar.setStyleSheet(
             f"""
             QListWidget {{
@@ -354,10 +355,26 @@ class CredentialManagerDialog(QDialog):
             _ProviderEntry(label="Moonshot", provider=DriverProvider.MOONSHOT),
         ]
 
+        provider_icon_map: Dict[DriverProvider, str] = {
+            DriverProvider.DEEPSEEK: "providers/deepseek.svg",
+            DriverProvider.GLM_CHAT: "providers/zai.svg",
+            DriverProvider.MOONSHOT: "providers/moonshot.svg",
+        }
+
+        initial_provider = DriverProvider.from_setting(
+            self._config_manager.get_setting("providers_credentials", "provider")
+        )
+        initial_row = 0
+
         self._page_by_provider_key: Dict[str, _ProviderPage] = {}
-        for entry in self._provider_entries:
+        for idx, entry in enumerate(self._provider_entries):
             item = QListWidgetItem(entry.label)
             item.setData(Qt.UserRole, entry.provider.value)
+
+            icon_file = provider_icon_map.get(entry.provider)
+            if icon_file:
+                item.setData(Qt.UserRole + 1, icon_file)
+                item.setIcon(self._get_sidebar_icon(icon_file, BrandColors.TEXT_SECONDARY, size=18))
             self.sidebar.addItem(item)
 
             page = _ProviderPage(entry.label)
@@ -366,6 +383,7 @@ class CredentialManagerDialog(QDialog):
             self._page_by_provider_key[entry.provider.key] = page
 
         self.sidebar.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.sidebar.currentItemChanged.connect(self._on_sidebar_selection_changed)
 
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
@@ -427,7 +445,39 @@ class CredentialManagerDialog(QDialog):
             Logger.debug(f"Legacy credential import: skipped due to error: {exc}")
 
         self._load()
-        self.sidebar.setCurrentRow(0)
+        for idx, entry in enumerate(self._provider_entries):
+            if entry.provider == initial_provider:
+                initial_row = idx
+                break
+        self.sidebar.setCurrentRow(initial_row)
+        self._apply_sidebar_item_icon(self.sidebar.currentItem(), active=True)
+
+    def _get_sidebar_icon(self, icon_file: str, color: str, size: int = 18):
+        use_sidebar_subdir = ("/" not in icon_file) and ("\\" not in icon_file)
+        return IconUtils.get_icon(
+            icon_file,
+            color=color,
+            size=size,
+            widget=self.sidebar,
+            subdir="sidebar" if use_sidebar_subdir else None,
+        )
+
+    def _apply_sidebar_item_icon(self, item: Optional[QListWidgetItem], *, active: bool) -> None:
+        if not item:
+            return
+
+        icon_file = item.data(Qt.UserRole + 1)
+        if not icon_file:
+            return
+
+        color = BrandColors.TEXT_PRIMARY if active else BrandColors.TEXT_SECONDARY
+        item.setIcon(self._get_sidebar_icon(icon_file, color, size=18))
+
+    def _on_sidebar_selection_changed(
+        self, current: Optional[QListWidgetItem], previous: Optional[QListWidgetItem]
+    ) -> None:
+        self._apply_sidebar_item_icon(previous, active=False)
+        self._apply_sidebar_item_icon(current, active=True)
 
     def _snapshot_from_pages(self) -> Dict[str, List[Tuple[str, str]]]:
         snap: Dict[str, List[Tuple[str, str]]] = {}
