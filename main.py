@@ -21,6 +21,7 @@ from config.manager import ConfigManager
 from ui.windows.settings_window import SettingsWindow
 from ui.windows.console_window import ConsoleWindow
 from ui.windows.help_window import HelpWindow
+from ui.windows.welcome_window import WelcomeWindow
 from ui.widgets.mini_console import MiniConsole
 from ui.widgets.request_queue_preview import RequestQueuePreview
 from ui.widgets.split_button import SplitButton
@@ -379,6 +380,7 @@ class MainWindow(QMainWindow):
         self.settings_window = None
         self.console_window = None
         self.help_window = None
+        self._welcome_window = None
         self._main_logging_enabled = True
         self._console_log_level = LogLevel.DEBUG
         self._mini_console_log_level = LogLevel.SUCCESS
@@ -423,6 +425,7 @@ class MainWindow(QMainWindow):
         self._maybe_check_for_updates_on_startup()
         self._apply_queue_preview_setting(force=True)
         self._sync_hotswap_button()
+        self._maybe_show_welcome_window()
 
     def _cleanup_tray_icon(self) -> None:
         tray_icon = getattr(self, "_tray_icon", None)
@@ -823,6 +826,33 @@ class MainWindow(QMainWindow):
             Logger.info(f"Up to date (v{result.local_version}).")
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _maybe_show_welcome_window(self) -> None:
+        try:
+            is_first_run = bool(getattr(self.config_manager, "is_first_run", False))
+        except Exception:
+            is_first_run = False
+
+        if not is_first_run:
+            return
+
+        def show() -> None:
+            existing = getattr(self, "_welcome_window", None)
+            if existing is not None and existing.isVisible():
+                return
+
+            welcome = WelcomeWindow(self.config_manager, None)
+            welcome.settings_applied.connect(lambda: self.on_settings_saved({"hotswap_button"}))
+            welcome.show()
+            try:
+                welcome.raise_()
+                welcome.activateWindow()
+            except Exception:
+                pass
+            self._welcome_window = welcome
+
+        # Defer until the UI loop is running
+        QTimer.singleShot(0, show)
 
     def _setup_logging(self):
         """Setup logging (console and file) based on settings."""

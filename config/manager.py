@@ -14,6 +14,8 @@ class ConfigManager:
         self.config_dir = self.config_dir.resolve()
         self.settings_file = self.config_dir / "settings.json.enc"
         self.key_file = self.config_dir / "settings.key"
+        self.settings_file_existed_on_startup = self.settings_file.exists()
+        self.is_first_run = not self.settings_file_existed_on_startup
         self.app_flags = AppFlagsStore(self.config_dir)
         self.settings: Dict[str, Any] = {}
         
