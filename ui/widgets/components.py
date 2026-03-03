@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QFrame, QPushButton, QSizePolicy, QFileDialog, QStyle, QStyleOptionComboBox
-from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent
+from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent, QPropertyAnimation, QEasingCurve, QAbstractAnimation
 import os
 from pathlib import Path
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon
@@ -256,7 +256,7 @@ class Tumbler(QCheckBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.PointingHandCursor)
-        self._handle_position = 0.0
+        self._handle_position = 1.0 if self.isChecked() else 0.0
         
         # Define dimensions
         self._width = 40
@@ -264,9 +264,43 @@ class Tumbler(QCheckBox):
         self._handle_radius = 8
         self._margin = 2
         
-        # We don't do animation yet, just instant toggle
+        self._handle_anim = QPropertyAnimation(self, b"handle_position")
+        self._handle_anim.setDuration(160)
+        self._handle_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.toggled.connect(self._animate_handle_position)
 
         self.setStyleSheet(self._get_stylesheet())
+
+    def _get_handle_position(self) -> float:
+        return float(self._handle_position)
+
+    def _set_handle_position(self, value: float):
+        value = max(0.0, min(float(value), 1.0))
+        if value == self._handle_position:
+            return
+        self._handle_position = value
+        self.update()
+
+    handle_position = Property(float, _get_handle_position, _set_handle_position)
+
+    @staticmethod
+    def _blend_colors(a: QColor, b: QColor, t: float) -> QColor:
+        t = max(0.0, min(float(t), 1.0))
+        inv = 1.0 - t
+        return QColor(
+            int(round(a.red() * inv + b.red() * t)),
+            int(round(a.green() * inv + b.green() * t)),
+            int(round(a.blue() * inv + b.blue() * t)),
+            int(round(a.alpha() * inv + b.alpha() * t)),
+        )
+
+    def _animate_handle_position(self, checked: bool):
+        target = 1.0 if checked else 0.0
+        if self._handle_anim.state() == QAbstractAnimation.Running:
+            self._handle_anim.stop()
+        self._handle_anim.setStartValue(self._handle_position)
+        self._handle_anim.setEndValue(target)
+        self._handle_anim.start()
 
     def set_dependency_mode(self, mode: str | None):
         """
@@ -332,6 +366,10 @@ class Tumbler(QCheckBox):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+
+        target_pos = 1.0 if self.isChecked() else 0.0
+        if self._handle_anim.state() != QAbstractAnimation.Running:
+            self._handle_position = target_pos
         
         # Draw text
         if self.text():
@@ -347,10 +385,10 @@ class Tumbler(QCheckBox):
             bg_color = QColor(BrandColors.WARNING)
         elif dep_mode == "ignored":
             bg_color = QColor(BrandColors.TUMBLER_BG)
-        elif self.isChecked():
-            bg_color = QColor(BrandColors.ACCENT)
         else:
-            bg_color = QColor(BrandColors.TUMBLER_BG)
+            bg_off = QColor(BrandColors.TUMBLER_BG)
+            bg_on = QColor(BrandColors.ACCENT)
+            bg_color = self._blend_colors(bg_off, bg_on, self._handle_position)
             
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.NoPen)
@@ -360,15 +398,14 @@ class Tumbler(QCheckBox):
         handle_color = QColor(BrandColors.TUMBLER_HANDLE)
         painter.setBrush(QBrush(handle_color))
         
-        if self.isChecked():
-            handle_x = self._width - self._handle_radius * 2 - self._margin
-        else:
-            handle_x = self._margin
+        handle_d = self._handle_radius * 2
+        handle_min_x = self._margin
+        handle_max_x = self._width - handle_d - self._margin
+        handle_x = handle_min_x + (handle_max_x - handle_min_x) * float(self._handle_position)
             
         handle_y = self._margin
-        handle_d = self._handle_radius * 2
         
-        painter.drawEllipse(handle_x, handle_y, handle_d, handle_d)
+        painter.drawEllipse(int(round(handle_x)), handle_y, handle_d, handle_d)
         painter.end()
 
 class StyledLineEdit(QLineEdit):

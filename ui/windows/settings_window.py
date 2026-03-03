@@ -1,10 +1,10 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
     QScrollArea, QLabel, QPushButton, QFrame, QMessageBox, QDialog, QListWidgetItem,
-    QLineEdit, QTextEdit, QComboBox, QGraphicsColorizeEffect
+    QLineEdit, QTextEdit, QComboBox
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QSize
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtCore import Qt, Signal, QTimer, QSize, Property, QPoint, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QBrush
 from difflib import SequenceMatcher
 import threading
 import os
@@ -24,6 +24,130 @@ from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvaila
 from utils.logger import Logger
 from utils.api_key_generator import generate_api_key
 from utils.update_checker import check_for_updates, read_local_version
+
+class _SearchHighlightOverlay(QWidget):
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self._target_widget = None
+        self._pulse = 0.0
+        self._padding = 4
+        self._radius = 8
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setStyleSheet("background-color: transparent;")
+        self.hide()
+
+        self._anim_group = QSequentialAnimationGroup(self)
+
+        anim_in = QPropertyAnimation(self, b"pulse")
+        anim_in.setDuration(140)
+        anim_in.setEasingCurve(QEasingCurve.OutCubic)
+        anim_in.setStartValue(0.0)
+        anim_in.setEndValue(1.0)
+
+        anim_out = QPropertyAnimation(self, b"pulse")
+        anim_out.setDuration(420)
+        anim_out.setEasingCurve(QEasingCurve.OutCubic)
+        anim_out.setStartValue(1.0)
+        anim_out.setEndValue(0.0)
+
+        self._anim_group.addAnimation(anim_in)
+        self._anim_group.addAnimation(anim_out)
+        self._anim_group.finished.connect(self._on_anim_finished)
+
+    def _get_pulse(self) -> float:
+        return float(self._pulse)
+
+    def _set_pulse(self, value: float):
+        value = max(0.0, min(float(value), 1.0))
+        if value == self._pulse:
+            return
+        self._pulse = value
+        self.update()
+
+    pulse = Property(float, _get_pulse, _set_pulse)
+
+    def _on_anim_finished(self) -> None:
+        self.hide()
+
+    def clear(self) -> None:
+        self._anim_group.stop()
+        self._target_widget = None
+        self.hide()
+        self.update()
+
+    def pulse_widget(self, widget: QWidget) -> None:
+        if widget is None:
+            return
+
+        self._target_widget = widget
+        parent = self.parent()
+        if isinstance(parent, QWidget):
+            self.setGeometry(parent.rect())
+        self.show()
+        self.raise_()
+
+        self._anim_group.stop()
+        self._pulse = 0.0
+        self.update()
+        self._anim_group.start()
+
+    def update_target_geometry(self, *_args) -> None:
+        if not self.isVisible():
+            return
+        self.update()
+
+    def eventFilter(self, obj, event):
+        if obj is self.parent() and event.type() == QEvent.Resize:
+            parent = self.parent()
+            if isinstance(parent, QWidget):
+                self.setGeometry(parent.rect())
+        return super().eventFilter(obj, event)
+
+    def paintEvent(self, event):
+        if not self._target_widget or self._pulse <= 0.001:
+            return
+
+        if not self._target_widget.isVisible():
+            return
+
+        top_left = self.mapFromGlobal(self._target_widget.mapToGlobal(QPoint(0, 0)))
+        rect = self._target_widget.rect().translated(top_left).adjusted(
+            -self._padding, -self._padding, self._padding, self._padding
+        )
+        if not rect.intersects(self.rect()):
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        accent = QColor(BrandColors.ACCENT)
+        pulse = float(self._pulse)
+
+        fill = QColor(accent)
+        fill.setAlpha(int(round(26 * pulse)))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(fill))
+        painter.drawRoundedRect(rect, self._radius, self._radius)
+
+        outer = QColor(accent)
+        outer.setAlpha(int(round(80 * pulse)))
+        outer_pen = QPen(outer, 6)
+        outer_pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(outer_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect, self._radius, self._radius)
+
+        inner = QColor(accent)
+        inner.setAlpha(int(round(180 * pulse)))
+        inner_pen = QPen(inner, 2)
+        inner_pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(inner_pen)
+        painter.drawRoundedRect(rect, self._radius, self._radius)
+
+        painter.end()
 
 class SettingsWindow(QMainWindow):
     settings_saved = Signal(set)
@@ -361,6 +485,9 @@ class SettingsWindow(QMainWindow):
         # Connect scroll signal
         self.scroll_area.verticalScrollBar().valueChanged.connect(self._on_scroll)
         self.is_auto_scrolling = False
+        self._auto_scroll_reset_timer = QTimer()
+        self._auto_scroll_reset_timer.setSingleShot(True)
+        self._auto_scroll_reset_timer.timeout.connect(self._end_auto_scroll)
         
         # Custom Scrollbar Styling
         self.scroll_area.setStyleSheet(f"""
@@ -603,14 +730,35 @@ class SettingsWindow(QMainWindow):
         self.search_timer.setInterval(300)
         self.search_timer.timeout.connect(self._perform_search)
 
-        # Flash state for search highlight
-        self._flashed_widget = None
-        self._flashed_original_style = ""
-        self._flashed_original_effect = None
-        self._flash_reset_timer = QTimer()
-        self._flash_reset_timer.setSingleShot(True)
-        self._flash_reset_timer.setInterval(1000)
-        self._flash_reset_timer.timeout.connect(self._clear_flash)
+        self._highlight_overlay = _SearchHighlightOverlay(self.scroll_area.viewport())
+        self._highlight_overlay.setGeometry(self.scroll_area.viewport().rect())
+        self._highlight_overlay.raise_()
+        self.scroll_area.viewport().installEventFilter(self._highlight_overlay)
+        self.scroll_area.verticalScrollBar().valueChanged.connect(self._highlight_overlay.update_target_geometry)
+
+    def _begin_auto_scroll(self, duration_ms: int) -> None:
+        self.is_auto_scrolling = True
+        if hasattr(self, "_auto_scroll_reset_timer") and isinstance(self._auto_scroll_reset_timer, QTimer):
+            self._auto_scroll_reset_timer.start(max(0, int(duration_ms)) + 60)
+
+    def _end_auto_scroll(self) -> None:
+        self.is_auto_scrolling = False
+        if hasattr(self, "_auto_scroll_reset_timer") and isinstance(self._auto_scroll_reset_timer, QTimer):
+            self._auto_scroll_reset_timer.stop()
+
+    def _smooth_scroll_to(self, value: int, *, duration_ms: int = 280) -> bool:
+        self._begin_auto_scroll(duration_ms)
+        started = self.scroll_area.smooth_scroll_to(int(value), duration_ms=duration_ms)
+        if not started:
+            self._end_auto_scroll()
+        return started
+
+    def _smooth_ensure_visible(self, widget: QWidget, *, y_margin: int = 50, duration_ms: int = 280) -> bool:
+        self._begin_auto_scroll(duration_ms)
+        started = self.scroll_area.smooth_ensure_widget_visible(widget, y_margin=y_margin, duration_ms=duration_ms)
+        if not started:
+            self._end_auto_scroll()
+        return started
 
     def _load_values(self):
         override_cache = getattr(self, "_dep_override_cache", None)
@@ -686,9 +834,7 @@ class SettingsWindow(QMainWindow):
             self._sync_paged_settings_view(scroll_to_top=True)
             return True
 
-        self.is_auto_scrolling = True
-        self.scroll_area.ensureWidgetVisible(card)
-        QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+        self._smooth_ensure_visible(card, y_margin=40, duration_ms=280)
         return True
 
     def focus_setting(self, category_key: str, field_key: str) -> bool:
@@ -703,8 +849,12 @@ class SettingsWindow(QMainWindow):
             return False
 
         self.select_category_by_key(category_key)
-        self.scroll_area.ensureWidgetVisible(target)
-        self._flash_widget(target)
+        duration_ms = 280
+        started = self._smooth_ensure_visible(target, y_margin=80, duration_ms=duration_ms)
+        if started:
+            QTimer.singleShot(duration_ms, lambda w=target: self._flash_widget(w))
+        else:
+            self._flash_widget(target)
         return True
 
     def _on_setting_changed(self):
@@ -987,44 +1137,22 @@ class SettingsWindow(QMainWindow):
                 category_key = best_target.get("category_key")
                 if category_key:
                     self.select_category_by_key(category_key)
-            self.scroll_area.ensureWidgetVisible(widget)
-            self._flash_widget(widget)
+            duration_ms = 280
+            started = self._smooth_ensure_visible(widget, y_margin=80, duration_ms=duration_ms)
+            if started:
+                QTimer.singleShot(duration_ms, lambda w=widget: self._flash_widget(w))
+            else:
+                self._flash_widget(widget)
 
     def _flash_widget(self, widget):
-        if self._flashed_widget is widget:
-            # Already flashed; just restart the timer.
-            self._flash_reset_timer.start()
-            return
-
-        if self._flashed_widget:
-            self._flashed_widget.setStyleSheet(self._flashed_original_style)
-            self._flashed_widget.setGraphicsEffect(self._flashed_original_effect)
-
-        self._flashed_widget = widget
-        self._flashed_original_style = widget.styleSheet()
-        self._flashed_original_effect = widget.graphicsEffect()
-
-        tint_bg = "rgba(88, 149, 252, 0.10)"
-        widget.setStyleSheet(
-            self._flashed_original_style +
-            f"\nbackground-color: {tint_bg};"
-            f"\nborder: 2px solid {BrandColors.ACCENT};"
-            "\nborder-radius: 6px;"
-        )
-
-        effect = QGraphicsColorizeEffect()
-        effect.setColor(QColor(BrandColors.ACCENT))
-        effect.setStrength(0.15)
-        widget.setGraphicsEffect(effect)
-        self._flash_reset_timer.start()
+        overlay = getattr(self, "_highlight_overlay", None)
+        if overlay and isinstance(overlay, _SearchHighlightOverlay):
+            overlay.pulse_widget(widget)
 
     def _clear_flash(self):
-        if self._flashed_widget:
-            self._flashed_widget.setStyleSheet(self._flashed_original_style)
-            self._flashed_widget.setGraphicsEffect(self._flashed_original_effect)
-        self._flashed_widget = None
-        self._flashed_original_style = ""
-        self._flashed_original_effect = None
+        overlay = getattr(self, "_highlight_overlay", None)
+        if overlay and isinstance(overlay, _SearchHighlightOverlay):
+            overlay.clear()
 
     def _on_category_clicked(self, item):
         if self._should_use_paged_settings_view():
@@ -1033,15 +1161,10 @@ class SettingsWindow(QMainWindow):
             self._sync_paged_settings_view(scroll_to_top=True)
             return
 
-        self.is_auto_scrolling = True
         category_name = item.text()
         widget = self.category_widgets.get(category_name)
         if widget:
-            self.scroll_area.ensureWidgetVisible(widget)
-
-            # Let's just use a timer to reset the flag to be safe against race conditions
-            # I spent WAY too long trying to do this with signals alone
-            QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+            self._smooth_ensure_visible(widget, y_margin=40, duration_ms=280)
             # Random bullshit go!
             # This line literally had just 1 change (double quotes instead of single) because
             # I was trying to find some edge cases where we might need different timing
@@ -1181,20 +1304,12 @@ class SettingsWindow(QMainWindow):
 
         if enabled:
             if scroll_to_top or mode_changed or (initial_apply and enabled):
-                self.is_auto_scrolling = True
-                try:
-                    self.scroll_area.verticalScrollBar().setValue(0)
-                finally:
-                    QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+                self._smooth_scroll_to(0, duration_ms=240)
         else:
             if mode_changed:
                 card = self.category_widgets_by_key.get(selected_key)
                 if card:
-                    self.is_auto_scrolling = True
-                    try:
-                        self.scroll_area.ensureWidgetVisible(card)
-                    finally:
-                        QTimer.singleShot(100, lambda: setattr(self, "is_auto_scrolling", False))
+                    self._smooth_ensure_visible(card, y_margin=40, duration_ms=280)
 
     def _should_show_only_active_provider_behavior(self) -> bool:
         widget = self.field_widgets.get("application_settings.show_only_active_provider_behavior")
@@ -1247,7 +1362,7 @@ class SettingsWindow(QMainWindow):
                 self.category_list.setCurrentItem(preferred_item)
                 preferred_card = self.category_widgets_by_key.get(active_key)
                 if preferred_card:
-                    self.scroll_area.ensureWidgetVisible(preferred_card)
+                    self._smooth_ensure_visible(preferred_card, y_margin=40, duration_ms=280)
                 self._sync_paged_settings_view()
                 return
 
@@ -1257,7 +1372,7 @@ class SettingsWindow(QMainWindow):
                     self.category_list.setCurrentItem(item)
                     card = self.category_widgets.get(item.text())
                     if card:
-                        self.scroll_area.ensureWidgetVisible(card)
+                        self._smooth_ensure_visible(card, y_margin=40, duration_ms=280)
                     self._sync_paged_settings_view()
                     return
 
