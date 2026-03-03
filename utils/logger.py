@@ -17,7 +17,7 @@ class LogLevel(Enum):
     ERROR = "ERROR"
 
 
-# Severity ordering (lowest to highest): Debug → Success → Info → Warning → Error
+# Severity ordering (lowest to highest): Debug -> Success -> Info -> Warning -> Error
 LOG_LEVEL_SEVERITY = {
     LogLevel.DEBUG: 0,
     LogLevel.SUCCESS: 1,
