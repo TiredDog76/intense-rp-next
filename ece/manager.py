@@ -32,7 +32,7 @@ def _hash_email(email: str) -> str:
 
 class EceManager:
     """
-    Stores provider credential pairs + usage metadata in encrypted files under the config directory.
+    Stores provider accounts + usage metadata in encrypted files under the config directory.
     """
 
     CREDENTIALS_VERSION = 1
@@ -42,9 +42,125 @@ class EceManager:
         self.config_dir = Path(config_dir).resolve()
         key = load_or_create_settings_key(self.config_dir)
 
-        ece_dir = (self.config_dir / "ece").resolve()
-        self._credentials_file = EncryptedJsonFile(ece_dir / "credentials.json.enc", key)
-        self._usage_file = EncryptedJsonFile(ece_dir / "usage.json.enc", key)
+        storage_dir = self._resolve_storage_dir()
+        self._profile_namespace = self._resolve_profile_namespace()
+
+        self._credentials_file = EncryptedJsonFile(storage_dir / "credentials.json.enc", key)
+        self._usage_file = EncryptedJsonFile(storage_dir / "usage.json.enc", key)
+
+    def _resolve_storage_dir(self) -> Path:
+        """
+        Prefer the new accounts/ storage directory.
+
+        If an older config uses ece/, attempt a best-effort rename/copy.
+        Falls back to the legacy directory when migration fails.
+        """
+        legacy_dir = (self.config_dir / "ece").resolve()
+        accounts_dir = (self.config_dir / "accounts").resolve()
+
+        legacy_creds = legacy_dir / "credentials.json.enc"
+        legacy_usage = legacy_dir / "usage.json.enc"
+        accounts_creds = accounts_dir / "credentials.json.enc"
+        accounts_usage = accounts_dir / "usage.json.enc"
+
+        def _has_data_file(path: Path) -> bool:
+            try:
+                return path.exists() and path.is_file() and path.stat().st_size > 0
+            except Exception:
+                return path.exists()
+
+        legacy_has_data = _has_data_file(legacy_creds) or _has_data_file(legacy_usage)
+        accounts_has_data = _has_data_file(accounts_creds) or _has_data_file(accounts_usage)
+
+        if legacy_has_data and (not accounts_has_data):
+            # Prefer a straight rename when possible
+            if legacy_dir.exists() and (not accounts_dir.exists()):
+                try:
+                    legacy_dir.rename(accounts_dir)
+                    return accounts_dir
+                except Exception:
+                    pass
+
+            # Fallback: copy only the encrypted data files (best-effort)
+            try:
+                accounts_dir.mkdir(parents=True, exist_ok=True)
+                for name in ("credentials.json.enc", "usage.json.enc"):
+                    src = legacy_dir / name
+                    dst = accounts_dir / name
+                    if _has_data_file(src) and (not _has_data_file(dst)):
+                        dst.write_bytes(src.read_bytes())
+            except Exception:
+                return legacy_dir
+
+            accounts_has_data = _has_data_file(accounts_creds) or _has_data_file(accounts_usage)
+            return accounts_dir if accounts_has_data else legacy_dir
+
+        return accounts_dir
+
+    def _resolve_profile_namespace(self) -> str:
+        """
+        Prefer playwright_profiles/accounts.
+
+        If an older config uses playwright_profiles/ece, attempt a best-effort migration.
+        Falls back to the legacy namespace when migration fails.
+        """
+        profiles_root = (self.config_dir / "playwright_profiles").resolve()
+        legacy_root = (profiles_root / "ece").resolve()
+        accounts_root = (profiles_root / "accounts").resolve()
+
+        def _has_any_profile_dirs(root: Path) -> bool:
+            try:
+                if (not root.exists()) or (not root.is_dir()):
+                    return False
+                for child in root.iterdir():
+                    if child.is_dir():
+                        return True
+            except Exception:
+                return False
+            return False
+
+        legacy_has_profiles = _has_any_profile_dirs(legacy_root)
+        accounts_has_profiles = _has_any_profile_dirs(accounts_root)
+
+        if legacy_has_profiles and (not accounts_has_profiles):
+            try:
+                if not accounts_root.exists():
+                    legacy_root.rename(accounts_root)
+                    return "accounts"
+            except Exception:
+                pass
+
+            try:
+                accounts_root.mkdir(parents=True, exist_ok=True)
+                for provider_dir in legacy_root.iterdir():
+                    if not provider_dir.is_dir():
+                        continue
+
+                    target_provider = accounts_root / provider_dir.name
+                    if not target_provider.exists():
+                        provider_dir.rename(target_provider)
+                        continue
+
+                    # Merge identities without overwriting existing destinations.
+                    for ident_dir in provider_dir.iterdir():
+                        if not ident_dir.is_dir():
+                            continue
+                        target_ident = target_provider / ident_dir.name
+                        if target_ident.exists():
+                            continue
+                        try:
+                            ident_dir.rename(target_ident)
+                        except Exception:
+                            continue
+                return "accounts"
+            except Exception:
+                return "ece"
+
+        if accounts_has_profiles:
+            return "accounts"
+        if legacy_has_profiles:
+            return "ece"
+        return "accounts"
 
     def _read_credentials_payload(self) -> Dict[str, Any]:
         payload = self._credentials_file.read() or {}
@@ -236,7 +352,7 @@ class EceManager:
         slot: int = 0,
     ) -> Path:
         provider_id = _provider_key(provider)
-        base = (self.config_dir / "playwright_profiles" / "ece" / provider_id).resolve()
+        base = (self.config_dir / "playwright_profiles" / str(self._profile_namespace) / provider_id).resolve()
         ident = "manual"
         if email:
             email_norm = _normalize_email(email)
@@ -248,7 +364,7 @@ class EceManager:
 
     def find_next_profile_slot(self, provider: DriverProvider | str, email: str) -> int:
         provider_id = _provider_key(provider)
-        base = (self.config_dir / "playwright_profiles" / "ece" / provider_id).resolve()
+        base = (self.config_dir / "playwright_profiles" / str(self._profile_namespace) / provider_id).resolve()
         ident = _hash_email(email)
 
         try:
@@ -322,4 +438,4 @@ class EceManager:
         providers[provider_id] = updated
         ok = self._write_usage_payload(providers)
         if not ok:
-            Logger.debug("ECE: failed to prune usage file.")
+            Logger.debug("Accounts: failed to prune usage file.")

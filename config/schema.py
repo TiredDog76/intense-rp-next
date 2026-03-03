@@ -1,7 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Any, Optional, Callable, Dict
-from .validators import validate_email, validate_port, validate_directory_path
+from .validators import validate_port, validate_directory_path
 from .location import get_config_storage_options
 from drivers.providers import provider_options
 
@@ -75,99 +75,30 @@ SCHEMA = [
                 label="Auto Login",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Automatically log in using the provided credentials."
+                tooltip="Automatically log in using a saved account from Credential Manager."
             ),
             SettingField(
-                key="ece_credential_manager",
+                key="select_least_used",
+                label="Select Least Used",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Prefer the least recently used account. Otherwise, a random account is selected.",
+            ),
+            SettingField(
+                key="reload_on_failure",
+                label="Reload on Failure",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Restart and rotate to a different account/profile on empty or rate-limited responses.",
+            ),
+            SettingField(
+                key="credential_manager",
                 label="Credential Manager",
                 type=SettingType.REDIRECT,
                 default="Credential Manager",
-                tooltip="Manage provider credentials in the configurator.",
-                action="open_ece_credential_manager",
-                depends="experimental.ece_enabled",
-                visible_depends="experimental.ece_enabled",
-            ),
-            SettingField(
-                key="deepseek_email",
-                label="DeepSeek Email",
-                type=SettingType.STRING,
-                default="",
-                tooltip="Email address for DeepSeek login.",
-                validator=validate_email,
-                required=True,
-                depends=(
-                    "providers_credentials.auto_login && providers_credentials.provider==DeepSeek "
-                    "&& experimental.ece_enabled==false"
-                ),
-                visible_depends="experimental.ece_enabled==false",
-            ),
-            SettingField(
-                key="deepseek_password",
-                label="DeepSeek Password",
-                type=SettingType.PASSWORD,
-                default="",
-                tooltip="Password for DeepSeek login.",
-                required=True,
-                depends=(
-                    "providers_credentials.auto_login && providers_credentials.provider==DeepSeek "
-                    "&& experimental.ece_enabled==false"
-                ),
-                visible_depends="experimental.ece_enabled==false",
-            ),
-            SettingField(
-                key="glm_email",
-                label="GLM Email",
-                type=SettingType.STRING,
-                default="",
-                tooltip="Email address for GLM Chat (Z.ai) login.",
-                validator=validate_email,
-                required=True,
-                depends=(
-                    "providers_credentials.auto_login && providers_credentials.provider==GLM Chat "
-                    "&& experimental.ece_enabled==false"
-                ),
-                visible_depends="experimental.ece_enabled==false",
-            ),
-            SettingField(
-                key="glm_password",
-                label="GLM Password",
-                type=SettingType.PASSWORD,
-                default="",
-                tooltip="Password for GLM Chat (Z.ai) login.",
-                required=True,
-                depends=(
-                    "providers_credentials.auto_login && providers_credentials.provider==GLM Chat "
-                    "&& experimental.ece_enabled==false"
-                ),
-                visible_depends="experimental.ece_enabled==false",
-            ),
-            SettingField(
-                key="moonshot_email",
-                label="Moonshot Email",
-                type=SettingType.STRING,
-                default="",
-                tooltip="Optional identifier. Not used for login (Moonshot requires manual Google sign-in).",
-                validator=validate_email,
-                required=False,
-                depends=(
-                    "providers_credentials.provider==Moonshot "
-                    "&& experimental.ece_enabled==false"
-                ),
-                visible_depends="experimental.ece_enabled==false",
-            ),
-            SettingField(
-                key="moonshot_password",
-                label="Moonshot Password",
-                type=SettingType.PASSWORD,
-                default="",
-                tooltip="Optional secret. Not used for login (Moonshot requires manual Google sign-in).",
-                required=False,
-                depends=(
-                    "providers_credentials.provider==Moonshot "
-                    "&& experimental.ece_enabled==false"
-                ),
-                visible_depends="experimental.ece_enabled==false",
-            ),
+                tooltip="Manage provider accounts (email/password) used for Auto Login.",
+                action="open_credential_manager",
+            )
         ]
     ),
     SettingCategory(
@@ -649,7 +580,7 @@ SCHEMA = [
                 type=SettingType.BUTTON,
                 default="Clear All",
                 action="clear_all_persistent_profiles",
-                tooltip="Delete all saved browser profiles used for Persistent Sessions (ECE + Legacy).",
+                tooltip="Delete all saved browser profiles used for Persistent Sessions (Accounts + Legacy).",
             ),
             SettingField(
                 key="notify_on_driver_crash",
@@ -740,30 +671,6 @@ SCHEMA = [
         name="Experimental",
         key="experimental",
         fields=[
-            SettingField(
-                key="ece_enabled",
-                label="Enable Experimental Credential Engine (ECE)",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Use the Experimental Credential Engine instead of the legacy per-provider credential fields.",
-                affects=["chevron_dropdown"],
-            ),
-            SettingField(
-                key="ece_select_least_used",
-                label="Select Least Used",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Prefer the least recently used credential pair. Otherwise, a random pair is selected.",
-                depends="experimental.ece_enabled",
-            ),
-            SettingField(
-                key="ece_reauth_on_no_content",
-                label="Re-auth on no content",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Restart and rotate to a different ECE profile on empty or rate-limited responses.",
-                depends="experimental.ece_enabled",
-            ),
             SettingField(
                 key="better_model_names",
                 label="Better Model Names",

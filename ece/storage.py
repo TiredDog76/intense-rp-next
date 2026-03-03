@@ -13,7 +13,7 @@ def ensure_dir(path: Path) -> None:
     try:
         path.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
-        Logger.warning(f"ECE: failed to create directory {path}: {exc}")
+        Logger.warning(f"Accounts: failed to create directory {path}: {exc}")
 
 
 def load_or_create_settings_key(config_dir: Path) -> bytes:
@@ -24,13 +24,13 @@ def load_or_create_settings_key(config_dir: Path) -> bytes:
         try:
             return key_path.read_bytes()
         except Exception as exc:
-            Logger.warning(f"ECE: failed to read settings.key ({key_path}): {exc}")
+            Logger.warning(f"Accounts: failed to read settings.key ({key_path}): {exc}")
 
     key = Fernet.generate_key()
     try:
         key_path.write_bytes(key)
     except Exception as exc:
-        Logger.warning(f"ECE: failed to write settings.key ({key_path}): {exc}")
+        Logger.warning(f"Accounts: failed to write settings.key ({key_path}): {exc}")
     return key
 
 
@@ -50,7 +50,7 @@ class EncryptedJsonFile:
             if isinstance(data, dict):
                 return data
         except Exception as exc:
-            Logger.warning(f"ECE: failed to read {self.path.name}: {exc}")
+            Logger.warning(f"Accounts: failed to read {self.path.name}: {exc}")
         return None
 
     def write(self, payload: Dict[str, Any]) -> bool:
@@ -61,6 +61,5 @@ class EncryptedJsonFile:
             self.path.write_bytes(encrypted)
             return True
         except Exception as exc:
-            Logger.warning(f"ECE: failed to write {self.path.name}: {exc}")
+            Logger.warning(f"Accounts: failed to write {self.path.name}: {exc}")
             return False
-

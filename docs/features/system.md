@@ -30,23 +30,11 @@ Persistent Sessions keeps you logged in between restarts by storing a reusable P
 When enabled, IntenseRP launches Chromium using a **persistent browser context**. The profile is stored inside your config directory:
 
 ```
-[config_dir]/playwright_profiles/deepseek/
-[config_dir]/playwright_profiles/glm_chat/
-[config_dir]/playwright_profiles/moonshot_kimi/
+[config_dir]/playwright_profiles/accounts/<provider>/<identity>/
 ```
-
-IntenseRP uses one folder per provider and will read/write the folder for the currently selected **Provider**.
+The `<provider>` is one of `deepseek`, `glm_chat`, or `moonshot_kimi`. The `<identity>` is either a hashed email (when an account is selected) or `manual` (when no account is selected).
 
 Next time you start the app, it loads that same profile, so you usually won’t see a login page at all.
-
-!!! note "Using ECE?"
-    If you enabled the Experimental Credential Engine (ECE), Persistent Sessions are stored under:
-    
-    ```
-    [config_dir]/playwright_profiles/ece/<provider>/...
-    ```
-    
-    See [:material-key: ECE](../experimental/ece.md) for details.
 
 !!! tip "Best Reliability"
     Keep **Auto Login** enabled as a fallback. If your session expires, Persistent Sessions won’t help, but Auto Login will still sign you in automatically.
@@ -63,7 +51,7 @@ What this does:
 
 - Lets you pick a profile from a dropdown:
   - `[Legacy] <Provider>`
-  - `[ECE] <Provider> - <email>`
+  - `[Account] <Provider> - <email>`
 - Deletes the selected profile folder under `[config_dir]/playwright_profiles/`
 - Logs you out (cookies/local storage are removed)
 - Forces a fresh login on next start
@@ -75,14 +63,14 @@ What this does:
 
 ## :material-skull-scan: Clear All Profiles
 
-If you want a full reset, Clear All Profiles deletes **all** saved browser profiles (Legacy and ECE).
+If you want a full reset, Clear All Profiles deletes **all** saved browser profiles (Legacy and Accounts).
 
 :material-arrow-right: **Settings** → **System Settings** → **Clear All Profiles**
 
 What this does:
 
 - Deletes `[config_dir]/playwright_profiles/`
-- Logs you out of all providers and ECE identities
+- Logs you out of all providers and saved accounts
 - Forces a fresh login on next start
 
 !!! danger "This can't be undone"
@@ -97,7 +85,7 @@ IntenseRP stores all the important local stuff in a single **config directory**,
 - `settings.json.enc` - your settings (encrypted at rest)
 - `settings.key` - the encryption key used to read/write settings
 - `appflags.json.enc` - hidden persistent app flags (encrypted at rest)
-- `ece/` - ECE credential pairs + usage data (only if ECE is enabled)
+- `accounts/` - saved accounts + usage data (encrypted at rest)
 - `playwright_profiles/` - browser profiles (Persistent Sessions)
 
 ### What is `[config_dir]` exactly?
@@ -350,7 +338,7 @@ You can force-show the "Update Installed" dialog (without actually installing an
 | Encrypted settings file | `[config_dir]/settings.json.enc` |
 | Settings encryption key | `[config_dir]/settings.key` |
 | Encrypted app flags file | `[config_dir]/appflags.json.enc` |
-| Persistent browser profile | `[config_dir]/playwright_profiles/<provider>/` (or `[config_dir]/playwright_profiles/ece/<provider>/...` if ECE is enabled) |
+| Persistent browser profile | `[config_dir]/playwright_profiles/accounts/<provider>/<identity>/` |
 
 ---
 

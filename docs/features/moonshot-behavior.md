@@ -26,7 +26,13 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 Unfortunately, Kimi has no support for an email/password login flow, so to auth IntenseRP will ask you to manually log in with Google. **Because of this, Persistent Sessions are almost a requirement for Kimi users.** Without them, you'll have to go through the google auth flow every time you start IntenseRP with Kimi selected as the provider.
 
 !!! info "Multiple profiles"
-    There's rate limiting as well, so if you're using ECE, you can set up multiple profiles even without email/password login to get around this. Just create multiple rows in the ECE credential config manager with any text at all. IntenseRP won't use those credentials for your google account, but it will treat them as separate profiles and thus separate sessions. You may wish to login with different google accounts in each profile to further reduce the risk of rate limits.
+    There's rate limiting as well, so you can set up multiple profiles (identities) even though Moonshot uses manual Google login.
+
+    Open **Settings -> Providers & Credentials -> Credential Manager** and add multiple accounts under Moonshot.
+
+    IntenseRP does **not** use those values for your Google login, but it treats each row as a separate identity (separate browser profile and session). Use a valid-looking email (required) and any non-empty password.
+
+    You may wish to log in with different Google accounts in each profile to further reduce the risk of rate limits.
 
 ## :material-head-cog: Thinking
 

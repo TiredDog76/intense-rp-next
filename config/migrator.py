@@ -44,6 +44,19 @@ class SettingsMigrator:
         if isinstance(providers_credentials, dict):
             raw_provider = providers_credentials.get("provider")
             providers_credentials["provider"] = DriverProvider.from_setting(raw_provider).value
+
+        # Migration: account engine toggles moved from Experimental -> Providers & Credentials
+        experimental = settings.get("experimental")
+        if isinstance(experimental, dict):
+            select_least_used = experimental.get("ece_select_least_used")
+            reload_on_failure = experimental.get("ece_reauth_on_no_content")
+
+            providers_credentials = settings.setdefault("providers_credentials", {})
+            if isinstance(providers_credentials, dict):
+                if "select_least_used" not in providers_credentials and select_least_used is not None:
+                    providers_credentials["select_least_used"] = bool(select_least_used)
+                if "reload_on_failure" not in providers_credentials and reload_on_failure is not None:
+                    providers_credentials["reload_on_failure"] = bool(reload_on_failure)
                     
         # Future migrations will be added here
         # e.g. v1 to v2

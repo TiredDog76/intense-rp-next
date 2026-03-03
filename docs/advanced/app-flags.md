@@ -28,11 +28,11 @@ This file is encrypted using the same key as regular settings:
 
 ## :material-list-box-outline: Current usage
 
-Right now, App Flags are used to track one-time ECE migration behavior:
+Right now, App Flags are used to track one-time credential migration behavior:
 
-- `ece.legacy_credentials_imported`
+- `accounts.legacy_credentials_imported`
 
-When this flag is set, IntenseRP knows it already attempted the first-open legacy credential import for ECE.
+When this flag is set, IntenseRP already imported legacy per-provider credentials into Credential Manager.
 
 ---
 
@@ -48,7 +48,7 @@ You can clear all App Flags by launching IntenseRP with:
 
 - Clears all entries from `appflags.json.enc`
 - Exits immediately after clearing
-- Does not delete normal settings, ECE credentials, or browser profiles
+- Does not delete normal settings, account credentials, or browser profiles
 
 ### Examples
 

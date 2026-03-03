@@ -44,7 +44,7 @@ class DriverProvider(str, Enum):
     @property
     def key(self) -> str:
         # Keep a stable storage key for Moonshot so we don't break existing
-        # persistent sessions and ECE data when renaming display labels
+        # persistent sessions and account data when renaming display labels
         if self is DriverProvider.MOONSHOT:
             return "moonshot_kimi"
         raw = (self.value or "").strip().lower()

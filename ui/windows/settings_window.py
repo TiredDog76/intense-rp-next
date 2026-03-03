@@ -198,8 +198,8 @@ class SettingsWindow(QMainWindow):
         elif field.type == SettingType.REDIRECT:
             btn_text = str(field.default) if field.default else "Open"
             widget = RedirectCard(field.label, field.tooltip or "", btn_text)
-            if field.action == "open_ece_credential_manager":
-                widget.clicked.connect(self._open_ece_credential_manager)
+            if field.action == "open_credential_manager":
+                widget.clicked.connect(self._open_credential_manager)
                 
         elif field.type == SettingType.BUTTON:
             widget = StyledButton(field.label)
@@ -1418,7 +1418,7 @@ class SettingsWindow(QMainWindow):
 
     def _build_persistent_profile_entries(self) -> list[tuple[str, str, Path]]:
         legacy: list[tuple[tuple[str], tuple[str, str, Path]]] = []
-        ece: list[tuple[tuple[str, str, int], tuple[str, str, Path]]] = []
+        accounts: list[tuple[tuple[str, str, int], tuple[str, str, Path]]] = []
 
         profiles_root = self._get_profiles_root_dir()
 
@@ -1428,7 +1428,7 @@ class SettingsWindow(QMainWindow):
                 for child in profiles_root.iterdir():
                     if not child.is_dir():
                         continue
-                    if child.name == "ece":
+                    if child.name in {"ece", "accounts"}:
                         continue
                     provider_name = self._format_provider_label(child.name)
                     label = f"[Legacy] {provider_name}"
@@ -1437,81 +1437,85 @@ class SettingsWindow(QMainWindow):
         except Exception:
             pass
 
-        # ECE profiles: [config_dir]/playwright_profiles/ece/<provider_key>/<hash>[_slot]/
+        # Account profiles: [config_dir]/playwright_profiles/accounts/<provider_key>/<hash>[_slot]/
         config_dir = Path(getattr(self.config_manager, "config_dir", "config_data")).resolve()
-        ece_root = profiles_root / "ece"
-        ece_manager = None
+        account_roots = [profiles_root / "accounts", profiles_root / "ece"]
+        account_manager = None
 
-        if ece_root.exists() and ece_root.is_dir():
+        pre_roots = [root for root in account_roots if root.exists() and root.is_dir()]
+        if pre_roots:
             try:
                 from ece.manager import EceManager
 
-                ece_manager = EceManager(config_dir)
+                account_manager = EceManager(config_dir)
             except Exception as exc:
-                Logger.debug(f"ECE: unable to read credentials for profile labels: {exc}")
-                ece_manager = None
+                Logger.debug(f"Accounts: unable to read credentials for profile labels: {exc}")
+                account_manager = None
 
-            try:
-                provider_dirs = [p for p in ece_root.iterdir() if p.is_dir()]
-            except Exception:
-                provider_dirs = []
-
-            for provider_dir in provider_dirs:
-                provider_key = provider_dir.name
-                provider_name = self._format_provider_label(provider_key)
-
-                hash_to_email: dict[str, str] = {}
-                if ece_manager is not None:
-                    try:
-                        pairs = ece_manager.get_provider_pairs(provider_key)
-                        for pair in pairs:
-                            email = (pair.email or "").strip()
-                            if not email:
-                                continue
-                            ident = ece_manager.get_profile_dir(provider_key, email=email, slot=0).name
-                            hash_to_email[ident] = email
-                    except Exception:
-                        hash_to_email = {}
-
+            # EceManager may migrate/rename directories; re-evaluate roots after init
+            roots = [root for root in account_roots if root.exists() and root.is_dir()]
+            for root in roots:
                 try:
-                    ident_dirs = [p for p in provider_dir.iterdir() if p.is_dir()]
+                    provider_dirs = [p for p in root.iterdir() if p.is_dir()]
                 except Exception:
-                    ident_dirs = []
+                    provider_dirs = []
 
-                for ident_dir in ident_dirs:
-                    ident_name = ident_dir.name
-                    base_ident = ident_name
-                    slot = 0
-                    if "_" in ident_name:
-                        maybe_base, maybe_slot = ident_name.rsplit("_", 1)
-                        if maybe_slot.isdigit():
-                            base_ident = maybe_base
-                            try:
-                                slot = int(maybe_slot)
-                            except Exception:
-                                slot = 0
+                for provider_dir in provider_dirs:
+                    provider_key = provider_dir.name
+                    provider_name = self._format_provider_label(provider_key)
 
-                    email = None
-                    if base_ident != "manual":
-                        email = hash_to_email.get(base_ident)
+                    hash_to_email: dict[str, str] = {}
+                    if account_manager is not None:
+                        try:
+                            pairs = account_manager.get_provider_pairs(provider_key)
+                            for pair in pairs:
+                                email = (pair.email or "").strip()
+                                if not email:
+                                    continue
+                                ident = account_manager.get_profile_dir(provider_key, email=email, slot=0).name
+                                hash_to_email[ident] = email
+                        except Exception:
+                            hash_to_email = {}
 
-                    if base_ident == "manual":
-                        label = f"[ECE] {provider_name} - manual"
-                    elif email:
-                        label = f"[ECE] {provider_name} - {email}"
-                    else:
-                        label = f"[ECE] {provider_name} - {base_ident}"
+                    try:
+                        ident_dirs = [p for p in provider_dir.iterdir() if p.is_dir()]
+                    except Exception:
+                        ident_dirs = []
 
-                    if slot > 0:
-                        label = f"{label} (slot {slot})"
+                    for ident_dir in ident_dirs:
+                        ident_name = ident_dir.name
+                        base_ident = ident_name
+                        slot = 0
+                        if "_" in ident_name:
+                            maybe_base, maybe_slot = ident_name.rsplit("_", 1)
+                            if maybe_slot.isdigit():
+                                base_ident = maybe_base
+                                try:
+                                    slot = int(maybe_slot)
+                                except Exception:
+                                    slot = 0
 
-                    token = str(ident_dir.resolve())
-                    sort_ident = (email or base_ident or "").lower()
-                    ece.append(((provider_name.lower(), sort_ident, slot), (token, label, ident_dir)))
+                        email = None
+                        if base_ident != "manual":
+                            email = hash_to_email.get(base_ident)
+
+                        if base_ident == "manual":
+                            label = f"[Account] {provider_name} - manual"
+                        elif email:
+                            label = f"[Account] {provider_name} - {email}"
+                        else:
+                            label = f"[Account] {provider_name} - {base_ident}"
+
+                        if slot > 0:
+                            label = f"{label} (slot {slot})"
+
+                        token = str(ident_dir.resolve())
+                        sort_ident = (email or base_ident or "").lower()
+                        accounts.append(((provider_name.lower(), sort_ident, slot), (token, label, ident_dir)))
 
         legacy_sorted = [item for _k, item in sorted(legacy, key=lambda t: t[0])]
-        ece_sorted = [item for _k, item in sorted(ece, key=lambda t: t[0])]
-        return legacy_sorted + ece_sorted
+        accounts_sorted = [item for _k, item in sorted(accounts, key=lambda t: t[0])]
+        return legacy_sorted + accounts_sorted
 
     def _refresh_persistent_profile_options(self):
         select_widget = self.field_widgets.get("system_settings.persistent_profile_to_delete")
@@ -1636,7 +1640,7 @@ class SettingsWindow(QMainWindow):
             self,
             "Clear All Profiles",
             "This will delete ALL saved browser profiles used for Persistent Sessions.\n\n"
-            "This removes cookies/local storage and will log you out of all providers and ECE identities.\n\n"
+            "This removes cookies/local storage and will log you out of all providers and saved accounts.\n\n"
             "Continue?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -1836,7 +1840,7 @@ class SettingsWindow(QMainWindow):
             return
 
     def closeEvent(self, event):
-        dialog = getattr(self, "_ece_credential_manager_dialog", None)
+        dialog = getattr(self, "_credential_manager_dialog", None)
         if dialog and dialog.isVisible():
             QMessageBox.information(
                 self,
@@ -1861,19 +1865,19 @@ class SettingsWindow(QMainWindow):
         else:
             event.accept()
 
-    def _open_ece_credential_manager(self) -> None:
-        existing = getattr(self, "_ece_credential_manager_dialog", None)
+    def _open_credential_manager(self) -> None:
+        existing = getattr(self, "_credential_manager_dialog", None)
         if existing and existing.isVisible():
             existing.activateWindow()
             existing.raise_()
             return
 
         dialog = CredentialManagerDialog(self.config_manager, parent=self)
-        self._ece_credential_manager_dialog = dialog
+        self._credential_manager_dialog = dialog
 
         def _clear_ref(*_args) -> None:
-            if getattr(self, "_ece_credential_manager_dialog", None) is dialog:
-                self._ece_credential_manager_dialog = None
+            if getattr(self, "_credential_manager_dialog", None) is dialog:
+                self._credential_manager_dialog = None
 
         dialog.finished.connect(_clear_ref)
         dialog.open()

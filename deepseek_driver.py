@@ -55,33 +55,26 @@ class DeepSeekDriver(BaseDriver):
             auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
             
             if auto_login:
-                ece_enabled = bool(self.config_manager.get_setting("experimental", "ece_enabled"))
-
                 email = ""
                 password = ""
-                using_ece = False
+                pair = self.ece_active_pair()
+                if not pair:
+                    Logger.warning(
+                        "Auto-login is enabled but no DeepSeek accounts are configured in Credential Manager. "
+                        "Waiting for manual login..."
+                    )
+                    try:
+                        await self.page.wait_for_selector("textarea", timeout=0)
+                        Logger.success("Manual login detected.")
+                    except Exception as e:
+                        Logger.error(f"Error waiting for manual login: {e}")
+                    return
 
-                if ece_enabled:
-                    pair = self.ece_active_pair()
-                    if not pair:
-                        Logger.warning("ECE is enabled but no DeepSeek credential pairs are configured. Waiting for manual login...")
-                        try:
-                            await self.page.wait_for_selector("textarea", timeout=0)
-                            Logger.success("Manual login detected.")
-                        except Exception as e:
-                            Logger.error(f"Error waiting for manual login: {e}")
-                        return
-
-                    using_ece = True
-                    email = pair.email
-                    password = pair.password
-                else:
-                    # Legacy per-provider settings
-                    email = self.config_manager.get_setting("providers_credentials", "deepseek_email") or ""
-                    password = self.config_manager.get_setting("providers_credentials", "deepseek_password") or ""
+                email = pair.email
+                password = pair.password
 
                 if not email or not password:
-                    Logger.error("DeepSeek email or password not found in settings.")
+                    Logger.error("DeepSeek account is missing an email or password.")
                     return
 
                 Logger.info("Auto-login enabled. Attempting to log in...")
@@ -131,8 +124,7 @@ class DeepSeekDriver(BaseDriver):
                     await self.page.wait_for_selector("textarea", timeout=60000)
                     Logger.success("Login successful.")
 
-                    if using_ece:
-                        self.ece_mark_used(email)
+                    self.ece_mark_used(email)
                     
                 except Exception as e:
                     Logger.error(f"Error during auto-login: {e}")

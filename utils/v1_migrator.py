@@ -113,6 +113,14 @@ class V1Migrator:
                 )
                 self.v2_manager.set_setting("formatting", "formatting_preset", "Custom")
             
+            # Import legacy per-provider credentials into Credential Manager (best-effort)
+            try:
+                from utils.account_migration import migrate_legacy_credentials_to_accounts
+
+                migrate_legacy_credentials_to_accounts(self.v2_manager)
+            except Exception as e:
+                Logger.debug(f"Legacy credential import skipped during v1 migration: {e}")
+
             self.v2_manager.save_settings()
             return True, "Migration completed successfully! Some settings may need manual review."
             

@@ -81,21 +81,26 @@ Pick your platform and let's go!
 
 ---
 
-## :material-cog: Step 2: Set Up Your Credentials
+## :material-cog: Step 2: Provider + Account
 
-Before hitting Start, pick your provider and (optionally) save your login so you don't have to type it every time.
+Before hitting Start, pick your provider and decide how you want to log in.
 
 1. Click the :material-cog: **Settings** button
 2. Go to **Providers & Credentials**
 3. Choose your **Provider** (DeepSeek, GLM Chat, or Moonshot)
 4. (Optional) Turn on :material-toggle-switch: **Auto Login** (DeepSeek / GLM Chat)
-5. Enter your provider **email** and **password** (used for DeepSeek / GLM auto-login)
-6. Hit :material-content-save: **Save**
+5. Open **Credential Manager** and add your account(s)
+6. (Optional) Enable **Select Least Used** and/or **Reload on Failure**
+7. Hit :material-content-save: **Save**
 
-![Settings Credentials](pics/getting-started/settings_credentials.png)
+<!-- TODO: replace with an updated screenshot -->
+![Providers & Credentials (placeholder)](pics/getting-started/settings_credentials.png)
 
-!!! info "Skip This?"
-    If you prefer to log in manually each time, just skip this step. The browser will pop up a login page instead.
+!!! info "Manual login"
+    If you prefer to log in manually each time, leave **Auto Login** off. The browser will wait for you to log in.
+
+!!! note "Upgrading?"
+    If you previously saved credentials in older versions, IntenseRP automatically imports them into **Credential Manager** on startup.
 
 !!! warning "GLM CAPTCHA"
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
@@ -160,39 +165,11 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
     - GLM Chat -> `glm-auto`
     - Moonshot -> `moonshot-auto`
 
-!!! info "Model Names"
-    The model IDs are behavior presets (modes). Which set you get depends on your active provider.
+!!! info "Model IDs"
+    The `*-auto` model is the default and respects your IntenseRP settings for the active provider.
 
-    === ":material-brain: DeepSeek"
-
-        - `deepseek-auto` (default, respects your IntenseRP settings)
-        - `deepseek-chat` (reasoning always off)
-        - `deepseek-reasoner` (reasoning always on, respects `Send DeepThink` setting)
-
-    === ":material-chat-processing: GLM Chat"
-
-        - `glm-auto` (default, respects your IntenseRP settings)
-        - `glm-chat` (Deep Think always off)
-        - `glm-reasoner` (Deep Think always on, respects `Send Deep Think` setting)
-
-        !!! note "GLM model selection"
-            The `glm-*` IDs are still modes (behavior presets).
-
-            The *real* GLM model is selected in IntenseRP:
-
-            :material-arrow-right: **Settings** -> **GLM Behavior** -> **Model** (GLM-5, GLM-4.7, or GLM-4.6)
-
-            GLM-4.6v exists, but IntenseRP intentionally does not select it.
-
-    === ":material-meteor: Moonshot"
-
-        - `moonshot-auto` (default, respects your IntenseRP settings)
-        - `moonshot-chat` (forces Thinking off and Send Thinking off)
-        - `moonshot-reasoner` (forces Thinking on, respects `Send Thinking` setting)
-
-        !!! note "Moonshot model IDs"
-            `moonshot-*` IDs are behavior presets (modes), not a separate backend model selector.
-            Thinking/Search behavior still comes from **Moonshot Behavior** settings, with these mode overrides.
+    There are also `*-chat` and `*-reasoner` variants, plus additional IDs if you enable **Better Model Names**.
+    For the full list, see [:material-lan: Network & API](features/network-api.md).
 
 ![SillyTavern Endpoint Settings](pics/getting-started/preview_of_settings.png)
 

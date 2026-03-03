@@ -185,7 +185,7 @@ Application-wide settings and maintenance.
 | **Config Storage** | Choose where settings are stored (relative, AppData, or custom path) |
 | **Auto Updates** | Check for and install updates directly from the app |
 | **Delete Profile** | Delete a selected persistent browser profile to start fresh |
-| **Clear All Profiles** | Wipe all persistent profiles (Legacy + ECE) |
+| **Clear All Profiles** | Wipe all persistent profiles (Legacy + Accounts) |
 
 ---
 

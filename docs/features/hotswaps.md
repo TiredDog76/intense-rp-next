@@ -33,7 +33,7 @@ You can choose **how** the Hotswap shortcut appears in the UI:
 
 ### Stop Menu (default)
 
-Adds a **Hotswap** option to the chevron dropdown on the **Stop** button - right alongside **Restart** and **ECE Switch** (if ECE is enabled).
+Adds a **Hotswap** option to the chevron dropdown on the **Stop** button - right alongside **Restart** and **Switch Account**.
 
 I personally like this option more, since it keeps all the "big" controls together in one place, but it's a bit less discoverable than the Discrete mode.
 
@@ -71,8 +71,11 @@ Uses the same small icon button as **Discrete**, but it stays visible even when 
 
     If you set **Hotswap Experience** to **Persistent Discrete**, the Hotswap button stays visible while stopped and will switch your Provider setting without starting or restarting services.
 
-??? question "What about ECE credentials?"
-    Hotswap changes the provider but doesn't rotate ECE identities. If you want to switch ECE profiles, use the **ECE Switch** option in the chevron menu instead.
+??? question "What about accounts?"
+    Hotswap changes the provider but doesn't rotate accounts/identities.
+
+    If you want to rotate the active identity for the current provider, use **Switch Account** in the chevron menu.
+    For selection/rotation behavior, see [:material-account-switch: Accounts & Credentials](accounts.md).
 
 ---
 

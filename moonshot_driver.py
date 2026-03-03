@@ -44,7 +44,7 @@ class MoonshotDriver(DeepSeekDriver):
         return "https://www.kimi.com/"
 
     def _ece_requires_auto_login(self) -> bool:
-        # Moonshot login uses a manual Google flow; ECE still helps pick account/profile identity.
+        # Moonshot login uses a manual Google flow; accounts still help pick identity/profile.
         return False
 
     @staticmethod

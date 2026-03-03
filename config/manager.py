@@ -67,6 +67,14 @@ class ConfigManager:
             
             # Validate/Merge with schema to ensure all fields exist
             self._merge_defaults()
+
+            # Best-effort one-time migration helpers
+            try:
+                from utils.account_migration import migrate_legacy_credentials_to_accounts
+
+                migrate_legacy_credentials_to_accounts(self)
+            except Exception as exc:
+                Logger.debug(f"Legacy credential import: skipped due to error: {exc}")
             
         except Exception as e:
             Logger.error(f"Error loading settings: {e}")

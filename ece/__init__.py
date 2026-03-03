@@ -1,8 +1,8 @@
 """
-Experimental Credential Engine (ECE).
+Account credential storage and selection.
 
-ECE is an opt-in alternative credential storage/selection system that can run
-alongside the legacy per-provider single credential fields.
+Stores multiple provider accounts (email/password) and supports selection + rotation.
+Formerly ECE (Experimental Credential Engine), now renamed as it replaced the old system entirely.
 """
 
 from .manager import EceManager
@@ -12,4 +12,3 @@ __all__ = [
     "CredentialPair",
     "EceManager",
 ]
-

@@ -1257,21 +1257,19 @@ class MainWindow(QMainWindow):
         restart_action = menu.addAction("Restart")
         restart_action.triggered.connect(self._on_restart_services)
 
-        ece_enabled = bool(self.config_manager.get_setting("experimental", "ece_enabled"))
-        if ece_enabled:
-            ece_action = menu.addAction("ECE Switch")
-            ece_action.triggered.connect(self._on_ece_switch)
+        account_action = menu.addAction("Switch Account")
+        account_action.triggered.connect(self._on_account_switch)
 
-            # Disable if fewer than 2 credential pairs for the current provider
-            driver = getattr(self, "driver", None)
-            if driver:
-                try:
-                    mgr = driver._get_ece_manager()
-                    pairs = mgr.get_provider_pairs(driver.provider)
-                    if len(pairs) < 2:
-                        ece_action.setEnabled(False)
-                except Exception:
-                    ece_action.setEnabled(False)
+        # Disable if fewer than 2 accounts for the current provider
+        driver = getattr(self, "driver", None)
+        if driver:
+            try:
+                mgr = driver._get_ece_manager()
+                pairs = mgr.get_provider_pairs(driver.provider)
+                if len(pairs) < 2:
+                    account_action.setEnabled(False)
+            except Exception:
+                account_action.setEnabled(False)
 
         hotswap_mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
         if (hotswap_mode or "Stop Menu") == "Stop Menu":
@@ -1300,20 +1298,20 @@ class MainWindow(QMainWindow):
         finally:
             self._update_tray_menu_state()
 
-    def _on_ece_switch(self):
-        asyncio.create_task(self._ece_switch_impl())
+    def _on_account_switch(self):
+        asyncio.create_task(self._account_switch_impl())
 
-    async def _ece_switch_impl(self):
+    async def _account_switch_impl(self):
         self.start_button.setEnabled(False)
-        self._update_status("ECE: Switching account...", "info")
+        self._update_status("Switching account...", "info")
         driver = getattr(self, "driver", None)
         if not driver:
-            Logger.warning("No driver for ECE switch.")
+            Logger.warning("No driver available for account switch.")
             self.start_button.setEnabled(True)
             return
         try:
             success = await driver.ece_restart_with_rotation(
-                reason="manual ECE switch",
+                reason="manual account switch",
                 status_callback=lambda msg: self._update_status(msg, "info"),
             )
             if success:
@@ -1323,14 +1321,14 @@ class MainWindow(QMainWindow):
                 except (TypeError, ValueError):
                     port = 7777
                 self._update_status(f"Running (Port {port})", "running")
-                Logger.success("ECE switch completed.")
+                Logger.success("Account switch completed.")
             else:
-                Logger.warning("ECE switch failed (no alternative identity available).")
-                self._update_status("ECE switch failed", "warning")
+                Logger.warning("Account switch failed (no alternative identity available).")
+                self._update_status("Account switch failed", "warning")
             self.start_button.setEnabled(True)
         except Exception as e:
-            Logger.error(f"ECE switch failed: {e}")
-            self._update_status(f"ECE switch failed: {e}", "error")
+            Logger.error(f"Account switch failed: {e}")
+            self._update_status(f"Account switch failed: {e}", "error")
             await self.stop_services()
 
     # ------------------------------------------------------------------

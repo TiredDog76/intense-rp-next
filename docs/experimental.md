@@ -13,12 +13,6 @@ Experimental features currently include:
 
 <div class="grid cards" markdown>
 
--   :material-key: **Experimental Credential Engine (ECE)**
-
-    Manage multiple login pairs per provider and optionally rotate identities when the provider returns nothing (rate-limit-like failures).
-
-    [:arrow_right: Read ECE docs](experimental/ece.md)
-
 -   :material-tag-text-outline: **Better Model Names**
 
     Use friendlier OpenAI-style model IDs (based on real base model names) like `deepseek-v3.2` / `kimi-k2.5` / `glm-5`, with `-auto` and `-think` variants.

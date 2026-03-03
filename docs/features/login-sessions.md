@@ -10,7 +10,7 @@ Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot)
 
 ## :material-login: Auto Login
 
-If you're tired of typing your password every time, Auto Login saves your provider credentials and enters them automatically when the browser opens (DeepSeek / GLM Chat).
+If you're tired of typing your password every time, Auto Login uses a saved account from **Credential Manager** and enters it automatically when the browser opens (DeepSeek / GLM Chat).
 
 ![Login settings](../pics/features/login_settings.png)
 
@@ -19,17 +19,13 @@ If you're tired of typing your password every time, Auto Login saves your provid
 1. Go to **Settings** → **Providers & Credentials**
 2. Select your **Provider**
 3. Toggle on **Auto Login**
-4. Enter the email/password for your provider (used by DeepSeek / GLM Chat auto-login)
+4. Open **Credential Manager** and add an account for your provider
 5. Click **Save**
 
 Next time you start IntenseRP, DeepSeek / GLM Chat can fill credentials and click login for you.
 
-!!! tip "Using ECE (Experimental Credential Engine)?"
-    If you enabled **ECE**, the legacy provider email/password fields are hidden. Instead, use:
-    
-    :material-arrow-right: **Settings** → **Providers & Credentials** → **Credential Manager**
-    
-    See [:material-key: ECE](../experimental/ece.md) for how selection and rotation works.
+!!! tip "Multiple accounts / rotation"
+    See [:material-account-switch: Accounts & Credentials](accounts.md) for how selection, rotation, and retry-on-failure work.
 
 !!! warning "GLM CAPTCHA"
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
@@ -71,28 +67,21 @@ When enabled, IntenseRP uses a "persistent browser context" - basically saving c
 
 ### Where's the Data Stored?
 
-The browser profile is saved in your config directory (one folder per provider):
+The browser profile is saved in your config directory (one folder per identity):
 
 ```
-[config_dir]/playwright_profiles/deepseek/
-[config_dir]/playwright_profiles/glm_chat/
-[config_dir]/playwright_profiles/moonshot_kimi/
+[config_dir]/playwright_profiles/accounts/<provider>/<identity>/
 ```
 
-IntenseRP uses the folder for the currently selected **Provider**.
+The identity is either:
+
+- a hashed email (when an account is selected), or
+- `manual` (when no account is selected).
 
 This folder contains your provider session cookies and browser data. It's automatically created when you first enable Persistent Sessions.
 
-!!! note "ECE changes the profile paths"
-    If you enable **ECE**, Persistent Sessions are stored under:
-    
-    ```
-    [config_dir]/playwright_profiles/ece/deepseek/<hash>/
-    [config_dir]/playwright_profiles/ece/glm_chat/<hash>/
-    [config_dir]/playwright_profiles/ece/moonshot_kimi/<hash>/
-    ```
-    
-    Each account gets its own hashed folder name, so sessions don't mix.
+!!! note "Legacy profiles"
+    Older versions stored profiles directly under `playwright_profiles/<provider>/`. The Settings UI can still list and delete both Legacy and account-based profiles.
 
 !!! tip "GLM recommendation"
     Persistent Sessions are strongly recommended for GLM Chat, because login requires a CAPTCHA.
@@ -135,11 +124,11 @@ Deleting a profile folder:
     Provider sessions do expire eventually. If Persistent Sessions isn't keeping you logged in long enough, make sure you also have Auto Login configured as a backup.
 
 ??? question "Is my password stored securely?"
-    Your credentials are saved in the config file on your local machine. IntenseRP doesn't send them anywhere except to provider login flows that support credential autofill. If you're concerned, you can skip Auto Login and log in manually each time.
+    Your credentials are stored locally and encrypted at rest inside your config directory. IntenseRP doesn't send them anywhere except to provider login flows that support credential autofill. If you're concerned, you can skip Auto Login and log in manually each time.
 
 ??? question "Can I use this with multiple accounts?"
-    Yes. Use **ECE (Experimental Credential Engine)** to store multiple credential pairs per provider and rotate between them.
-    See [:material-key: ECE](../experimental/ece.md).
+    Yes. Use **Credential Manager** to store multiple accounts per provider and rotate between them.
+    See [:material-account-switch: Accounts & Credentials](accounts.md).
 
 ---
 

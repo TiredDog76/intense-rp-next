@@ -17,6 +17,7 @@ nav:
   - Migration Guide: migration.md
   - Features:
       - Overview: features.md
+      - Accounts & Credentials: features/accounts.md
       - Formatting: features/formatting.md
       - STMP Support: features/stmp-support.md
       - DeepSeek Behavior: features/deepseek-behavior.md
@@ -29,7 +30,6 @@ nav:
       - System: features/system.md
   - Experimental:
       - Overview: experimental.md
-      - Experimental Credential Engine (ECE): experimental/ece.md
       - Better Model Names: experimental/better-model-names.md
   - Advanced:
       - Overview: advanced.md
