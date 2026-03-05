@@ -371,7 +371,7 @@ class WelcomeWindow(QDialog):
 
         desc = QLabel(
             "IntenseRP Next is a local OpenAI-compatible API + desktop app that drives provider web UIs "
-            "(DeepSeek / GLM Chat / Moonshot) in a real browser, so clients like SillyTavern can use them "
+            "(DeepSeek / GLM Chat / Moonshot / QwenLM) in a real browser, so clients like SillyTavern can use them "
             "without wiring up the paid official APIs."
         )
         desc.setWordWrap(True)
@@ -662,6 +662,8 @@ class WelcomeWindow(QDialog):
                 desc = "May require CAPTCHA during login."
             elif provider == "Moonshot":
                 desc = "Manual Google login flow. Persistent sessions recommended."
+            elif provider == "QwenLM":
+                desc = "Email/password login, very smooth experience."
 
             icon_file = PROVIDER_ICON_MAP.get(provider)
             card = ProviderChoiceCard(provider, desc, icon_file, parent=frame)
@@ -690,7 +692,7 @@ class WelcomeWindow(QDialog):
         self._auto_login_row = ToggleRow(
             "Enable Auto Login",
             self._auto_login,
-            description="Fill credentials automatically (DeepSeek / GLM Chat).",
+            description="Fill credentials automatically (DeepSeek / GLM Chat / QwenLM).",
         )
         layout.addWidget(self._auto_login_row, 0)
 
@@ -988,6 +990,8 @@ class WelcomeWindow(QDialog):
             return "glm_behavior"
         if provider == DriverProvider.MOONSHOT:
             return "moonshot_behavior"
+        if provider == DriverProvider.QWEN_LM:
+            return "qwen_behavior"
         return "deepseek_behavior"
 
     def _resize_to_at_least(self, width: int, height: int) -> None:
@@ -1021,7 +1025,7 @@ class WelcomeWindow(QDialog):
 
     def _provider_supports_auto_login(self) -> bool:
         provider = DriverProvider.from_setting(self._state.provider)
-        return provider in {DriverProvider.DEEPSEEK, DriverProvider.GLM_CHAT}
+        return provider in {DriverProvider.DEEPSEEK, DriverProvider.GLM_CHAT, DriverProvider.QWEN_LM}
 
     def _get_or_create_moonshot_placeholder_password(self) -> str:
         existing = getattr(self, "_moonshot_placeholder_password", "")
@@ -1050,6 +1054,10 @@ class WelcomeWindow(QDialog):
             self._account_info.setText(
                 "Moonshot uses a manual Google login flow. We still keep a placeholder identity here so the "
                 "browser profile does not end up named 'manual'."
+            )
+        elif provider == DriverProvider.QWEN_LM:
+            self._account_info.setText(
+                "QwenLM supports Auto Login. If you keep it off, the browser will wait for manual login."
             )
         else:
             self._account_info.setText(
@@ -1089,7 +1097,7 @@ class WelcomeWindow(QDialog):
         self._on_reasoning_toggles_changed()
 
     def _sync_feature_labels(self, provider: DriverProvider) -> None:
-        if provider == DriverProvider.MOONSHOT:
+        if provider in {DriverProvider.MOONSHOT, DriverProvider.QWEN_LM}:
             self._enable_reasoning_row.label.setText("Enable Thinking")
             self._send_reasoning_row.label.setText("Send Thinking")
         else:
@@ -1287,6 +1295,8 @@ class WelcomeWindow(QDialog):
             model_text = "glm-auto\nglm-chat\nglm-reasoner"
         elif provider == DriverProvider.MOONSHOT:
             model_text = "moonshot-auto\nmoonshot-chat\nmoonshot-reasoner"
+        elif provider == DriverProvider.QWEN_LM:
+            model_text = "qwen-auto\nqwen-chat\nqwen-reasoner"
         else:
             model_text = "deepseek-auto\ndeepseek-chat\ndeepseek-reasoner"
 
@@ -1362,7 +1372,7 @@ class WelcomeWindow(QDialog):
         cfg.set_setting(behavior_key, "enable_search", bool(self._state.enable_search))
 
         # Credential Manager (first-run helper)
-        supports_auto_login = provider_enum in {DriverProvider.DEEPSEEK, DriverProvider.GLM_CHAT}
+        supports_auto_login = provider_enum in {DriverProvider.DEEPSEEK, DriverProvider.GLM_CHAT, DriverProvider.QWEN_LM}
         should_write_identity = bool(supports_auto_login and self._state.auto_login) or (
             provider_enum == DriverProvider.MOONSHOT
         )

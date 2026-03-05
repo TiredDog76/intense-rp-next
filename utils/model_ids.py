@@ -12,6 +12,20 @@ MODE_REASONER = "reasoner"
 DEEPSEEK_BETTER_BASES: tuple[str, ...] = ("deepseek-v3.2",)
 MOONSHOT_BETTER_BASES: tuple[str, ...] = ("kimi-k2.5",)
 GLM_BETTER_BASES: tuple[str, ...] = ("glm-4.6", "glm-4.7", "glm-5")
+QWEN_BETTER_BASES: tuple[str, ...] = (
+    "qwen3.5-plus",
+    "qwen3.5-flash",
+    "qwen3.5-397b-a17b",
+    "qwen3.5-122b-a10b",
+    "qwen3.5-27b",
+    "qwen3.5-35b-a3b",
+    "qwen3-max",
+    "qwen3-235b-a22b-2507",
+    "qwen3-coder",
+    "qwen3-vl-235b-a22b",
+    "qwen3-omni-flash",
+    "qwen2.5-max",
+)
 
 
 LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
@@ -30,6 +44,11 @@ LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
         "moonshot-chat": MODE_CHAT,
         "moonshot-reasoner": MODE_REASONER,
     },
+    DriverProvider.QWEN_LM: {
+        "qwen-auto": MODE_AUTO,
+        "qwen-chat": MODE_CHAT,
+        "qwen-reasoner": MODE_REASONER,
+    },
 }
 
 
@@ -45,6 +64,8 @@ def get_legacy_model_ids(provider: DriverProvider) -> list[str]:
         return ["glm-auto", "glm-chat", "glm-reasoner"]
     if provider == DriverProvider.MOONSHOT:
         return ["moonshot-auto", "moonshot-chat", "moonshot-reasoner"]
+    if provider == DriverProvider.QWEN_LM:
+        return ["qwen-auto", "qwen-chat", "qwen-reasoner"]
     return ["deepseek-auto", "deepseek-chat", "deepseek-reasoner"]
 
 
@@ -64,6 +85,22 @@ def get_configured_glm_base_model(config_manager: Any) -> str:
     return "glm-5"
 
 
+def get_configured_qwen_base_model(config_manager: Any) -> str:
+    value = ""
+    try:
+        value = str(config_manager.get_setting("qwen_behavior", "model") or "").strip()
+    except Exception:
+        value = ""
+
+    normalized = value.strip().lower()
+    normalized = normalized.replace(" ", "-").replace("_", "-")
+
+    if normalized in QWEN_BETTER_BASES:
+        return normalized
+
+    return "qwen3.5-plus"
+
+
 def get_better_model_bases(provider: DriverProvider, config_manager: Any) -> list[str]:
     if provider == DriverProvider.DEEPSEEK:
         return list(DEEPSEEK_BETTER_BASES)
@@ -71,6 +108,8 @@ def get_better_model_bases(provider: DriverProvider, config_manager: Any) -> lis
         return list(MOONSHOT_BETTER_BASES)
     if provider == DriverProvider.GLM_CHAT:
         return [get_configured_glm_base_model(config_manager)]
+    if provider == DriverProvider.QWEN_LM:
+        return [get_configured_qwen_base_model(config_manager)]
     return list(DEEPSEEK_BETTER_BASES)
 
 
@@ -81,6 +120,8 @@ def _better_bases_for_provider(provider: DriverProvider) -> set[str]:
         return set(MOONSHOT_BETTER_BASES)
     if provider == DriverProvider.GLM_CHAT:
         return set(GLM_BETTER_BASES)
+    if provider == DriverProvider.QWEN_LM:
+        return set(QWEN_BETTER_BASES)
     return set()
 
 

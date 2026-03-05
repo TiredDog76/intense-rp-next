@@ -48,7 +48,7 @@ If you are not sure what to do, starring the repo and reporting what you tried (
 
 -   :material-share-variant: **Share it (optional)**
 
-    If you know someone who would benefit from a "DeepSeek/GLM/Moonshot in SillyTavern" bridge, sharing the docs or the repo is appreciated.
+    If you know someone who would benefit from a "DeepSeek/GLM/Moonshot/QwenLM in SillyTavern" bridge, sharing the docs or the repo is appreciated.
 
 </div>
 

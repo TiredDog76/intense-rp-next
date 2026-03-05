@@ -34,6 +34,12 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](features/moonshot-behavior.md)
 
+-   :material-chat: **QwenLM Behavior**
+
+    Configure Thinking, Web search, model selection, and token counting.
+
+    [:arrow_right: Learn More](features/qwen-behavior.md)
+
 -   :material-key: **Login & Sessions**
 
     Auto-login and persistent browser sessions.
@@ -125,6 +131,22 @@ Fine-tune how Moonshot processes your requests.
 | **Search** | Toggle Kimi search tooling |
 | **File Upload Mode** | Send long prompts as a text file |
 | **Anti-Censorship** | Suppress refusal-like stream outputs when detected |
+| **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
+
+---
+
+### :material-chat: QwenLM Behavior
+
+Fine-tune how QwenLM processes your requests.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Thinking** | Toggle QwenLM Thinking mode |
+| **Send Thinking** | Include thinking summaries in the response (wrapped in `<think>` tags) |
+| **Count Tokens** | Returns token usage in API responses |
+| **Web Search** | Toggle QwenLM Web search (search results are not sent to the client) |
+| **Model Picker (UI)** | Select Qwen's real model dropdown |
+| **File Upload Mode** | Send long prompts as a text file |
 | **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
 
 ---

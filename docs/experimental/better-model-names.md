@@ -11,6 +11,7 @@ Historically that looked like:
 - `deepseek-auto` / `deepseek-chat` / `deepseek-reasoner`
 - `glm-auto` / `glm-chat` / `glm-reasoner`
 - `moonshot-auto` / `moonshot-chat` / `moonshot-reasoner`
+- `qwen-auto` / `qwen-chat` / `qwen-reasoner`
 
 That works, but it can get a bit confusing once you start thinking in terms of "real" models (especially for GLM, where you can pick between multiple models in Settings).
 
@@ -103,6 +104,27 @@ Example (if you selected **GLM-5** in Settings):
     If you use the Better Model Names IDs, you may need to update the selected model in your client after changing **GLM Behavior -> Model** (because the base name changes).
 
     If you want stable IDs that never change, keep using the legacy `glm-auto` / `glm-chat` / `glm-reasoner` names.
+
+### :material-chat: QwenLM
+
+QwenLM also has **real model selection** in the web UI:
+
+:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Model**
+
+When Better Model Names is enabled, `GET /v1/models` uses the base model that matches your current QwenLM selection.
+
+Example (if you selected **Qwen3.5-Plus** in Settings):
+
+| Model ID | Behavior |
+|---|---|
+| `qwen3.5-plus-auto` | Uses your IntenseRP settings |
+| `qwen3.5-plus` | Forces Thinking off |
+| `qwen3.5-plus-think` | Forces Thinking on |
+
+!!! tip "If you switch Qwen models often"
+    If you use the Better Model Names IDs, you may need to update the selected model in your client after changing **QwenLM Behavior -> Model** (because the base name changes).
+
+    If you want stable IDs that never change, keep using the legacy `qwen-auto` / `qwen-chat` / `qwen-reasoner` names.
 
 ---
 

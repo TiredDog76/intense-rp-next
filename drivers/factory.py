@@ -5,6 +5,7 @@ from typing import Any
 from deepseek_driver import DeepSeekDriver
 from glm_driver import GLMDriver
 from moonshot_driver import MoonshotDriver
+from qwen_driver import QwenLMDriver
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from utils.logger import Logger
@@ -26,6 +27,8 @@ def create_driver(config_manager: Any) -> BaseDriver:
         return GLMDriver(config_manager)
     if provider == DriverProvider.MOONSHOT:
         return MoonshotDriver(config_manager)
+    if provider == DriverProvider.QWEN_LM:
+        return QwenLMDriver(config_manager)
 
     Logger.warning(f"Unknown driver provider '{provider_setting}', falling back to DeepSeek.")
     return DeepSeekDriver(config_manager)

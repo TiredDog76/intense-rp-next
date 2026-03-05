@@ -7,7 +7,7 @@ icon: material/api
 This page documents how the built-in OpenAI-compatible API behaves at runtime: what routes exist, how streaming works, and why requests are queued instead of running in parallel.
 
 !!! note "Implementation detail"
-    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
+    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `qwen_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
 
 ---
 
@@ -63,6 +63,16 @@ Moonshot model IDs are behavior presets:
 | `moonshot-auto` | Uses your settings | Uses your settings |
 | `moonshot-chat` | Forced off | Forced off |
 | `moonshot-reasoner` | Forced on | Uses your settings |
+
+### QwenLM
+
+QwenLM model IDs are behavior presets:
+
+| Model ID | Thinking | Send Thinking |
+|---|---|---|
+| `qwen-auto` | Uses your settings | Uses your settings |
+| `qwen-chat` | Forced off | Forced off |
+| `qwen-reasoner` | Forced on | Uses your settings |
 
 !!! info "What these IDs are (and are not)"
     These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
@@ -158,7 +168,7 @@ data: [DONE]
 ```
 
 !!! note "Usage in streams"
-    For GLM Chat, if **GLM Behavior -> Count Tokens** is enabled, IntenseRP emits one extra final chunk with `usage` (and `choices: []`) right before `data: [DONE]`.
+    For GLM Chat and QwenLM, if **Count Tokens** is enabled in the provider Behavior settings, IntenseRP emits one extra final chunk with `usage` (and `choices: []`) right before `data: [DONE]`.
 
 ### Disconnect behavior
 
@@ -175,7 +185,7 @@ If a streaming client disconnects, IntenseRP will:
 When you set `stream: false`, the server still generates via streaming internally, but it accumulates all `delta.content` pieces into one final response:
 
 - `choices[0].message.content` is the concatenated text
-- `usage` GLM Chat can populate it when **GLM Behavior -> Count Tokens** is enabled
+- `usage` GLM Chat and QwenLM can populate it when **Count Tokens** is enabled in the provider Behavior settings
 
 !!! note "Compatibility fields"
     `temperature` and `top_p` are accepted for OpenAI compatibility, but current provider drivers do not apply them yet.

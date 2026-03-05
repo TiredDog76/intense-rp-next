@@ -39,16 +39,16 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 
 ## Welcome 👋
 
-If you're here because you want DeepSeek / GLM / Moonshot in SillyTavern without wiring up the paid official API: Welcome to the club!
-IntenseRP Next v2 drives the official DeepSeek / GLM / Moonshot (Kimi) web apps in a real browser, and re-exposes them as an OpenAI-compatible endpoint.
+If you're here because you want to use an LLM in SillyTavern without wiring up the paid official API: Welcome to the club!
+IntenseRP Next v2 drives the official web apps (like DeepSeek, Z.AI, Moonshot, QwenLM) in a real browser, and re-exposes them as an OpenAI-compatible endpoint.
 
 Unlike the official API, this is usually free (DeepSeek / GLM / Kimi are free to use with limits, and paid plans aren't added yet) and it gives you access to the full web UI experience (including reasoning toggles, search, file uploads, and more). Not without tradeoffs, of course - see below.
-
+  
 ## Start here! 🎁
 
 1. Download a release (see [Releases](https://github.com/LyubomirT/intense-rp-next/releases)) and run it (or run from source)
 2. Click **Start** and log in when the browser opens
-3. Point your SillyTavern client at `http://127.0.0.1:7777/v1` (default) and pick `deepseek-*` / `glm-*` / `moonshot-*` mode IDs
+3. Point your SillyTavern client at `http://127.0.0.1:7777/v1` (default) and pick `deepseek-*` / `glm-*` / `moonshot-*` / `qwen-*` mode IDs
 
 And it's done! It should Just Work™️.
 
@@ -57,7 +57,7 @@ And it's done! It should Just Work™️.
 IntenseRP Next v2 (sometimes shortened to "IRP Next v2") is a local bridge between:
 
 - an OpenAI-style client (like SillyTavern), and
-- a provider web app (currently: DeepSeek, GLM Chat, Moonshot)
+- a provider web app (currently: DeepSeek, GLM Chat, Moonshot, QwenLM)
 
 Under the hood it:
 
@@ -67,9 +67,9 @@ Under the hood it:
 4. Intercepts the provider's streaming network responses
 5. Re-emits them as OpenAI-style SSE deltas for your client
 
-In normal human terms: it makes "use DeepSeek/GLM/Kimi from SillyTavern" feel like a normal API connection, even though they are web apps.
+In normal human terms: free acces to LLMs via their official web apps but turned into an API you can use in SillyTavern and other OpenAI-compatible clients.
 
-DeepSeek / GLM / Moonshot also have official APIs (paid), but not everyone can pay for them, so this is kind of a free alternative. 🙂
+Of course, there are also official paid APIs, but not everyone can pay for them, so this is kind of a free alternative. 🙂
 
 ## Should you use it? 🎯
 

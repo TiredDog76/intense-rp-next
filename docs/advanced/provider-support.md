@@ -6,7 +6,7 @@ icon: material/cloud
 
 IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
 
-Today, **DeepSeek**, **GLM Chat (Z.ai)**, and **Moonshot** are implemented and usable.
+Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, and **QwenLM** are implemented and usable.
 
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
@@ -63,10 +63,14 @@ Providers are prioritized in this order:
 |---|---:|---|
 | **DeepSeek** | 1 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
 | **GLM Chat** | 2 | :material-check-circle:{ style="color: #51CF66" } **Stable (mostly)** |
-| **Moonshot** | 3 | :material-shield-check:{ style="color: #FFD43B" } **Verification (early)** |
+| **Moonshot** | 3 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
+| **QwenLM** | 4 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
 
 !!! note "What 'Verification' means for Moonshot"
     Moonshot is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
+
+!!! note "QwenLM status"
+    QwenLM is newly integrated. Expect selector and stream-shape adjustments as the provider UI evolves. Surprisingly more stable than Moonshot so far.
 
 ---
 
@@ -91,6 +95,12 @@ Providers are prioritized in this order:
     Thinking, Search, file uploads, and Kimi-specific caveats.
 
     [:arrow_right: Moonshot Behavior](../features/moonshot-behavior.md)
+
+-   :material-chat: **QwenLM Behavior**
+
+    Thinking, Web search, model selection, and token counting.
+
+    [:arrow_right: QwenLM Behavior](../features/qwen-behavior.md)
 
 -   :material-key: **Login & Sessions**
 

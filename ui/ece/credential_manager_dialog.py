@@ -353,12 +353,14 @@ class CredentialManagerDialog(QDialog):
             _ProviderEntry(label="DeepSeek", provider=DriverProvider.DEEPSEEK),
             _ProviderEntry(label="GLM", provider=DriverProvider.GLM_CHAT),
             _ProviderEntry(label="Moonshot", provider=DriverProvider.MOONSHOT),
+            _ProviderEntry(label="QwenLM", provider=DriverProvider.QWEN_LM),
         ]
 
         provider_icon_map: Dict[DriverProvider, str] = {
             DriverProvider.DEEPSEEK: "providers/deepseek.svg",
             DriverProvider.GLM_CHAT: "providers/zai.svg",
             DriverProvider.MOONSHOT: "providers/moonshot.svg",
+            DriverProvider.QWEN_LM: "providers/qwen.svg",
         }
 
         initial_provider = DriverProvider.from_setting(

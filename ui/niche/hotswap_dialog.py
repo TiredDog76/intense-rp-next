@@ -13,13 +13,14 @@ PROVIDER_ICON_MAP: dict[str, str] = {
     "DeepSeek": "providers/deepseek.svg",
     "GLM Chat": "providers/zai.svg",
     "Moonshot": "providers/moonshot.svg",
+    "QwenLM": "providers/qwen.svg",
 }
 
-ALL_PROVIDERS: list[str] = ["DeepSeek", "GLM Chat", "Moonshot"]
+ALL_PROVIDERS: list[str] = ["DeepSeek", "GLM Chat", "Moonshot", "QwenLM"]
 
 
 class HotswapDialog(QDialog):
-    """Small modal that lets the user pick one of the other two providers."""
+    """Small modal that lets the user pick one of the other providers."""
 
     def __init__(self, current_provider: str, parent=None):
         super().__init__(parent)

@@ -12,7 +12,7 @@ Hotswaps let you switch between AI providers without opening the Settings window
 
 ![Hotswap Modal](../pics/features/hotswap_modal.png)
 
-When you trigger a Hotswap, IntenseRP shows a small dialog with the two providers you're **not** currently using. Pick one, and IntenseRP will:
+When you trigger a Hotswap, IntenseRP shows a small dialog with the providers you're **not** currently using. Pick one, and IntenseRP will:
 
 1. Update your **Provider** setting to the new provider
 2. If services are running, automatically restart the browser (stop + start)
@@ -46,6 +46,7 @@ Adds a small icon button to the **left of the Help button**. The button shows yo
 | DeepSeek | :material-fishbowl: Whale |
 | GLM Chat | Z |
 | Moonshot | :material-moon-waning-crescent: Eclipse |
+| QwenLM | (whatever the Qwen logo is meant to represent) |
 
 The button is only visible while services are running. Click it to open the same provider-selection dialog.
 

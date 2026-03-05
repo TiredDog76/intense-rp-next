@@ -10,6 +10,7 @@ class DriverProvider(str, Enum):
     DEEPSEEK = "DeepSeek"
     GLM_CHAT = "GLM Chat"
     MOONSHOT = "Moonshot"
+    QWEN_LM = "QwenLM"
     # Backwards compatible alias (legacy label was "Moonshot / Kimi")
     MOONSHOT_KIMI = "Moonshot"
 
@@ -38,6 +39,19 @@ class DriverProvider(str, Enum):
             "kimi-ai",
         }:
             return cls.MOONSHOT
+        if normalized in {
+            "qwen",
+            "qwenlm",
+            "qwen lm",
+            "qwen-lm",
+            "qwen ai",
+            "qwenai",
+            "qwen chat",
+            "chat.qwen.ai",
+            "qwen chat ai",
+            "qwen chat.ai",
+        }:
+            return cls.QWEN_LM
 
         return cls.DEEPSEEK
 

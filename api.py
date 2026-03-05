@@ -274,6 +274,8 @@ class API:
                 owned_by = "glm"
             elif effective_provider == DriverProvider.MOONSHOT:
                 owned_by = "moonshot"
+            elif effective_provider == DriverProvider.QWEN_LM:
+                owned_by = "qwen"
             else:
                 owned_by = "deepseek"
 

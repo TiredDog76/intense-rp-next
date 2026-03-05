@@ -185,6 +185,14 @@ These IDs are behavior presets (modes), not true model selection.
     | `moonshot-chat` | Forces Thinking off |
     | `moonshot-reasoner` | Forces Thinking on |
 
+=== ":material-chat: QwenLM"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `qwen-auto` | Uses your IntenseRP settings |
+    | `qwen-chat` | Forces Thinking off |
+    | `qwen-reasoner` | Forces Thinking on |
+
 ---
 
 ## :material-frequently-asked-questions: Quick FAQ

@@ -160,6 +160,7 @@ class SettingsWindow(QMainWindow):
         "deepseek_behavior": "providers/deepseek.svg",
         "glm_behavior": "providers/zai.svg",
         "moonshot_behavior": "providers/moonshot.svg",
+        "qwen_behavior": "providers/qwen.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
         "system_settings": "monitor.svg",
@@ -173,6 +174,7 @@ class SettingsWindow(QMainWindow):
         DriverProvider.DEEPSEEK: "deepseek_behavior",
         DriverProvider.GLM_CHAT: "glm_behavior",
         DriverProvider.MOONSHOT: "moonshot_behavior",
+        DriverProvider.QWEN_LM: "qwen_behavior",
     }
 
     def __init__(self, config_manager: ConfigManager, parent=None):
