@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon
 from ui.core.brand import BrandColors
+from ui.core.animation_settings import animations_disabled
 from ui.core.icons import IconUtils, IconType
 
 class MultiColumnRow(QWidget):
@@ -298,6 +299,9 @@ class Tumbler(QCheckBox):
         target = 1.0 if checked else 0.0
         if self._handle_anim.state() == QAbstractAnimation.Running:
             self._handle_anim.stop()
+        if animations_disabled():
+            self._set_handle_position(target)
+            return
         self._handle_anim.setStartValue(self._handle_position)
         self._handle_anim.setEndValue(target)
         self._handle_anim.start()
@@ -368,7 +372,11 @@ class Tumbler(QCheckBox):
         painter.setRenderHint(QPainter.Antialiasing)
 
         target_pos = 1.0 if self.isChecked() else 0.0
-        if self._handle_anim.state() != QAbstractAnimation.Running:
+        if animations_disabled():
+            if self._handle_anim.state() == QAbstractAnimation.Running:
+                self._handle_anim.stop()
+            self._handle_position = target_pos
+        elif self._handle_anim.state() != QAbstractAnimation.Running:
             self._handle_position = target_pos
         
         # Draw text

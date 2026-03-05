@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QAbstractAnimation
 
+from ui.core.animation_settings import animations_disabled
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils
 from utils.logger import LogLevel
@@ -254,6 +255,12 @@ class LogGroup(QWidget):
 
         if self._toggle_anim_group and self._toggle_anim_group.state() == QAbstractAnimation.Running:
             self._toggle_anim_group.stop()
+
+        if animations_disabled():
+            self._animating = False
+            self._apply_expanded_state()
+            self._update_chevron()
+            return
 
         self._animating = True
         self.content_widget.setVisible(True)

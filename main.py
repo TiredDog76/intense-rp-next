@@ -25,6 +25,7 @@ from ui.windows.welcome_window import WelcomeWindow
 from ui.widgets.mini_console import MiniConsole
 from ui.widgets.request_queue_preview import RequestQueuePreview
 from ui.widgets.split_button import SplitButton
+from ui.core.animation_settings import sync_animations_disabled_from_config
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.hotswap_dialog import HotswapDialog, PROVIDER_ICON_MAP
@@ -211,6 +212,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG}; color: {BrandColors.TEXT_PRIMARY};")
 
         self.config_manager = ConfigManager()
+        sync_animations_disabled_from_config(self.config_manager)
         self._queue_preview_min_width = 300
         self._queue_preview_handle_width = 12
 
@@ -1254,6 +1256,7 @@ class MainWindow(QMainWindow):
     def on_settings_saved(self, affected=None):
         affected = affected or set()
         Logger.info("Settings saved.")
+        sync_animations_disabled_from_config(self.config_manager)
         # Handle logging toggle
         self._setup_logging()
         self._apply_queue_preview_setting()
@@ -1404,6 +1407,7 @@ class MainWindow(QMainWindow):
 
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")
+        sync_animations_disabled_from_config(self.config_manager)
         self._setup_logging()
 
         if self.console_window:
