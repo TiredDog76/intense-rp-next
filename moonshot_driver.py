@@ -7,15 +7,25 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import httpx
 from dotenv import load_dotenv
 
-from deepseek_driver import DeepSeekDriver
+from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
+from drivers.shared_utils import (
+    COMMON_REQUEST_MACRO_ACTIONS,
+    clear_clean_regeneration_cache,
+    extract_macro_overrides,
+    format_messages,
+    read_clean_regeneration_state,
+    strip_macros_from_messages,
+    write_clean_regeneration_state,
+)
+from utils.cache_manager import CacheManager
 from utils.logger import Logger
 from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
 
 load_dotenv()
 
 
-class MoonshotDriver(DeepSeekDriver):
+class MoonshotDriver(BaseDriver):
     CHAT_ROUTE_GLOB = "**/apiv2/kimi.gateway.chat.v1.ChatService/Chat*"
     REGEN_ROUTE_GLOB = "**/apiv2/kimi.gateway.chat.v1.ChatService/RegenerateMessage*"
     CONNECT_MAX_FRAME_BYTES = 8 * 1024 * 1024
@@ -27,11 +37,17 @@ class MoonshotDriver(DeepSeekDriver):
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
 
     def __init__(self, config_manager):
-        super().__init__(config_manager)
-        self.provider = DriverProvider.MOONSHOT
+        super().__init__(config_manager=config_manager, provider=DriverProvider.MOONSHOT)
+        self.cache_manager = CacheManager()
+
+        self.last_document_lang: Optional[str] = None
+        self.ui_language_ok: Optional[bool] = None
+        self._non_english_ui_warned = False
+        self._non_english_ui_warned_lang: Optional[str] = None
 
         self.current_model = None
         self.current_send_deepthink = None
+        self.thinking_active = False
 
         self.clean_regen_message_cache_key = "moonshot_last_message.txt"
         self.clean_regen_state_cache_key = "moonshot_last_message_state.json"
@@ -42,6 +58,18 @@ class MoonshotDriver(DeepSeekDriver):
 
     def get_start_url(self) -> str:
         return "https://www.kimi.com/"
+
+    async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
+        await self.check_ui_language(status_callback=status_callback)
+        clear_clean_regeneration_cache(
+            self.cache_manager,
+            self.clean_regen_message_cache_key,
+            self.clean_regen_state_cache_key,
+        )
+        try:
+            await self._remember_send_control_signature(self.page.locator("div.send-button-container"))
+        except Exception:
+            pass
 
     def _ece_requires_auto_login(self) -> bool:
         # Moonshot login uses a manual Google flow; accounts still help pick identity/profile.
@@ -302,99 +330,27 @@ class MoonshotDriver(DeepSeekDriver):
         return settings
 
     def _extract_moonshot_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
-        if not text:
-            return text, {}
-
-        macro_actions: Dict[str, tuple[str, bool]] = {
-            "think": ("deepthink_enabled", True),
-            "r1": ("deepthink_enabled", True),
-            "nothink": ("deepthink_enabled", False),
-            "no_think": ("deepthink_enabled", False),
-            "r0": ("deepthink_enabled", False),
-            "search": ("search_enabled", True),
-            "nosearch": ("search_enabled", False),
-            "no_search": ("search_enabled", False),
-            "no-search": ("search_enabled", False),
-            "file": ("send_as_text_file", True),
-            "sendfile": ("send_as_text_file", True),
-            "nofile": ("send_as_text_file", False),
-            "no_file": ("send_as_text_file", False),
-        }
-
-        overrides: Dict[str, bool] = {}
-        macro_pattern = re.compile(r"\[\[\s*([a-zA-Z0-9_-]+)\s*\]\]")
-
-        def _replace_macro(match: re.Match) -> str:
-            macro = (match.group(1) or "").strip().lower()
-            action = macro_actions.get(macro)
-            if not action:
-                return match.group(0)
-
-            key, value = action
-            overrides[key] = value
-            return ""
-
-        cleaned = macro_pattern.sub(_replace_macro, text)
-        return cleaned, overrides
+        return extract_macro_overrides(text, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
     def _strip_moonshot_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
-        last_user_index = None
-        for idx in range(len(messages) - 1, -1, -1):
-            msg = messages[idx]
-            role = ""
-            if isinstance(msg, dict):
-                role = str(msg.get("role", "") or "")
-            else:
-                try:
-                    role = str(getattr(msg, "role", "") or "")
-                except Exception:
-                    role = ""
-            if role.strip().lower() == "user":
-                last_user_index = idx
-                break
+        return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
-        if last_user_index is None:
-            return messages, {}
+    def _read_clean_regeneration_state(self) -> Optional[Dict[str, bool]]:
+        return read_clean_regeneration_state(
+            self.cache_manager,
+            self.clean_regen_state_cache_key,
+            log_label="Clean Regeneration (Moonshot)",
+        )
 
-        last_msg = messages[last_user_index]
-        if isinstance(last_msg, dict):
-            content = last_msg.get("content", "")
-        else:
-            try:
-                content = getattr(last_msg, "content", "")
-            except Exception:
-                content = ""
+    def _write_clean_regeneration_state(self, state: Dict[str, bool]) -> None:
+        write_clean_regeneration_state(
+            self.cache_manager,
+            self.clean_regen_state_cache_key,
+            state,
+        )
 
-        if not isinstance(content, str):
-            return messages, {}
-
-        cleaned_content, overrides = self._extract_moonshot_macros_from_text(content)
-        if not overrides:
-            return messages, {}
-
-        cleaned_messages = list(messages)
-        if isinstance(last_msg, dict):
-            updated = dict(last_msg)
-            updated["content"] = cleaned_content
-            cleaned_messages[last_user_index] = updated
-        else:
-            role_value = ""
-            name_value = None
-            try:
-                role_value = getattr(last_msg, "role", "")
-            except Exception:
-                role_value = ""
-            try:
-                name_value = getattr(last_msg, "name", None)
-            except Exception:
-                name_value = None
-
-            updated = {"role": role_value, "content": cleaned_content}
-            if name_value is not None:
-                updated["name"] = name_value
-            cleaned_messages[last_user_index] = updated
-
-        return cleaned_messages, overrides
+    def _format_messages(self, messages: Union[str, List[Any]]) -> str:
+        return format_messages(self.config_manager, messages)
 
     @staticmethod
     def _coerce_request_body_bytes(value: Any) -> bytes | None:
@@ -676,15 +632,31 @@ class MoonshotDriver(DeepSeekDriver):
             self.current_abort_event.set()
         await self._click_stop_button()
 
+    def _moonshot_signature_looks_like_stop(self, signature: str | None) -> bool:
+        if not signature:
+            return False
+        lowered = signature.lower()
+        return any(token in lowered for token in ("stop", "cancel", "abort", "pause", "square"))
+
     async def _click_stop_button(self):
         try:
             send_button = self.page.locator("div.send-button-container")
             if await send_button.count() == 0:
                 return False
-            if await send_button.first.is_visible():
-                await send_button.first.click(timeout=2000)
-                return True
-            return False
+            if not await send_button.first.is_visible():
+                return False
+
+            current_signature = await self._read_control_signature(send_button)
+            cached_send_signature = getattr(self, "_send_control_signature", None)
+            if cached_send_signature and current_signature == cached_send_signature:
+                Logger.debug("Moonshot: composer control matches send mode. Skipping stop click.")
+                return False
+            if (not cached_send_signature) and (not self._moonshot_signature_looks_like_stop(current_signature)):
+                Logger.debug("Moonshot: composer control could not be verified as stop mode.")
+                return False
+
+            await send_button.first.click(timeout=2000)
+            return True
         except Exception as e:
             Logger.debug(f"Moonshot: stop button click failed: {e}")
             return False
@@ -1444,6 +1416,7 @@ class MoonshotDriver(DeepSeekDriver):
             Logger.warning("Moonshot: send button not found.")
             return
 
+        await self._remember_send_control_signature(send_button)
         if timeout and timeout > 0:
             deadline = time.time() + float(timeout)
             while time.time() < deadline:

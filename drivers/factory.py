@@ -19,6 +19,10 @@ def create_driver(config_manager: Any) -> BaseDriver:
         provider_setting = None
 
     provider = DriverProvider.from_setting(provider_setting)
+    if provider is None:
+        Logger.warning(f"Unknown driver provider '{provider_setting}', falling back to DeepSeek.")
+        provider = DriverProvider.DEEPSEEK
+
     Logger.info(f"Selected driver provider: {provider.value}")
 
     if provider == DriverProvider.DEEPSEEK:
@@ -30,5 +34,4 @@ def create_driver(config_manager: Any) -> BaseDriver:
     if provider == DriverProvider.QWEN_LM:
         return QwenLMDriver(config_manager)
 
-    Logger.warning(f"Unknown driver provider '{provider_setting}', falling back to DeepSeek.")
     return DeepSeekDriver(config_manager)

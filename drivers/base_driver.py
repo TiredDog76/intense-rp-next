@@ -4,6 +4,7 @@ import asyncio
 import subprocess
 import sys
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
 
 from patchright.async_api import Browser, BrowserContext, Page, async_playwright
@@ -15,6 +16,10 @@ from utils.logger import Logger
 
 
 class BaseDriver(ABC):
+    _browser_install_verified: bool = False
+    _browser_install_lock: asyncio.Lock | None = None
+    _browser_executable_path: str | None = None
+
     def __init__(self, config_manager: Any, provider: DriverProvider):
         self.config_manager = config_manager
         self.provider = provider
@@ -33,6 +38,7 @@ class BaseDriver(ABC):
         # Abort handling (provider-specific use; common surface)
         self.current_abort_event: asyncio.Event | None = None
         self.abort_requested = False
+        self._send_control_signature: str | None = None
 
         # Optional provider UI language detection (providers may opt in)
         self.last_document_lang: Optional[str] = None
@@ -285,8 +291,56 @@ class BaseDriver(ABC):
         Ensures the patchright chromium browser is installed.
         Returns True if installation was performed/verified, False if failed.
         """
-        # Directly run the install/verify command to avoid issues where the dry-run check returns false negatives
-        return await self._install_browser_via_cli(status_callback)
+        cached_path = BaseDriver._browser_executable_path
+        if BaseDriver._browser_install_verified and cached_path and Path(cached_path).exists():
+            return True
+
+        lock = self._get_browser_install_lock()
+        async with lock:
+            cached_path = BaseDriver._browser_executable_path
+            if BaseDriver._browser_install_verified and cached_path and Path(cached_path).exists():
+                return True
+
+            if await self._has_installed_browser():
+                BaseDriver._browser_install_verified = True
+                Logger.debug("Chromium browser already installed. Skipping patchright install.")
+                return True
+
+            installed = await self._install_browser_via_cli(status_callback)
+            BaseDriver._browser_install_verified = bool(installed)
+            if installed:
+                await self._has_installed_browser()
+            return installed
+
+    @classmethod
+    def _get_browser_install_lock(cls) -> asyncio.Lock:
+        lock = BaseDriver._browser_install_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            BaseDriver._browser_install_lock = lock
+        return lock
+
+    async def _has_installed_browser(self) -> bool:
+        cached_path = BaseDriver._browser_executable_path
+        if cached_path and Path(cached_path).exists():
+            return True
+
+        playwright = None
+        try:
+            playwright = await async_playwright().start()
+            browser_path = str(playwright.chromium.executable_path or "").strip()
+        except Exception as e:
+            Logger.debug(f"Browser executable probe failed: {e}")
+            return False
+        finally:
+            if playwright is not None:
+                try:
+                    await playwright.stop()
+                except Exception:
+                    pass
+
+        BaseDriver._browser_executable_path = browser_path or None
+        return bool(browser_path) and Path(browser_path).exists()
 
     async def _install_browser_via_cli(
         self, status_callback: Optional[Callable[[str], None]] = None
@@ -356,6 +410,9 @@ class BaseDriver(ABC):
     async def after_start(
         self, status_callback: Optional[Callable[[str], None]] = None
     ) -> None:
+        return None
+
+    async def cleanup_background_tasks(self) -> None:
         return None
 
     async def apply_configured_model(self) -> None:
@@ -450,54 +507,142 @@ class BaseDriver(ABC):
         if status_callback:
             status_callback("Launching Browser...")
 
-        self.playwright = await async_playwright().start()
-        persistent_sessions = bool(
-            self.config_manager.get_setting("system_settings", "persistent_sessions")
-        )
+        try:
+            self.playwright = await async_playwright().start()
+            persistent_sessions = bool(
+                self.config_manager.get_setting("system_settings", "persistent_sessions")
+            )
 
-        if persistent_sessions:
-            user_data_dir = self._get_persistent_profile_dir()
-            Logger.info("Launching Chromium (Persistent Sessions enabled)...")
-            Logger.debug(f"Persistent profile dir: {user_data_dir}")
+            if persistent_sessions:
+                user_data_dir = self._get_persistent_profile_dir()
+                Logger.info("Launching Chromium (Persistent Sessions enabled)...")
+                Logger.debug(f"Persistent profile dir: {user_data_dir}")
 
-            try:
-                import os
+                try:
+                    import os
 
-                os.makedirs(user_data_dir, exist_ok=True)
-                self.context = await self.playwright.chromium.launch_persistent_context(
-                    user_data_dir, headless=False
-                )
-                context_browser = getattr(self.context, "browser", None)
-                self.browser = context_browser() if callable(context_browser) else context_browser
-            except Exception as e:
-                Logger.error(f"Failed to launch persistent context: {e}")
-                Logger.warning("Falling back to non-persistent session...")
+                    os.makedirs(user_data_dir, exist_ok=True)
+                    self.context = await self.playwright.chromium.launch_persistent_context(
+                        user_data_dir, headless=False
+                    )
+                    context_browser = getattr(self.context, "browser", None)
+                    self.browser = context_browser() if callable(context_browser) else context_browser
+                except Exception as e:
+                    Logger.error(f"Failed to launch persistent context: {e}")
+                    Logger.warning("Falling back to non-persistent session...")
+                    self.browser = await self.playwright.chromium.launch(headless=False)
+                    self.context = await self.browser.new_context()
+            else:
+                Logger.info("Launching Chromium...")
                 self.browser = await self.playwright.chromium.launch(headless=False)
                 self.context = await self.browser.new_context()
-        else:
-            Logger.info("Launching Chromium...")
-            self.browser = await self.playwright.chromium.launch(headless=False)
-            self.context = await self.browser.new_context()
 
-        # Create or reuse a page
-        try:
-            pages = getattr(self.context, "pages", [])
-            self.page = pages[0] if pages else await self.context.new_page()
+            try:
+                pages = getattr(self.context, "pages", [])
+                self.page = pages[0] if pages else await self.context.new_page()
+            except Exception:
+                self.page = await self.context.new_page()
+
+            start_url = self.get_start_url()
+            Logger.info(f"Navigating to {start_url} ...")
+            await self._navigate_to_start_url(start_url)
+
+            await self.login()
+            await self.after_start(status_callback=status_callback)
+
+            self.is_running = True
+            Logger.success(f"{self.provider_label} Driver started successfully.")
+
+            self.monitoring_active = True
+            self._monitor_task = asyncio.create_task(self._monitor_browser_loop())
         except Exception:
-            self.page = await self.context.new_page()
+            Logger.warning(f"{self.provider_label} Driver failed during startup. Cleaning up...")
+            try:
+                await self.close()
+            except Exception as close_error:
+                Logger.debug(f"Cleanup after failed startup raised: {close_error}")
+            raise
 
-        start_url = self.get_start_url()
-        Logger.info(f"Navigating to {start_url} ...")
-        await self._navigate_to_start_url(start_url)
+    async def _cancel_task(
+        self,
+        task: asyncio.Task | None,
+        *,
+        label: str,
+        timeout_s: float = 2.0,
+    ) -> None:
+        if not task or task.done():
+            return
 
-        await self.login()
-        await self.after_start(status_callback=status_callback)
+        current_task = asyncio.current_task()
+        if task is current_task:
+            return
 
-        self.is_running = True
-        Logger.success(f"{self.provider_label} Driver started successfully.")
+        try:
+            task.cancel()
+            done, pending = await asyncio.wait({task}, timeout=timeout_s)
+            if pending:
+                Logger.warning(f"Timeout while {label}.")
+                return
+            if done:
+                try:
+                    task.exception()
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            Logger.debug(f"Error while {label}: {e}")
 
-        self.monitoring_active = True
-        self._monitor_task = asyncio.create_task(self._monitor_browser_loop())
+    async def _read_control_signature(self, locator: Any) -> str | None:
+        if locator is None:
+            return None
+
+        candidate = locator
+        try:
+            count = await candidate.count()
+        except Exception:
+            count = None
+
+        if isinstance(count, int):
+            if count <= 0:
+                return None
+            candidate = candidate.first
+
+        try:
+            return await candidate.evaluate(
+                """(el) => {
+                    const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+                    const svgSummary = Array.from(el.querySelectorAll('svg')).slice(0, 6).map((svg) => {
+                        return [
+                            normalize(svg.getAttribute('name')),
+                            normalize(svg.getAttribute('aria-label')),
+                            normalize(svg.getAttribute('data-icon')),
+                            normalize(svg.getAttribute('title')),
+                            normalize(svg.innerHTML)
+                        ].join('|');
+                    }).join('||');
+                    return JSON.stringify({
+                        tag: normalize(el.tagName),
+                        role: normalize(el.getAttribute('role')),
+                        ariaLabel: normalize(el.getAttribute('aria-label')),
+                        title: normalize(el.getAttribute('title')),
+                        dataTestId: normalize(el.getAttribute('data-testid')),
+                        text: normalize(el.textContent),
+                        svg: svgSummary,
+                        html: normalize(el.innerHTML),
+                    });
+                }"""
+            )
+        except Exception:
+            return None
+
+    async def _remember_send_control_signature(self, locator: Any) -> str | None:
+        signature = await self._read_control_signature(locator)
+        if signature:
+            self._send_control_signature = signature
+        return signature
 
     async def close(self) -> None:
         """
@@ -506,30 +651,16 @@ class BaseDriver(ABC):
         Logger.info(f"Closing {self.provider_label} Driver...")
         self.monitoring_active = False
         monitor_task = getattr(self, "_monitor_task", None)
-        if monitor_task and (not monitor_task.done()):
-            current_task = asyncio.current_task()
-            if monitor_task is current_task:
-                # Avoid self-cancel / self-await when close() is invoked from the monitor task.
-                # The loop will exit naturally because monitoring_active is already False.
-                pass
-            else:
-                try:
-                    monitor_task.cancel()
-                    done, pending = await asyncio.wait({monitor_task}, timeout=2.0)
-                    if pending:
-                        Logger.warning("Timeout while stopping monitor task.")
-                    if done:
-                        try:
-                            monitor_task.exception()
-                        except asyncio.CancelledError:
-                            pass
-                        except Exception:
-                            pass
-                except asyncio.CancelledError:
-                    pass
-                except Exception as e:
-                    Logger.debug(f"Error stopping monitor task: {e}")
+        try:
+            await self._cancel_task(monitor_task, label="stopping monitor task")
+        except asyncio.CancelledError:
+            pass
         self._monitor_task = None
+
+        try:
+            await self.cleanup_background_tasks()
+        except Exception as e:
+            Logger.debug(f"Error while cleaning up provider background tasks: {e}")
 
         async def _await_with_timeout(coro, timeout_s: float, label: str) -> None:
             try:
@@ -577,6 +708,7 @@ class BaseDriver(ABC):
         self.context = None
         self.browser = None
         self.playwright = None
+        self._send_control_signature = None
 
         self.is_running = False
         Logger.info(f"{self.provider_label} Driver closed.")

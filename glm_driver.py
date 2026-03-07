@@ -9,6 +9,15 @@ from dotenv import load_dotenv
 
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
+from drivers.shared_utils import (
+    COMMON_REQUEST_MACRO_ACTIONS,
+    clear_clean_regeneration_cache,
+    extract_macro_overrides,
+    format_messages,
+    read_clean_regeneration_state,
+    strip_macros_from_messages,
+    write_clean_regeneration_state,
+)
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
 from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
@@ -173,8 +182,18 @@ class GLMDriver(BaseDriver):
 
     async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         await self.check_ui_language(status_callback=status_callback)
-        self.cache_manager.clear_cache(self.clean_regen_message_cache_key)
-        self.cache_manager.clear_cache(self.clean_regen_state_cache_key)
+        clear_clean_regeneration_cache(
+            self.cache_manager,
+            self.clean_regen_message_cache_key,
+            self.clean_regen_state_cache_key,
+        )
+
+    async def cleanup_background_tasks(self) -> None:
+        await self._cancel_task(
+            self._refresh_after_generation_task,
+            label="stopping GLM refresh-after-generation task",
+        )
+        self._refresh_after_generation_task = None
 
     async def apply_configured_model(self) -> None:
         desired_friendly = self._get_configured_glm_model_friendly()
@@ -688,280 +707,27 @@ class GLMDriver(BaseDriver):
         return settings
 
     def _extract_glm_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
-        if not text:
-            return text, {}
-
-        macro_actions: Dict[str, tuple[str, bool]] = {
-            # Deep Think
-            "think": ("deepthink_enabled", True),
-            "r1": ("deepthink_enabled", True),
-            "nothink": ("deepthink_enabled", False),
-            "no_think": ("deepthink_enabled", False),
-            "r0": ("deepthink_enabled", False),
-
-            # Search
-            "search": ("search_enabled", True),
-            "nosearch": ("search_enabled", False),
-            "no_search": ("search_enabled", False),
-            "no-search": ("search_enabled", False),
-
-            # Send as text file
-            "file": ("send_as_text_file", True),
-            "sendfile": ("send_as_text_file", True),
-            "nofile": ("send_as_text_file", False),
-            "no_file": ("send_as_text_file", False),
-        }
-
-        overrides: Dict[str, bool] = {}
-        macro_pattern = re.compile(r"\[\[\s*([a-zA-Z0-9_-]+)\s*\]\]")
-
-        def _replace_macro(match: re.Match) -> str:
-            macro = (match.group(1) or "").strip().lower()
-            action = macro_actions.get(macro)
-            if not action:
-                return match.group(0)
-
-            key, value = action
-            overrides[key] = value
-            return ""
-
-        cleaned = macro_pattern.sub(_replace_macro, text)
-        return cleaned, overrides
+        return extract_macro_overrides(text, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
     def _strip_glm_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
-        last_user_index = None
-        for idx in range(len(messages) - 1, -1, -1):
-            msg = messages[idx]
-            role = ""
-            if isinstance(msg, dict):
-                role = str(msg.get("role", "") or "")
-            else:
-                try:
-                    role = str(getattr(msg, "role", "") or "")
-                except Exception:
-                    role = ""
-            if role.strip().lower() == "user":
-                last_user_index = idx
-                break
-
-        if last_user_index is None:
-            return messages, {}
-
-        last_msg = messages[last_user_index]
-        if isinstance(last_msg, dict):
-            content = last_msg.get("content", "")
-        else:
-            try:
-                content = getattr(last_msg, "content", "")
-            except Exception:
-                content = ""
-
-        if not isinstance(content, str):
-            return messages, {}
-
-        cleaned_content, overrides = self._extract_glm_macros_from_text(content)
-        if not overrides:
-            return messages, {}
-
-        cleaned_messages = list(messages)
-        if isinstance(last_msg, dict):
-            updated = dict(last_msg)
-            updated["content"] = cleaned_content
-            cleaned_messages[last_user_index] = updated
-        else:
-            role_value = ""
-            name_value = None
-            try:
-                role_value = getattr(last_msg, "role", "")
-            except Exception:
-                role_value = ""
-            try:
-                name_value = getattr(last_msg, "name", None)
-            except Exception:
-                name_value = None
-
-            updated = {"role": role_value, "content": cleaned_content}
-            if name_value is not None:
-                updated["name"] = name_value
-            cleaned_messages[last_user_index] = updated
-
-        return cleaned_messages, overrides
+        return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
     def _read_clean_regeneration_state(self) -> Optional[Dict[str, bool]]:
-        raw = self.cache_manager.read_cache(self.clean_regen_state_cache_key)
-        if raw is None:
-            return None
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            Logger.warning("Clean Regeneration (GLM): Cached state is invalid JSON, ignoring.")
-            return None
-
-        if not isinstance(data, dict):
-            return None
-
-        required_keys = ("deepthink_enabled", "search_enabled", "send_as_text_file")
-        if not all(k in data for k in required_keys):
-            return None
-
-        return {
-            "deepthink_enabled": bool(data.get("deepthink_enabled")),
-            "search_enabled": bool(data.get("search_enabled")),
-            "send_as_text_file": bool(data.get("send_as_text_file")),
-        }
+        return read_clean_regeneration_state(
+            self.cache_manager,
+            self.clean_regen_state_cache_key,
+            log_label="Clean Regeneration (GLM)",
+        )
 
     def _write_clean_regeneration_state(self, state: Dict[str, bool]) -> None:
-        payload = {
-            "deepthink_enabled": bool(state.get("deepthink_enabled")),
-            "search_enabled": bool(state.get("search_enabled")),
-            "send_as_text_file": bool(state.get("send_as_text_file")),
-        }
-        self.cache_manager.write_cache(
+        write_clean_regeneration_state(
+            self.cache_manager,
             self.clean_regen_state_cache_key,
-            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+            state,
         )
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
-        """
-        Applies formatting rules to the messages (shared behavior with DeepSeek).
-        """
-        apply_formatting = self.config_manager.get_setting("formatting", "apply_formatting")
-
-        # If formatting is disabled, we still need to convert list to string if it's a list
-        if not apply_formatting:
-            if isinstance(messages, list):
-                formatted_parts = []
-                for msg in messages:
-                    role = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                    content = getattr(msg, "content", msg.get("content") if isinstance(msg, dict) else "")
-                    formatted_parts.append(f"{role}: {content}")
-                return "\n".join(formatted_parts)
-            return messages
-
-        # 1. Parse Names
-        user_name = "User"
-        char_name = "Character"
-
-        msgs_to_scan = messages if isinstance(messages, list) else []
-
-        def _get_msg_field(msg: Any, key: str, default: Any = None) -> Any:
-            try:
-                value = getattr(msg, key)
-            except Exception:
-                value = None
-
-            if value is not None:
-                return value
-
-            if isinstance(msg, dict):
-                return msg.get(key, default)
-
-            return default
-
-        def _get_msg_name(msg: Any) -> Any:
-            name_value = _get_msg_field(msg, "name")
-            if name_value:
-                return name_value
-            return _get_msg_field(msg, "irp-next")  # For patcher compat
-
-        if self.config_manager.get_setting("formatting", "enable_msg_objects"):
-            for msg in msgs_to_scan:
-                role = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                name = _get_msg_name(msg)
-                if name:
-                    if role == "user":
-                        user_name = name
-                    elif role == "assistant":
-                        char_name = name
-
-        enable_ir2 = self.config_manager.get_setting("formatting", "enable_ir2")
-        enable_classic = self.config_manager.get_setting("formatting", "enable_classic_irp")
-
-        if enable_ir2 or enable_classic:
-            for msg in msgs_to_scan:
-                role = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                content = getattr(msg, "content", msg.get("content") if isinstance(msg, dict) else "")
-
-                if role == "system":
-                    if enable_ir2:
-                        ir2_match = re.search(r"\[\[IR2u\]\](.*?)\[\[/IR2u\]\]-\[\[IR2a\]\](.*?)\[\[/IR2a\]\]", content)
-                        if ir2_match:
-                            user_name = ir2_match.group(1)
-                            char_name = ir2_match.group(2)
-
-                    if enable_classic:
-                        classic_match = re.search(r'DATA1: \"(.*?)\"\s*DATA2: \"(.*?)\"', content)
-                        if classic_match:
-                            char_name = classic_match.group(1)
-                            user_name = classic_match.group(2)
-
-        # 2. Format Messages
-        template = self.config_manager.get_setting("formatting", "formatting_template") or ""
-        divider = self.config_manager.get_setting("formatting", "formatting_divider") or ""
-
-        template = str(template).replace("\\n", "\n")
-        divider = str(divider).replace("\\n", "\n")
-
-        formatted_parts = []
-
-        if isinstance(messages, list):
-            for msg in messages:
-                role_raw = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                content = getattr(msg, "content", msg.get("content") if isinstance(msg, dict) else "")
-
-                msg_name = None
-                if self.config_manager.get_setting("formatting", "enable_msg_objects"):
-                    msg_name = _get_msg_name(msg)
-
-                display_role = "System"
-                display_name = "System"
-
-                if role_raw == "user":
-                    display_role = "User"
-                    display_name = msg_name if msg_name else user_name
-                elif role_raw == "assistant":
-                    display_role = "Character"
-                    display_name = msg_name if msg_name else char_name
-
-                part = (
-                    template.replace("{{name}}", display_name)
-                    .replace("{{role}}", display_role)
-                    .replace("{{content}}", content)
-                )
-                formatted_parts.append(part)
-        else:
-            part = (
-                template.replace("{{name}}", user_name)
-                .replace("{{role}}", "User")
-                .replace("{{content}}", messages)
-            )
-            formatted_parts.append(part)
-
-        final_message = divider.join(formatted_parts)
-
-        # 3. Injection
-        injection_pos = self.config_manager.get_setting("formatting", "injection_position")
-        injection_content = self.config_manager.get_setting("formatting", "injection_content")
-
-        def _render_injection(text: str) -> str:
-            rendered = "" if text is None else str(text)
-            rendered = rendered.replace("{{user}}", user_name)
-            rendered = rendered.replace("{{char}}", char_name)
-            rendered = rendered.replace("{username}", user_name)
-            rendered = rendered.replace("{asstname}", char_name)
-            rendered = rendered.replace("{{username}}", user_name)
-            rendered = rendered.replace("{{asstname}}", char_name)
-            return rendered
-
-        if injection_content:
-            injection_content = _render_injection(injection_content)
-            if injection_pos == "Before":
-                final_message = injection_content + "\n" + final_message
-            else:
-                final_message = final_message + "\n" + injection_content
-
-        return final_message
+        return format_messages(self.config_manager, messages)
 
     async def set_sidebar_status(self, open: bool) -> None:
         if not self.page:

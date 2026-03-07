@@ -15,7 +15,7 @@ class DriverProvider(str, Enum):
     MOONSHOT_KIMI = "Moonshot"
 
     @classmethod
-    def from_setting(cls, value: Optional[str]) -> "DriverProvider":
+    def from_setting(cls, value: Optional[str]) -> Optional["DriverProvider"]:
         normalized = (value or "").strip().lower()
         if not normalized:
             return cls.DEEPSEEK
@@ -53,7 +53,7 @@ class DriverProvider(str, Enum):
         }:
             return cls.QWEN_LM
 
-        return cls.DEEPSEEK
+        return None
 
     @property
     def key(self) -> str:

@@ -1,12 +1,20 @@
 import time
 import json
 import asyncio
-import re
 import httpx
 from typing import List, Union, Any, Dict, Callable, Optional
 from dotenv import load_dotenv
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
+from drivers.shared_utils import (
+    COMMON_REQUEST_MACRO_ACTIONS,
+    clear_clean_regeneration_cache,
+    extract_macro_overrides,
+    format_messages,
+    read_clean_regeneration_state,
+    strip_macros_from_messages,
+    write_clean_regeneration_state,
+)
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
 from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
@@ -14,6 +22,21 @@ from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
 load_dotenv()
 
 class DeepSeekDriver(BaseDriver):
+    CHAT_READY_SELECTORS = [
+        "textarea[placeholder='Message DeepSeek']",
+        "textarea",
+    ]
+    SIGN_IN_SELECTORS = [
+        ".ds-sign-in-form__main",
+        ".ds-sign-in-form-wrapper",
+        ".ds-auth-form-wrapper",
+        ".ds-sign-up-form__main",
+        "input[autocomplete='current-password']",
+        "input[type='password']",
+        "button:has-text('Log in')",
+        "button:has-text('Sign in')",
+    ]
+
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.DEEPSEEK)
         self.cache_manager = CacheManager()
@@ -37,16 +60,93 @@ class DeepSeekDriver(BaseDriver):
         await self.check_ui_language(status_callback=status_callback)
 
         # Invalidate cache on start
-        self.cache_manager.clear_cache(self.clean_regen_message_cache_key)
-        self.cache_manager.clear_cache(self.clean_regen_state_cache_key)
+        clear_clean_regeneration_cache(
+            self.cache_manager,
+            self.clean_regen_message_cache_key,
+            self.clean_regen_state_cache_key,
+        )
+        try:
+            await self._remember_send_control_signature(self.page.locator("div.ds-icon-button._7436101"))
+        except Exception:
+            pass
+
+    async def _has_visible_selector(
+        self,
+        selectors: List[str],
+        *,
+        max_candidates: int = 8,
+    ) -> bool:
+        if not self.page:
+            return False
+
+        for selector in selectors:
+            try:
+                locator = self.page.locator(selector)
+                count = await locator.count()
+            except Exception:
+                continue
+
+            for idx in range(min(count, max_candidates)):
+                try:
+                    if await locator.nth(idx).is_visible():
+                        return True
+                except Exception:
+                    continue
+
+        return False
+
+    async def _detect_deepseek_shell_state(self) -> str:
+        if not self.page:
+            return "unknown"
+
+        try:
+            url_lower = str(self.page.url or "").lower()
+        except Exception:
+            url_lower = ""
+
+        if any(token in url_lower for token in ("sign_in", "signin", "sign-in")):
+            return "auth"
+        if await self._has_visible_selector(self.SIGN_IN_SELECTORS):
+            return "auth"
+        if await self._has_visible_selector(self.CHAT_READY_SELECTORS):
+            return "chat"
+        return "unknown"
+
+    async def _wait_for_deepseek_shell_state(
+        self,
+        timeout_ms: int = 60000,
+        poll_interval_s: float = 0.25,
+    ) -> str:
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+
+        while True:
+            state = await self._detect_deepseek_shell_state()
+            if state != "unknown":
+                return state
+
+            if time.time() >= deadline:
+                return "unknown"
+
+            await asyncio.sleep(max(0.05, float(poll_interval_s)))
 
     async def login(self):
         """
         Handles the login process if redirected to the sign-in page.
         """
-        # DeepSeek changes the auth flow/UI fairly often.
-        url_lower = (self.page.url or "").lower()
-        is_sign_in_page = any(token in url_lower for token in ("sign_in", "signin", "sign-in"))
+        try:
+            await self.page.wait_for_load_state("domcontentloaded")
+        except Exception:
+            pass
+
+        shell_state = await self._wait_for_deepseek_shell_state(timeout_ms=60000)
+        if shell_state == "unknown":
+            Logger.debug(
+                "DeepSeek: chat/auth UI did not stabilize before auth check. "
+                "Proceeding with best-effort state detection."
+            )
+            shell_state = await self._detect_deepseek_shell_state()
+
+        is_sign_in_page = shell_state == "auth"
 
         # Check if we were redirected to sign in
         if is_sign_in_page:
@@ -137,7 +237,7 @@ class DeepSeekDriver(BaseDriver):
                 except Exception as e:
                     Logger.error(f"Error waiting for manual login: {e}")
         else:
-            Logger.info("Not redirected to sign in. Continuing...")
+            Logger.info("DeepSeek chat UI detected (or sign-in UI not found). Continuing...")
             self._mark_active_ece_pair_used()
 
     async def _get_document_lang(self) -> str:
@@ -254,137 +354,23 @@ class DeepSeekDriver(BaseDriver):
         return settings
 
     def _extract_deepseek_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
-        if not text:
-            return text, {}
-
-        macro_actions: Dict[str, tuple[str, bool]] = {
-            # DeepThink
-            "think": ("deepthink_enabled", True),
-            "r1": ("deepthink_enabled", True),
-            "nothink": ("deepthink_enabled", False),
-            "no_think": ("deepthink_enabled", False),
-            "r0": ("deepthink_enabled", False),
-
-            # Search
-            "search": ("search_enabled", True),
-            "nosearch": ("search_enabled", False),
-            "no_search": ("search_enabled", False),
-
-            # Send as text file
-            "file": ("send_as_text_file", True),
-            "sendfile": ("send_as_text_file", True),
-            "nofile": ("send_as_text_file", False),
-            "no_file": ("send_as_text_file", False),
-        }
-
-        overrides: Dict[str, bool] = {}
-        macro_pattern = re.compile(r"\[\[\s*([a-zA-Z0-9_-]+)\s*\]\]")
-
-        def _replace_macro(match: re.Match) -> str:
-            macro = (match.group(1) or "").strip().lower()
-            action = macro_actions.get(macro)
-            if not action:
-                return match.group(0)
-
-            key, value = action
-            overrides[key] = value
-            return ""
-
-        cleaned = macro_pattern.sub(_replace_macro, text)
-        return cleaned, overrides
+        return extract_macro_overrides(text, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
     def _strip_deepseek_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
-        last_user_index = None
-        for idx in range(len(messages) - 1, -1, -1):
-            msg = messages[idx]
-            role = ""
-            if isinstance(msg, dict):
-                role = str(msg.get("role", "") or "")
-            else:
-                try:
-                    role = str(getattr(msg, "role", "") or "")
-                except Exception:
-                    role = ""
-            if role.strip().lower() == "user":
-                last_user_index = idx
-                break
-
-        if last_user_index is None:
-            return messages, {}
-
-        last_msg = messages[last_user_index]
-        if isinstance(last_msg, dict):
-            content = last_msg.get("content", "")
-        else:
-            try:
-                content = getattr(last_msg, "content", "")
-            except Exception:
-                content = ""
-
-        if not isinstance(content, str):
-            return messages, {}
-
-        cleaned_content, overrides = self._extract_deepseek_macros_from_text(content)
-        if not overrides:
-            return messages, {}
-
-        cleaned_messages = list(messages)
-        if isinstance(last_msg, dict):
-            updated = dict(last_msg)
-            updated["content"] = cleaned_content
-            cleaned_messages[last_user_index] = updated
-        else:
-            role_value = ""
-            name_value = None
-            try:
-                role_value = getattr(last_msg, "role", "")
-            except Exception:
-                role_value = ""
-            try:
-                name_value = getattr(last_msg, "name", None)
-            except Exception:
-                name_value = None
-
-            updated = {"role": role_value, "content": cleaned_content}
-            if name_value is not None:
-                updated["name"] = name_value
-            cleaned_messages[last_user_index] = updated
-
-        return cleaned_messages, overrides
+        return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
     def _read_clean_regeneration_state(self) -> Optional[Dict[str, bool]]:
-        raw = self.cache_manager.read_cache(self.clean_regen_state_cache_key)
-        if raw is None:
-            return None
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            Logger.warning("Clean Regeneration: Cached state is invalid JSON, ignoring.")
-            return None
-
-        if not isinstance(data, dict):
-            return None
-
-        required_keys = ("deepthink_enabled", "search_enabled", "send_as_text_file")
-        if not all(k in data for k in required_keys):
-            return None
-
-        return {
-            "deepthink_enabled": bool(data.get("deepthink_enabled")),
-            "search_enabled": bool(data.get("search_enabled")),
-            "send_as_text_file": bool(data.get("send_as_text_file")),
-        }
+        return read_clean_regeneration_state(
+            self.cache_manager,
+            self.clean_regen_state_cache_key,
+            log_label="Clean Regeneration",
+        )
 
     def _write_clean_regeneration_state(self, state: Dict[str, bool]) -> None:
-        payload = {
-            "deepthink_enabled": bool(state.get("deepthink_enabled")),
-            "search_enabled": bool(state.get("search_enabled")),
-            "send_as_text_file": bool(state.get("send_as_text_file")),
-        }
-        self.cache_manager.write_cache(
+        write_clean_regeneration_state(
+            self.cache_manager,
             self.clean_regen_state_cache_key,
-            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+            state,
         )
 
     async def generate_response(self, message: Union[str, List[Any]], model: str = "deepseek-auto", stream: bool = False, temperature: float = None, top_p: float = None, abort_event: asyncio.Event = None):
@@ -393,6 +379,10 @@ class DeepSeekDriver(BaseDriver):
         This function intercepts the network request to support streaming.
         """
         response_queue = asyncio.Queue()
+        completion_armed = asyncio.Event()
+        completion_started = asyncio.Event()
+        completion_claim_lock = asyncio.Lock()
+        completion_claimed = False
 
         # Some selectors rely on English UI text; fail fast with a clear error instead of hanging.
         await self.require_english_ui()
@@ -423,7 +413,19 @@ class DeepSeekDriver(BaseDriver):
         self.current_send_deepthink = effective_send_deepthink
         
         async def handle_route(route):
+            nonlocal completion_claimed
             request = route.request
+            if not completion_armed.is_set():
+                await route.continue_()
+                return
+
+            async with completion_claim_lock:
+                if completion_claimed:
+                    await route.continue_()
+                    return
+                completion_claimed = True
+                completion_started.set()
+
             Logger.info("Intercepting DeepSeek API request...")
             Logger.debug(f"Intercepted request to: {request.url}")
             
@@ -527,11 +529,20 @@ class DeepSeekDriver(BaseDriver):
 
                 if message_matches and state_matches:
                     Logger.info("Clean Regeneration: Message and settings match cache. Attempting to regenerate...")
+                    completion_armed.set()
                     if await self._click_regenerate():
                         Logger.info("Clean Regeneration: Button clicked. Regenerating...")
-                        regenerated = True
-                        self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
-                        self._write_clean_regeneration_state(clean_regen_state)
+                        try:
+                            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                        except asyncio.TimeoutError:
+                            Logger.warning(
+                                "Clean Regeneration: completion request not observed after clicking "
+                                "Regenerate. Falling back to new chat."
+                            )
+                        else:
+                            regenerated = True
+                            self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                            self._write_clean_regeneration_state(clean_regen_state)
                     else:
                         Logger.warning("Clean Regeneration: Button not found or disabled. Falling back to new chat.")
                 elif message_matches and not state_matches:
@@ -567,10 +578,12 @@ class DeepSeekDriver(BaseDriver):
                     # Get timeout from settings
                     upload_timeout = self.config_manager.get_setting("deepseek_behavior", "file_upload_timeout")
                     Logger.info("Sending request to DeepSeek...")
+                    completion_armed.set()
                     await self._send_message(timeout=upload_timeout)
                 else:
                     await self._enter_message(formatted_message)
                     Logger.info("Sending request to DeepSeek...")
+                    completion_armed.set()
                     await self._send_message()
                 
                 # Update cache
@@ -582,6 +595,17 @@ class DeepSeekDriver(BaseDriver):
                     }
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
                     self._write_clean_regeneration_state(clean_regen_state)
+
+            if not completion_started.is_set():
+                try:
+                    await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    Logger.error(
+                        "DeepSeek: completion request was not observed. "
+                        "The UI may have swallowed the click or the endpoint changed."
+                    )
+                    yield f"data: {json.dumps({'error': 'DeepSeek: completion request not observed'})}\n\n"
+                    return
             
             # Yield responses from queue
             while True:
@@ -605,8 +629,14 @@ class DeepSeekDriver(BaseDriver):
             self.abort_requested = False
             self.current_model = None
             self.current_send_deepthink = None
-            await self.page.unroute("**/api/v0/chat/completion")
-            await self.page.unroute("**/api/v0/chat/regenerate")
+            try:
+                await self.page.unroute("**/api/v0/chat/completion")
+            except Exception:
+                pass
+            try:
+                await self.page.unroute("**/api/v0/chat/regenerate")
+            except Exception:
+                pass
 
     async def abort_generation(self):
         """
@@ -620,188 +650,48 @@ class DeepSeekDriver(BaseDriver):
         # Click the stop button in DeepSeek UI
         await self._click_stop_button()
 
+    def _deepseek_signature_looks_like_stop(self, signature: str | None) -> bool:
+        if not signature:
+            return False
+        lowered = signature.lower()
+        return any(token in lowered for token in ("stop", "cancel", "abort", "pause", "square"))
+
     async def _click_stop_button(self):
         """
         Clicks the Stop button in DeepSeek UI to cancel the ongoing generation.
         The Stop button appears in place of the Send button during generation.
         """
         try:
-            # The send button doesn't have a specific class when it's in "stop" mode
-            # It's the same location as the send button but with different styling
-            
-            # First, try the specific stop button selector
             stop_button = self.page.locator("div.ds-icon-button._7436101")
-            
-            if await stop_button.count() > 0:
-                # Check if the button is in "stop" mode (enabled and clickable)
-                is_disabled = await stop_button.get_attribute("aria-disabled")
-                if is_disabled != "true":
-                    Logger.debug("Clicking Stop button...")
-                    await stop_button.click()
-                    Logger.debug("Stop button clicked successfully.")
-                    return True
-                else:
-                    Logger.debug("Stop button is disabled (generation may have already stopped).")
-            else:
+            if await stop_button.count() == 0:
                 Logger.debug("Stop button not found.")
-                
-            return False
+
+                return False
+
+            is_disabled = await stop_button.get_attribute("aria-disabled")
+            if is_disabled == "true":
+                Logger.debug("Stop button is disabled (generation may have already stopped).")
+                return False
+
+            current_signature = await self._read_control_signature(stop_button)
+            cached_send_signature = getattr(self, "_send_control_signature", None)
+            if cached_send_signature and current_signature == cached_send_signature:
+                Logger.debug("Composer control matches send mode. Skipping stop click.")
+                return False
+            if (not cached_send_signature) and (not self._deepseek_signature_looks_like_stop(current_signature)):
+                Logger.debug("Composer control could not be verified as stop mode.")
+                return False
+
+            Logger.debug("Clicking Stop button...")
+            await stop_button.click()
+            Logger.debug("Stop button clicked successfully.")
+            return True
         except Exception as e:
             Logger.error(f"Error clicking stop button: {e}")
             return False
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
-        """
-        Applies formatting rules to the messages.
-        """
-        apply_formatting = self.config_manager.get_setting("formatting", "apply_formatting")
-        
-        # If formatting is disabled, we still need to convert list to string if it's a list
-        if not apply_formatting:
-            if isinstance(messages, list):
-                # Mimic the previous behavior: role: content if custom formatting is off
-                formatted_parts = []
-                for msg in messages:
-                    role = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                    content = getattr(msg, "content", msg.get("content") if isinstance(msg, dict) else "")
-                    formatted_parts.append(f"{role}: {content}")
-                return "\n".join(formatted_parts)
-            return messages
-
-        # 1. Parse Names
-        user_name = "User"
-        char_name = "Character"
-        
-        msgs_to_scan = messages if isinstance(messages, list) else []
-
-        def _get_msg_field(msg: Any, key: str, default: Any = None) -> Any:
-            try:
-                value = getattr(msg, key)
-            except Exception:
-                value = None
-
-            if value is not None:
-                return value
-
-            if isinstance(msg, dict):
-                return msg.get(key, default)
-
-            return default
-
-        def _get_msg_name(msg: Any) -> Any:
-            name_value = _get_msg_field(msg, "name")
-            if name_value:
-                return name_value
-            return _get_msg_field(msg, "irp-next") # For patcher compat
-        
-        # Try Message Objects
-        if self.config_manager.get_setting("formatting", "enable_msg_objects"):
-            for msg in msgs_to_scan:
-                role = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                name = _get_msg_name(msg)
-                if name:
-                    if role == "user":
-                        user_name = name
-                    elif role == "assistant":
-                        char_name = name
-
-        # Try IR2 and Classic (Scan system messages)
-        enable_ir2 = self.config_manager.get_setting("formatting", "enable_ir2")
-        enable_classic = self.config_manager.get_setting("formatting", "enable_classic_irp")
-        
-        if enable_ir2 or enable_classic:
-            for msg in msgs_to_scan:
-                role = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                content = getattr(msg, "content", msg.get("content") if isinstance(msg, dict) else "")
-                
-                if role == "system":
-                    if enable_ir2:
-                        ir2_match = re.search(r"\[\[IR2u\]\](.*?)\[\[/IR2u\]\]-\[\[IR2a\]\](.*?)\[\[/IR2a\]\]", content)
-                        if ir2_match:
-                            user_name = ir2_match.group(1)
-                            char_name = ir2_match.group(2)
-                    
-                    if enable_classic:
-                        classic_match = re.search(r'DATA1: "(.*?)"\s*DATA2: "(.*?)"', content)
-                        if classic_match:
-                            char_name = classic_match.group(1)
-                            user_name = classic_match.group(2)
-
-        # 2. Format Messages
-        template = self.config_manager.get_setting("formatting", "formatting_template") or ""
-        divider = self.config_manager.get_setting("formatting", "formatting_divider") or ""
-
-        # Unescape newlines in both the template and divider.
-        # We want users to be able to enter \n in the settings UI.
-        template = str(template).replace("\\n", "\n")
-        divider = str(divider).replace("\\n", "\n")
-        
-        formatted_parts = []
-        
-        if isinstance(messages, list):
-            for msg in messages:
-                role_raw = getattr(msg, "role", msg.get("role") if isinstance(msg, dict) else "")
-                content = getattr(msg, "content", msg.get("content") if isinstance(msg, dict) else "")
-                
-                # Get per-message name if available and enabled
-                msg_name = None
-                if self.config_manager.get_setting("formatting", "enable_msg_objects"):
-                    msg_name = _get_msg_name(msg)
-                
-                # Map role
-                display_role = "System"
-                display_name = "System"
-                
-                if role_raw == "user":
-                    display_role = "User"
-                    display_name = msg_name if msg_name else user_name
-                elif role_raw == "assistant":
-                    display_role = "Character"
-                    display_name = msg_name if msg_name else char_name
-                
-                # Apply template
-                part = template.replace("{{name}}", display_name)\
-                               .replace("{{role}}", display_role)\
-                               .replace("{{content}}", content)
-                formatted_parts.append(part)
-        else:
-            # Single string message - treat as User
-            part = template.replace("{{name}}", user_name)\
-                           .replace("{{role}}", "User")\
-                           .replace("{{content}}", messages)
-            formatted_parts.append(part)
-            
-        final_message = divider.join(formatted_parts)
-        
-        # 3. Injection
-        injection_pos = self.config_manager.get_setting("formatting", "injection_position")
-        injection_content = self.config_manager.get_setting("formatting", "injection_content")
-
-        def _render_injection(text: str) -> str:
-            rendered = "" if text is None else str(text)
-
-            # v2 placeholders (recommended)
-            rendered = rendered.replace("{{user}}", user_name)
-            rendered = rendered.replace("{{char}}", char_name)
-
-            # Compatibility: common v1-style placeholders in injections
-            rendered = rendered.replace("{username}", user_name)
-            rendered = rendered.replace("{asstname}", char_name)
-
-            # Convenience aliases
-            rendered = rendered.replace("{{username}}", user_name)
-            rendered = rendered.replace("{{asstname}}", char_name)
-
-            return rendered
-        
-        if injection_content:
-            injection_content = _render_injection(injection_content)
-            if injection_pos == "Before":
-                final_message = injection_content + "\n" + final_message
-            else:
-                final_message = final_message + "\n" + injection_content
-                
-        return final_message
+        return format_messages(self.config_manager, messages)
 
     async def _process_chunk(self, chunk: bytes, queue: asyncio.Queue):
         try:
@@ -1258,6 +1148,7 @@ class DeepSeekDriver(BaseDriver):
         send_button = self.page.locator("div.ds-icon-button._7436101")
         
         if await send_button.count() > 0:
+            await self._remember_send_control_signature(send_button)
             # If timeout is provided, wait for the button to be enabled
             if timeout and timeout > 0:
                 Logger.debug(f"Waiting up to {timeout} seconds for send button to be enabled...")
