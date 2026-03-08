@@ -12,6 +12,7 @@ from typing import List, Optional, Dict, Any
 
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
+from utils.ip_utils import is_ip_address_allowed
 from utils.logger import Logger
 from utils.model_ids import build_openai_model_list, get_model_ids_for_provider
 
@@ -261,10 +262,32 @@ class API:
         Logger.info(f"Authenticated request using API key: {matched_name}")
         return matched_name
 
+    def _enforce_ip_whitelist(self, raw_request: Request) -> Optional[str]:
+        cfg = getattr(self.driver, "config_manager", None)
+        if not cfg or not cfg.get_setting("network_settings", "use_ip_whitelist"):
+            return None
+
+        client = getattr(raw_request, "client", None)
+        client_host = str(getattr(client, "host", "") or "").strip()
+        if not client_host:
+            Logger.warning("Blocked request: could not determine client IP while IP whitelist is enabled.")
+            raise HTTPException(status_code=403, detail="Client IP not allowed")
+
+        allowed_ips = cfg.get_setting("network_settings", "ip_whitelist") or []
+        if not is_ip_address_allowed(client_host, allowed_ips):
+            Logger.warning(f"Blocked request from IP {client_host}: not in whitelist.")
+            raise HTTPException(status_code=403, detail="Client IP not allowed")
+
+        return client_host
+
+    def _authorize_request(self, raw_request: Request) -> Optional[str]:
+        self._enforce_ip_whitelist(raw_request)
+        return self._authenticate_request(raw_request)
+
     def setup_routes(self):
         @self.app.get("/v1/models")
         async def list_models(raw_request: Request):
-            self._authenticate_request(raw_request)
+            self._authorize_request(raw_request)
 
             cfg = getattr(self.driver, "config_manager", None)
             provider = getattr(self.driver, "provider", None)
@@ -289,7 +312,7 @@ class API:
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: ChatCompletionRequest, raw_request: Request):
             # Optional API key authentication (Bearer token)
-            api_key_name = self._authenticate_request(raw_request)
+            api_key_name = self._authorize_request(raw_request)
 
             if not self.driver.is_running:
                 raise HTTPException(status_code=503, detail="Driver is not running")

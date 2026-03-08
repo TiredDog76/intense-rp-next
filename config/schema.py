@@ -1,7 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Any, Optional, Callable, Dict
-from .validators import validate_port, validate_directory_path
+from .validators import validate_port, validate_directory_path, validate_ip_address_list
 from .location import get_config_storage_options
 from drivers.providers import provider_options
 
@@ -18,6 +18,7 @@ class SettingType(Enum):
     BUTTON = "button"
     ROW = "row"
     INPUT_PAIR = "input_pair"
+    INPUT_LIST = "input_list"
     REDIRECT = "redirect"
 
 @dataclass
@@ -45,7 +46,7 @@ class SettingField:
     force_when_dep_unmet: Optional[Any] = None
     visible_depends: Optional[str] = None
     affects: Optional[List[str]] = None # UI components to refresh when this field changes
-    alternative_actions: Optional[List[AlternativeAction]] = None # For INPUT_PAIR fields
+    alternative_actions: Optional[List[AlternativeAction]] = None # For INPUT_PAIR-style fields
 
 @dataclass
 class SettingCategory:
@@ -1013,6 +1014,23 @@ SCHEMA = [
                     ),
                 ],
                 depends="network_settings.use_api_keys",
+                required=True,
+            ),
+            SettingField(
+                key="use_ip_whitelist",
+                label="Use IP Whitelist",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Only allow API requests from the listed IP addresses.",
+            ),
+            SettingField(
+                key="ip_whitelist",
+                label="Whitelisted IPs",
+                type=SettingType.INPUT_LIST,
+                default=[],
+                tooltip="List of IP addresses allowed to access the API.",
+                validator=validate_ip_address_list,
+                depends="network_settings.use_ip_whitelist",
                 required=True,
             ),
         ]

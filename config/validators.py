@@ -1,5 +1,6 @@
 import re
 import sys
+from utils.ip_utils import normalize_ip_list
 
 
 _WINDOWS_INVALID_CHARS = set('<>:"|?*')
@@ -106,3 +107,16 @@ def validate_directory_path(value: str | None) -> None:
         base = trimmed.split(".", 1)[0].upper()
         if base in _WINDOWS_RESERVED_NAMES:
             raise ValueError(f"Windows path component uses a reserved name: {base}.")
+
+
+def validate_ip_address_list(value) -> None:
+    if value is None:
+        return
+
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("IP whitelist must be a list of IP addresses.")
+
+    try:
+        normalize_ip_list(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid IP address in whitelist: {exc}")

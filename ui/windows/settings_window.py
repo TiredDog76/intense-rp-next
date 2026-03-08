@@ -15,7 +15,7 @@ from config.location import infer_preset_from_config_dir, migrate_config_dir, re
 from config.schema import SCHEMA, SettingType
 from drivers.providers import DriverProvider
 from ui.core.brand import BrandColors
-from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, DirectoryEntry
+from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
 from ui.widgets.redirect_card import RedirectCard
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
@@ -23,6 +23,7 @@ from ui.core.icons import IconUtils, IconType
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
 from utils.api_key_generator import generate_api_key
+from utils.ip_utils import normalize_ip_list
 from utils.update_checker import check_for_updates, read_local_version
 
 class _SearchHighlightOverlay(QWidget):
@@ -320,6 +321,9 @@ class SettingsWindow(QMainWindow):
                     category_key, field_key, widget, action_name
                 )
             )
+        elif field.type == SettingType.INPUT_LIST:
+            widget = InputListWidget(placeholder="127.0.0.1")
+            widget.itemsChanged.connect(self._on_setting_changed)
 
         elif field.type == SettingType.REDIRECT:
             btn_text = str(field.default) if field.default else "Open"
@@ -790,6 +794,8 @@ class SettingsWindow(QMainWindow):
                             widget.setCurrentText(value)
                     elif field.type == SettingType.INPUT_PAIR:
                         widget.set_pairs(value or [])
+                    elif field.type == SettingType.INPUT_LIST:
+                        widget.set_items(value or [])
                     widget.blockSignals(False)
         
         self._update_dependencies()
@@ -911,6 +917,10 @@ class SettingsWindow(QMainWindow):
             return widget.currentText()
         if isinstance(widget, StyledTextEdit):
             return widget.toPlainText()
+        if isinstance(widget, InputPairsWidget):
+            return widget.get_pairs()
+        if isinstance(widget, InputListWidget):
+            return widget.get_items()
         return None
 
     def _set_widget_value(self, widget, value):
@@ -924,6 +934,10 @@ class SettingsWindow(QMainWindow):
                 widget.setCurrentText("" if value is None else str(value))
             elif isinstance(widget, StyledTextEdit):
                 widget.setPlainText("" if value is None else str(value))
+            elif isinstance(widget, InputPairsWidget):
+                widget.set_pairs(value or [])
+            elif isinstance(widget, InputListWidget):
+                widget.set_items(value or [])
         finally:
             widget.blockSignals(False)
 
@@ -1838,6 +1852,8 @@ class SettingsWindow(QMainWindow):
                         value = widget.currentText()
                     elif field.type == SettingType.INPUT_PAIR:
                         value = widget.get_pairs()
+                    elif field.type == SettingType.INPUT_LIST:
+                        value = widget.get_items()
                     elif field.type in [SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.ROW, SettingType.REDIRECT]:
                         continue # These don't have values to save
                         
@@ -1858,6 +1874,8 @@ class SettingsWindow(QMainWindow):
                         elif field.validator:
                             try:
                                 field.validator(value)
+                                if field.type == SettingType.INPUT_LIST:
+                                    value = normalize_ip_list(value)
                                 if isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                                     widget.set_error(False)
                             except ValueError as e:

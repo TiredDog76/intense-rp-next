@@ -600,6 +600,52 @@ class InputPairRow(QWidget):
         self.right_input.setText(right_text)
 
 
+class InputListRow(QWidget):
+    """A single full-width input row with a remove (X) button."""
+
+    def __init__(self, text: str = "", placeholder: str = "", parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background-color: transparent;")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        self.input = StyledLineEdit()
+        self.input.setPlaceholderText(placeholder)
+        self.input.setText(text)
+        layout.addWidget(self.input, 1)
+
+        self.remove_button = QPushButton()
+        self.remove_button.setCursor(Qt.PointingHandCursor)
+        self.remove_button.setFixedSize(28, 28)
+        self.remove_button.setIconSize(QSize(12, 12))
+        self.remove_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 6px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+                border: 1px solid {BrandColors.DANGER};
+            }}
+            QPushButton:disabled {{
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                opacity: 0.4;
+            }}
+        """)
+        IconUtils.apply_icon(self.remove_button, IconType.CANCEL, BrandColors.TEXT_PRIMARY, size=12)
+        layout.addWidget(self.remove_button, 0)
+
+    def get_text(self) -> str:
+        return self.input.text()
+
+    def set_text(self, text: str) -> None:
+        self.input.setText(text)
+
+
 class InputPairsWidget(QWidget):
     """A vertical list of InputPairRow items with a Create New button."""
 
@@ -780,6 +826,104 @@ class InputPairsWidget(QWidget):
         self.add_button.setEnabled(enabled)
         for btn in self._alternative_buttons:
             btn.setEnabled(enabled)
+
+
+class InputListWidget(QWidget):
+    """A vertical list of single-value inputs with a Create New button."""
+
+    itemsChanged = Signal()
+
+    def __init__(self, parent=None, placeholder: str = ""):
+        super().__init__(parent)
+        self._rows: list[InputListRow] = []
+        self._placeholder = placeholder
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self._rows_layout = QVBoxLayout()
+        self._rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._rows_layout.setSpacing(6)
+        layout.addLayout(self._rows_layout)
+
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(0, 0, 0, 0)
+        actions_row.setSpacing(8)
+
+        self.add_button = StyledButton("Create New")
+        IconUtils.apply_icon(self.add_button, IconType.PLUS, BrandColors.TEXT_PRIMARY, size=14)
+        self.add_button.setIconSize(QSize(14, 14))
+        self.add_button.clicked.connect(lambda: self.add_item())
+        actions_row.addWidget(self.add_button, 0)
+        actions_row.addStretch(1)
+        layout.addLayout(actions_row)
+
+        self.add_item(emit_change=False)
+
+    def add_item(self, text: str = "", emit_change: bool = True) -> None:
+        row = InputListRow(text=text, placeholder=self._placeholder)
+        row.input.textChanged.connect(lambda *_: self.itemsChanged.emit())
+        row.remove_button.clicked.connect(lambda: self.remove_item(row))
+
+        self._rows.append(row)
+        self._rows_layout.addWidget(row)
+        self._update_remove_buttons()
+        self.updateGeometry()
+
+        if emit_change:
+            self.itemsChanged.emit()
+
+    def remove_item(self, row: InputListRow) -> None:
+        if len(self._rows) <= 1:
+            return
+
+        self._rows_layout.removeWidget(row)
+        self._rows.remove(row)
+        row.setParent(None)
+        row.deleteLater()
+
+        self._update_remove_buttons()
+        self.updateGeometry()
+        self.itemsChanged.emit()
+
+    def _update_remove_buttons(self) -> None:
+        disable_remove = len(self._rows) <= 1
+        for row in self._rows:
+            row.remove_button.setEnabled(not disable_remove)
+
+    def get_items(self) -> list[str]:
+        items: list[str] = []
+        for row in self._rows:
+            text = str(row.get_text() or "").strip()
+            if text:
+                items.append(text)
+        return items
+
+    def set_items(self, items) -> None:
+        for row in self._rows:
+            self._rows_layout.removeWidget(row)
+            row.setParent(None)
+            row.deleteLater()
+        self._rows = []
+
+        if items:
+            for item in items:
+                text = str(item or "").strip()
+                self.add_item(text=text, emit_change=False)
+
+        if not self._rows:
+            self.add_item(emit_change=False)
+
+        self._update_remove_buttons()
+        self.updateGeometry()
+
+    def setEnabled(self, enabled: bool) -> None:
+        super().setEnabled(enabled)
+        for row in self._rows:
+            row.input.setEnabled(enabled)
+            row.remove_button.setEnabled(enabled and len(self._rows) > 1)
+        self.add_button.setEnabled(enabled)
 
 
 class SettingRow(QWidget):
