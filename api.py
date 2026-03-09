@@ -12,6 +12,7 @@ from typing import List, Optional, Dict, Any
 
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
+from remote_control import RemoteControlActions, RemoteControlWeb
 from utils.ip_utils import is_ip_address_allowed
 from utils.logger import Logger
 from utils.model_ids import build_openai_model_list, get_model_ids_for_provider
@@ -159,13 +160,27 @@ class RequestQueue:
             return removed
 
 class API:
-    def __init__(self, driver: BaseDriver):
+    def __init__(
+        self,
+        driver: BaseDriver,
+        *,
+        remote_actions: RemoteControlActions | None = None,
+    ):
         self.app = FastAPI()
         self.driver = driver
         self.request_queue = RequestQueue()
         self.current_entry: Optional[QueueEntry] = None
         self.current_abort_event: asyncio.Event = None  # Track current request's abort event
+        self.remote_control: RemoteControlWeb | None = None
+        if remote_actions is not None:
+            self.remote_control = RemoteControlWeb(
+                getattr(self.driver, "config_manager", None),
+                enforce_ip_whitelist=self._enforce_ip_whitelist,
+                actions=remote_actions,
+            )
         self.setup_routes()
+        if self.remote_control is not None:
+            self.remote_control.register_routes(self.app)
         self.start_worker()
 
     async def abort_current_request(self, reason: str | None = None) -> bool:
@@ -479,6 +494,14 @@ class API:
 
     async def stop(self):
         Logger.info("Stopping API worker...")
+        remote_control = getattr(self, "remote_control", None)
+        if remote_control is not None:
+            try:
+                remote_control.stop()
+            except Exception as exc:
+                Logger.warning(f"Failed to stop Remote Control worker cleanly: {exc}")
+            finally:
+                self.remote_control = None
         if hasattr(self, 'worker_task'):
             self.worker_task.cancel()
             try:

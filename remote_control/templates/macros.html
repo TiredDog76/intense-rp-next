@@ -1,0 +1,36 @@
+{% macro app_header(asset_urls) -%}
+<div class="remote-header">
+  <img class="remote-header__logo" src="{{ asset_urls.logo_url }}" alt="IntenseRP Next logo">
+  <div class="remote-header__wordmark" aria-label="IntenseRP Next">
+    <span class="remote-header__brand">IntenseRP</span>
+    <span class="remote-header__brand remote-header__brand--accent">Next</span>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro web_button(id, label, variant="secondary", icon_url=None, icon_alt="", type="button", extra_classes="") -%}
+<button
+  id="{{ id }}"
+  class="web-button web-button--{{ variant }}{% if extra_classes %} {{ extra_classes }}{% endif %}"
+  type="{{ type }}"
+>
+  {% if icon_url %}
+  <span class="web-button__icon" aria-hidden="true">
+    <img src="{{ icon_url }}" alt="{{ icon_alt }}">
+  </span>
+  {% endif %}
+  <span class="web-button__label">{{ label }}</span>
+</button>
+{%- endmacro %}
+
+{% macro web_input(id, placeholder="", type="text", autocomplete="off") -%}
+<label class="web-input" for="{{ id }}">
+  <input
+    id="{{ id }}"
+    class="web-input__field"
+    type="{{ type }}"
+    placeholder="{{ placeholder }}"
+    autocomplete="{{ autocomplete }}"
+  >
+</label>
+{%- endmacro %}

@@ -16,8 +16,10 @@ from PySide6.QtGui import QPixmap
 import qasync
 
 from drivers.factory import create_driver
+from drivers.providers import DriverProvider, provider_options
 from api import API
 from config.manager import ConfigManager
+from remote_control import RemoteControlActions
 from ui.windows.settings_window import SettingsWindow
 from ui.windows.console_window import ConsoleWindow
 from ui.windows.help_window import HelpWindow
@@ -594,6 +596,48 @@ class MainWindow(QMainWindow):
 
         return any(getattr(self, attr, None) is not None for attr in ("driver", "api", "server"))
 
+    def _is_services_busy(self) -> bool:
+        start_button = getattr(self, "start_button", None)
+        main_button = getattr(start_button, "main_button", None)
+        if main_button is not None:
+            return not bool(main_button.isEnabled())
+        if start_button is not None:
+            try:
+                return not bool(start_button.isEnabled())
+            except Exception:
+                return False
+        return False
+
+    def _can_switch_account(self) -> bool:
+        driver = getattr(self, "driver", None)
+        if driver is None:
+            return False
+
+        try:
+            mgr = driver._get_ece_manager()
+            pairs = mgr.get_provider_pairs(driver.provider)
+            return len(pairs) >= 2
+        except Exception:
+            return False
+
+    def _get_hotswap_targets(self) -> list[str]:
+        current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
+        current_provider = DriverProvider.from_setting(current)
+        current_value = current_provider.value if current_provider else "DeepSeek"
+        return [provider_name for provider_name in provider_options() if provider_name != current_value]
+
+    def _get_remote_control_state(self) -> dict[str, object]:
+        current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
+        current_provider = DriverProvider.from_setting(current)
+        current_value = current_provider.value if current_provider else "DeepSeek"
+        return {
+            "running": self._are_services_running(),
+            "busy": self._is_services_busy(),
+            "can_switch_account": self._can_switch_account(),
+            "current_provider": current_value,
+            "hotswap_targets": self._get_hotswap_targets(),
+        }
+
     def _update_tray_menu_state(self) -> None:
         if not getattr(self, "_tray_icon", None):
             return
@@ -610,7 +654,7 @@ class MainWindow(QMainWindow):
         if show_action is not None:
             show_action.setVisible(hidden)
 
-        is_busy = not bool(self.start_button.isEnabled())
+        is_busy = self._is_services_busy()
         is_running = self._are_services_running()
 
         if start_action is not None:
@@ -1294,15 +1338,8 @@ class MainWindow(QMainWindow):
         account_action.triggered.connect(self._on_account_switch)
 
         # Disable if fewer than 2 accounts for the current provider
-        driver = getattr(self, "driver", None)
-        if driver:
-            try:
-                mgr = driver._get_ece_manager()
-                pairs = mgr.get_provider_pairs(driver.provider)
-                if len(pairs) < 2:
-                    account_action.setEnabled(False)
-            except Exception:
-                account_action.setEnabled(False)
+        if not self._can_switch_account():
+            account_action.setEnabled(False)
 
         hotswap_mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
         if (hotswap_mode or "Stop Menu") == "Stop Menu":
@@ -1396,14 +1433,48 @@ class MainWindow(QMainWindow):
         if not new_provider or new_provider == current:
             return
 
-        Logger.info(f"Hotswap: {current} -> {new_provider}")
-        self.config_manager.set_setting("providers_credentials", "provider", new_provider)
+        asyncio.create_task(self._hotswap_to_provider_impl(new_provider))
+
+    async def _hotswap_to_provider_impl(self, new_provider: str) -> None:
+        current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
+        normalized_provider = DriverProvider.from_setting(new_provider)
+        if normalized_provider is None:
+            raise ValueError(f"Unknown provider: {new_provider}")
+
+        target_provider = normalized_provider.value
+        if target_provider == current:
+            return
+
+        Logger.info(f"Hotswap: {current} -> {target_provider}")
+        self.config_manager.set_setting("providers_credentials", "provider", target_provider)
         self.config_manager.save_settings()
         running = self.start_button.text() == "Stop"
         if running:
-            asyncio.create_task(self._restart_services_impl())
+            await self._restart_services_impl()
         else:
             self._sync_hotswap_button()
+
+    async def _remote_stop_services(self) -> None:
+        if not self._are_services_running():
+            return
+
+        self.start_button.setEnabled(False)
+        self._update_status("Stopping...", "info")
+        self._update_tray_menu_state()
+        await self.stop_services()
+
+    async def _remote_restart_services(self) -> None:
+        if not self._are_services_running():
+            return
+        await self._restart_services_impl()
+
+    async def _remote_switch_account(self) -> None:
+        if not self._can_switch_account():
+            return
+        await self._account_switch_impl()
+
+    async def _remote_hotswap(self, provider_name: str) -> None:
+        await self._hotswap_to_provider_impl(provider_name)
 
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")
@@ -1695,7 +1766,16 @@ class MainWindow(QMainWindow):
                 await self.stop_services()
                 return
 
-            self.api = API(self.driver)
+            self.api = API(
+                self.driver,
+                remote_actions=RemoteControlActions(
+                    stop=self._remote_stop_services,
+                    restart=self._remote_restart_services,
+                    switch_account=self._remote_switch_account,
+                    hotswap=self._remote_hotswap,
+                    get_state=self._get_remote_control_state,
+                ),
+            )
 
             # Configure Uvicorn with log_config=None to avoid "Unable to configure formatter 'default'" error
             config = uvicorn.Config(
@@ -1729,6 +1809,9 @@ class MainWindow(QMainWindow):
                         pass
                 for addr in set(addrs):
                     Logger.success(f"Server running at {addr}")
+                if self.config_manager.get_setting("experimental", "enable_remote_control"):
+                    for addr in set(addrs):
+                        Logger.success(f"Remote control available at {addr}/remote")
 
             self.start_button.setText("Stop")
             self.start_button.apply_icon(IconType.STOP, BrandColors.TEXT_PRIMARY)

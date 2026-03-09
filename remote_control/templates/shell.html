@@ -1,0 +1,1102 @@
+{% from "macros.html" import app_header, web_button, web_input %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IntenseRP Next Remote Control</title>
+  <style>
+    @font-face {
+      font-family: "BlinkerWeb";
+      src: url("{{ asset_urls.fonts.regular }}") format("truetype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "BlinkerWeb";
+      src: url("{{ asset_urls.fonts.semibold }}") format("truetype");
+      font-weight: 600;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "BlinkerWeb";
+      src: url("{{ asset_urls.fonts.bold }}") format("truetype");
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "BlinkerWeb";
+      src: url("{{ asset_urls.fonts.extrabold }}") format("truetype");
+      font-weight: 800;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --window-bg: #1e1e1e;
+      --sidebar-bg: #252526;
+      --item-hover: #2a2d2e;
+      --accent: #5895fc;
+      --accent-hover: #4a80e0;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0a0;
+      --text-disabled: #555555;
+      --input-bg: #2d2d2d;
+      --input-border: #444444;
+      --console-bg: #0c0c0c;
+      --console-debug: #adb5bd;
+      --console-info: #66d9ef;
+      --console-success: #51cf66;
+      --console-warning: #ffd43b;
+      --console-error: #ff6b6b;
+      --font-sans: "BlinkerWeb", sans-serif;
+      --font-mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--window-bg);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+    }
+
+    body {
+      min-height: 100vh;
+      padding: 20px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+    }
+
+    .app-shell {
+      width: min(100%, 640px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .view {
+      width: 100%;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .view.is-active {
+      display: flex;
+    }
+
+    .login-view {
+      width: min(100%, 560px);
+    }
+
+    .remote-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .remote-header__logo {
+      width: 54px;
+      height: 54px;
+      object-fit: contain;
+      flex: 0 0 auto;
+    }
+
+    .remote-header__wordmark {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .remote-header__brand {
+      font-size: clamp(32px, 5vw, 44px);
+      line-height: 1;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .remote-header__brand--accent {
+      color: var(--accent);
+    }
+
+    .panel {
+      width: min(100%, 560px);
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      padding: 0;
+    }
+
+    .panel--plain {
+      width: min(100%, 560px);
+    }
+
+    .login-panel {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .login-panel__title,
+    .hotswap-view__title,
+    .disconnect-view__title {
+      margin: 0;
+      text-align: center;
+      font-size: 24px;
+      line-height: 1.15;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .login-panel__subtitle,
+    .disconnect-view__copy,
+    .helper-text {
+      margin: 0;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .input-row,
+    .controls-row {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      align-items: stretch;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .web-input {
+      flex: 1 1 0;
+      min-width: 240px;
+    }
+
+    .web-input__field {
+      width: 100%;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      border: 2px solid var(--input-border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 20px;
+      outline: none;
+      box-shadow: none;
+    }
+
+    .web-input__field:focus {
+      border-color: var(--accent);
+      box-shadow: none;
+    }
+
+    .web-input__field::placeholder {
+      color: var(--text-secondary);
+      opacity: 1;
+    }
+
+    .web-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      min-width: 140px;
+      border: none;
+      border-radius: 6px;
+      padding: 12px 20px;
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-decoration: none;
+    }
+
+    .web-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .web-button--accent {
+      background: var(--accent);
+    }
+
+    .web-button--accent:hover {
+      background: var(--accent-hover);
+    }
+
+    .web-button--secondary {
+      background: var(--sidebar-bg);
+    }
+
+    .web-button--secondary:hover {
+      background: var(--item-hover);
+    }
+
+    .web-button__icon {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    }
+
+    .web-button__icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: brightness(0) saturate(100%) invert(100%);
+    }
+
+    .split-button {
+      position: relative;
+      flex: 1 1 0;
+      min-width: 260px;
+      max-width: 380px;
+    }
+
+    .split-button__main,
+    .split-button__toggle {
+      position: relative;
+      z-index: 1;
+    }
+
+    .split-button__main {
+      width: 100%;
+      padding-right: 56px;
+    }
+
+    .split-button__toggle {
+      position: absolute;
+      inset: 0 0 0 auto;
+      width: 40px;
+      min-width: 40px;
+      border-radius: 0 6px 6px 0;
+      padding: 0;
+      border-left: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .split-button__toggle.web-button--accent:hover {
+      background: #79a8ff;
+    }
+
+    .split-button__toggle .web-button__label {
+      display: none;
+    }
+
+    .dropdown-menu {
+      position: absolute;
+      top: calc(100% + 2px);
+      right: 0;
+      min-width: 188px;
+      background: var(--sidebar-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      padding: 4px 0;
+      display: none;
+      flex-direction: column;
+      z-index: 10;
+    }
+
+    .dropdown-menu.is-open {
+      display: flex;
+    }
+
+    .dropdown-menu__item {
+      width: 100%;
+      min-height: 0;
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 400;
+      justify-content: flex-start;
+      padding: 8px 20px;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .dropdown-menu__item.web-button--secondary:hover {
+      background: var(--item-hover);
+    }
+
+    .dropdown-menu__item[disabled] {
+      color: var(--text-disabled);
+    }
+
+    .hotswap-view__panel,
+    .disconnect-view__panel {
+      width: min(100%, 520px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hotswap-grid {
+      width: 100%;
+      max-width: 520px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .hotswap-grid .web-button {
+      min-width: 0;
+      width: 100%;
+      justify-content: center;
+      padding: 12px 14px;
+    }
+
+    .status-text {
+      min-height: 18px;
+      margin: 0;
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 400;
+      color: var(--text-secondary);
+    }
+
+    .status-text--error {
+      color: var(--console-error);
+    }
+
+    .logs-view {
+      gap: 14px;
+    }
+
+    .console-card {
+      width: min(100%, 560px);
+      border-radius: 24px;
+      overflow: hidden;
+      background: var(--console-bg);
+    }
+
+    .console-output {
+      min-height: 280px;
+      max-height: 280px;
+      overflow: auto;
+      padding: 18px 22px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.45;
+      background: var(--console-bg);
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .console-output::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    .console-output::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
+
+    .console-output::-webkit-scrollbar-thumb {
+      background: #444444;
+      border-radius: 999px;
+    }
+
+    .console-output__placeholder {
+      min-height: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      text-align: center;
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .log-line {
+      margin: 0;
+    }
+
+    .log-line--DEBUG {
+      color: var(--console-debug);
+    }
+
+    .log-line--INFO {
+      color: var(--console-info);
+    }
+
+    .log-line--SUCCESS {
+      color: var(--console-success);
+    }
+
+    .log-line--WARNING {
+      color: var(--console-warning);
+    }
+
+    .log-line--ERROR {
+      color: var(--console-error);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 720px) {
+      body {
+        padding: 16px 12px;
+      }
+
+      .app-shell,
+      .view {
+        gap: 18px;
+      }
+
+      .app-shell,
+      .view,
+      .panel,
+      .console-card {
+        width: 100%;
+      }
+
+      .hotswap-view__panel,
+      .disconnect-view__panel {
+        width: 100%;
+      }
+
+      .remote-header {
+        gap: 12px;
+      }
+
+      .remote-header__logo {
+        width: 48px;
+        height: 48px;
+      }
+
+      .remote-header__wordmark {
+        gap: 6px;
+      }
+
+      .remote-header__brand {
+        font-size: 32px;
+      }
+
+      .web-input__field {
+        font-size: 14px;
+      }
+
+      .web-button {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .split-button {
+        min-width: 0;
+        max-width: none;
+      }
+
+      .split-button__main {
+        padding-right: 54px;
+      }
+
+      .split-button__toggle {
+        width: 38px;
+        min-width: 38px;
+      }
+
+      .dropdown-menu {
+        left: 0;
+        right: auto;
+        width: 100%;
+        min-width: 0;
+      }
+
+      .hotswap-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .console-output {
+        min-height: 250px;
+        max-height: 250px;
+        padding: 16px 18px;
+        font-size: 12px;
+      }
+
+      .console-output__placeholder,
+      .helper-text,
+      .status-text {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="view login-view" data-view="login">
+      {{ app_header(asset_urls) }}
+      <div class="panel">
+        <form id="login-form" class="login-panel">
+          <h1 class="login-panel__title">Remote Control</h1>
+          <p class="login-panel__subtitle">Enter the remote-control password to continue.</p>
+          <div class="input-row">
+            {{ web_input("login-password", placeholder="Password", type="password", autocomplete="current-password") }}
+            {{ web_button("login-button", "Login", variant="accent", icon_url=asset_urls.icons.check, icon_alt="Login") }}
+          </div>
+          <p id="login-status" class="status-text"></p>
+        </form>
+      </div>
+    </section>
+
+    <section class="view" data-view="home">
+      {{ app_header(asset_urls) }}
+      <div class="panel panel--plain">
+        <div class="controls-row">
+          <div class="split-button" id="stop-menu-shell">
+            {{ web_button("stop-button", "Stop", variant="accent", icon_url=asset_urls.icons.stop, icon_alt="Stop", extra_classes="split-button__main") }}
+            {{ web_button("stop-menu-toggle", "More", variant="accent", icon_url=asset_urls.icons.chevron_down, icon_alt="More", extra_classes="split-button__toggle") }}
+            <div id="stop-dropdown" class="dropdown-menu" role="menu" aria-hidden="true">
+              {{ web_button("restart-action", "Restart", variant="secondary", extra_classes="dropdown-menu__item") }}
+              {{ web_button("switch-account-action", "Switch Account", variant="secondary", extra_classes="dropdown-menu__item") }}
+              {{ web_button("hotswap-action", "Hotswap", variant="secondary", extra_classes="dropdown-menu__item") }}
+            </div>
+          </div>
+          {{ web_button("view-logs-button", "View Logs", variant="secondary", icon_url=asset_urls.icons.terminal, icon_alt="Logs") }}
+        </div>
+        <p id="home-status" class="status-text"></p>
+      </div>
+    </section>
+
+    <section class="view hotswap-view" data-view="hotswap">
+      <div class="hotswap-view__panel">
+        <h1 class="hotswap-view__title">Hotswap to...</h1>
+        <div id="hotswap-grid" class="hotswap-grid"></div>
+        {{ web_button("hotswap-back-button", "Back", variant="secondary") }}
+        <p id="hotswap-status" class="status-text"></p>
+      </div>
+    </section>
+
+    <section class="view logs-view" data-view="logs">
+      {{ app_header(asset_urls) }}
+      <div class="console-card">
+        <div id="console-output" class="console-output" aria-live="polite">
+          <div id="console-placeholder" class="console-output__placeholder">Loading</div>
+        </div>
+      </div>
+      <p id="logs-status" class="status-text"></p>
+      {{ web_button("logs-footer-button", "Back", variant="secondary") }}
+    </section>
+
+    <section class="view disconnect-view" data-view="disconnected">
+      <div class="disconnect-view__panel">
+        <h1 class="disconnect-view__title">You have been disconnected due to server shutdown.</h1>
+        <p class="disconnect-view__copy">Restart the services and reconnect when you are ready.</p>
+        {{ web_button("reconnect-button", "Reconnect", variant="secondary", icon_url=asset_urls.icons.chevron_right, icon_alt="Reconnect") }}
+        <p id="reconnect-status" class="status-text status-text--error hidden">Failed to reconnect. Start the server up, check the connection, and try again.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    window.__REMOTE_INITIAL_STATE__ = {{ initial_state_json | safe }};
+    window.__REMOTE_ASSETS__ = {{ asset_urls_json | safe }};
+  </script>
+  <script>
+    (function () {
+      const initialState = window.__REMOTE_INITIAL_STATE__ || {};
+      const assets = window.__REMOTE_ASSETS__ || {};
+      const sessionKey = "irp-next-remote-token";
+
+      const state = {
+        needsAuth: Boolean(initialState.needs_auth),
+        token: sessionStorage.getItem(sessionKey) || "",
+        currentView: "",
+        pendingView: initialState.initial_view || "home",
+        remoteState: initialState.remote_state || null,
+        logController: null,
+        logConnected: false,
+      };
+
+      const views = new Map(
+        Array.from(document.querySelectorAll("[data-view]")).map((view) => [
+          view.getAttribute("data-view"),
+          view,
+        ])
+      );
+
+      const loginForm = document.getElementById("login-form");
+      const loginPassword = document.getElementById("login-password");
+      const loginButton = document.getElementById("login-button");
+      const loginStatus = document.getElementById("login-status");
+      const homeStatus = document.getElementById("home-status");
+      const hotswapStatus = document.getElementById("hotswap-status");
+      const stopToggle = document.getElementById("stop-menu-toggle");
+      const stopDropdown = document.getElementById("stop-dropdown");
+      const restartAction = document.getElementById("restart-action");
+      const switchAccountAction = document.getElementById("switch-account-action");
+      const hotswapAction = document.getElementById("hotswap-action");
+      const viewLogsButton = document.getElementById("view-logs-button");
+      const hotswapGrid = document.getElementById("hotswap-grid");
+      const hotswapBackButton = document.getElementById("hotswap-back-button");
+      const consoleOutput = document.getElementById("console-output");
+      const consolePlaceholder = document.getElementById("console-placeholder");
+      const logsStatus = document.getElementById("logs-status");
+      const logsFooterButton = document.getElementById("logs-footer-button");
+      const reconnectButton = document.getElementById("reconnect-button");
+      const reconnectStatus = document.getElementById("reconnect-status");
+      const stopButton = document.getElementById("stop-button");
+
+      function setToken(token) {
+        state.token = token || "";
+        if (state.token) {
+          sessionStorage.setItem(sessionKey, state.token);
+        } else {
+          sessionStorage.removeItem(sessionKey);
+        }
+      }
+
+      function authHeaders(includeJson) {
+        const headers = {};
+        if (includeJson) {
+          headers["Content-Type"] = "application/json";
+        }
+        if (state.token) {
+          headers["Authorization"] = "Bearer " + state.token;
+        }
+        return headers;
+      }
+
+      function setStatus(element, text, isError) {
+        if (!element) {
+          return;
+        }
+        element.textContent = text || "";
+        element.classList.toggle("status-text--error", Boolean(isError) && Boolean(text));
+      }
+
+      function closeStopMenu() {
+        if (!stopDropdown) {
+          return;
+        }
+        stopDropdown.classList.remove("is-open");
+        stopDropdown.setAttribute("aria-hidden", "true");
+      }
+
+      function openStopMenu() {
+        if (!stopDropdown) {
+          return;
+        }
+        stopDropdown.classList.add("is-open");
+        stopDropdown.setAttribute("aria-hidden", "false");
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function showView(name) {
+        views.forEach((view, key) => {
+          view.classList.toggle("is-active", key === name);
+        });
+        state.currentView = name;
+        if (name === "logs") {
+          startLogs();
+        } else {
+          stopLogs();
+        }
+        if (name !== "disconnected") {
+          reconnectStatus.classList.add("hidden");
+        }
+      }
+
+      function updateHomeControls() {
+        const remoteState = state.remoteState || {};
+        const busy = Boolean(remoteState.busy);
+        const canSwitchAccount = Boolean(remoteState.can_switch_account);
+        stopButton.disabled = busy;
+        stopToggle.disabled = busy;
+        restartAction.disabled = busy;
+        switchAccountAction.disabled = busy || !canSwitchAccount;
+        hotswapAction.disabled = busy;
+      }
+
+      function renderHotswapTargets() {
+        hotswapGrid.innerHTML = "";
+        const targets = (state.remoteState && state.remoteState.hotswap_targets) || [];
+        targets.forEach((target) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "web-button web-button--accent";
+          button.innerHTML =
+            '<span class="web-button__icon" aria-hidden="true"><img src="' +
+            escapeHtml(target.icon_url) +
+            '" alt=""></span><span class="web-button__label">' +
+            escapeHtml(target.name) +
+            "</span>";
+          button.addEventListener("click", function () {
+            triggerAction("hotswap", { provider: target.name }, hotswapStatus);
+          });
+          hotswapGrid.appendChild(button);
+        });
+      }
+
+      async function requestJson(url, options) {
+        const response = await fetch(url, options || {});
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_error) {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          const message = payload && payload.detail ? payload.detail : "Request failed";
+          const error = new Error(message);
+          error.status = response.status;
+          throw error;
+        }
+        return payload;
+      }
+
+      async function validateSession() {
+        if (!state.needsAuth) {
+          return { reachable: true, authenticated: true };
+        }
+        if (!state.token) {
+          return { reachable: true, authenticated: false };
+        }
+
+        try {
+          const payload = await requestJson(
+            "{{ base_path }}/api/session",
+            {
+              method: "GET",
+              headers: authHeaders(false),
+              cache: "no-store",
+            }
+          );
+          if (payload && payload.token) {
+            setToken(payload.token);
+          }
+          return { reachable: true, authenticated: true };
+        } catch (error) {
+          if (error && error.status === 401) {
+            setToken("");
+            return { reachable: true, authenticated: false };
+          }
+          return { reachable: false, authenticated: false, error: error };
+        }
+      }
+
+      async function loadRemoteState() {
+        state.remoteState = await requestJson(
+          "{{ base_path }}/api/state",
+          {
+            method: "GET",
+            headers: authHeaders(false),
+            cache: "no-store",
+          }
+        );
+        updateHomeControls();
+        renderHotswapTargets();
+      }
+
+      async function completeAuthenticatedLoad(viewName) {
+        await loadRemoteState();
+        const targetView = viewName || "home";
+        showView(targetView);
+      }
+
+      async function boot() {
+        if (!state.needsAuth) {
+          await completeAuthenticatedLoad(state.pendingView === "login" ? "home" : state.pendingView);
+          return;
+        }
+
+        const sessionState = await validateSession();
+        if (!sessionState.reachable || !sessionState.authenticated) {
+          showView("login");
+          loginPassword.focus();
+          return;
+        }
+
+        await completeAuthenticatedLoad(state.pendingView === "login" ? "home" : state.pendingView);
+      }
+
+      async function handleLogin(event) {
+        event.preventDefault();
+        const password = loginPassword.value || "";
+        setStatus(loginStatus, "", false);
+        loginButton.disabled = true;
+
+        try {
+          const payload = await requestJson(
+            "{{ base_path }}/api/login",
+            {
+              method: "POST",
+              headers: authHeaders(true),
+              body: JSON.stringify({ password: password }),
+              cache: "no-store",
+            }
+          );
+          setToken(payload && payload.token ? payload.token : "");
+          loginPassword.value = "";
+          await completeAuthenticatedLoad(state.pendingView === "login" ? "home" : state.pendingView);
+        } catch (error) {
+          setToken("");
+          setStatus(loginStatus, error && error.message ? error.message : "Login failed.", true);
+        } finally {
+          loginButton.disabled = false;
+        }
+      }
+
+      async function triggerAction(actionName, payload, statusElement) {
+        closeStopMenu();
+        setStatus(statusElement, "", false);
+        try {
+          await requestJson(
+            "{{ base_path }}/api/action/" + encodeURIComponent(actionName),
+            {
+              method: "POST",
+              headers: authHeaders(true),
+              body: JSON.stringify(payload || {}),
+              cache: "no-store",
+            }
+          );
+          state.pendingView = "home";
+          showView("disconnected");
+        } catch (error) {
+          setStatus(
+            statusElement,
+            error && error.message ? error.message : "Action failed.",
+            true
+          );
+        }
+      }
+
+      function clearConsolePlaceholder() {
+        if (consolePlaceholder) {
+          consolePlaceholder.remove();
+        }
+      }
+
+      function appendLog(entry) {
+        clearConsolePlaceholder();
+        const line = document.createElement("div");
+        line.className = "log-line log-line--" + escapeHtml(entry.level || "INFO");
+        line.textContent = entry.message || "";
+        consoleOutput.appendChild(line);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+      }
+
+      function setLogsConnected(connected, message) {
+        state.logConnected = Boolean(connected);
+        if (state.logConnected) {
+          logsFooterButton.innerHTML = '<span class="web-button__label">Back</span>';
+          setStatus(logsStatus, "", false);
+        } else {
+          logsFooterButton.innerHTML =
+            '<span class="web-button__icon" aria-hidden="true"><img src="' +
+            escapeHtml(assets.icons.chevron_right) +
+            '" alt=""></span><span class="web-button__label">Reconnect</span>';
+          setStatus(logsStatus, message || "Connection to logs was lost.", true);
+        }
+      }
+
+      function stopLogs() {
+        if (state.logController) {
+          state.logController.abort();
+          state.logController = null;
+        }
+        state.logConnected = false;
+      }
+
+      async function startLogs() {
+        stopLogs();
+        setLogsConnected(true, "");
+
+        const controller = new AbortController();
+        state.logController = controller;
+
+        try {
+          const response = await fetch("{{ base_path }}/api/logs/stream", {
+            method: "GET",
+            headers: authHeaders(false),
+            cache: "no-store",
+            signal: controller.signal,
+          });
+
+          if (!response.ok || !response.body) {
+            throw new Error("Unable to connect to the logs stream.");
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const result = await reader.read();
+            if (result.done) {
+              throw new Error("The logs stream closed.");
+            }
+
+            buffer += decoder.decode(result.value, { stream: true });
+            const blocks = buffer.split("\n\n");
+            buffer = blocks.pop() || "";
+
+            blocks.forEach((block) => {
+              if (!block || block.startsWith(":")) {
+                return;
+              }
+              const lines = block.split("\n");
+              let eventName = "message";
+              let dataText = "";
+              lines.forEach((line) => {
+                if (line.startsWith("event:")) {
+                  eventName = line.slice(6).trim();
+                } else if (line.startsWith("data:")) {
+                  dataText += line.slice(5).trim();
+                }
+              });
+              if (eventName !== "log" || !dataText) {
+                return;
+              }
+              try {
+                const entry = JSON.parse(dataText);
+                appendLog(entry);
+              } catch (_error) {
+                // Ignore malformed log events
+              }
+            });
+          }
+        } catch (error) {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setLogsConnected(false, error && error.message ? error.message : "Connection to logs was lost.");
+        } finally {
+          if (state.logController === controller) {
+            state.logController = null;
+          }
+        }
+      }
+
+      async function reconnect() {
+        reconnectStatus.classList.add("hidden");
+        setStatus(reconnectStatus, "Failed to reconnect. Start the server up, check the connection, and try again.", true);
+        try {
+          if (state.needsAuth) {
+            const sessionState = await validateSession();
+            if (!sessionState.reachable) {
+              throw sessionState.error || new Error("Unable to reach the server.");
+            }
+            if (!sessionState.authenticated) {
+              state.pendingView = "home";
+              showView("login");
+              return;
+            }
+          }
+          await completeAuthenticatedLoad("home");
+        } catch (_error) {
+          reconnectStatus.classList.remove("hidden");
+        }
+      }
+
+      loginForm.addEventListener("submit", handleLogin);
+      loginButton.addEventListener("click", handleLogin);
+      viewLogsButton.addEventListener("click", function () {
+        state.pendingView = "logs";
+        showView("logs");
+      });
+      stopButton.addEventListener("click", function () {
+        triggerAction("stop", {}, homeStatus);
+      });
+      stopToggle.addEventListener("click", function () {
+        if (stopDropdown.classList.contains("is-open")) {
+          closeStopMenu();
+        } else {
+          openStopMenu();
+        }
+      });
+      restartAction.addEventListener("click", function () {
+        triggerAction("restart", {}, homeStatus);
+      });
+      switchAccountAction.addEventListener("click", function () {
+        triggerAction("switch-account", {}, homeStatus);
+      });
+      hotswapAction.addEventListener("click", function () {
+        closeStopMenu();
+        showView("hotswap");
+      });
+      hotswapBackButton.addEventListener("click", function () {
+        showView("home");
+      });
+      logsFooterButton.addEventListener("click", function () {
+        if (state.logConnected) {
+          showView("home");
+        } else {
+          showView("logs");
+        }
+      });
+      reconnectButton.addEventListener("click", reconnect);
+
+      document.addEventListener("click", function (event) {
+        if (!stopDropdown || !stopToggle) {
+          return;
+        }
+        const target = event.target;
+        if (!target) {
+          return;
+        }
+        if (
+          stopDropdown.contains(target) ||
+          stopToggle.contains(target)
+        ) {
+          return;
+        }
+        closeStopMenu();
+      });
+
+      boot().catch(function () {
+        showView("login");
+      });
+    })();
+  </script>
+</body>
+</html>

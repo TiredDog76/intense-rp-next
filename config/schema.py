@@ -789,6 +789,27 @@ SCHEMA = [
                 tooltip="Use the classic title layout instead of the new logo + styled title.",
                 affects=["title_bar"],
             ),
+            SettingField(
+                key="enable_remote_control",
+                label="Enable Remote Control",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Expose an opt-in HTML remote-control interface on the running API server. "
+                    "Remote routes still respect the IP whitelist when enabled."
+                ),
+            ),
+            SettingField(
+                key="remote_control_password",
+                label="Remote Control Password",
+                type=SettingType.PASSWORD,
+                default="",
+                tooltip=(
+                    "Optional password for the Remote Control interface. Leave blank to disable "
+                    "password auth and rely on network restrictions only."
+                ),
+                depends="experimental.enable_remote_control",
+            ),
         ],
     ),
     SettingCategory(

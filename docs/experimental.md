@@ -19,4 +19,10 @@ Experimental features currently include:
 
     [:arrow_right: Read Better Model Names docs](experimental/better-model-names.md)
 
+-   :material-remote-desktop: **Remote Control**
+
+    Gives you a tiny browser-side control panel for **Stop**, **Restart**, **Hotswap**, **Switch Account**, and live logs. Very handy for when you don't want to go back to your PC every time.
+
+    [:arrow_right: Read Remote Control docs](experimental/remote-control.md)
+
 </div>

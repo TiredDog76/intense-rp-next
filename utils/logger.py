@@ -78,6 +78,8 @@ class Logger:
     _max_files: float = 0.0
     _log_dir: Optional[str] = None
     _file_lock = threading.RLock()
+    _listener_lock = threading.RLock()
+    _listeners: list[Callable[[LogLevel, str], None]] = []
     
     @classmethod
     def set_console_callback(cls, callback: Optional[Callable[[LogLevel, str], None]]):
@@ -127,6 +129,23 @@ class Logger:
     def set_stdout_level(cls, level: LogLevel):
         """Set the minimum severity for stdout output."""
         cls._stdout_level = level
+
+    @classmethod
+    def add_listener(cls, callback: Optional[Callable[[LogLevel, str], None]]) -> None:
+        """Register an additional listener for clean log messages."""
+        if callback is None:
+            return
+        with cls._listener_lock:
+            if callback not in cls._listeners:
+                cls._listeners.append(callback)
+
+    @classmethod
+    def remove_listener(cls, callback: Optional[Callable[[LogLevel, str], None]]) -> None:
+        """Remove a previously registered log listener."""
+        if callback is None:
+            return
+        with cls._listener_lock:
+            cls._listeners = [listener for listener in cls._listeners if listener != callback]
 
     @classmethod
     def set_file_level(cls, level: LogLevel):
@@ -320,10 +339,14 @@ class Logger:
 
         # Console callback (filtering for console window / mini-console
         # happens at the UI layer, so always forward here)
+        with cls._listener_lock:
+            listeners = list(cls._listeners)
+
         need_callback = cls._console_callback is not None
         need_file = cls._log_file and cls.should_log(level, cls._file_level)
+        need_listeners = bool(listeners)
 
-        if need_callback or need_file:
+        if need_callback or need_file or need_listeners:
             formatted_clean = cls._format_message(level, message, include_ansi=False)
 
             if need_callback:
@@ -334,6 +357,13 @@ class Logger:
                         cls._console_callback(level, formatted_clean)
                 else:
                     cls._console_callback(level, formatted_clean)
+
+            if need_listeners:
+                for listener in listeners:
+                    try:
+                        listener(level, formatted_clean)
+                    except Exception:
+                        pass
 
             if need_file:
                 cls._log_to_file(formatted_clean)
