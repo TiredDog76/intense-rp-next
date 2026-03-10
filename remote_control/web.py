@@ -77,6 +77,12 @@ class RemoteControlWeb:
             "brand/newlogo-nobg.png": resolve_resource_path(
                 "ui", "assets", "brand", "newlogo-nobg.png"
             ),
+            "styles/shell.css": resolve_resource_path(
+                "remote_control", "assets", "shell.css"
+            ),
+            "scripts/shell.js": resolve_resource_path(
+                "remote_control", "assets", "shell.js"
+            ),
             "icons/check.svg": resolve_resource_path("ui", "assets", "icons", "check.svg"),
             "icons/chevron-down.svg": resolve_resource_path(
                 "ui", "assets", "icons", "chevron-down.svg"
@@ -255,6 +261,7 @@ class RemoteControlWeb:
         }
         html = template.render(
             base_path=self.BASE_PATH,
+            base_path_json=json.dumps(self.BASE_PATH, ensure_ascii=True),
             initial_state_json=json.dumps(
                 initial_state,
                 ensure_ascii=True,
@@ -279,6 +286,12 @@ class RemoteControlWeb:
             provider_assets[provider_name] = self.asset_url(f"providers/{provider_key}.svg")
         return {
             "logo_url": self.asset_url("brand/newlogo-nobg.png"),
+            "styles": {
+                "shell": self.asset_url("styles/shell.css"),
+            },
+            "scripts": {
+                "shell": self.asset_url("scripts/shell.js"),
+            },
             "fonts": {
                 "regular": self.asset_url("fonts/Blinker-Regular.ttf"),
                 "semibold": self.asset_url("fonts/Blinker-SemiBold.ttf"),

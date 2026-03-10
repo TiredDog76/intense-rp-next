@@ -42,6 +42,8 @@ python -m PyInstaller \
     --noconsole \
     --name "$APP_NAME" \
     --add-data "version.json:." \
+    --add-data "remote_control/assets:remote_control/assets" \
+    --add-data "remote_control/templates:remote_control/templates" \
     --add-data "ui/assets:ui/assets" \
     --add-data "ui/fonts:ui/fonts" \
     --collect-all patchright \
