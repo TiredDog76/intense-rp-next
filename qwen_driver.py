@@ -783,6 +783,40 @@ class QwenLMDriver(BaseDriver):
             pass
 
     @staticmethod
+    def _extract_qwen_summary_parts(extra: dict[str, Any], key: str) -> List[str]:
+        value = extra.get(key)
+        if not isinstance(value, dict):
+            return []
+
+        content = value.get("content")
+        if isinstance(content, list):
+            return [str(item or "").strip() for item in content]
+        if isinstance(content, str):
+            return [content.strip()]
+        return []
+
+    @classmethod
+    def _extract_qwen_thinking_summary_text(cls, delta: dict[str, Any]) -> str:
+        extra = delta.get("extra")
+        if not isinstance(extra, dict):
+            return ""
+
+        titles = cls._extract_qwen_summary_parts(extra, "summary_title")
+        thoughts = cls._extract_qwen_summary_parts(extra, "summary_thought")
+        section_count = max(len(titles), len(thoughts))
+        sections: List[str] = []
+
+        for idx in range(section_count):
+            title = titles[idx] if idx < len(titles) else ""
+            thought = thoughts[idx] if idx < len(thoughts) else ""
+            if title and thought:
+                sections.append(f"{title}\n{thought}")
+            elif title or thought:
+                sections.append(title or thought)
+
+        return "\n\n".join(section for section in sections if section)
+
+    @staticmethod
     def _compute_missing_suffix(emitted: str, candidate: str) -> str:
         if not candidate:
             return ""
@@ -810,6 +844,13 @@ class QwenLMDriver(BaseDriver):
         if len(candidate) <= 800:
             return candidate
         return ""
+
+    @classmethod
+    def _compute_missing_thinking_summary_text(cls, emitted: str, candidate: str) -> str:
+        missing = cls._compute_missing_suffix(emitted, candidate)
+        if emitted and missing and missing == candidate and not missing.startswith(("\n", "\r")):
+            return "\n\n" + missing
+        return missing
 
     async def _click_model_option_in_popup(self, target_label: str) -> bool:
         if not self.page:
@@ -2263,29 +2304,6 @@ class QwenLMDriver(BaseDriver):
                 response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
                 openai_usage_emitted = True
 
-            def _extract_thinking_summary_text(delta: dict[str, Any]) -> str:
-                extra = delta.get("extra")
-                if not isinstance(extra, dict):
-                    return ""
-
-                title_val = extra.get("summary_title")
-                title_text = ""
-                if isinstance(title_val, dict):
-                    parts = title_val.get("content")
-                    if isinstance(parts, list):
-                        title_text = "".join(str(p or "") for p in parts).strip()
-
-                thought_val = extra.get("summary_thought")
-                thought_text = ""
-                if isinstance(thought_val, dict):
-                    parts = thought_val.get("content")
-                    if isinstance(parts, list):
-                        thought_text = "".join(str(p or "") for p in parts).strip()
-
-                if title_text and thought_text:
-                    return title_text + "\n" + thought_text
-                return title_text or thought_text
-
             def process_sse_line(line: str) -> None:
                 nonlocal thinking_emitted, answer_started, openai_usage, openai_finish_emitted
                 line = line.strip()
@@ -2331,7 +2349,7 @@ class QwenLMDriver(BaseDriver):
                 if phase == "thinking_summary":
                     if not self.current_send_deepthink:
                         return
-                    summary_text = _extract_thinking_summary_text(delta)
+                    summary_text = self._extract_qwen_thinking_summary_text(delta)
                     if not summary_text:
                         return
 
@@ -2339,7 +2357,7 @@ class QwenLMDriver(BaseDriver):
                         enqueue_openai_delta("<think>")
                         self.thinking_active = True
 
-                    missing = self._compute_missing_suffix(thinking_emitted, summary_text)
+                    missing = self._compute_missing_thinking_summary_text(thinking_emitted, summary_text)
                     if missing:
                         enqueue_openai_delta(missing)
                         thinking_emitted += missing
@@ -2411,6 +2429,12 @@ class QwenLMDriver(BaseDriver):
                             if text_buffer_pos > 8192:
                                 del text_buffer[:text_buffer_pos]
                                 text_buffer_pos = 0
+
+                        tail = bytes(text_buffer[text_buffer_pos:])
+                        if tail.strip():
+                            process_sse_line(tail.decode("utf-8", errors="ignore"))
+                        text_buffer.clear()
+                        text_buffer_pos = 0
 
             except httpx.ReadError as e:
                 if not aborted and not self.abort_requested:
