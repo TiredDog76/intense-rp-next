@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
@@ -23,6 +23,7 @@ _RATE_LIMIT_LIKE_RE = re.compile(
 )
 
 DEFAULT_MAX_REQUEST_QUEUE_SIZE = 128
+QueueStateListener = Callable[[], None]
 
 
 def _parse_sse_json(chunk: Any) -> dict | None:
@@ -129,6 +130,24 @@ class RequestQueue:
         self._items = deque()
         self._condition = asyncio.Condition()
         self._max_size = max(1, int(max_size))
+        self._listeners: list[QueueStateListener] = []
+
+    def add_listener(self, listener: QueueStateListener) -> None:
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def remove_listener(self, listener: QueueStateListener) -> None:
+        try:
+            self._listeners.remove(listener)
+        except ValueError:
+            pass
+
+    def _notify_listeners(self) -> None:
+        for listener in list(self._listeners):
+            try:
+                listener()
+            except Exception as exc:
+                Logger.debug(f"RequestQueue listener failed: {exc}")
 
     @property
     def max_size(self) -> int:
@@ -144,12 +163,15 @@ class RequestQueue:
                 )
             self._items.append(item)
             self._condition.notify(1)
+        self._notify_listeners()
 
     async def get(self) -> QueueEntry:
         async with self._condition:
             while not self._items:
                 await self._condition.wait()
-            return self._items.popleft()
+            item = self._items.popleft()
+        self._notify_listeners()
+        return item
 
     async def snapshot(self) -> list[QueueEntry]:
         async with self._condition:
@@ -159,7 +181,9 @@ class RequestQueue:
         async with self._condition:
             drained = list(self._items)
             self._items.clear()
-            return drained
+        if drained:
+            self._notify_listeners()
+        return drained
 
     async def remove_by_abort_event(self, abort_event: asyncio.Event) -> bool:
         async with self._condition:
@@ -176,7 +200,9 @@ class RequestQueue:
                 kept.append(item)
 
             self._items = kept
-            return removed
+        if removed:
+            self._notify_listeners()
+        return removed
 
 class API:
     def __init__(
@@ -188,6 +214,9 @@ class API:
         self.app = FastAPI()
         self.driver = driver
         self.request_queue = RequestQueue()
+        self._queue_state_listeners: list[QueueStateListener] = []
+        self._request_queue_listener = self._notify_queue_state_changed
+        self.request_queue.add_listener(self._request_queue_listener)
         self.current_entry: Optional[QueueEntry] = None
         self.current_abort_event: asyncio.Event = None  # Track current request's abort event
         self.remote_control: RemoteControlWeb | None = None
@@ -202,6 +231,23 @@ class API:
             self.remote_control.register_routes(self.app)
         self.start_worker()
 
+    def add_queue_state_listener(self, listener: QueueStateListener) -> None:
+        if listener not in self._queue_state_listeners:
+            self._queue_state_listeners.append(listener)
+
+    def remove_queue_state_listener(self, listener: QueueStateListener) -> None:
+        try:
+            self._queue_state_listeners.remove(listener)
+        except ValueError:
+            pass
+
+    def _notify_queue_state_changed(self) -> None:
+        for listener in list(self._queue_state_listeners):
+            try:
+                listener()
+            except Exception as exc:
+                Logger.debug(f"Queue state listener failed: {exc}")
+
     async def abort_current_request(self, reason: str | None = None) -> bool:
         entry = getattr(self, "current_entry", None)
         abort_event = getattr(self, "current_abort_event", None)
@@ -214,6 +260,7 @@ class API:
             abort_event.set()
         except Exception:
             pass
+        self._notify_queue_state_changed()
 
         try:
             self.driver.request_abort()
@@ -489,6 +536,7 @@ class API:
                 if await raw_request.is_disconnected():
                     Logger.warning("Client disconnected, aborting request...")
                     abort_event.set()
+                    self._notify_queue_state_changed()
                     removed = await self.request_queue.remove_by_abort_event(abort_event)
                     if not removed and self.current_abort_event is abort_event:
                         # Signal the driver to abort (non-blocking)
@@ -508,6 +556,7 @@ class API:
         except asyncio.CancelledError:
             Logger.warning("Stream generator cancelled, aborting...")
             abort_event.set()
+            self._notify_queue_state_changed()
             asyncio.create_task(self.request_queue.remove_by_abort_event(abort_event))
             if self.current_abort_event is abort_event:
                 self.driver.request_abort()
@@ -515,6 +564,7 @@ class API:
             # Client disconnected abruptly
             Logger.warning("Generator exit, aborting...")
             abort_event.set()
+            self._notify_queue_state_changed()
             asyncio.create_task(self.request_queue.remove_by_abort_event(abort_event))
             if self.current_abort_event is abort_event:
                 self.driver.request_abort()
@@ -524,6 +574,10 @@ class API:
 
     async def stop(self):
         Logger.info("Stopping API worker...")
+        try:
+            self.request_queue.remove_listener(self._request_queue_listener)
+        except Exception:
+            pass
         remote_control = getattr(self, "remote_control", None)
         if remote_control is not None:
             try:
@@ -556,6 +610,7 @@ class API:
 
                     self.current_entry = entry
                     self.current_abort_event = abort_event
+                    self._notify_queue_state_changed()
 
                     try:
                         ece_reauth_enabled = bool(self.driver.ece_reauth_enabled())
@@ -675,6 +730,7 @@ class API:
                 finally:
                     self.current_entry = None
                     self.current_abort_event = None
+                    self._notify_queue_state_changed()
                     await response_queue.put(None)
                     Logger.success("Request completed.")
         except asyncio.CancelledError:

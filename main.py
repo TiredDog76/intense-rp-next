@@ -371,10 +371,11 @@ class MainWindow(QMainWindow):
         self._queue_preview_enabled = False
         self._queue_preview_last_width = 360
         self._queue_preview_refresh_inflight = False
+        self._queue_preview_refresh_pending = False
+        self._queue_preview_refresh_posted = False
         self._queue_preview_last_rendered = None
-        self._queue_preview_timer = QTimer()
-        self._queue_preview_timer.setInterval(500)
-        self._queue_preview_timer.timeout.connect(self._schedule_queue_preview_refresh)
+        self._queue_preview_state_listener = self._on_queue_preview_state_changed
+        self._queue_preview_listener_api: API | None = None
 
         self.driver = None
         self.api = None
@@ -1144,7 +1145,6 @@ class MainWindow(QMainWindow):
             self.queue_preview.setVisible(True)
             self.splitter.setHandleWidth(self._queue_preview_handle_width)
             self._queue_preview_last_rendered = None
-            self._queue_preview_timer.start()
             self._schedule_queue_preview_refresh()
 
             def apply_sizes():
@@ -1168,7 +1168,8 @@ class MainWindow(QMainWindow):
         self.queue_preview.setVisible(False)
         self.queue_preview.setMinimumWidth(0)
         self.queue_preview.setMaximumWidth(0)
-        self._queue_preview_timer.stop()
+        self._queue_preview_refresh_pending = False
+        self._queue_preview_refresh_posted = False
         self._queue_preview_last_rendered = None
 
         # Rebuild the splitter without the preview widget to avoid stale size/minimum constraints
@@ -1187,11 +1188,45 @@ class MainWindow(QMainWindow):
             lambda: self.resize(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT),
         )
 
+    def _set_queue_preview_api(self, api: API | None) -> None:
+        listener = getattr(self, "_queue_preview_state_listener", None)
+        attached_api = getattr(self, "_queue_preview_listener_api", None)
+        if attached_api is api:
+            return
+
+        if attached_api is not None and listener is not None:
+            try:
+                attached_api.remove_queue_state_listener(listener)
+            except Exception:
+                pass
+
+        self._queue_preview_listener_api = api
+        if api is not None and listener is not None:
+            try:
+                api.add_queue_state_listener(listener)
+            except Exception as e:
+                Logger.debug(f"Queue preview: Failed to attach queue state listener: {e}")
+
+        self._schedule_queue_preview_refresh()
+
+    def _on_queue_preview_state_changed(self) -> None:
+        if getattr(self, "_queue_preview_refresh_posted", False):
+            return
+
+        self._queue_preview_refresh_posted = True
+        QTimer.singleShot(0, self._flush_queue_preview_refresh_request)
+
+    def _flush_queue_preview_refresh_request(self) -> None:
+        self._queue_preview_refresh_posted = False
+        self._schedule_queue_preview_refresh()
+
     def _schedule_queue_preview_refresh(self):
         if not getattr(self, "_queue_preview_enabled", False):
             return
         if not getattr(self, "queue_preview", None) or not self.queue_preview.isVisible():
             return
+
+        self._queue_preview_refresh_pending = True
         if getattr(self, "_queue_preview_refresh_inflight", False):
             return
 
@@ -1200,50 +1235,63 @@ class MainWindow(QMainWindow):
 
     async def _refresh_queue_preview(self):
         try:
-            if not getattr(self, "_queue_preview_enabled", False):
-                return
-            if not getattr(self, "queue_preview", None) or not self.queue_preview.isVisible():
-                return
+            while True:
+                self._queue_preview_refresh_pending = False
 
-            entries = []
-            api = getattr(self, "api", None)
-            if api and getattr(api, "request_queue", None):
-                current = getattr(api, "current_entry", None)
-                if current:
-                    entries.append(("processing", current))
+                if not getattr(self, "_queue_preview_enabled", False):
+                    return
+                if not getattr(self, "queue_preview", None) or not self.queue_preview.isVisible():
+                    return
 
-                queued = await api.request_queue.snapshot()
-                for entry in queued:
-                    status = "cancelled" if entry.abort_event.is_set() else "pending"
-                    entries.append((status, entry))
+                entries = []
+                api = getattr(self, "api", None)
+                if api and getattr(api, "request_queue", None):
+                    current = getattr(api, "current_entry", None)
+                    if current:
+                        current_status = "cancelled" if current.abort_event.is_set() else "processing"
+                        entries.append((current_status, current))
 
-            rendered = []
-            for idx, (status, entry) in enumerate(entries, start=1):
-                req = getattr(entry, "request", None)
-                try:
-                    msg_count = len(getattr(req, "messages", []) or [])
-                except Exception:
-                    msg_count = 0
+                    queued = await api.request_queue.snapshot()
+                    for entry in queued:
+                        status = "cancelled" if entry.abort_event.is_set() else "pending"
+                        entries.append((status, entry))
 
-                rendered.append(
-                    {
-                        "position": idx,
-                        "id": getattr(entry, "id", ""),
-                        "queued_at": getattr(entry, "queued_at", 0.0),
-                        "status": status,
-                        "message_count": msg_count,
-                        "api_key_name": getattr(entry, "api_key_name", None),
-                        "model": getattr(req, "model", "") if req else "",
-                        "stream": bool(getattr(req, "stream", False)) if req else False,
-                    }
-                )
+                rendered = []
+                for idx, (status, entry) in enumerate(entries, start=1):
+                    req = getattr(entry, "request", None)
+                    try:
+                        msg_count = len(getattr(req, "messages", []) or [])
+                    except Exception:
+                        msg_count = 0
 
-            if getattr(self, "_queue_preview_last_rendered", None) == rendered:
-                return
-            self._queue_preview_last_rendered = rendered
-            self.queue_preview.set_requests(rendered)
+                    rendered.append(
+                        {
+                            "position": idx,
+                            "id": getattr(entry, "id", ""),
+                            "queued_at": getattr(entry, "queued_at", 0.0),
+                            "status": status,
+                            "message_count": msg_count,
+                            "api_key_name": getattr(entry, "api_key_name", None),
+                            "model": getattr(req, "model", "") if req else "",
+                            "stream": bool(getattr(req, "stream", False)) if req else False,
+                        }
+                    )
+
+                if getattr(self, "_queue_preview_last_rendered", None) != rendered:
+                    self._queue_preview_last_rendered = rendered
+                    self.queue_preview.set_requests(rendered)
+
+                if not getattr(self, "_queue_preview_refresh_pending", False):
+                    return
         finally:
             self._queue_preview_refresh_inflight = False
+            if (
+                getattr(self, "_queue_preview_refresh_pending", False)
+                and getattr(self, "_queue_preview_enabled", False)
+                and getattr(self, "queue_preview", None)
+                and self.queue_preview.isVisible()
+            ):
+                self._schedule_queue_preview_refresh()
 
     def _on_queue_preview_stop_requested(self) -> None:
         asyncio.create_task(self._abort_queue_current_request())
@@ -1289,6 +1337,10 @@ class MainWindow(QMainWindow):
             self.settings_window.refresh_from_config()
         self.settings_window.show()
         self.settings_window.activateWindow() # Bring to front
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._schedule_queue_preview_refresh)
 
     def open_help(self):
         if not self.help_window:
@@ -1776,6 +1828,7 @@ class MainWindow(QMainWindow):
                     get_state=self._get_remote_control_state,
                 ),
             )
+            self._set_queue_preview_api(self.api)
 
             # Configure Uvicorn with log_config=None to avoid "Unable to configure formatter 'default'" error
             config = uvicorn.Config(
@@ -1936,6 +1989,7 @@ class MainWindow(QMainWindow):
                     Logger.error(f"Error stopping API worker: {e}")
                 finally:
                     self.api = None
+                    self._set_queue_preview_api(None)
 
             server = getattr(self, "server", None)
             server_task = getattr(self, "server_task", None)
@@ -2030,6 +2084,7 @@ class MainWindow(QMainWindow):
                     Logger.error(f"Error stopping API worker after crash: {e}")
                 finally:
                     self.api = None
+                    self._set_queue_preview_api(None)
 
             server = getattr(self, "server", None)
             server_task = getattr(self, "server_task", None)
