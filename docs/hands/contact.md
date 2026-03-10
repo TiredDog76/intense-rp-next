@@ -4,7 +4,7 @@ icon: material/email
 
 # :material-email: Means of Contact
 
-If you need to reach me, these are the best places to do it.
+If you need to reach me or the community, these are the best places to do it.
 
 !!! tip "Bug reports and feature requests"
     Please open a GitHub issue first - it keeps things searchable and easier to track.
@@ -24,11 +24,13 @@ If you need to reach me, these are the best places to do it.
 
     [:arrow_right: View profile](https://github.com/LyubomirT)
 
--   :material-chat: **Discord**
+-   :material-chat: **Discord Server**
 
-    Best for: quick questions and casual feedback.
+    Best for: quick questions, shared troubleshooting, and casual feedback.
 
-    Handle: `@lyubomirt`
+    `discord.gg/ZWYNnXt7`
+
+    [:arrow_right: Join server](https://discord.gg/ZWYNnXt7)
 
 -   :material-send: **Telegram**
 

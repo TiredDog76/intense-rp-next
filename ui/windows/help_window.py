@@ -14,6 +14,9 @@ from utils.v1_migrator import V1Migrator
 from utils.logger import Logger
 
 
+DISCORD_INVITE_URL = "https://discord.gg/ZWYNnXt7"
+
+
 class HelpTile(QFrame):
     clicked = Signal()
 
@@ -78,7 +81,7 @@ class HelpWindow(QMainWindow):
         super().__init__(parent)
         self.config_manager = config_manager
         self.setWindowTitle("Help & Extras")
-        self.resize(420, 380)
+        self.resize(440, 460)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG};")
 
         central_widget = QWidget()
@@ -97,7 +100,7 @@ class HelpWindow(QMainWindow):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        desc = QLabel("Migration tools, utilities, and project resources.")
+        desc = QLabel("Migration tools, utilities, community, and project resources.")
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignCenter)
         desc.setStyleSheet(f"""
@@ -111,6 +114,8 @@ class HelpWindow(QMainWindow):
         # Tile grid
         grid = QGridLayout()
         grid.setSpacing(10)
+        for col in range(3):
+            grid.setColumnStretch(col, 1)
         layout.addLayout(grid)
 
         tiles = [
@@ -118,6 +123,7 @@ class HelpWindow(QMainWindow):
             ("STMP Patcher",       IconType.PATCHER,      "Patches RossAscends's STMP to include per-message names.",                          self.show_stmp_patcher),
             ("Migrate from v1",    IconType.MIGRATE,      "",                                                                                  self.start_migration),
             ("Contributors",       IconType.CONTRIBUTORS, "",                                                                                  self.show_contributors),
+            ("Discord Server",     IconType.DISCORD,      "Join the IntenseRP Next Discord server for community help and quick questions.",    self.open_discord),
             ("Contact & Support",  IconType.SUPPORT,      "Open the Contact & Support page.",                                                  self.open_contact_support),
             ("Donate",             IconType.DONATE,       "Support the project financially.",                                                  self.open_donate),
         ]
@@ -126,6 +132,8 @@ class HelpWindow(QMainWindow):
             tile = HelpTile(label, icon_type, tooltip=tooltip, parent=self)
             tile.clicked.connect(handler)
             row, col = divmod(i, 3)
+            if len(tiles) % 3 == 1 and i == len(tiles) - 1:
+                col = 1
             grid.addWidget(tile, row, col)
 
         layout.addStretch()
@@ -180,6 +188,9 @@ class HelpWindow(QMainWindow):
 
     def open_contact_support(self):
         QDesktopServices.openUrl(QUrl("https://intense-rp-next.readthedocs.io/en/latest/hands/contact/"))
+
+    def open_discord(self):
+        QDesktopServices.openUrl(QUrl(DISCORD_INVITE_URL))
 
     def open_donate(self):
         QDesktopServices.openUrl(QUrl(

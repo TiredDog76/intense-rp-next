@@ -47,9 +47,26 @@ Shows a scrollable list of contributors. Clicking a card opens their profile.
 
 :material-arrow-right: [Contributors](contributors.md)
 
+### :material-chat: Discord Server
+
+Opens the IntenseRP Next Discord server for quick questions, shared troubleshooting, and casual feedback.
+
+:material-arrow-right: [Join Discord](https://discord.gg/ZWYNnXt7)
+
+### :material-email: Contact & Support
+
+Opens the contact page with GitHub, Discord, Telegram, and email options.
+
+:material-arrow-right: [Means of Contact](../hands/contact.md)
+
+### :material-heart: Donate
+
+Opens the optional financial support section in the docs.
+
+:material-arrow-right: [Support the Project](../hands/support.md#financial-support-optional)
+
 ---
 
 ## :material-arrow-left: Back
 
 [:material-arrow-left: Util Reference](../util-reference.md)
-

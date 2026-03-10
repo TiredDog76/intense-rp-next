@@ -42,9 +42,9 @@ If you are not sure what to do, starring the repo and reporting what you tried (
 
 -   :material-message-text: **Give feedback**
 
-    If you have thoughts about UX, defaults, docs clarity, or what feels confusing, I'd be glad to hear it. :)
+    Quick UX notes, shared troubleshooting, and casual feedback fit well in the Discord server. For private stuff, use the [contact options](contact.md) instead.
 
-    [:arrow_right: Contact options](contact.md)
+    [:arrow_right: Join Discord](https://discord.gg/ZWYNnXt7)
 
 -   :material-share-variant: **Share it (optional)**
 

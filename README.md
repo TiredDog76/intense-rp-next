@@ -26,7 +26,8 @@
   <a href="#connect-sillytavern-or-any-openai-compatible-client">Client setup</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="https://github.com/LyubomirT/intense-rp-next/releases">Releases</a> ·
-  <a href="https://github.com/LyubomirT/intense-rp-next/issues">Issues</a>
+  <a href="https://github.com/LyubomirT/intense-rp-next/issues">Issues</a> ·
+  <a href="https://discord.gg/ZWYNnXt7">Discord Server</a> ·
 </p>
 
 <h1 align="center">🎬 Preview Video 🎬</h1>
@@ -242,6 +243,8 @@ zensical serve
 ## Support the project ❤️
 
 If IntenseRP Next v2 is useful to you, and you wish to help, thank you!! The easiest support is a [star](https://github.com/LyubomirT/intense-rp-next/stargazers) and a quick [issue report / feature request](https://github.com/LyubomirT/intense-rp-next/issues) when something is missing or broken.
+
+If you want quicker back-and-forth or community troubleshooting, you can also join the [IntenseRP Next Discord server](https://discord.gg/ZWYNnXt7).
 
 If you want to help financially as well (optional, but appreciated), see: [Support the Project](https://intense-rp-next.readthedocs.io/en/latest/hands/support.md) in the docs.
 

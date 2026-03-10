@@ -21,10 +21,10 @@ flowchart LR
     E --> F[Send to Provider]
 ```
 
-1. **Name Detection** — Figure out who's talking (your character, the AI character, etc.)
-2. **Apply Template** — Format each message using your chosen template
-3. **Join with Divider** — Combine all messages with a separator (usually a newline)
-4. **Add Injection** — Optionally prepend or append extra instructions
+1. **Name Detection** - Figure out who's talking (your character, the AI character, etc.)
+2. **Apply Template** - Format each message using your chosen template
+3. **Join with Divider** - Combine all messages with a separator (usually a newline)
+4. **Add Injection** - Optionally prepend or append extra instructions
 5. **Send to Provider** - Off it goes!
 
 ---
@@ -175,9 +175,9 @@ IntenseRP tries to figure out who's who in your conversation. It looks for names
 
 IntenseRP checks these sources **in order**:
 
-1. **Message Objects** — The `name` field in each message (or legacy `irp-next` for RossAscends's STMP patcher compat)
-2. **IR2 Blocks** — Special tags in system messages
-3. **Classic IntenseRP** — Legacy `DATA1`/`DATA2` format
+1. **Message Objects** - The `name` field in each message (or legacy `irp-next` for RossAscends's STMP patcher compat)
+2. **IR2 Blocks** - Special tags in system messages
+3. **Classic IntenseRP** - Legacy `DATA1`/`DATA2` format
 
 If none of these work, it falls back to generic names: "User" and "Character".
 
@@ -241,7 +241,7 @@ Where `DATA1` is the character name and `DATA2` is the user name. (Yes, it's bac
 
 ## :material-needle: Injection
 
-Sometimes you want to add a little extra instruction to every prompt — like a reminder to stay in character or follow certain rules. That's what injection does.
+Sometimes you want to add a little extra instruction to every prompt, like a reminder to stay in character or follow certain rules. That's what injection does.
 
 ![Injection settings](../pics/features/formatting_injection.png)
 

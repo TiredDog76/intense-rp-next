@@ -207,7 +207,7 @@ Also under System Settings, you can set a minimum severity threshold for each lo
 
 :material-arrow-right: **Settings** → **System Settings** → **Logging Levels**
 
-For full details and the severity order, see [:material-console: Console & Logging — Logging Levels](console-logging.md#logging-levels).
+For full details and the severity order, see [:material-console: Console & Logging - Logging Levels](console-logging.md#logging-levels).
 
 ---
 

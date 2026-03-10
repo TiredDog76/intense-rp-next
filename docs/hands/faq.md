@@ -96,7 +96,9 @@ Quick answers to the questions that come up the most. If you need a step-by-step
     GitHub issues are best. Include your version, OS, exact steps to reproduce, and logs (redacted). Start with :material-bug: [Troubleshooting](troubleshooting.md) for a checklist and a copy/paste template.
 
 ??? question "I still need help - where do I reach you?"
-    See :material-email: [Means of Contact](contact.md).
+    For quick help and shared troubleshooting, join the [Discord server](https://discord.gg/ZWYNnXt7).
+
+    For private contact options, see :material-email: [Means of Contact](contact.md).
 
 ---
 
