@@ -22,6 +22,8 @@ _RATE_LIMIT_LIKE_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+DEFAULT_MAX_REQUEST_QUEUE_SIZE = 128
+
 
 def _parse_sse_json(chunk: Any) -> dict | None:
     if not isinstance(chunk, str):
@@ -116,13 +118,30 @@ class QueueEntry:
     abort_event: asyncio.Event
     api_key_name: Optional[str] = None
 
+class RequestQueueFullError(Exception):
+    def __init__(self, *, max_size: int, current_size: int):
+        super().__init__(f"Request queue is full ({current_size}/{max_size})")
+        self.max_size = max_size
+        self.current_size = current_size
+
 class RequestQueue:
-    def __init__(self):
+    def __init__(self, max_size: int = DEFAULT_MAX_REQUEST_QUEUE_SIZE):
         self._items = deque()
         self._condition = asyncio.Condition()
+        self._max_size = max(1, int(max_size))
+
+    @property
+    def max_size(self) -> int:
+        return self._max_size
 
     async def put(self, item: QueueEntry) -> None:
         async with self._condition:
+            current_size = len(self._items)
+            if current_size >= self._max_size:
+                raise RequestQueueFullError(
+                    max_size=self._max_size,
+                    current_size=current_size,
+                )
             self._items.append(item)
             self._condition.notify(1)
 
@@ -352,7 +371,18 @@ class API:
                 abort_event=abort_event,
                 api_key_name=api_key_name,
             )
-            await self.request_queue.put(entry)
+            try:
+                await self.request_queue.put(entry)
+            except RequestQueueFullError as exc:
+                Logger.warning(
+                    "Rejecting chat completion request because the request queue is full "
+                    f"({exc.current_size}/{exc.max_size} pending requests)."
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail="Request queue is full. Please retry shortly.",
+                    headers={"Retry-After": "1"},
+                ) from exc
             
             if request.stream:
                 return StreamingResponse(
