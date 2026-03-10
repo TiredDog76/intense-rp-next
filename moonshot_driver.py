@@ -35,6 +35,9 @@ class MoonshotDriver(BaseDriver):
     MODEL_REASONER_API = "moonshot-reasoner"
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
+    AUTH_STATE_SETTLE_TIMEOUT_MS = 12000
+    AUTH_STATE_STABLE_SIGNED_OUT_MS = 1800
+    LOGIN_LABEL_ALIASES = {"log in", "login", "sign in", "signin"}
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.MOONSHOT)
@@ -102,11 +105,75 @@ class MoonshotDriver(BaseDriver):
 
         return ""
 
-    async def _is_logged_in(self) -> bool:
-        user_name = await self._read_user_name()
-        if not user_name:
+    def _classify_user_name(self, user_name: str) -> str:
+        normalized = self._normalize_text(user_name)
+        if not normalized:
+            return "unknown"
+        if normalized in self.LOGIN_LABEL_ALIASES:
+            return "signed_out"
+        return "signed_in"
+
+    async def _login_modal_visible(self) -> bool:
+        if not self.page:
             return False
-        return self._normalize_text(user_name) != "log in"
+
+        modal = await self._find_first_visible(
+            [
+                "div.login-modal-content",
+                "div.login-modal-content div.google-login-btn",
+                "div.google-login-btn",
+            ],
+            timeout_ms=0,
+        )
+        return modal is not None
+
+    async def _read_auth_state(self) -> str:
+        if await self._login_modal_visible():
+            return "signed_out"
+        return self._classify_user_name(await self._read_user_name())
+
+    async def _is_logged_in(self) -> bool:
+        return (await self._read_auth_state()) == "signed_in"
+
+    async def _wait_for_auth_state(
+        self,
+        timeout_ms: int = 0,
+        stable_signed_out_ms: int | None = None,
+    ) -> str:
+        timeout_s = 0.0 if timeout_ms <= 0 else (float(timeout_ms) / 1000.0)
+        deadline = time.monotonic() + timeout_s if timeout_s > 0.0 else None
+        stable_signed_out_s = max(
+            0.0,
+            float(
+                self.AUTH_STATE_STABLE_SIGNED_OUT_MS
+                if stable_signed_out_ms is None
+                else stable_signed_out_ms
+            )
+            / 1000.0,
+        )
+        signed_out_since: float | None = None
+        last_state = "unknown"
+
+        while True:
+            state = await self._read_auth_state()
+            last_state = state
+
+            if state == "signed_in":
+                return state
+
+            if state == "signed_out":
+                now = time.monotonic()
+                if signed_out_since is None:
+                    signed_out_since = now
+                if stable_signed_out_s <= 0.0 or (now - signed_out_since) >= stable_signed_out_s:
+                    return state
+            else:
+                signed_out_since = None
+
+            if deadline is not None and time.monotonic() >= deadline:
+                return last_state
+
+            await asyncio.sleep(0.25)
 
     async def _wait_until_logged_in(self, timeout_ms: int = 0) -> bool:
         start = time.time()
@@ -164,10 +231,16 @@ class MoonshotDriver(BaseDriver):
 
         await self.set_sidebar_status(open=True)
 
-        if await self._is_logged_in():
+        settled_auth_state = await self._wait_for_auth_state(timeout_ms=self.AUTH_STATE_SETTLE_TIMEOUT_MS)
+        if settled_auth_state == "signed_in":
             Logger.info("Moonshot: already signed in.")
             self._mark_active_ece_pair_used()
             return
+        if settled_auth_state == "unknown":
+            Logger.debug(
+                "Moonshot: auth state did not fully settle before login check. "
+                "Proceeding with best-effort login detection."
+            )
 
         auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
         if auto_login:
@@ -195,6 +268,12 @@ class MoonshotDriver(BaseDriver):
             await self._wait_until_logged_in(timeout_ms=0)
             return
 
+        post_click_auth_state = await self._wait_for_auth_state(timeout_ms=2000, stable_signed_out_ms=1000)
+        if post_click_auth_state == "signed_in":
+            Logger.info("Moonshot: session restored before login modal interaction.")
+            self._mark_active_ece_pair_used()
+            return
+
         try:
             await self.page.wait_for_selector("div.login-modal-content, div.google-login-btn", timeout=8000)
         except Exception:
@@ -202,6 +281,12 @@ class MoonshotDriver(BaseDriver):
                 Logger.info("Moonshot: login already completed.")
                 return
             Logger.warning("Moonshot: login modal did not appear in time.")
+
+        pre_google_auth_state = await self._wait_for_auth_state(timeout_ms=1500, stable_signed_out_ms=1000)
+        if pre_google_auth_state == "signed_in":
+            Logger.info("Moonshot: session restored before Google login flow.")
+            self._mark_active_ece_pair_used()
+            return
 
         await self._click_google_login_and_get_popup()
         Logger.info("Moonshot: waiting for manual Google login...")
