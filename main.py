@@ -10,9 +10,9 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
     QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon, QMenu
 )
-from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize
+from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize, QUrl
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QDesktopServices
 import qasync
 
 from drivers.factory import create_driver
@@ -27,6 +27,7 @@ from ui.windows.welcome_window import WelcomeWindow
 from ui.widgets.mini_console import MiniConsole
 from ui.widgets.request_queue_preview import RequestQueuePreview
 from ui.widgets.split_button import SplitButton
+from ui.widgets.badge_icon_button import BadgeIconButton
 from ui.core.animation_settings import sync_animations_disabled_from_config
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
@@ -34,6 +35,7 @@ from ui.niche.hotswap_dialog import HotswapDialog, PROVIDER_ICON_MAP
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstalledInfo
 from utils.logger import Logger, LogLevel, LEVEL_NAME_MAP
+from utils.news_state import NEWS_DOCS_URL, has_unviewed_news, mark_latest_news_viewed
 from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
 from utils.resource_path import resolve_resource_path
@@ -366,6 +368,27 @@ class MainWindow(QMainWindow):
         self.help_button.clicked.connect(self.open_help)
         help_row.addWidget(self.help_button, 1)
 
+        self.news_button = BadgeIconButton()
+        self.news_button.setFixedWidth(44)
+        self.news_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                color: {BrandColors.TEXT_PRIMARY};
+                border: none;
+                padding: 12px 0px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+            }}
+        """)
+        IconUtils.apply_icon(self.news_button, IconType.BELL, BrandColors.TEXT_PRIMARY, size=18)
+        self.news_button.setIconSize(QSize(18, 18))
+        self.news_button.setToolTip("Open News")
+        self.news_button.setCursor(Qt.PointingHandCursor)
+        self.news_button.clicked.connect(self._open_news_page)
+        help_row.addWidget(self.news_button)
+
         self.layout.addLayout(help_row)
 
         self._queue_preview_enabled = False
@@ -389,6 +412,7 @@ class MainWindow(QMainWindow):
         self._main_logging_enabled = True
         self._console_log_level = LogLevel.DEBUG
         self._mini_console_log_level = LogLevel.SUCCESS
+        self._news_unread = False
 
         # Initialize logging based on settings
         self._setup_logging()
@@ -429,6 +453,8 @@ class MainWindow(QMainWindow):
 
         self._maybe_check_for_updates_on_startup()
         self._apply_queue_preview_setting(force=True)
+        self._refresh_news_state()
+        self._sync_news_button()
         self._sync_hotswap_button()
         self._maybe_show_welcome_window()
 
@@ -1369,6 +1395,9 @@ class MainWindow(QMainWindow):
         if "hotswap_button" in affected:
             self._sync_hotswap_button()
 
+        if "news_button" in affected:
+            self._sync_news_button()
+
         if "title_bar" in affected:
             self._build_title_area()
 
@@ -1454,6 +1483,30 @@ class MainWindow(QMainWindow):
             await self.stop_services()
 
     # ------------------------------------------------------------------
+    # News button
+    # ------------------------------------------------------------------
+
+    def _refresh_news_state(self) -> None:
+        self._news_unread = has_unviewed_news(self.config_manager.config_dir)
+
+    def _sync_news_button(self) -> None:
+        enabled = self.config_manager.get_setting("experimental", "changelog_button")
+        show = True if enabled is None else bool(enabled)
+
+        self.news_button.setVisible(show)
+        self.news_button.set_badge_visible(show and self._news_unread)
+        if show and self._news_unread:
+            self.news_button.setToolTip("Open News (new items available)")
+        else:
+            self.news_button.setToolTip("Open News")
+
+    def _open_news_page(self) -> None:
+        QDesktopServices.openUrl(QUrl(NEWS_DOCS_URL))
+        if mark_latest_news_viewed(self.config_manager.config_dir):
+            self._refresh_news_state()
+            self._sync_news_button()
+
+    # ------------------------------------------------------------------
     # Hotswap
     # ------------------------------------------------------------------
 
@@ -1532,6 +1585,8 @@ class MainWindow(QMainWindow):
         Logger.info("Settings reloaded.")
         sync_animations_disabled_from_config(self.config_manager)
         self._setup_logging()
+        self._refresh_news_state()
+        self._sync_news_button()
 
         if self.console_window:
             self.console_window.apply_settings()

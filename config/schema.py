@@ -790,6 +790,17 @@ SCHEMA = [
                 affects=["title_bar"],
             ),
             SettingField(
+                key="changelog_button",
+                label="Changelog Button",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip=(
+                    "Show the News bell button next to Help. "
+                    "The button can show a red dot when new changelog/news items are available."
+                ),
+                affects=["news_button"],
+            ),
+            SettingField(
                 key="enable_remote_control",
                 label="Enable Remote Control",
                 type=SettingType.BOOLEAN,

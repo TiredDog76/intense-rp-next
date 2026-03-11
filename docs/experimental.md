@@ -25,4 +25,10 @@ Experimental features currently include:
 
     [:arrow_right: Read Remote Control docs](experimental/remote-control.md)
 
+-   :material-bell-ring-outline: **Changelog Button**
+
+    Adds a small bell button next to **Help** that opens the News page and lights up when new items are available. You can hide it via **Settings** -> **Experimental** -> **Changelog Button**.
+
+    [:arrow_right: Read the News page](news.md)
+
 </div>

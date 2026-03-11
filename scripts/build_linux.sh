@@ -42,6 +42,7 @@ python -m PyInstaller \
     --noconsole \
     --name "$APP_NAME" \
     --add-data "version.json:." \
+    --add-data ".github/state:.github/state" \
     --add-data "remote_control/assets:remote_control/assets" \
     --add-data "remote_control/templates:remote_control/templates" \
     --add-data "ui/assets:ui/assets" \
@@ -108,7 +109,7 @@ MAIN_STAGE="$STAGING_DIR/$PACKAGE_APP_DIR_NAME"
 OPTIONAL_STAGE="$STAGING_DIR/$PACKAGE_OPTIONAL_DIR_NAME"
 mkdir -p "$MAIN_STAGE" "$OPTIONAL_STAGE"
 
-cp -r "$BUILT_APP_DIR/"* "$MAIN_STAGE/"
+cp -r "$BUILT_APP_DIR"/. "$MAIN_STAGE/"
 cp "$UPDATER_EXE" "$OPTIONAL_STAGE/updater"
 
 # Create tar.gz archive

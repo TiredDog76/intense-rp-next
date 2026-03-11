@@ -16,6 +16,7 @@ class IconType(Enum):
     SEARCH = "search.svg"
     PLUS = "plus.svg"
     HELP = "help-circle.svg"
+    BELL = "bell.svg"
     SUPPORT = "support.svg"
     MIGRATE = "truck.svg"
     CONTRIBUTORS = "user-check.svg"

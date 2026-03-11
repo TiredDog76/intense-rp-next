@@ -13,6 +13,7 @@ edit_uri: edit/v2-rewrite/docs/
 
 nav:
   - Home: index.md
+  - News: news.md
   - Getting Started: getting-started.md
   - Migration Guide: migration.md
   - Features:
