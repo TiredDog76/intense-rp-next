@@ -1,8 +1,8 @@
 ---
-icon: material/meteor
+icon: providers/moonshot
 ---
 
-# :material-meteor: Moonshot Behavior
+# :providers-moonshot: Moonshot Behavior
 
 This page covers the toggles and options that control how IntenseRP interacts with **Moonshot** (`kimi.com`).
 

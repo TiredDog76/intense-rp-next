@@ -11,6 +11,7 @@ class DriverProvider(str, Enum):
     GLM_CHAT = "GLM Chat"
     MOONSHOT = "Moonshot"
     QWEN_LM = "QwenLM"
+    AI_STUDIO = "Google AI Studio"
     # Backwards compatible alias (legacy label was "Moonshot / Kimi")
     MOONSHOT_KIMI = "Moonshot"
 
@@ -52,6 +53,21 @@ class DriverProvider(str, Enum):
             "qwen chat.ai",
         }:
             return cls.QWEN_LM
+        if normalized in {
+            "google ai studio",
+            "google-ai-studio",
+            "google_ai_studio",
+            "ai studio",
+            "ai-studio",
+            "ai_studio",
+            "aistudio",
+            "aistudio.google.com",
+            "maker suite",
+            "makersuite",
+            "gemini",
+            "gemini web",
+        }:
+            return cls.AI_STUDIO
 
         return None
 
@@ -61,6 +77,8 @@ class DriverProvider(str, Enum):
         # persistent sessions and account data when renaming display labels
         if self is DriverProvider.MOONSHOT:
             return "moonshot_kimi"
+        if self is DriverProvider.AI_STUDIO:
+            return "aistudio"
         raw = (self.value or "").strip().lower()
         return re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
 

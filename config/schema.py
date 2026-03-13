@@ -1,7 +1,12 @@
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Any, Optional, Callable, Dict
-from .validators import validate_port, validate_directory_path, validate_ip_address_list
+from .validators import (
+    validate_port,
+    validate_directory_path,
+    validate_ip_address_list,
+    validate_float_range,
+)
 from .location import get_config_storage_options
 from drivers.providers import provider_options
 
@@ -576,6 +581,169 @@ SCHEMA = [
                 type=SettingType.INTEGER,
                 default=8,
                 tooltip="Max seconds to wait for the send button to appear after text entry (non-file mode).",
+            ),
+            SettingField(
+                key="clean_regeneration",
+                label="Clean Regeneration",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+            ),
+        ],
+    ),
+    SettingCategory(
+        name="Google AI Studio Behavior",
+        key="aistudio_behavior",
+        fields=[
+            SettingField(
+                key="model_divider",
+                label="Model & Thinking",
+                type=SettingType.DIVIDER,
+                default=None,
+            ),
+            SettingField(
+                key="model",
+                label="Model",
+                type=SettingType.DROPDOWN,
+                default="Gemini 2.5 Flash",
+                options=[
+                    "Gemini 3.1 Pro",
+                    "Gemini 3.1 Flash Lite",
+                    "Gemini 3 Flash",
+                    "Gemini 2.5 Pro",
+                    "Gemini 2.5 Flash",
+                    "Gemini 2.5 Flash Lite",
+                ],
+                tooltip="Select which Gemini model to use in the Google AI Studio web UI.",
+            ),
+            SettingField(
+                key="enable_deepthink",
+                label="Enable Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Use the configured Thinking Level on supported Gemini 3 / 3.1 models. "
+                    "When disabled, IntenseRP falls back to the lowest available level instead."
+                ),
+            ),
+            SettingField(
+                key="thinking_level",
+                label="Thinking Level",
+                type=SettingType.DROPDOWN,
+                default="Medium",
+                options=["Minimal", "Low", "Medium", "High"],
+                tooltip=(
+                    "Thinking level for supported Gemini 3 / 3.1 models. "
+                    "Gemini 2.5 models ignore this setting."
+                ),
+                depends="aistudio_behavior.enable_deepthink",
+            ),
+            SettingField(
+                key="send_deepthink",
+                label="Send Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include Gemini thinking summaries in the response sent to the API.",
+            ),
+            SettingField(
+                key="tools_divider",
+                label="Tools & Uploads",
+                type=SettingType.DIVIDER,
+                default=None,
+            ),
+            SettingField(
+                key="enable_search",
+                label="Enable Search",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Toggle Google Search grounding in the AI Studio web UI.",
+            ),
+            SettingField(
+                key="enable_url_context",
+                label="Enable URL Context",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Toggle AI Studio's URL Context browsing mode in the web UI.",
+            ),
+            SettingField(
+                key="send_as_text_file",
+                label="Send As Text File",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Upload the prompt as a text file through AI Studio's media picker instead of "
+                    "typing the whole message into the textarea."
+                ),
+            ),
+            SettingField(
+                key="text_file_message",
+                label="Text File Message",
+                type=SettingType.TEXTAREA,
+                default="",
+                tooltip=(
+                    "Optional text to send alongside the uploaded prompt file. Leave empty to try "
+                    "file-only requests."
+                ),
+                depends="aistudio_behavior.send_as_text_file",
+            ),
+            SettingField(
+                key="file_upload_timeout",
+                label="File Upload Timeout",
+                type=SettingType.INTEGER,
+                default=20,
+                tooltip=(
+                    "Max seconds to wait for the send button to become available after selecting "
+                    "a prompt file."
+                ),
+                depends="aistudio_behavior.send_as_text_file",
+            ),
+            SettingField(
+                key="sampling_divider",
+                label="Sampling",
+                type=SettingType.DIVIDER,
+                default=None,
+            ),
+            SettingField(
+                key="temperature",
+                label="Temperature",
+                type=SettingType.STRING,
+                default="1.0",
+                tooltip="Default temperature for AI Studio requests. Request-level overrides still win.",
+                validator=validate_float_range(0.0, 2.0, label="Temperature"),
+            ),
+            SettingField(
+                key="top_p",
+                label="Top P",
+                type=SettingType.STRING,
+                default="0.95",
+                tooltip="Default top-p value for AI Studio requests. Request-level overrides still win.",
+                validator=validate_float_range(0.0, 1.0, label="Top P"),
+            ),
+            SettingField(
+                key="max_output_tokens",
+                label="Max Output Tokens",
+                type=SettingType.INTEGER,
+                default=65536,
+                tooltip=(
+                    "Default output token budget for AI Studio requests. "
+                    "This maps to the web UI's maxOutputTokens control."
+                ),
+            ),
+            SettingField(
+                key="automation_divider",
+                label="Automation",
+                type=SettingType.DIVIDER,
+                default=None,
+            ),
+            SettingField(
+                key="auto_login_redirect_timeout",
+                label="Auto Login Redirect Timeout (s)",
+                type=SettingType.INTEGER,
+                default=15,
+                tooltip=(
+                    "How long to wait for Google to return to AI Studio after auto-filling "
+                    "credentials before falling back to manual completion."
+                ),
             ),
             SettingField(
                 key="clean_regeneration",

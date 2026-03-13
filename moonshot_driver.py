@@ -481,9 +481,10 @@ class MoonshotDriver(BaseDriver):
         stream: bool = False,
         temperature: float = None,
         top_p: float = None,
+        max_tokens: int | None = None,
         abort_event: asyncio.Event = None,
     ):
-        _ = (stream, temperature, top_p)
+        _ = (stream, temperature, top_p, max_tokens)
         response_queue = asyncio.Queue()
 
         await self.require_english_ui()

@@ -1,4 +1,4 @@
-- [x] Tray icon controls (Show/Hide, Start/Stop, Settings, Help, Exit)
-- [x] Queue controls (abort current, clear everything)
-- [x] API Key UX: Generate key (will create a name of random adjective + noun and a random key)
-- [x] Port in use: Detect if the selected port is already in use and show a warning with the option to change it if so.
+1. Add docstrings to the new Google AI Studio driver.
+2. Add docstrings to shared utils.
+
+(or else I will not be able to remember what I was thinking when I wrote the code in 3 months)

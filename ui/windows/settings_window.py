@@ -162,6 +162,7 @@ class SettingsWindow(QMainWindow):
         "glm_behavior": "providers/zai.svg",
         "moonshot_behavior": "providers/moonshot.svg",
         "qwen_behavior": "providers/qwen.svg",
+        "aistudio_behavior": "providers/aistudio.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
         "system_settings": "monitor.svg",
@@ -176,6 +177,7 @@ class SettingsWindow(QMainWindow):
         DriverProvider.GLM_CHAT: "glm_behavior",
         DriverProvider.MOONSHOT: "moonshot_behavior",
         DriverProvider.QWEN_LM: "qwen_behavior",
+        DriverProvider.AI_STUDIO: "aistudio_behavior",
     }
 
     def __init__(self, config_manager: ConfigManager, parent=None):

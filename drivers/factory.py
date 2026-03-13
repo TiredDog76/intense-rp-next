@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aistudio_driver import AIStudioDriver
 from deepseek_driver import DeepSeekDriver
 from glm_driver import GLMDriver
 from moonshot_driver import MoonshotDriver
@@ -33,5 +34,7 @@ def create_driver(config_manager: Any) -> BaseDriver:
         return MoonshotDriver(config_manager)
     if provider == DriverProvider.QWEN_LM:
         return QwenLMDriver(config_manager)
+    if provider == DriverProvider.AI_STUDIO:
+        return AIStudioDriver(config_manager)
 
     return DeepSeekDriver(config_manager)

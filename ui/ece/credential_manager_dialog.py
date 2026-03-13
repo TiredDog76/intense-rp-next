@@ -354,6 +354,7 @@ class CredentialManagerDialog(QDialog):
             _ProviderEntry(label="GLM", provider=DriverProvider.GLM_CHAT),
             _ProviderEntry(label="Moonshot", provider=DriverProvider.MOONSHOT),
             _ProviderEntry(label="QwenLM", provider=DriverProvider.QWEN_LM),
+            _ProviderEntry(label="AI Studio", provider=DriverProvider.AI_STUDIO),
         ]
 
         provider_icon_map: Dict[DriverProvider, str] = {
@@ -361,6 +362,7 @@ class CredentialManagerDialog(QDialog):
             DriverProvider.GLM_CHAT: "providers/zai.svg",
             DriverProvider.MOONSHOT: "providers/moonshot.svg",
             DriverProvider.QWEN_LM: "providers/qwen.svg",
+            DriverProvider.AI_STUDIO: "providers/aistudio.svg",
         }
 
         initial_provider = DriverProvider.from_setting(

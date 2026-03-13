@@ -1,8 +1,8 @@
 ---
-icon: material/chat-processing
+icon: providers/zai
 ---
 
-# :material-chat-processing: GLM Behavior
+# :providers-zai: GLM Behavior
 
 This page covers the toggles and options that control how IntenseRP interacts with **GLM Chat** (chat.z.ai).
 

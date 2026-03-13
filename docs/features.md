@@ -16,29 +16,35 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](features/formatting.md)
 
--   :material-brain: **DeepSeek Behavior**
+-   :providers-deepseek: **DeepSeek Behavior**
 
     Configure DeepThink, search, anti-censorship, and more.
 
     [:arrow_right: Learn More](features/deepseek-behavior.md)
 
--   :material-chat-processing: **GLM Behavior**
+-   :providers-zai: **GLM Behavior**
 
     Configure Deep Think modes, Search status, and GLM-specific quirks.
 
     [:arrow_right: Learn More](features/glm-behavior.md)
 
--   :material-meteor: **Moonshot Behavior**
+-   :providers-moonshot: **Moonshot Behavior**
 
     Configure Thinking, Search, file uploads, and Kimi-specific notes.
 
     [:arrow_right: Learn More](features/moonshot-behavior.md)
 
--   :material-chat: **QwenLM Behavior**
+-   :providers-qwen: **QwenLM Behavior**
 
     Configure Thinking, Web search, model selection, and token counting.
 
     [:arrow_right: Learn More](features/qwen-behavior.md)
+
+-   :providers-aistudio: **Google AI Studio Behavior**
+
+    Configure Gemini model selection, Thinking Level, Search, URL Context, and sampling controls.
+
+    [:arrow_right: Learn More](features/aistudio-behavior.md)
 
 -   :material-key: **Login & Sessions**
 
@@ -91,7 +97,7 @@ IntenseRP doesn't just forward your messages to the provider. It formats them in
 
 ---
 
-### :material-brain: DeepSeek Behavior
+### :providers-deepseek: DeepSeek Behavior
 
 Fine-tune how DeepSeek processes your requests.
 
@@ -106,7 +112,7 @@ Fine-tune how DeepSeek processes your requests.
 
 ---
 
-### :material-chat-processing: GLM Behavior
+### :providers-zai: GLM Behavior
 
 Fine-tune how GLM Chat processes your requests.
 
@@ -120,7 +126,7 @@ Fine-tune how GLM Chat processes your requests.
 
 ---
 
-### :material-meteor: Moonshot Behavior
+### :providers-moonshot: Moonshot Behavior
 
 Fine-tune how Moonshot processes your requests.
 
@@ -135,7 +141,7 @@ Fine-tune how Moonshot processes your requests.
 
 ---
 
-### :material-chat: QwenLM Behavior
+### :providers-qwen: QwenLM Behavior
 
 Fine-tune how QwenLM processes your requests.
 
@@ -148,6 +154,24 @@ Fine-tune how QwenLM processes your requests.
 | **Model Picker (UI)** | Select Qwen's real model dropdown |
 | **File Upload Mode** | Send long prompts as a text file |
 | **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
+
+---
+
+### :providers-aistudio: Google AI Studio Behavior
+
+Fine-tune how Google AI Studio processes your requests.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Gemini Model Picker (UI)** | Select Google AI Studio's real Gemini model |
+| **Enable Thinking** | Uses a higher Thinking Level on supported Gemini 3 / 3.1 models |
+| **Send Thinking** | Includes Gemini thinking summaries in the response (wrapped in `<think>` tags) |
+| **Search** | Toggles Google Search grounding |
+| **URL Context** | Toggles the URL Context browsing tool |
+| **File Upload Mode** | Uploads prompts through AI Studio's media picker |
+| **Temperature / Top P / Max Output Tokens** | Applies AI Studio sampling controls before sending |
+| **Safety Filters** | Lowers AI Studio's safety sliders automatically once per browser session |
+| **Clean Regeneration** | Regenerates on duplicate prompts instead of opening a new chat |
 
 ---
 

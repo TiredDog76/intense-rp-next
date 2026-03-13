@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 from utils.logger import Logger
 
 
-COMMON_REQUEST_MACRO_ACTIONS: Dict[str, tuple[str, bool]] = {
+COMMON_REQUEST_MACRO_ACTIONS: Dict[str, tuple[str, Any]] = {
     # Thinking
     "think": ("deepthink_enabled", True),
     "r1": ("deepthink_enabled", True),
@@ -47,8 +47,8 @@ def clear_clean_regeneration_cache(
 
 def extract_macro_overrides(
     text: str,
-    macro_actions: Dict[str, tuple[str, bool]] | None = None,
-) -> tuple[str, Dict[str, bool]]:
+    macro_actions: Dict[str, tuple[str, Any]] | None = None,
+) -> tuple[str, Dict[str, Any]]:
     if not text:
         return text, {}
 
@@ -56,7 +56,7 @@ def extract_macro_overrides(
     if macro_actions:
         actions.update(macro_actions)
 
-    overrides: Dict[str, bool] = {}
+    overrides: Dict[str, Any] = {}
 
     def _replace_macro(match: re.Match[str]) -> str:
         macro = (match.group(1) or "").strip().lower()
@@ -65,7 +65,7 @@ def extract_macro_overrides(
             return match.group(0)
 
         key, value = action
-        overrides[key] = bool(value)
+        overrides[key] = value
         return ""
 
     cleaned = _MACRO_PATTERN.sub(_replace_macro, text)
@@ -74,8 +74,8 @@ def extract_macro_overrides(
 
 def strip_macros_from_messages(
     messages: List[Any],
-    macro_actions: Dict[str, tuple[str, bool]] | None = None,
-) -> tuple[List[Any], Dict[str, bool]]:
+    macro_actions: Dict[str, tuple[str, Any]] | None = None,
+) -> tuple[List[Any], Dict[str, Any]]:
     last_user_index = None
     for idx in range(len(messages) - 1, -1, -1):
         role = _coerce_role(messages[idx])

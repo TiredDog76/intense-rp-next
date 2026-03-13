@@ -25,6 +25,7 @@ PROVIDER_ICON_MAP: dict[str, str] = {
     DriverProvider.GLM_CHAT.value: "providers/zai.svg",
     DriverProvider.MOONSHOT.value: "providers/moonshot.svg",
     DriverProvider.QWEN_LM.value: "providers/qwen.svg",
+    DriverProvider.AI_STUDIO.value: "providers/aistudio.svg",
 }
 
 

@@ -1,8 +1,8 @@
 ---
-icon: material/brain
+icon: providers/deepseek
 ---
 
-# :material-brain: DeepSeek Behavior
+# :providers-deepseek: DeepSeek Behavior
 
 This page covers the toggles and options that control how IntenseRP interacts with DeepSeek. Most of these are simple on/off switches, but a few have some nuance worth knowing about.
 

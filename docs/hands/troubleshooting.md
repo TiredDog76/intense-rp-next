@@ -17,9 +17,10 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
 2. **Is the browser open and logged in?**
     - A Chromium window should be open.
     - If you're on a provider login page, log in manually.
-    - DeepSeek / GLM Chat / QwenLM also support Auto Login.
+    - DeepSeek / GLM Chat / QwenLM / Google AI Studio also support Auto Login.
     - For GLM Chat, login requires solving a CAPTCHA (Persistent Sessions are strongly recommended).
     - For Moonshot, Google login may require manual confirmation/challenge steps.
+    - For Google AI Studio, Auto Login can try to fill Google sign-in, but Google may still require manual confirmation.
 
 3. **Is the provider UI language set to English?**
     - IntenseRP currently expects the provider UI language to be English.
@@ -27,6 +28,7 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
     - GLM Chat: English (en-US)
     - Moonshot: English (en-US)
     - QwenLM: English (en / en-US)
+    - Google AI Studio: English (en / en-US)
     - If you see a warning/popup about UI language, change it in the provider browser window and **reload the page**, then retry.
     - If that doesn't fix it after changing the language, close IntenseRP and start it again.
     - Persistent Sessions help a lot with managing languages.
@@ -148,11 +150,11 @@ See: [:material-cog: System](../features/system.md)
 Fixes, in order:
 
 1. If you use Auto Login, double-check your provider selection + email/password in **Providers & Credentials**.
-   (DeepSeek / GLM Chat / QwenLM)
+   (DeepSeek / GLM Chat / QwenLM / Google AI Studio)
 2. GLM Chat requires a CAPTCHA during login. Auto Login can fill credentials, but you still need to solve the CAPTCHA in the browser window.
 3. Try toggling **Persistent Sessions** off and back on (then Start again).
 4. If Persistent Sessions is enabled but things feel "stuck", use **Delete Profile** (or **Clear All Profiles**) to reset the saved browser profile.
-5. For DeepSeek / GLM Chat / QwenLM, try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
+5. For DeepSeek / GLM Chat / QwenLM / Google AI Studio, try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:
 
@@ -233,7 +235,7 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - **Version** (app title bar)
 - **OS** (Windows/Linux + version)
 - **Install method** (release zip vs from source)
-- **Provider** (DeepSeek, GLM Chat, Moonshot, or QwenLM)
+- **Provider** (DeepSeek, GLM Chat, Moonshot, QwenLM, or Google AI Studio)
 - **Client** (SillyTavern or other client + version)
 - **Endpoint** (example: `http://127.0.0.1:7777/v1`)
 - **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto` / `qwen-auto` or Better Model Names IDs like `deepseek-v3.2-auto`)

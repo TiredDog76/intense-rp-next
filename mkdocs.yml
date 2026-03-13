@@ -25,6 +25,7 @@ nav:
       - GLM Behavior: features/glm-behavior.md
       - Kimi Behavior: features/moonshot-behavior.md
       - QwenLM Behavior: features/qwen-behavior.md
+      - Google AI Studio Behavior: features/aistudio-behavior.md
       - Login & Sessions: features/login-sessions.md
       - Network & API: features/network-api.md
       - Console & Logging: features/console-logging.md
@@ -56,6 +57,7 @@ nav:
 theme:
   name: material
   variant: modern
+  custom_dir: overrides
   palette:
     # Dark mode (default)
     - scheme: slate
@@ -119,6 +121,9 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      options:
+        custom_icons:
+          - overrides/.icons
 
 extra_css:
   - stylesheets/extra.css

@@ -6,7 +6,7 @@ icon: material/cloud
 
 IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
 
-Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, and **QwenLM** are implemented and usable.
+Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, and **Google AI Studio** are implemented and usable.
 
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
@@ -64,13 +64,14 @@ Providers are prioritized in this order:
 | **DeepSeek** | 1 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
 | **GLM Chat** | 2 | :material-check-circle:{ style="color: #51CF66" } **Stable (mostly)** |
 | **Moonshot** | 3 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
-| **QwenLM** | 4 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
+| **QwenLM** | 4 | :material-shield-check:{ style="color: #FFD43B" } **Stable** |
+| **Google AI Studio** | 5 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
 
 !!! note "What 'Verification' means for Moonshot"
     Moonshot is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
 
-!!! note "QwenLM status"
-    QwenLM is newly integrated. Expect selector and stream-shape adjustments as the provider UI evolves. Surprisingly more stable than Moonshot so far.
+!!! note "Google AI Studio status"
+    Of all the providers, Google AI Studio is the weirdest and most complex, so it is taking extra time to verify and stabilize. It is usable, but expect some rough edges until it's fully verified. Breakage is also possible, especially if Google updates the AI Studio web UI.
 
 ---
 
@@ -78,29 +79,35 @@ Providers are prioritized in this order:
 
 <div class="grid cards" markdown>
 
--   :material-brain: **DeepSeek Behavior**
+-   :providers-deepseek: **DeepSeek Behavior**
 
     DeepThink, Search, anti-censorship, and more.
 
     [:arrow_right: DeepSeek Behavior](../features/deepseek-behavior.md)
 
--   :material-chat-processing: **GLM Behavior**
+-   :providers-zai: **GLM Behavior**
 
     Deep Think, modes, Search status, and GLM-specific notes.
 
     [:arrow_right: GLM Behavior](../features/glm-behavior.md)
 
--   :material-meteor: **Moonshot Behavior**
+-   :providers-moonshot: **Moonshot Behavior**
 
     Thinking, Search, file uploads, and Kimi-specific caveats.
 
     [:arrow_right: Moonshot Behavior](../features/moonshot-behavior.md)
 
--   :material-chat: **QwenLM Behavior**
+-   :providers-qwen: **QwenLM Behavior**
 
     Thinking, Web search, model selection, and token counting.
 
     [:arrow_right: QwenLM Behavior](../features/qwen-behavior.md)
+
+-   :providers-aistudio: **Google AI Studio Behavior**
+
+    Gemini model selection, Thinking Level, Search, URL Context, and sampling controls.
+
+    [:arrow_right: Google AI Studio Behavior](../features/aistudio-behavior.md)
 
 -   :material-key: **Login & Sessions**
 

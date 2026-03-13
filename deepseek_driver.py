@@ -373,11 +373,12 @@ class DeepSeekDriver(BaseDriver):
             state,
         )
 
-    async def generate_response(self, message: Union[str, List[Any]], model: str = "deepseek-auto", stream: bool = False, temperature: float = None, top_p: float = None, abort_event: asyncio.Event = None):
+    async def generate_response(self, message: Union[str, List[Any]], model: str = "deepseek-auto", stream: bool = False, temperature: float = None, top_p: float = None, max_tokens: int | None = None, abort_event: asyncio.Event = None):
         """
         Generates a response from DeepSeek.
         This function intercepts the network request to support streaming.
         """
+        _ = max_tokens
         response_queue = asyncio.Queue()
         completion_armed = asyncio.Event()
         completion_started = asyncio.Event()

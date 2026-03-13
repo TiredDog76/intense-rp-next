@@ -1,8 +1,8 @@
 ---
-icon: material/chat
+icon: providers/qwen
 ---
 
-# :material-chat: QwenLM Behavior
+# :providers-qwen: QwenLM Behavior
 
 This page covers the toggles and options that control how IntenseRP interacts with **QwenLM** (`chat.qwen.ai`).
 

@@ -120,3 +120,30 @@ def validate_ip_address_list(value) -> None:
         normalize_ip_list(value)
     except ValueError as exc:
         raise ValueError(f"Invalid IP address in whitelist: {exc}")
+
+
+def validate_float_range(
+    min_value: float | None = None,
+    max_value: float | None = None,
+    *,
+    label: str = "Value",
+):
+    def _validator(value) -> None:
+        if value is None:
+            return
+
+        text = str(value).strip()
+        if not text:
+            return
+
+        try:
+            parsed = float(text)
+        except (TypeError, ValueError):
+            raise ValueError(f"{label} must be a number.")
+
+        if (min_value is not None) and (parsed < float(min_value)):
+            raise ValueError(f"{label} must be at least {min_value}.")
+        if (max_value is not None) and (parsed > float(max_value)):
+            raise ValueError(f"{label} must be at most {max_value}.")
+
+    return _validator

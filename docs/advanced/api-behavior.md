@@ -7,7 +7,7 @@ icon: material/api
 This page documents how the built-in OpenAI-compatible API behaves at runtime: what routes exist, how streaming works, and why requests are queued instead of running in parallel.
 
 !!! note "Implementation detail"
-    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `qwen_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
+    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `qwen_driver.py`, `aistudio_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
 
 ---
 
@@ -74,10 +74,20 @@ QwenLM model IDs are behavior presets:
 | `qwen-chat` | Forced off | Forced off |
 | `qwen-reasoner` | Forced on | Uses your settings |
 
+### Google AI Studio
+
+Google AI Studio model IDs are also behavior presets:
+
+| Model ID | Thinking Level | Send Thinking |
+|---|---|---|
+| `aistudio-auto` | Uses your settings | Uses your settings |
+| `aistudio-chat` | Lowers Thinking Level on supported Gemini 3 / 3.1 models | Forced off |
+| `aistudio-reasoner` | Uses your configured Thinking Level | Uses your settings |
+
 !!! info "What these IDs are (and are not)"
     These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
-    For GLM specifically, the *real* GLM model is selected via **Settings -> GLM Behavior -> Model** (GLM-5 / GLM-4.7 / GLM-4.6). The API `glm-*` IDs still remain behavior presets.
+    For providers with a real web UI model picker (GLM Chat, QwenLM, Google AI Studio), that *real* model is selected via the provider-specific Behavior settings. The API `*-auto` / `*-chat` / `*-reasoner` IDs still remain behavior presets.
 
 ---
 
@@ -188,7 +198,9 @@ When you set `stream: false`, the server still generates via streaming internall
 - `usage` GLM Chat and QwenLM can populate it when **Count Tokens** is enabled in the provider Behavior settings
 
 !!! note "Compatibility fields"
-    `temperature` and `top_p` are accepted for OpenAI compatibility, but current provider drivers do not apply them yet.
+    `temperature`, `top_p`, and `max_tokens` are accepted for OpenAI compatibility.
+
+    Right now, Google AI Studio is the only provider that actively applies them in the web UI. Other providers currently ignore them.
 
 ---
 

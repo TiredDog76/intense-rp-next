@@ -2139,8 +2139,10 @@ class QwenLMDriver(BaseDriver):
         stream: bool = False,
         temperature: float | None = None,
         top_p: float | None = None,
+        max_tokens: int | None = None,
         abort_event: asyncio.Event | None = None,
     ):
+        _ = max_tokens
         response_queue: asyncio.Queue = asyncio.Queue()
         completion_armed = asyncio.Event()
         completion_started = asyncio.Event()

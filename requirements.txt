@@ -63,4 +63,4 @@ tzdata==2025.3
 urllib3==2.6.3
 uvicorn==0.38.0
 watchdog==6.0.0
-zensical==0.0.23
+zensical==0.0.26

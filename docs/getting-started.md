@@ -15,7 +15,7 @@ Before we dive in, make sure you have:
 | | |
 |---|---|
 | :material-microsoft-windows: **Windows 10/11** or :material-linux: **Linux** | 64-bit with a graphical desktop |
-| :material-account-plus: **Provider account** | [DeepSeek](https://chat.deepseek.com), [GLM Chat (Z.ai)](https://chat.z.ai/), [Kimi](https://www.kimi.com/), or [QwenLM](https://chat.qwen.ai/) |
+| :material-account-plus: **Provider account** | [DeepSeek](https://chat.deepseek.com), [GLM Chat (Z.ai)](https://chat.z.ai/), [Kimi](https://www.kimi.com/), [QwenLM](https://chat.qwen.ai/), or [Google AI Studio](https://aistudio.google.com/) |
 | :material-chat: **SillyTavern** (or similar) | Any OpenAI-compatible client works |
 
 ---
@@ -87,8 +87,8 @@ Before hitting Start, pick your provider and decide how you want to log in.
 
 1. Click the :material-cog: **Settings** button
 2. Go to **Providers & Credentials**
-3. Choose your **Provider** (DeepSeek, GLM Chat, Moonshot, or QwenLM)
-4. (Optional) Turn on :material-toggle-switch: **Auto Login** (DeepSeek / GLM Chat / QwenLM)
+3. Choose your **Provider** (DeepSeek, GLM Chat, Moonshot, QwenLM, or Google AI Studio)
+4. (Optional) Turn on :material-toggle-switch: **Auto Login** (DeepSeek / GLM Chat / QwenLM / Google AI Studio)
 5. Open **Credential Manager** and add your account(s)
 6. (Optional) Enable **Select Least Used** and/or **Reload on Failure**
 7. Hit :material-content-save: **Save**
@@ -109,6 +109,9 @@ Before hitting Start, pick your provider and decide how you want to log in.
 !!! note "Moonshot login"
     Moonshot uses a manual Google login flow in IntenseRP (no credential autofill step). Depending on your account security settings, manual confirmation/challenge steps may still be required.
 
+!!! note "Google AI Studio login"
+    Google AI Studio also uses Google sign-in. IntenseRP can try to auto-fill the Google login flow if **Auto Login** is enabled, but Persistent Sessions are strongly recommended because Google may still ask for manual confirmation.
+
 ---
 
 ## :material-play-circle: Step 3: Start the Server
@@ -117,7 +120,7 @@ Alright, the fun part!
 
 1. Click the big :material-play: **Start** button
 2. A browser window will pop up
-3. DeepSeek / GLM Chat / QwenLM can use auto-login. Moonshot requires manual Google login in the browser window.
+3. DeepSeek / GLM Chat / QwenLM / Google AI Studio can use auto-login. Moonshot requires manual Google login in the browser window.
 4. Once logged in, the status changes to :material-check-circle: **Running (Port 7777)**
 
 <div class="image-grid" markdown>
@@ -156,7 +159,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 |-------|-------|
 | :material-web: **Custom Endpoint** | `http://127.0.0.1:7777/v1` |
 | :material-key: **API Key** | Leave blank |
-| :material-robot: **Model** | `deepseek-*` / `glm-*` / `moonshot-*` / `qwen-*` |
+| :material-robot: **Model** | `deepseek-*` / `glm-*` / `moonshot-*` / `qwen-*` / `aistudio-*` |
 
 !!! note
     Use the model ID that matches your active provider:
@@ -165,6 +168,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
     - GLM Chat -> `glm-auto`
     - Moonshot -> `moonshot-auto`
     - QwenLM -> `qwen-auto`
+    - Google AI Studio -> `aistudio-auto`
 
 !!! info "Model IDs"
     The `*-auto` model is the default and respects your IntenseRP settings for the active provider.
@@ -211,7 +215,7 @@ Don't forget to update your SillyTavern endpoint too!
 
 And just as before, we support provider reasoning features. In simple words, it makes the model "smarter" by letting it think through problems step-by-step before answering (but also makes it slower and can change the tone).
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** (or GLM/Moonshot/QwenLM Behavior, depending on your provider)
+:material-arrow-right: **Settings** → **DeepSeek Behavior** (or GLM / Moonshot / QwenLM / Google AI Studio Behavior, depending on your provider)
 
 | Option | What It Does |
 |--------|-------------|

@@ -44,6 +44,8 @@ If **Show IP** is enabled in **Network Settings**, IntenseRP logs the remote URL
 
 The remote page is intentionally tiny and simple. Right now it can do simple actions like **Stop**, **Restart**, **Hotswap**, and **Switch Account**, as well as show you live logs + some minor stuff.
 
+For Hotswap specifically, it shows every provider except the one you're currently using, so Google AI Studio now appears there as well.
+
 !!! note "Not a full dashboard"
     I intentionally did NOT recreate the entire UI in the remote page. Unlike the desktop app, this is not meant to be a full management dashboard, but rather a quick control panel for common actions when you're away from the host PC.
 

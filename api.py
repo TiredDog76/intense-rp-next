@@ -109,6 +109,7 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     temperature: Optional[float] = None
     top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
 
 @dataclass
 class QueueEntry:
@@ -380,6 +381,8 @@ class API:
                 owned_by = "moonshot"
             elif effective_provider == DriverProvider.QWEN_LM:
                 owned_by = "qwen"
+            elif effective_provider == DriverProvider.AI_STUDIO:
+                owned_by = "aistudio"
             else:
                 owned_by = "deepseek"
 
@@ -655,6 +658,7 @@ class API:
                                 stream=request.stream,
                                 temperature=request.temperature,
                                 top_p=request.top_p,
+                                max_tokens=request.max_tokens,
                                 abort_event=abort_event,
                             ):
                                 if abort_event.is_set():

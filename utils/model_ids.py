@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List
 
 from drivers.providers import DriverProvider
@@ -26,6 +27,15 @@ QWEN_BETTER_BASES: tuple[str, ...] = (
     "qwen3-omni-flash",
     "qwen2.5-max",
 )
+AISTUDIO_LABEL_TO_BASE: Dict[str, str] = {
+    "Gemini 3.1 Pro": "gemini-3.1-pro-preview",
+    "Gemini 3.1 Flash Lite": "gemini-3.1-flash-lite-preview",
+    "Gemini 3 Flash": "gemini-3-flash-preview",
+    "Gemini 2.5 Pro": "gemini-2.5-pro",
+    "Gemini 2.5 Flash": "gemini-2.5-flash",
+    "Gemini 2.5 Flash Lite": "gemini-2.5-flash-lite",
+}
+AISTUDIO_BETTER_BASES: tuple[str, ...] = tuple(AISTUDIO_LABEL_TO_BASE.values())
 
 
 LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
@@ -49,6 +59,11 @@ LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
         "qwen-chat": MODE_CHAT,
         "qwen-reasoner": MODE_REASONER,
     },
+    DriverProvider.AI_STUDIO: {
+        "aistudio-auto": MODE_AUTO,
+        "aistudio-chat": MODE_CHAT,
+        "aistudio-reasoner": MODE_REASONER,
+    },
 }
 
 
@@ -66,6 +81,8 @@ def get_legacy_model_ids(provider: DriverProvider) -> list[str]:
         return ["moonshot-auto", "moonshot-chat", "moonshot-reasoner"]
     if provider == DriverProvider.QWEN_LM:
         return ["qwen-auto", "qwen-chat", "qwen-reasoner"]
+    if provider == DriverProvider.AI_STUDIO:
+        return ["aistudio-auto", "aistudio-chat", "aistudio-reasoner"]
     return ["deepseek-auto", "deepseek-chat", "deepseek-reasoner"]
 
 
@@ -101,6 +118,29 @@ def get_configured_qwen_base_model(config_manager: Any) -> str:
     return "qwen3.5-plus"
 
 
+def _canonicalize_model_label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def get_configured_aistudio_base_model(config_manager: Any) -> str:
+    value = ""
+    try:
+        value = str(config_manager.get_setting("aistudio_behavior", "model") or "").strip()
+    except Exception:
+        value = ""
+
+    normalized = str(value or "").strip().lower()
+    if normalized in AISTUDIO_BETTER_BASES:
+        return normalized
+
+    wanted = _canonicalize_model_label(value)
+    for label, base in AISTUDIO_LABEL_TO_BASE.items():
+        if _canonicalize_model_label(label) == wanted:
+            return base
+
+    return "gemini-2.5-flash"
+
+
 def get_better_model_bases(provider: DriverProvider, config_manager: Any) -> list[str]:
     if provider == DriverProvider.DEEPSEEK:
         return list(DEEPSEEK_BETTER_BASES)
@@ -110,6 +150,8 @@ def get_better_model_bases(provider: DriverProvider, config_manager: Any) -> lis
         return [get_configured_glm_base_model(config_manager)]
     if provider == DriverProvider.QWEN_LM:
         return [get_configured_qwen_base_model(config_manager)]
+    if provider == DriverProvider.AI_STUDIO:
+        return [get_configured_aistudio_base_model(config_manager)]
     return list(DEEPSEEK_BETTER_BASES)
 
 
@@ -122,6 +164,8 @@ def _better_bases_for_provider(provider: DriverProvider) -> set[str]:
         return set(GLM_BETTER_BASES)
     if provider == DriverProvider.QWEN_LM:
         return set(QWEN_BETTER_BASES)
+    if provider == DriverProvider.AI_STUDIO:
+        return set(AISTUDIO_BETTER_BASES)
     return set()
 
 

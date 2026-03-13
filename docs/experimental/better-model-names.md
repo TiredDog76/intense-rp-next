@@ -12,6 +12,7 @@ Historically that looked like:
 - `glm-auto` / `glm-chat` / `glm-reasoner`
 - `moonshot-auto` / `moonshot-chat` / `moonshot-reasoner`
 - `qwen-auto` / `qwen-chat` / `qwen-reasoner`
+- `aistudio-auto` / `aistudio-chat` / `aistudio-reasoner`
 
 That works, but it can get a bit confusing once you start thinking in terms of "real" models (especially for GLM, where you can pick between multiple models in Settings).
 
@@ -125,6 +126,27 @@ Example (if you selected **Qwen3.5-Plus** in Settings):
     If you use the Better Model Names IDs, you may need to update the selected model in your client after changing **QwenLM Behavior -> Model** (because the base name changes).
 
     If you want stable IDs that never change, keep using the legacy `qwen-auto` / `qwen-chat` / `qwen-reasoner` names.
+
+### :material-image-auto-adjust: Google AI Studio
+
+Google AI Studio also has **real Gemini model selection** in the web UI:
+
+:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Model**
+
+When Better Model Names is enabled, `GET /v1/models` uses the base model that matches your current Google AI Studio selection.
+
+Example (if you selected **Gemini 2.5 Flash** in Settings):
+
+| Model ID | Behavior |
+|---|---|
+| `gemini-2.5-flash-auto` | Uses your IntenseRP settings |
+| `gemini-2.5-flash` | Uses AI Studio's chat-like behavior preset |
+| `gemini-2.5-flash-think` | Uses AI Studio's reasoner-like behavior preset |
+
+!!! tip "If you switch Gemini models often"
+    If you use the Better Model Names IDs, you may need to update the selected model in your client after changing **Google AI Studio Behavior -> Model** (because the base name changes).
+
+    If you want stable IDs that never change, keep using the legacy `aistudio-auto` / `aistudio-chat` / `aistudio-reasoner` names.
 
 ---
 

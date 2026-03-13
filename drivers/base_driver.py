@@ -820,6 +820,7 @@ class BaseDriver(ABC):
         stream: bool = False,
         temperature: float | None = None,
         top_p: float | None = None,
+        max_tokens: int | None = None,
         abort_event: asyncio.Event | None = None,
     ):
         raise NotImplementedError

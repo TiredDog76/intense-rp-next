@@ -193,6 +193,14 @@ These IDs are behavior presets (modes), not true model selection.
     | `qwen-chat` | Forces Thinking off |
     | `qwen-reasoner` | Forces Thinking on |
 
+=== ":material-image-auto-adjust: Google AI Studio"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `aistudio-auto` | Uses your IntenseRP settings |
+    | `aistudio-chat` | Suppresses `<think>` output and lowers Thinking Level on supported Gemini 3 / 3.1 models |
+    | `aistudio-reasoner` | Uses your configured Thinking Level and Send Thinking setting |
+
 ---
 
 ## :material-frequently-asked-questions: Quick FAQ
