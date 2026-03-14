@@ -1,1 +1,0 @@
-data: {"type":"chat:completion","data":{"phase":"other","usage":{"prompt_tokens":5318,"completion_tokens":997,"total_tokens":6315,"prompt_tokens_details":{"cached_tokens":832}}}}
