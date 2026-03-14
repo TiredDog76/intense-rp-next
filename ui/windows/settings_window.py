@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
     QScrollArea, QLabel, QPushButton, QFrame, QMessageBox, QDialog, QListWidgetItem,
     QLineEdit, QTextEdit, QComboBox
 )
@@ -195,12 +195,17 @@ class SettingsWindow(QMainWindow):
         self.category_items_by_key = {}  # Map category key -> QListWidgetItem
         self._persistent_profile_entries = {}
         self._paged_settings_view_enabled = None
+        self._active_docs_focus_container = None
 
         self._init_ui()
         self._load_values()
         self.update_check_finished.connect(self._handle_update_check_result)
         self._update_check_in_progress = False
         self._sync_application_settings_info()
+
+        app = QApplication.instance()
+        if app is not None:
+            app.focusChanged.connect(self._on_app_focus_changed)
 
     def _get_sidebar_icon(self, icon_file: str, color: str, size: int = 18) -> QIcon:
         use_sidebar_subdir = ("/" not in icon_file) and ("\\" not in icon_file)
@@ -302,6 +307,27 @@ class SettingsWindow(QMainWindow):
                 return docs_url
             current = current.parentWidget()
         return None
+
+    def _docs_container_for_widget(self, widget: QWidget | None):
+        current = widget
+        while current is not None:
+            if hasattr(current, "set_help_focus_visible") and hasattr(current, "help_button"):
+                return current
+            current = current.parentWidget()
+        return None
+
+    def _on_app_focus_changed(self, _old, new) -> None:
+        next_container = self._docs_container_for_widget(new)
+        previous_container = getattr(self, "_active_docs_focus_container", None)
+        if previous_container is next_container:
+            return
+
+        if previous_container is not None and hasattr(previous_container, "set_help_focus_visible"):
+            previous_container.set_help_focus_visible(False)
+
+        self._active_docs_focus_container = next_container
+        if next_container is not None and hasattr(next_container, "set_help_focus_visible"):
+            next_container.set_help_focus_visible(True)
 
     def _open_docs_for_focused_widget(self) -> bool:
         focus_widget = self.focusWidget()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ui.core.brand import BrandColors
 from ui.widgets.components import DocsHelpButton
@@ -26,8 +26,11 @@ class RedirectCard(QFrame):
         super().__init__(parent)
         self.setObjectName("redirectCard")
         self._docs_url = str(docs_url or "").strip()
+        self._docs_handler = docs_handler
         self._help_hovered = False
+        self._help_focus_visible = False
         self.help_button = None
+        self._help_slot = None
         self.setStyleSheet(
             f"""
             QFrame#redirectCard {{
@@ -64,18 +67,13 @@ class RedirectCard(QFrame):
         title_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         title_row_layout.addWidget(title_label, 0, Qt.AlignVCenter)
 
-        if self._docs_url and docs_handler:
-            self.help_button = DocsHelpButton(self._docs_url, self)
-            self.help_button.clicked.connect(docs_handler)
-            self.help_button.hide()
-            title_row_layout.addWidget(self.help_button, 0, Qt.AlignVCenter)
+        if self._docs_url:
+            self._help_slot = QWidget(self)
+            self._help_slot.setStyleSheet("background-color: transparent;")
+            self._help_slot.setFixedSize(16, 16)
+            title_row_layout.addWidget(self._help_slot, 0, Qt.AlignVCenter)
             self._tag_docs_widget(self)
             self._tag_docs_widget(title_label)
-            self._tag_docs_widget(self.help_button)
-
-            app = QApplication.instance()
-            if app is not None:
-                app.focusChanged.connect(self._on_app_focus_changed)
 
         title_row_layout.addStretch(1)
         left.addWidget(title_row)
@@ -125,17 +123,30 @@ class RedirectCard(QFrame):
             return
         widget.setProperty("docsUrl", self._docs_url)
 
-    def _has_focus_within(self) -> bool:
-        app = QApplication.instance()
-        focus_widget = app.focusWidget() if app is not None else None
-        return bool(focus_widget and (focus_widget is self.help_button or self.isAncestorOf(focus_widget)))
+    def _ensure_help_button(self) -> None:
+        if self.help_button is not None or not self._docs_url or not self._help_slot:
+            return
+
+        slot_layout = QHBoxLayout(self._help_slot)
+        slot_layout.setContentsMargins(0, 0, 0, 0)
+        slot_layout.setSpacing(0)
+
+        self.help_button = DocsHelpButton(self._docs_url, self._help_slot)
+        if self._docs_handler:
+            self.help_button.clicked.connect(self._docs_handler)
+        self.help_button.hide()
+        slot_layout.addWidget(self.help_button, 0, Qt.AlignCenter)
+        self._tag_docs_widget(self.help_button)
 
     def _update_help_button_visibility(self) -> None:
-        if not self.help_button:
-            return
-        self.help_button.setVisible(self._help_hovered or self._has_focus_within())
+        should_show = self._help_hovered or self._help_focus_visible
+        if should_show:
+            self._ensure_help_button()
+        if self.help_button:
+            self.help_button.setVisible(should_show)
 
-    def _on_app_focus_changed(self, _old, _new) -> None:
+    def set_help_focus_visible(self, visible: bool) -> None:
+        self._help_focus_visible = bool(visible)
         self._update_help_button_visibility()
 
     def enterEvent(self, event):
