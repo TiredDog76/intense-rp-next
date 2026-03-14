@@ -94,10 +94,11 @@ class WorkingDialog(QDialog):
                 background-color: {BrandColors.SIDEBAR_BG};
                 border: 1px solid {BrandColors.INPUT_BORDER};
                 border-radius: 7px;
+                padding: 1px;
             }}
             QProgressBar::chunk {{
                 background-color: {BrandColors.ACCENT};
-                border-radius: 7px;
+                border-radius: 6px;
             }}
             """
         )
