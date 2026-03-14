@@ -1,3 +1,5 @@
+"""Browser driver for Google AI Studio, including UI control and stream interception."""
+
 import asyncio
 import codecs
 import json
@@ -27,6 +29,8 @@ load_dotenv()
 
 
 class _AiStudioJsonEventStreamParser:
+    """Incrementally parse AI Studio's XSSI-prefixed nested JSON event stream."""
+
     def __init__(self) -> None:
         self._text_decoder = codecs.getincrementaldecoder("utf-8")()
         self._json_decoder = json.JSONDecoder()
@@ -38,10 +42,12 @@ class _AiStudioJsonEventStreamParser:
         self._xssi_handled = False
 
     def feed(self, chunk: bytes) -> list[Any]:
+        """Decode a response chunk and return any fully parsed JSON events."""
         self._buffer += self._text_decoder.decode(chunk, final=False)
         return self._drain(final=False)
 
     def finish(self) -> list[Any]:
+        """Flush buffered decoder state and return any remaining parsed events."""
         self._buffer += self._text_decoder.decode(b"", final=True)
         return self._drain(final=True)
 
@@ -74,6 +80,7 @@ class _AiStudioJsonEventStreamParser:
         self._pos = 0
 
     def _drain(self, final: bool) -> list[Any]:
+        """Drain as many complete JSON events as possible from the internal buffer."""
         out: list[Any] = []
 
         while True:
@@ -135,6 +142,8 @@ class _AiStudioJsonEventStreamParser:
 
 
 class AIStudioDriver(BaseDriver):
+    """Drive the Google AI Studio web UI and expose OpenAI-style streaming output."""
+
     START_URL = "https://aistudio.google.com/prompts/new_chat"
     AUTH_HOST_MARKER = "accounts.google.com"
     GENERATE_ROUTE_GLOB = (
@@ -258,6 +267,7 @@ class AIStudioDriver(BaseDriver):
     }
 
     def __init__(self, config_manager):
+        """Initialize the driver and session-scoped AI Studio state."""
         super().__init__(config_manager=config_manager, provider=DriverProvider.AI_STUDIO)
         self.cache_manager = CacheManager()
         self.current_model: Optional[str] = None
@@ -275,6 +285,7 @@ class AIStudioDriver(BaseDriver):
         return self.START_URL
 
     async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
+        """Run post-start checks and one-time UI initialization for AI Studio."""
         await self._accept_terms_of_service_if_present(timeout_ms=1500)
         await self.check_ui_language(status_callback=status_callback)
         clear_clean_regeneration_cache(
@@ -298,6 +309,16 @@ class AIStudioDriver(BaseDriver):
         timeout_ms: int = 0,
         poll_interval_s: float = 0.15,
     ):
+        """Return the first visible locator that matches any selector in the list.
+
+        Args:
+            selectors: Candidate selectors checked in order.
+            timeout_ms: Maximum time to keep polling for a visible element.
+            poll_interval_s: Delay between polling rounds when waiting.
+
+        Returns:
+            The first visible locator, or ``None`` if nothing becomes visible.
+        """
         if not self.page:
             return None
 
@@ -324,6 +345,7 @@ class AIStudioDriver(BaseDriver):
             await asyncio.sleep(max(0.05, float(poll_interval_s)))
 
     async def _wait_for_chat_ready(self, timeout_ms: int = 60000) -> bool:
+        """Return whether the chat composer becomes visible within the timeout."""
         return await self._find_first_visible(self.CHAT_READY_SELECTORS, timeout_ms=timeout_ms) is not None
 
     async def _current_url(self) -> str:
@@ -338,6 +360,7 @@ class AIStudioDriver(BaseDriver):
         return bool(await self._wait_for_chat_ready(timeout_ms=0))
 
     async def _detect_login_state(self) -> str:
+        """Classify the current page as chat, auth, or unknown."""
         if await self._is_logged_in():
             return "chat"
 
@@ -355,6 +378,7 @@ class AIStudioDriver(BaseDriver):
         return "unknown"
 
     async def _wait_for_login_state(self, timeout_ms: int = 15000) -> str:
+        """Poll until the page clearly looks like chat or Google auth."""
         deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
         last_state = "unknown"
         while True:
@@ -367,6 +391,7 @@ class AIStudioDriver(BaseDriver):
             await asyncio.sleep(0.35)
 
     async def _wait_until_logged_in(self, timeout_ms: int = 0) -> bool:
+        """Wait until the chat composer appears, optionally with a timeout."""
         start = time.time()
         timeout_s = 0.0 if timeout_ms <= 0 else (float(timeout_ms) / 1000.0)
         while True:
@@ -380,6 +405,7 @@ class AIStudioDriver(BaseDriver):
         await asyncio.sleep(max(0.0, float(delay_s)))
 
     async def _accept_terms_of_service_if_present(self, timeout_ms: int = 3500) -> None:
+        """Pause automation while the AI Studio legal acknowledgement dialog is open."""
         if not self.page:
             return
 
@@ -407,6 +433,7 @@ class AIStudioDriver(BaseDriver):
         await self._ui_settle_pause(0.35)
 
     async def _enter_google_login_value(self, selectors: List[str], value: str) -> bool:
+        """Fill one Google sign-in step and submit it with Enter."""
         field = await self._find_first_visible(selectors, timeout_ms=15000)
         if field is None:
             return False
@@ -445,6 +472,7 @@ class AIStudioDriver(BaseDriver):
         return True
 
     async def _perform_google_auto_login(self, email: str, password: str) -> bool:
+        """Attempt a full Google login flow with the configured credentials."""
         entered_email = await self._enter_google_login_value(self.GOOGLE_EMAIL_SELECTORS, email)
         if not entered_email and not await self._is_logged_in():
             return False
@@ -475,6 +503,12 @@ class AIStudioDriver(BaseDriver):
         return float(min(max(value, 5), 120))
 
     async def login(self) -> None:
+        """Ensure the browser reaches an authenticated AI Studio chat session.
+
+        The flow first detects whether the user is already on the chat page, then
+        attempts Auto Login when configured, and finally falls back to a manual
+        login wait if Google requires additional user interaction.
+        """
         if not self.page:
             return
 
@@ -552,6 +586,7 @@ class AIStudioDriver(BaseDriver):
             pass
 
     async def _get_document_lang(self) -> str:
+        """Read the active document language, allowing Google auth pages temporarily."""
         if not self.page:
             return ""
 
@@ -583,6 +618,7 @@ class AIStudioDriver(BaseDriver):
         return normalized == "en" or normalized == "en-us" or normalized.startswith("en-")
 
     async def check_ui_language(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
+        """Warn once per detected language when AI Studio is not using English."""
         lang = await self._get_document_lang()
         self.last_document_lang = lang or None
 
@@ -615,6 +651,7 @@ class AIStudioDriver(BaseDriver):
         return False
 
     async def require_english_ui(self) -> None:
+        """Raise if AI Studio is currently using a non-English UI language."""
         ok = await self.check_ui_language()
         if ok:
             return
@@ -638,6 +675,7 @@ class AIStudioDriver(BaseDriver):
         return dict(cls.MODEL_CONFIGS.get(label) or cls.MODEL_CONFIGS["Gemini 2.5 Flash"])
 
     async def _read_current_model_id(self) -> str:
+        """Read the currently selected model label from the model selector card."""
         if not self.page:
             return ""
 
@@ -658,6 +696,7 @@ class AIStudioDriver(BaseDriver):
         return str(current or "").strip()
 
     async def _open_model_selector(self, timeout_ms: int = 6000) -> bool:
+        """Open the model picker and wait for its carousel to appear."""
         if not self.page:
             return False
 
@@ -711,6 +750,7 @@ class AIStudioDriver(BaseDriver):
         return bool(clicked)
 
     async def _click_model_option(self, selector_id: str) -> bool:
+        """Click a visible model option by its picker button id."""
         if not self.page:
             return False
 
@@ -741,6 +781,7 @@ class AIStudioDriver(BaseDriver):
         return False
 
     async def _ensure_model_selected(self, desired_label: str) -> None:
+        """Best-effort apply the configured Gemini model in the picker UI."""
         desired = self._model_config_for_label(desired_label)
         desired_base = str(desired.get("base_id") or "").strip()
         desired_selector = str(desired.get("selector_id") or "").strip()
@@ -773,6 +814,7 @@ class AIStudioDriver(BaseDriver):
         )
 
     async def apply_configured_model(self) -> None:
+        """Apply the currently configured model label to the AI Studio UI."""
         desired_label = self._get_configured_model_label()
         try:
             await self._ensure_model_selected(desired_label)
@@ -795,6 +837,7 @@ class AIStudioDriver(BaseDriver):
         return ""
 
     def _configured_thinking_level(self) -> str:
+        """Return the configured thinking level normalized to a supported label."""
         try:
             value = str(self.config_manager.get_setting("aistudio_behavior", "thinking_level") or "").strip()
         except Exception:
@@ -804,6 +847,7 @@ class AIStudioDriver(BaseDriver):
 
     @classmethod
     def _resolve_macro_thinking_level(cls, token: str, model_base_id: str) -> str:
+        """Map macro tokens like ``r1``-``r4`` onto model-supported thinking levels."""
         normalized = str(token or "").strip().lower()
         supported = cls.THINKING_LEVELS_BY_MODEL.get(str(model_base_id or "").strip().lower()) or ()
         if not supported:
@@ -830,6 +874,7 @@ class AIStudioDriver(BaseDriver):
         return cls.LOWEST_LEVEL_BY_MODEL.get(str(model_base_id or "").strip().lower(), "")
 
     def _extract_model_level_override(self, model: str) -> tuple[str, Dict[str, Any]]:
+        """Split suffixes like ``-high`` or ``-r2`` into a base model and overrides."""
         normalized = str(model or "").strip()
         overrides: Dict[str, Any] = {}
         if not normalized:
@@ -858,6 +903,7 @@ class AIStudioDriver(BaseDriver):
         min_value: float,
         max_value: float,
     ) -> float:
+        """Read, validate, and clamp a floating-point config value."""
         raw = None
         try:
             raw = self.config_manager.get_setting(category_key, field_key)
@@ -880,6 +926,7 @@ class AIStudioDriver(BaseDriver):
 
     @staticmethod
     def _clamp_int(value: Any, default: int, min_value: int, max_value: int) -> int:
+        """Convert a value to ``int`` and clamp it into the requested range."""
         try:
             parsed = int(value)
         except Exception:
@@ -895,6 +942,12 @@ class AIStudioDriver(BaseDriver):
         max_tokens: int | None = None,
         overrides: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """Resolve the effective per-request AI Studio settings.
+
+        This merges behavior-mode defaults, config values, explicit request parameters,
+        and prompt-level macro overrides into the normalized settings dict used by the
+        UI automation layer.
+        """
         requested_model, model_suffix_overrides = self._extract_model_level_override(model)
         merged_overrides: Dict[str, Any] = {}
         if overrides:
@@ -994,6 +1047,7 @@ class AIStudioDriver(BaseDriver):
         }
 
     async def _read_toggle_state_by_aria_label(self, aria_label: str) -> Optional[bool]:
+        """Best-effort read a switch state using the control's aria-label."""
         if not self.page:
             return None
 
@@ -1036,6 +1090,7 @@ class AIStudioDriver(BaseDriver):
         return None
 
     async def _set_toggle_state_by_aria_label(self, aria_label: str, state: bool) -> None:
+        """Toggle a labeled switch only when it differs from the requested state."""
         current = await self._read_toggle_state_by_aria_label(aria_label)
         if current is not None and current == state:
             return
@@ -1080,6 +1135,7 @@ class AIStudioDriver(BaseDriver):
         await self._set_toggle_state_by_aria_label(self.URL_CONTEXT_TOGGLE_LABEL, state)
 
     async def _read_temporary_chat_enabled(self) -> Optional[bool]:
+        """Infer whether Temporary Chats is enabled from the toolbar button state."""
         if not self.page:
             return None
 
@@ -1139,6 +1195,7 @@ class AIStudioDriver(BaseDriver):
         return None
 
     async def _ensure_temporary_chat_enabled(self) -> None:
+        """Enable Temporary Chats when the control is available and not already active."""
         current = await self._read_temporary_chat_enabled()
         if current is True:
             return
@@ -1220,6 +1277,7 @@ class AIStudioDriver(BaseDriver):
         await asyncio.sleep(max(0.0, float(delay_s)))
 
     async def _dismiss_transient_overlays(self) -> None:
+        """Dismiss transient menus and backdrops that can steal subsequent clicks."""
         if not self.page:
             return
 
@@ -1278,6 +1336,7 @@ class AIStudioDriver(BaseDriver):
             pass
 
     async def _set_input_value(self, selector: str, value_text: str, *, timeout_ms: int = 8000) -> bool:
+        """Set an input value via DOM setters first, with a Playwright fallback."""
         field = await self._find_first_visible([selector], timeout_ms=timeout_ms)
         if field is None:
             return False
@@ -1368,6 +1427,7 @@ class AIStudioDriver(BaseDriver):
         return bool(visible)
 
     async def _ensure_advanced_settings_expanded(self) -> bool:
+        """Expand the advanced settings panel if its controls are still hidden."""
         if not self.page:
             return False
 
@@ -1476,6 +1536,7 @@ class AIStudioDriver(BaseDriver):
             Logger.warning("Google AI Studio: maxOutputTokens input was not found.")
 
     async def _set_safety_filters_low(self) -> bool:
+        """Open the safety settings panel and move all sliders to their lowest values."""
         if not self.page:
             return False
 
@@ -1568,6 +1629,7 @@ class AIStudioDriver(BaseDriver):
         return True
 
     async def _ensure_safety_filters_initialized(self) -> None:
+        """Apply the low-safety preset once per session after the chat UI is ready."""
         if self._safety_filters_initialized:
             return
         if not self.page:
@@ -1579,6 +1641,7 @@ class AIStudioDriver(BaseDriver):
             self._safety_filters_initialized = True
 
     async def _open_thinking_level_dropdown(self) -> bool:
+        """Find and open the thinking-level dropdown despite AI Studio layout variance."""
         if not self.page:
             return False
 
@@ -1660,6 +1723,7 @@ class AIStudioDriver(BaseDriver):
         return True
 
     async def _select_thinking_level(self, level: str) -> bool:
+        """Select a normalized thinking level from the thinking dropdown."""
         wanted = self._normalize_thinking_level(level)
         if not wanted:
             return False
@@ -1719,6 +1783,7 @@ class AIStudioDriver(BaseDriver):
             )
 
     async def _apply_request_controls(self, settings: Dict[str, Any]) -> None:
+        """Apply the resolved model and control settings to the current chat UI."""
         await self._ensure_model_selected(str(settings.get("model_label") or self._get_configured_model_label()))
         await self._ui_settle_pause(0.28)
 
@@ -1758,6 +1823,7 @@ class AIStudioDriver(BaseDriver):
         await self._wait_for_chat_ready(timeout_ms=60000)
 
     async def upload_file(self, file_spec: Any) -> None:
+        """Upload media through AI Studio's picker, including acknowledgement handling."""
         if not self.page:
             return
         return await self._upload_file_with_ack(file_spec)
@@ -1854,6 +1920,7 @@ class AIStudioDriver(BaseDriver):
                     pass
 
     async def _upload_file_with_ack(self, file_spec: Any) -> None:
+        """Upload a file and handle the copyright acknowledgement dialog if it appears."""
         if not self.page:
             return
 
@@ -2054,6 +2121,7 @@ class AIStudioDriver(BaseDriver):
                     pass
 
     async def enter_message(self, message: str) -> None:
+        """Populate the prompt composer without relying on paste shortcuts."""
         if not self.page:
             return
 
@@ -2093,9 +2161,11 @@ class AIStudioDriver(BaseDriver):
                 Logger.warning(f"Google AI Studio: failed to enter the prompt: {e}")
 
     async def _find_send_button(self, timeout_ms: int = 8000):
+        """Locate the first visible AI Studio send/run button."""
         return await self._find_first_visible(self.SEND_BUTTON_SELECTORS, timeout_ms=timeout_ms)
 
     async def send_message(self, timeout: int | None = None) -> None:
+        """Wait for the send button to become enabled and click it."""
         wait_timeout_s = 15.0 if timeout is None else max(float(timeout), 0.0)
         deadline = time.time() + wait_timeout_s
         last_state = "not found"
@@ -2152,6 +2222,7 @@ class AIStudioDriver(BaseDriver):
         return AIStudioDriver.GENERATE_URL_SUBSTRING in str(url or "")
 
     def _is_generate_content_response(self, response) -> bool:
+        """Return whether a Playwright response matches AI Studio's GenerateContent call."""
         try:
             url = str(getattr(response, "url", "") or "")
         except Exception:
@@ -2188,6 +2259,7 @@ class AIStudioDriver(BaseDriver):
         *,
         send_deepthink: bool,
     ) -> None:
+        """Parse a completed GenerateContent response body into OpenAI-style deltas."""
         try:
             await response.finished()
         except Exception:
@@ -2244,6 +2316,7 @@ class AIStudioDriver(BaseDriver):
         Logger.success("Google AI Studio response capture completed.")
 
     async def _click_regenerate(self) -> bool:
+        """Click the most recent visible regenerate button in the chat transcript."""
         if not self.page:
             return False
 
@@ -2301,6 +2374,7 @@ class AIStudioDriver(BaseDriver):
         return None
 
     def _extract_request_body_bytes(self, request) -> bytes | None:
+        """Best-effort extract the intercepted request payload for httpx replay."""
         for attr_name in ("post_data_buffer", "post_data"):
             try:
                 value = getattr(request, attr_name)
@@ -2334,12 +2408,15 @@ class AIStudioDriver(BaseDriver):
         return None
 
     def _extract_aistudio_macros_from_text(self, text: str) -> tuple[str, Dict[str, Any]]:
+        """Extract AI Studio-specific prompt macros from raw text."""
         return extract_macro_overrides(text, macro_actions=self.AI_STUDIO_MACRO_ACTIONS)
 
     def _strip_aistudio_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, Any]]:
+        """Extract AI Studio-specific prompt macros from the last user message."""
         return strip_macros_from_messages(messages, macro_actions=self.AI_STUDIO_MACRO_ACTIONS)
 
     def _read_clean_regeneration_state(self) -> Optional[Dict[str, Any]]:
+        """Load cached regeneration state and verify its required AI Studio fields."""
         raw = self.cache_manager.read_cache(self.clean_regen_state_cache_key)
         if raw is None:
             return None
@@ -2358,6 +2435,7 @@ class AIStudioDriver(BaseDriver):
         return dict(data)
 
     def _write_clean_regeneration_state(self, state: Dict[str, Any]) -> None:
+        """Persist the normalized settings snapshot used by clean regeneration."""
         payload = {key: state.get(key) for key in self.CLEAN_REGEN_STATE_KEYS}
         self.cache_manager.write_cache(
             self.clean_regen_state_cache_key,
@@ -2365,6 +2443,7 @@ class AIStudioDriver(BaseDriver):
         )
 
     def _build_clean_regeneration_state(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Build the normalized cache snapshot used to decide if regenerate is safe."""
         return {
             "deepthink_enabled": bool(settings.get("deepthink_enabled")),
             "thinking_level": str(settings.get("thinking_level") or ""),
@@ -2386,6 +2465,7 @@ class AIStudioDriver(BaseDriver):
         *,
         send_deepthink: bool,
     ) -> bool:
+        """Translate one parsed AI Studio event into OpenAI-compatible stream chunks."""
         if not isinstance(event, list):
             return False
 
@@ -2429,6 +2509,7 @@ class AIStudioDriver(BaseDriver):
         *,
         finish_reason: str | None = None,
     ) -> None:
+        """Wrap content in an OpenAI-compatible SSE chunk and enqueue it."""
         if (not content) and (not finish_reason):
             return
 
@@ -2449,6 +2530,7 @@ class AIStudioDriver(BaseDriver):
         await queue.put(f"data: {json.dumps(openai_chunk)}\n\n")
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
+        """Render messages through the shared prompt-formatting pipeline."""
         return format_messages(self.config_manager, messages)
 
     async def generate_response(
@@ -2461,6 +2543,12 @@ class AIStudioDriver(BaseDriver):
         max_tokens: int | None = None,
         abort_event: asyncio.Event | None = None,
     ):
+        """Generate a response by driving the AI Studio UI and intercepting its stream.
+
+        The method resolves prompt macros and request settings, prepares either a fresh
+        chat or a clean-regeneration retry, intercepts the underlying GenerateContent
+        request, and yields OpenAI-style server-sent event chunks back to the caller.
+        """
         _ = stream
         response_queue: asyncio.Queue = asyncio.Queue()
         completion_armed = asyncio.Event()

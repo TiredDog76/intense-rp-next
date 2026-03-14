@@ -1,3 +1,5 @@
+"""Shared helpers for driver-side formatting, macros, and clean regeneration state."""
+
 from __future__ import annotations
 
 import json
@@ -41,6 +43,7 @@ def clear_clean_regeneration_cache(
     message_cache_key: str,
     state_cache_key: str,
 ) -> None:
+    """Clear cached prompt and state entries used by clean-regeneration flows."""
     cache_manager.clear_cache(message_cache_key)
     cache_manager.clear_cache(state_cache_key)
 
@@ -49,6 +52,16 @@ def extract_macro_overrides(
     text: str,
     macro_actions: Dict[str, tuple[str, Any]] | None = None,
 ) -> tuple[str, Dict[str, Any]]:
+    """Strip recognized request macros from text and return the derived overrides.
+
+    Args:
+        text: Raw prompt text that may contain ``[[macro]]`` markers.
+        macro_actions: Optional provider-specific macro map merged over the shared defaults.
+
+    Returns:
+        A tuple of ``(cleaned_text, overrides)`` where ``overrides`` contains the
+        request settings implied by any recognized macros.
+    """
     if not text:
         return text, {}
 
@@ -76,6 +89,16 @@ def strip_macros_from_messages(
     messages: List[Any],
     macro_actions: Dict[str, tuple[str, Any]] | None = None,
 ) -> tuple[List[Any], Dict[str, Any]]:
+    """Remove request macros from the last user message in a transcript.
+
+    Args:
+        messages: Chat messages represented as dict-like or object-like items.
+        macro_actions: Optional provider-specific macro map merged over the shared defaults.
+
+    Returns:
+        A tuple of ``(messages, overrides)``. The returned message list is copied only
+        when a recognized macro is removed from the final user message.
+    """
     last_user_index = None
     for idx in range(len(messages) - 1, -1, -1):
         role = _coerce_role(messages[idx])
@@ -117,6 +140,17 @@ def read_clean_regeneration_state(
     *,
     log_label: str = "Clean Regeneration",
 ) -> Optional[Dict[str, bool]]:
+    """Load and validate cached clean-regeneration state from the cache manager.
+
+    Args:
+        cache_manager: Cache abstraction used by the drivers.
+        state_cache_key: Cache key containing the serialized state payload.
+        log_label: Label used for warning messages when cached JSON is invalid.
+
+    Returns:
+        The normalized state dict when the cache entry is present and valid, otherwise
+        ``None``.
+    """
     raw = cache_manager.read_cache(state_cache_key)
     if raw is None:
         return None
@@ -145,6 +179,7 @@ def write_clean_regeneration_state(
     state_cache_key: str,
     state: Dict[str, bool],
 ) -> None:
+    """Persist the clean-regeneration state subset used for cache comparisons."""
     payload = {
         "deepthink_enabled": bool(state.get("deepthink_enabled")),
         "search_enabled": bool(state.get("search_enabled")),
@@ -157,6 +192,16 @@ def write_clean_regeneration_state(
 
 
 def format_messages(config_manager: Any, messages: Union[str, List[Any]]) -> str:
+    """Render messages through the configurable formatting pipeline.
+
+    Args:
+        config_manager: Configuration source for formatting flags, templates, and
+            injection settings.
+        messages: Either a raw prompt string or a chat transcript.
+
+    Returns:
+        The formatted prompt text that should be sent to the provider UI.
+    """
     apply_formatting = config_manager.get_setting("formatting", "apply_formatting")
 
     if not apply_formatting:
@@ -256,11 +301,13 @@ def format_messages(config_manager: Any, messages: Union[str, List[Any]]) -> str
 
 
 def _coerce_role(message: Any) -> str:
+    """Return a message role as a string regardless of message object shape."""
     role = _get_message_field(message, "role", "")
     return str(role or "")
 
 
 def _get_message_field(message: Any, key: str, default: Any = None) -> Any:
+    """Read a field from either an object-like or dict-like message payload."""
     try:
         value = getattr(message, key)
     except Exception:
@@ -274,6 +321,7 @@ def _get_message_field(message: Any, key: str, default: Any = None) -> Any:
 
 
 def _get_message_name(message: Any) -> Any:
+    """Return the preferred display name stored on a message, if any."""
     name_value = _get_message_field(message, "name")
     if name_value:
         return name_value
@@ -281,6 +329,7 @@ def _get_message_name(message: Any) -> Any:
 
 
 def _render_injection(text: str, user_name: str, char_name: str) -> str:
+    """Expand supported user and assistant placeholders in an injection snippet."""
     rendered = "" if text is None else str(text)
     rendered = rendered.replace("{{user}}", user_name)
     rendered = rendered.replace("{{char}}", char_name)
