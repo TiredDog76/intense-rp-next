@@ -18,6 +18,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/LyubomirT/intense-rp-next?style=flat-square" /></a>
   <a href="https://intense-rp-next.readthedocs.io/en/latest/"><img alt="Docs" src="https://img.shields.io/website?url=https%3A%2F%2Fintense-rp-next.readthedocs.io%2Fen%2Flatest%2F&label=docs&style=flat-square" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-stable-2ea44f?style=flat-square" />
+  <a href="https://discord.gg/ZWYNnXt7"><img alt="Discord" src="https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
 </p>
 
 <p align="center">

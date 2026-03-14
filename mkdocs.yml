@@ -12,49 +12,54 @@ edit_uri: edit/v2-rewrite/docs/
 # WE USE ZENSICAL FOR DOCS GENERATION.
 
 nav:
-  - Home: index.md
-  - News: news.md
-  - Getting Started: getting-started.md
-  - Migration Guide: migration.md
-  - Features:
-      - Overview: features.md
-      - Accounts & Credentials: features/accounts.md
-      - Formatting: features/formatting.md
-      - STMP Support: features/stmp-support.md
-      - Login & Sessions: features/login-sessions.md
-      - Network & API: features/network-api.md
-      - Console & Logging: features/console-logging.md
-      - Hotswaps: features/hotswaps.md
-      - System: features/system.md
-  - Providers:
-      - Overview: providers.md
-      - DeepSeek Behavior: providers/deepseek-behavior.md
-      - GLM Behavior: providers/glm-behavior.md
-      - Kimi Behavior: providers/moonshot-behavior.md
-      - QwenLM Behavior: providers/qwen-behavior.md
-      - Google AI Studio Behavior: providers/aistudio-behavior.md
-  - Experimental:
-      - Overview: experimental.md
-      - Better Model Names: experimental/better-model-names.md
-      - Remote Control: experimental/remote-control.md
-  - Advanced:
-      - Overview: advanced.md
-      - Provider Support: advanced/provider-support.md
-      - API Behavior: advanced/api-behavior.md
-      - IP Whitelist: advanced/ip-whitelist.md
-      - GLM Quirks: advanced/glm-quirks.md
-      - App Flags: advanced/app-flags.md
-  - Util Reference:
-      - Overview: util-reference.md
-      - Help & Extras: util-reference/help-extras.md
-      - Backup & Import Settings: util-reference/backup-import-settings.md
-      - STMP Patcher: util-reference/stmp-patcher.md
-      - Contributors: util-reference/contributors.md
-  - Help & Support: 
-      - Troubleshooting: hands/troubleshooting.md
-      - Contact: hands/contact.md
-      - Support the Project: hands/support.md
-      - FAQ: hands/faq.md
+  - Docs:
+      - Home: index.md
+      - News: news.md
+      - Getting Started: getting-started.md
+      - Migration Guide: migration.md
+      - Features:
+          - Overview: features.md
+          - Accounts & Credentials: features/accounts.md
+          - Formatting: features/formatting.md
+          - STMP Support: features/stmp-support.md
+          - Login & Sessions: features/login-sessions.md
+          - Network & API: features/network-api.md
+          - Console & Logging: features/console-logging.md
+          - Hotswaps: features/hotswaps.md
+          - System: features/system.md
+      - Providers:
+          - Overview: providers.md
+          - DeepSeek Behavior: providers/deepseek-behavior.md
+          - GLM Behavior: providers/glm-behavior.md
+          - Kimi Behavior: providers/moonshot-behavior.md
+          - QwenLM Behavior: providers/qwen-behavior.md
+          - Google AI Studio Behavior: providers/aistudio-behavior.md
+      - Experimental:
+          - Overview: experimental.md
+          - Better Model Names: experimental/better-model-names.md
+          - Remote Control: experimental/remote-control.md
+      - Advanced:
+          - Overview: advanced.md
+          - Provider Support: advanced/provider-support.md
+          - API Behavior: advanced/api-behavior.md
+          - IP Whitelist: advanced/ip-whitelist.md
+          - GLM Quirks: advanced/glm-quirks.md
+          - App Flags: advanced/app-flags.md
+      - Util Reference:
+          - Overview: util-reference.md
+          - Help & Extras: util-reference/help-extras.md
+          - Backup & Import Settings: util-reference/backup-import-settings.md
+          - STMP Patcher: util-reference/stmp-patcher.md
+          - Contributors: util-reference/contributors.md
+      - Help & Support:
+          - Troubleshooting: hands/troubleshooting.md
+          - Contact: hands/contact.md
+          - Support the Project: hands/support.md
+          - FAQ: hands/faq.md
+  - Community:
+      - Get Involved: community.md
+  - Vote for New Stuff:
+      - vote-for-new-stuff.md
 
 theme:
   name: material
@@ -81,6 +86,7 @@ theme:
     - navigation.instant
     - navigation.instant.progress
     - navigation.tracking
+    - navigation.tabs
     - navigation.sections
     - navigation.footer
     - toc.follow
