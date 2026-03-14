@@ -1,4 +1,5 @@
 from typing import Dict, Any
+from config.formatting_presets import LEGACY_V2_FORMATTING_PRESET_MAP
 from drivers.providers import DriverProvider
 
 class SettingsMigrator:
@@ -14,14 +15,7 @@ class SettingsMigrator:
             formatting = settings["formatting"]
             if "formatting_preset" in formatting:
                 preset = formatting["formatting_preset"]
-                
-                # Map old presets to new defaults
-                if preset == "Classic":
-                    formatting["formatting_preset"] = "Classic - Name"
-                elif preset == "XML-Like":
-                    formatting["formatting_preset"] = "XML-Like - Name"
-                elif preset == "Divided":
-                    formatting["formatting_preset"] = "Divided - Name"
+                formatting["formatting_preset"] = LEGACY_V2_FORMATTING_PRESET_MAP.get(preset, preset)
 
         # Migration: enable_console moved from system_settings -> console_settings
         system_settings = settings.get("system_settings")

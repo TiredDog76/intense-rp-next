@@ -10,6 +10,7 @@ import threading
 import os
 import shutil
 from pathlib import Path
+from config.formatting_presets import FORMATTING_PRESET_TEMPLATES
 from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
 from config.schema import SCHEMA, SettingType
@@ -1699,18 +1700,9 @@ class SettingsWindow(QMainWindow):
                     self._last_custom_template = template_widget.toPlainText()
                 
                 template_widget.setEnabled(False)
-                if text == "Classic - Name":
-                    template_widget.setPlainText("{{name}}: {{content}}")
-                elif text == "Classic - Role":
-                    template_widget.setPlainText("{{role}}: {{content}}")
-                elif text == "XML-Like - Name":
-                    template_widget.setPlainText("<{{name}}>{{content}}</{{name}}>")
-                elif text == "XML-Like - Role":
-                    template_widget.setPlainText("<{{role}}>{{content}}</{{role}}>")
-                elif text == "Divided - Name":
-                    template_widget.setPlainText("### {{name}}\n{{content}}")
-                elif text == "Divided - Role":
-                    template_widget.setPlainText("### {{role}}\n{{content}}")
+                template = FORMATTING_PRESET_TEMPLATES.get(text)
+                if template is not None:
+                    template_widget.setPlainText(template)
         finally:
             template_widget.blockSignals(previous_block)
 

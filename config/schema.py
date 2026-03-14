@@ -7,6 +7,7 @@ from .validators import (
     validate_ip_address_list,
     validate_float_range,
 )
+from .formatting_presets import FORMATTING_PRESET_OPTIONS
 from .location import get_config_storage_options
 from drivers.providers import provider_options
 
@@ -153,12 +154,7 @@ SCHEMA = [
                 label="Preset",
                 type=SettingType.DROPDOWN,
                 default="Classic - Name",
-                options=[
-                    "Classic - Name", "Classic - Role", 
-                    "XML-Like - Name", "XML-Like - Role", 
-                    "Divided - Name", "Divided - Role", 
-                    "Custom"
-                ],
+                options=FORMATTING_PRESET_OPTIONS,
                 tooltip="Choose a formatting preset or create your own.",
                 docs_path=DOCS_FORMATTING,
                 docs_anchor="presets",

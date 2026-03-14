@@ -70,7 +70,7 @@ IntenseRP doesn't just forward your messages to the provider. It formats them in
 | Feature | What It Does |
 |---------|-------------|
 | **Formatting Templates** | Define how messages appear using `{{name}}`, `{{role}}`, and `{{content}}` placeholders |
-| **Built-in Presets** | Choose from Classic, XML-Like, or Divided styles |
+| **Built-in Presets** | Choose from Classic, XML-Like, Multiline XML-Like, or Divided styles |
 | **Name Detection** | Extract character/user names from IR2 blocks, Classic IntenseRP tags, or message objects (`name` / `irp-next`) |
 | **Message Injection** | Add custom text before or after all messages |
 

@@ -75,6 +75,7 @@ The migrator is best-effort. It migrates the common stuff, but there are importa
 - **DeepSeek Behavior**: DeepThink, Send DeepThink, Search, Send As Text File, Clean Regeneration
 - **Formatting**:
     - Preset mapping (v1 preset names -> v2 preset names)
+    - v1 Wrapped/XML-like presets now map to **Multiline XML-Like** in v2
     - Attempts to import your **custom template** if you used Custom
     - Imports v1 Injection "system prompt" as v2 Injection content
 - **Network**: Port and API keys (if configured)

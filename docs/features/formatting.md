@@ -113,6 +113,48 @@ Wraps messages in XML-style tags. Some models respond well to this structured fo
     <User>Hey, what's up?</User>
     ```
 
+### Multiline XML-Like
+
+Almost exactly like XML-Like, but with the content placed between opening and closing tags on separate lines. This also matches the old v1 Wrapped/XML-like preset style.
+
+=== "Multiline XML-Like - Name"
+
+    **Template:**
+    ```xml
+    <{{name}}>
+    {{content}}
+    </{{name}}>
+    ```
+    
+    **Example output:**
+    ```xml
+    <Sophie>
+    Hello there!
+    </Sophie>
+    <Jan>
+    Hey, what's up?
+    </Jan>
+    ```
+
+=== "Multiline XML-Like - Role"
+
+    **Template:**
+    ```xml
+    <{{role}}>
+    {{content}}
+    </{{role}}>
+    ```
+    
+    **Example output:**
+    ```xml
+    <Character>
+    Hello there!
+    </Character>
+    <User>
+    Hey, what's up?
+    </User>
+    ```
+
 ### Divided
 
 Uses markdown-style headers to separate messages. Visually clear and easy to read.

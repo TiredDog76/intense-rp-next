@@ -1,7 +1,7 @@
 import json
-import os
 from pathlib import Path
 from cryptography.fernet import Fernet
+from config.formatting_presets import FORMATTING_PRESET_TEMPLATES, V1_FORMATTING_PRESET_MAP
 from config.manager import ConfigManager
 from utils.logger import Logger
 
@@ -193,31 +193,14 @@ class V1Migrator:
             self.v2_manager.set_setting("console_dumping", "condump_directory", dump_dir)
 
         # Formatting
-        preset_map = {
-            "Classic (Name)": "Classic - Name",
-            "Classic (Role)": "Classic - Role",
-            "Wrapped (Name)": "XML-Like - Name",
-            "Wrapped (Role)": "XML-Like - Role",
-            "Divided (Name)": "Divided - Name", 
-            "Divided (Role)": "Divided - Role",
-            "Custom": "Custom"
-        }
         preset = get_v1("formatting.preset")
-        migrated_preset = preset_map.get(preset) if isinstance(preset, str) else None
+        migrated_preset = V1_FORMATTING_PRESET_MAP.get(preset) if isinstance(preset, str) else None
         if migrated_preset:
             self.v2_manager.set_setting("formatting", "formatting_preset", migrated_preset)
 
             # Make sure the v2 template matches the preset (v2 uses one template).
             if migrated_preset != "Custom":
-                preset_templates = {
-                    "Classic - Name": "{{name}}: {{content}}",
-                    "Classic - Role": "{{role}}: {{content}}",
-                    "XML-Like - Name": "<{{name}}>{{content}}</{{name}}>",
-                    "XML-Like - Role": "<{{role}}>{{content}}</{{role}}>",
-                    "Divided - Name": "### {{name}}\\n{{content}}",
-                    "Divided - Role": "### {{role}}\\n{{content}}",
-                }
-                template = preset_templates.get(migrated_preset)
+                template = FORMATTING_PRESET_TEMPLATES.get(migrated_preset)
                 if template:
                     self.v2_manager.set_setting("formatting", "formatting_template", template)
 
