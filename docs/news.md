@@ -2,9 +2,23 @@
 icon: material/newspaper-variant-outline
 ---
 
+<!-- NOTE FOR SELF: Increment .github/state/latestnews.txt after you're done writing here or else nobody will get the bell indicator -->
+
 # :material-newspaper-variant-outline: News
 
 This page is the changelog to view all the latests news and updates about IntenseRP Next.
+
+## 🎉 March 14, 2026 - Update 2.6.0
+
+IntenseRP Next v2.6.0 is out, and the big headline is **Google AI Studio support**. It already includes streaming, Google login handling, model switching, and sampling controls, but it is still a bit beta-ish for now, so please poke it gently and let me know if something feels off.
+
+This update also brings some nice extra polish: Moonshot now gets RP-friendly auto-adjustments just like Qwen, the Settings window loads much faster, mini help buttons were added around settings, the console got its own search, and there is a new v1-style multiline XML-like formatting preset too.
+
+[Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.6.0-update){ .md-button .md-button--primary }
+[Join our Discord](https://discord.gg/ZWYNnXt7){ .md-button }
+[Suggest New Features](https://forms.gle/JCe8FQ27mPgdEGes7){ .md-button }
+
+---
 
 ## March 11, 2026 - Official Discord Server
 
