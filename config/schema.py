@@ -10,6 +10,25 @@ from .validators import (
 from .location import get_config_storage_options
 from drivers.providers import provider_options
 
+DOCS_ACCOUNTS = "features/accounts/"
+DOCS_AISTUDIO = "features/aistudio-behavior/"
+DOCS_API_BEHAVIOR = "advanced/api-behavior/"
+DOCS_CONSOLE = "features/console-logging/"
+DOCS_DEEPSEEK = "features/deepseek-behavior/"
+DOCS_FORMATTING = "features/formatting/"
+DOCS_GLM = "features/glm-behavior/"
+DOCS_GLM_QUIRKS = "advanced/glm-quirks/"
+DOCS_HOTSWAPS = "features/hotswaps/"
+DOCS_IP_WHITELIST = "advanced/ip-whitelist/"
+DOCS_LOGIN = "features/login-sessions/"
+DOCS_MOONSHOT = "features/moonshot-behavior/"
+DOCS_NETWORK = "features/network-api/"
+DOCS_PROVIDER_SUPPORT = "advanced/provider-support/"
+DOCS_QWEN = "features/qwen-behavior/"
+DOCS_REMOTE_CONTROL = "experimental/remote-control/"
+DOCS_BETTER_MODEL_NAMES = "experimental/better-model-names/"
+DOCS_SYSTEM = "features/system/"
+
 class SettingType(Enum):
     BOOLEAN = "boolean"
     STRING = "string"
@@ -52,6 +71,8 @@ class SettingField:
     visible_depends: Optional[str] = None
     affects: Optional[List[str]] = None # UI components to refresh when this field changes
     alternative_actions: Optional[List[AlternativeAction]] = None # For INPUT_PAIR-style fields
+    docs_path: Optional[str] = None
+    docs_anchor: Optional[str] = None
 
 @dataclass
 class SettingCategory:
@@ -75,13 +96,17 @@ SCHEMA = [
                     "Select the active provider driver. "
                     "This applies on the next browser start (Stop -> Start)."
                 ),
+                docs_path=DOCS_PROVIDER_SUPPORT,
+                docs_anchor="how-providers-work-in-v2",
             ),
             SettingField(
                 key="auto_login",
                 label="Auto Login",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Automatically log in using a saved account from Credential Manager."
+                tooltip="Automatically log in using a saved account from Credential Manager.",
+                docs_path=DOCS_LOGIN,
+                docs_anchor="auto-login",
             ),
             SettingField(
                 key="select_least_used",
@@ -89,6 +114,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Prefer the least recently used account. Otherwise, a random account is selected.",
+                docs_path=DOCS_ACCOUNTS,
+                docs_anchor="how-account-selection-works",
             ),
             SettingField(
                 key="reload_on_failure",
@@ -96,6 +123,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Restart and rotate to a different account/profile on empty or rate-limited responses.",
+                docs_path=DOCS_ACCOUNTS,
+                docs_anchor="reload-on-failure-auto-retry",
             ),
             SettingField(
                 key="credential_manager",
@@ -104,6 +133,8 @@ SCHEMA = [
                 default="Credential Manager",
                 tooltip="Manage provider accounts (email/password) used for Auto Login.",
                 action="open_credential_manager",
+                docs_path=DOCS_ACCOUNTS,
+                docs_anchor="quick-setup",
             )
         ]
     ),
@@ -128,14 +159,18 @@ SCHEMA = [
                     "Divided - Name", "Divided - Role", 
                     "Custom"
                 ],
-                tooltip="Choose a formatting preset or create your own."
+                tooltip="Choose a formatting preset or create your own.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="presets",
             ),
             SettingField(
                 key="formatting_template",
                 label="Template",
                 type=SettingType.TEXTAREA,
                 default="{{name}}: {{content}}",
-                tooltip="Define how messages are formatted. Use {{name}}, {{role}}, and {{content}} placeholders."
+                tooltip="Define how messages are formatted. Use {{name}}, {{role}}, and {{content}} placeholders.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="templates",
             ),
             SettingField(
                 key="reset_formatting_btn",
@@ -143,21 +178,27 @@ SCHEMA = [
                 type=SettingType.BUTTON,
                 default="Reset",
                 action="reset_formatting",
-                tooltip="Reset formatting template to Classic - Name."
+                tooltip="Reset formatting template to Classic - Name.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="presets",
             ),
             SettingField(
                 key="formatting_divider",
                 label="Divide messages with...",
                 type=SettingType.TEXTAREA,
                 default="\\n",
-                tooltip="String to insert between messages. Default is a newline."
+                tooltip="String to insert between messages. Default is a newline.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="message-divider",
             ),
             SettingField(
                 key="apply_formatting",
                 label="Apply Formatting",
                 type=SettingType.BOOLEAN,
                 default=True,
-                tooltip="Toggle whether to apply the formatting rules."
+                tooltip="Toggle whether to apply the formatting rules.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="disabling-formatting",
             ),
             SettingField(
                 key="formatting_divider_2",
@@ -177,21 +218,27 @@ SCHEMA = [
                 label="Message Objects",
                 type=SettingType.BOOLEAN,
                 default=True,
-                tooltip="Scan for 'name' parameter in message objects (or 'irp-next' for RossAscends's STMP patcher compat)."
+                tooltip="Scan for 'name' parameter in message objects (or 'irp-next' for RossAscends's STMP patcher compat).",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="message-objects",
             ),
             SettingField(
                 key="enable_ir2",
                 label="IR2 blocks",
                 type=SettingType.BOOLEAN,
                 default=True,
-                tooltip="Parse [[IR2u]]username[[/IR2u]]-[[IR2a]]charname[[/IR2a]] blocks."
+                tooltip="Parse [[IR2u]]username[[/IR2u]]-[[IR2a]]charname[[/IR2a]] blocks.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="ir2-blocks",
             ),
             SettingField(
                 key="enable_classic_irp",
                 label="Classic IntenseRP",
                 type=SettingType.BOOLEAN,
                 default=True,
-                tooltip="Parse DATA1: \"{{char}}\" DATA2: \"{{user}}\" blocks."
+                tooltip="Parse DATA1: \"{{char}}\" DATA2: \"{{user}}\" blocks.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="classic-intenserp",
             ),
             SettingField(
                 key="formatting_divider_3",
@@ -212,14 +259,18 @@ SCHEMA = [
                 type=SettingType.DROPDOWN,
                 default="Before",
                 options=["Before", "After"],
-                tooltip="Where to place the injected content."
+                tooltip="Where to place the injected content.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="injection",
             ),
             SettingField(
                 key="injection_content",
                 label="Content",
                 type=SettingType.TEXTAREA,
                 default="",
-                tooltip="Content to inject. Supports {{user}} and {{char}} placeholders."
+                tooltip="Content to inject. Supports {{user}} and {{char}} placeholders.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="injection",
             ),
             SettingField(
                 key="reset_injection_btn",
@@ -227,7 +278,9 @@ SCHEMA = [
                 type=SettingType.BUTTON,
                 default="Reset",
                 action="reset_injection",
-                tooltip="Reset injection settings to default."
+                tooltip="Reset injection settings to default.",
+                docs_path=DOCS_FORMATTING,
+                docs_anchor="injection",
             ),
         ]
     ),
@@ -240,28 +293,36 @@ SCHEMA = [
                 label="Enable DeepThink",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Toggle the DeepThink button on the DeepSeek interface."
+                tooltip="Toggle the DeepThink button on the DeepSeek interface.",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="enable-deepthink",
             ),
             SettingField(
                 key="send_deepthink",
                 label="Send DeepThink",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Include the thinking process in the response sent to the API."
+                tooltip="Include the thinking process in the response sent to the API.",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="send-deepthink",
             ),
             SettingField(
                 key="enable_search",
                 label="Enable Search",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Toggle the Search button on the DeepSeek interface."
+                tooltip="Toggle the Search button on the DeepSeek interface.",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="search",
             ),
             SettingField(
                 key="send_as_text_file",
                 label="Send As Text File",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Upload message as a text file instead of typing it."
+                tooltip="Upload message as a text file instead of typing it.",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="file-upload-mode",
             ),
             SettingField(
                 key="file_upload_timeout",
@@ -269,21 +330,27 @@ SCHEMA = [
                 type=SettingType.INTEGER,
                 default=15,
                 tooltip="Max seconds to wait for the send button to become enabled after file upload.",
-                depends="deepseek_behavior.send_as_text_file"
+                depends="deepseek_behavior.send_as_text_file",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="file-upload-timeout",
             ),
             SettingField(
                 key="anti_censorship",
                 label="Anti-Censorship",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Suppress the refusal message when content filtering is triggered."
+                tooltip="Suppress the refusal message when content filtering is triggered.",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="anti-censorship",
             ),
             SettingField(
                 key="clean_regeneration",
                 label="Clean Regeneration",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical."
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="clean-regeneration",
             ),
         ]
     ),
@@ -298,20 +365,26 @@ SCHEMA = [
                 default="GLM-5",
                 options=["GLM-5", "GLM-4.7", "GLM-4.6"],
                 tooltip="Select which GLM model to use in the web UI. Not related to the API model IDs.",
+                docs_path=DOCS_GLM,
+                docs_anchor="modes-model-ids",
             ),
             SettingField(
                 key="enable_deepthink",
                 label="Enable Deep Think",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Toggle the Deep Think button on the GLM interface."
+                tooltip="Toggle the Deep Think button on the GLM interface.",
+                docs_path=DOCS_GLM,
+                docs_anchor="enable-deep-think",
             ),
             SettingField(
                 key="send_deepthink",
                 label="Send Deep Think",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Include the thinking process in the response sent to the API."
+                tooltip="Include the thinking process in the response sent to the API.",
+                docs_path=DOCS_GLM,
+                docs_anchor="send-deep-think",
             ),
             SettingField(
                 key="count_tokens",
@@ -321,6 +394,8 @@ SCHEMA = [
                 tooltip=(
                     "Include a token count in the response metadata for each message."
                 ),
+                docs_path=DOCS_GLM,
+                docs_anchor="count-tokens",
             ),
             SettingField(
                 key="search_forced_off_note",
@@ -340,14 +415,18 @@ SCHEMA = [
                 tooltip=(
                     "Toggle the Search button on the GLM interface. "
                     "Search results are not forwarded to the client."
-                )
+                ),
+                docs_path=DOCS_GLM,
+                docs_anchor="search",
             ),
             SettingField(
                 key="send_as_text_file",
                 label="Send As Text File",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Upload message as a text file instead of typing it."
+                tooltip="Upload message as a text file instead of typing it.",
+                docs_path=DOCS_GLM,
+                docs_anchor="file-upload-mode",
             ),
             SettingField(
                 key="file_upload_timeout",
@@ -355,7 +434,9 @@ SCHEMA = [
                 type=SettingType.INTEGER,
                 default=15,
                 tooltip="Max seconds to wait for the send button to become enabled after file upload.",
-                depends="glm_behavior.send_as_text_file"
+                depends="glm_behavior.send_as_text_file",
+                docs_path=DOCS_GLM,
+                docs_anchor="file-upload-timeout",
             ),
             SettingField(
                 key="text_file_filler",
@@ -363,14 +444,18 @@ SCHEMA = [
                 type=SettingType.TEXTAREA,
                 default=".",
                 tooltip="Text sent alongside the uploaded file. Required because GLM won't send a file-only message.",
-                depends="glm_behavior.send_as_text_file"
+                depends="glm_behavior.send_as_text_file",
+                docs_path=DOCS_GLM,
+                docs_anchor="text-file-filler",
             ),
             SettingField(
                 key="clean_regeneration",
                 label="Clean Regeneration",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical."
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                docs_path=DOCS_GLM,
+                docs_anchor="clean-regeneration-known-issues",
             ),
             SettingField(
                 key="quirks_divider",
@@ -390,21 +475,27 @@ SCHEMA = [
                 label="UI Click Timeout (ms)",
                 type=SettingType.INTEGER,
                 default=3000,
-                tooltip="Timeout in milliseconds for UI element clicks (buttons, dropdowns, etc.)."
+                tooltip="Timeout in milliseconds for UI element clicks (buttons, dropdowns, etc.).",
+                docs_path=DOCS_GLM_QUIRKS,
+                docs_anchor="ui-click-timeout",
             ),
             SettingField(
                 key="post_action_delay",
                 label="Post-Action Delay (ms)",
                 type=SettingType.INTEGER,
                 default=500,
-                tooltip="Delay in milliseconds after UI actions (new chat, model switch) to let the interface settle."
+                tooltip="Delay in milliseconds after UI actions (new chat, model switch) to let the interface settle.",
+                docs_path=DOCS_GLM_QUIRKS,
+                docs_anchor="post-action-delay",
             ),
             SettingField(
                 key="message_send_timeout",
                 label="Message Send Timeout (s)",
                 type=SettingType.INTEGER,
                 default=5,
-                tooltip="Max seconds to wait for the send button to become enabled after text entry (non-file mode)."
+                tooltip="Max seconds to wait for the send button to become enabled after text entry (non-file mode).",
+                docs_path=DOCS_GLM_QUIRKS,
+                docs_anchor="message-send-timeout",
             ),
             SettingField(
                 key="refresh_after_generation",
@@ -412,6 +503,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Refresh the page after a response finishes. Can help restore UI state and improve Clean Regeneration.",
+                docs_path=DOCS_GLM_QUIRKS,
+                docs_anchor="refresh-after-generation",
             ),
         ]
     ),
@@ -425,6 +518,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Switch Kimi between K2.5 Instant and K2.5 Thinking before sending.",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="enable-thinking",
             ),
             SettingField(
                 key="send_deepthink",
@@ -432,6 +527,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Include Kimi's thinking content in the response sent to the API.",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="send-thinking",
             ),
             SettingField(
                 key="search_and_think_note",
@@ -449,6 +546,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Toggle Kimi's internet search tool in the web UI.",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="search",
             ),
             SettingField(
                 key="send_as_text_file",
@@ -456,6 +555,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Upload message as a text file instead of typing it.",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="file-upload-mode",
             ),
             SettingField(
                 key="file_upload_timeout",
@@ -464,6 +565,8 @@ SCHEMA = [
                 default=15,
                 tooltip="Max seconds to wait for the send button to become enabled after file upload.",
                 depends="moonshot_behavior.send_as_text_file",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="file-upload-timeout",
             ),
             SettingField(
                 key="text_file_filler",
@@ -472,6 +575,8 @@ SCHEMA = [
                 default=".",
                 tooltip="Text sent alongside the uploaded file. Required because Kimi won't send a file-only message.",
                 depends="moonshot_behavior.send_as_text_file",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="text-file-filler",
             ),
             SettingField(
                 key="anti_censorship",
@@ -479,6 +584,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Suppress refusal-like messages in the stream when a content-filter-style event is detected.",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="anti-censorship",
             ),
             SettingField(
                 key="clean_regeneration",
@@ -486,6 +593,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                docs_path=DOCS_MOONSHOT,
+                docs_anchor="clean-regeneration",
             ),
         ],
     ),
@@ -513,6 +622,8 @@ SCHEMA = [
                     "Qwen2.5-Max",
                 ],
                 tooltip="Select which Qwen model to use in the web UI. Not related to the API model IDs.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="real-qwen-model-selection-web-ui",
             ),
             SettingField(
                 key="enable_deepthink",
@@ -520,6 +631,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Switch QwenLM into Thinking mode before sending.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="enable-thinking",
             ),
             SettingField(
                 key="send_deepthink",
@@ -527,6 +640,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Include QwenLM thinking summaries in the response sent to the API.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="send-thinking",
             ),
             SettingField(
                 key="count_tokens",
@@ -534,6 +649,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Include a token count in the response metadata for each message.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="count-tokens",
             ),
             SettingField(
                 key="search_forced_off_note",
@@ -551,6 +668,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Toggle QwenLM Web search in the web UI. Search results are not forwarded to the client.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="search",
             ),
             SettingField(
                 key="send_as_text_file",
@@ -558,6 +677,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Upload message as a text file instead of typing it.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="file-upload-mode",
             ),
             SettingField(
                 key="text_file_message",
@@ -566,6 +687,8 @@ SCHEMA = [
                 default="",
                 tooltip="Optional text pasted alongside the uploaded file. Leave empty to send file-only.",
                 depends="qwen_behavior.send_as_text_file",
+                docs_path=DOCS_QWEN,
+                docs_anchor="text-file-message",
             ),
             SettingField(
                 key="file_upload_timeout",
@@ -574,6 +697,8 @@ SCHEMA = [
                 default=20,
                 tooltip="Max seconds to wait for the send button to become available after file upload.",
                 depends="qwen_behavior.send_as_text_file",
+                docs_path=DOCS_QWEN,
+                docs_anchor="file-upload-timeout",
             ),
             SettingField(
                 key="message_send_timeout",
@@ -581,6 +706,8 @@ SCHEMA = [
                 type=SettingType.INTEGER,
                 default=8,
                 tooltip="Max seconds to wait for the send button to appear after text entry (non-file mode).",
+                docs_path=DOCS_QWEN,
+                docs_anchor="message-send-timeout",
             ),
             SettingField(
                 key="clean_regeneration",
@@ -588,6 +715,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="clean-regeneration",
             ),
         ],
     ),
@@ -615,6 +744,8 @@ SCHEMA = [
                     "Gemini 2.5 Flash Lite",
                 ],
                 tooltip="Select which Gemini model to use in the Google AI Studio web UI.",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="real-gemini-model-selection-web-ui",
             ),
             SettingField(
                 key="enable_deepthink",
@@ -625,6 +756,8 @@ SCHEMA = [
                     "Use the configured Thinking Level on supported Gemini 3 / 3.1 models. "
                     "When disabled, IntenseRP falls back to the lowest available level instead."
                 ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="enable-thinking",
             ),
             SettingField(
                 key="thinking_level",
@@ -637,6 +770,8 @@ SCHEMA = [
                     "Gemini 2.5 models ignore this setting."
                 ),
                 depends="aistudio_behavior.enable_deepthink",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="thinking-level",
             ),
             SettingField(
                 key="send_deepthink",
@@ -644,6 +779,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Include Gemini thinking summaries in the response sent to the API.",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="send-thinking",
             ),
             SettingField(
                 key="tools_divider",
@@ -657,6 +794,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Toggle Google Search grounding in the AI Studio web UI.",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="enable-search",
             ),
             SettingField(
                 key="enable_url_context",
@@ -664,6 +803,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Toggle AI Studio's URL Context browsing mode in the web UI.",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="enable-url-context",
             ),
             SettingField(
                 key="send_as_text_file",
@@ -674,6 +815,8 @@ SCHEMA = [
                     "Upload the prompt as a text file through AI Studio's media picker instead of "
                     "typing the whole message into the textarea."
                 ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="file-upload-mode",
             ),
             SettingField(
                 key="text_file_message",
@@ -685,6 +828,8 @@ SCHEMA = [
                     "file-only requests."
                 ),
                 depends="aistudio_behavior.send_as_text_file",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="text-file-message",
             ),
             SettingField(
                 key="file_upload_timeout",
@@ -696,6 +841,8 @@ SCHEMA = [
                     "a prompt file."
                 ),
                 depends="aistudio_behavior.send_as_text_file",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="file-upload-timeout",
             ),
             SettingField(
                 key="sampling_divider",
@@ -710,6 +857,8 @@ SCHEMA = [
                 default="1.0",
                 tooltip="Default temperature for AI Studio requests. Request-level overrides still win.",
                 validator=validate_float_range(0.0, 2.0, label="Temperature"),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="temperature",
             ),
             SettingField(
                 key="top_p",
@@ -718,6 +867,8 @@ SCHEMA = [
                 default="0.95",
                 tooltip="Default top-p value for AI Studio requests. Request-level overrides still win.",
                 validator=validate_float_range(0.0, 1.0, label="Top P"),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="top-p",
             ),
             SettingField(
                 key="max_output_tokens",
@@ -728,6 +879,8 @@ SCHEMA = [
                     "Default output token budget for AI Studio requests. "
                     "This maps to the web UI's maxOutputTokens control."
                 ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="max-output-tokens",
             ),
             SettingField(
                 key="automation_divider",
@@ -744,6 +897,8 @@ SCHEMA = [
                     "How long to wait for Google to return to AI Studio after auto-filling "
                     "credentials before falling back to manual completion."
                 ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="auto-login-redirect-timeout",
             ),
             SettingField(
                 key="clean_regeneration",
@@ -751,6 +906,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="clean-regeneration",
             ),
         ],
     ),
@@ -763,7 +920,9 @@ SCHEMA = [
                 label="Enable Logfiles",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Enable logging to files."
+                tooltip="Enable logging to files.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="file-logging",
             ),
             SettingField(
                 key="log_dir",
@@ -773,13 +932,17 @@ SCHEMA = [
                 tooltip="Directory to store log files.",
                 validator=validate_directory_path,
                 nullable=True,
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="configuration",
             ),
             SettingField(
                 key="max_files",
                 label="Max Log Files",
                 type=SettingType.INTEGER,
                 default=5,
-                tooltip="Maximum number of log files to keep (before rotation). 0 for unlimited."
+                tooltip="Maximum number of log files to keep (before rotation). 0 for unlimited.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="configuration",
             ),
             SettingField(
                 key="max_file_size",
@@ -787,6 +950,8 @@ SCHEMA = [
                 type=SettingType.ROW,
                 default=None,
                 ratios=[70, 30],
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="configuration",
                 sub_fields=[
                      SettingField(
                         key="size_val",
@@ -816,7 +981,9 @@ SCHEMA = [
                 label="Persistent Sessions",
                 type=SettingType.BOOLEAN,
                 default=True,
-                tooltip="Reuse a persistent Playwright browser profile so logins persist between restarts."
+                tooltip="Reuse a persistent Playwright browser profile so logins persist between restarts.",
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="persistent-sessions",
             ),
             SettingField(
                 key="delete_persistent_profile_row",
@@ -825,6 +992,8 @@ SCHEMA = [
                 default=None,
                 ratios=[80, 20],
                 tooltip="Delete a specific saved browser profile used for Persistent Sessions (logs you out).",
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="delete-profile",
                 sub_fields=[
                     SettingField(
                         key="persistent_profile_to_delete",
@@ -852,6 +1021,8 @@ SCHEMA = [
                 default="Clear All",
                 action="clear_all_persistent_profiles",
                 tooltip="Delete all saved browser profiles used for Persistent Sessions (Accounts + Legacy).",
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="clear-all-profiles",
             ),
             SettingField(
                 key="notify_on_driver_crash",
@@ -876,6 +1047,8 @@ SCHEMA = [
                     "Choose where to store configuration data (settings/key/profiles). "
                     "Changing this will migrate the config directory and restart the app."
                 ),
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="config-storage-location-presets",
             ),
             SettingField(
                 key="config_storage_custom_path",
@@ -884,6 +1057,8 @@ SCHEMA = [
                 default="",
                 tooltip="Absolute paths recommended. Relative paths resolve from the app folder.",
                 validator=validate_directory_path,
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="migrating-config-storage",
             ),
             SettingField(
                 key="ui_divider",
@@ -897,6 +1072,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Show an optional Request Queue panel in the main window.",
+                docs_path=DOCS_API_BEHAVIOR,
+                docs_anchor="request-queue-preview",
             ),
             SettingField(
                 key="logging_levels_divider",
@@ -911,6 +1088,8 @@ SCHEMA = [
                 default="Debug",
                 options=["Debug", "Success", "Info", "Warning", "Error"],
                 tooltip="Minimum severity for messages printed to the terminal (stdout).",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="logging-levels",
             ),
             SettingField(
                 key="console_log_level",
@@ -919,6 +1098,8 @@ SCHEMA = [
                 default="Debug",
                 options=["Debug", "Success", "Info", "Warning", "Error"],
                 tooltip="Minimum severity for messages shown in the Console Window.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="logging-levels",
             ),
             SettingField(
                 key="mini_console_log_level",
@@ -927,6 +1108,8 @@ SCHEMA = [
                 default="Success",
                 options=["Debug", "Success", "Info", "Warning", "Error"],
                 tooltip="Minimum severity for messages shown in the Activity Log (main window).",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="logging-levels",
             ),
             SettingField(
                 key="logfile_log_level",
@@ -935,6 +1118,8 @@ SCHEMA = [
                 default="Debug",
                 options=["Debug", "Success", "Info", "Warning", "Error"],
                 tooltip="Minimum severity for messages written to log files.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="logging-levels",
             ),
         ]
     ),
@@ -948,6 +1133,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Use friendlier model IDs in /v1/models. Legacy IDs are still accepted.",
+                docs_path=DOCS_BETTER_MODEL_NAMES,
+                docs_anchor="enable-it",
             ),
             SettingField(
                 key="classic_title",
@@ -977,6 +1164,8 @@ SCHEMA = [
                     "Expose an opt-in HTML remote-control interface on the running API server. "
                     "Remote routes still respect the IP whitelist when enabled."
                 ),
+                docs_path=DOCS_REMOTE_CONTROL,
+                docs_anchor="enable-it",
             ),
             SettingField(
                 key="remote_control_password",
@@ -988,6 +1177,8 @@ SCHEMA = [
                     "password auth and rely on network restrictions only."
                 ),
                 depends="experimental.enable_remote_control",
+                docs_path=DOCS_REMOTE_CONTROL,
+                docs_anchor="passwords-and-tokens",
             ),
         ],
     ),
@@ -1016,6 +1207,8 @@ SCHEMA = [
                 default="Check",
                 action="check_for_updates",
                 tooltip="Check for available updates on GitHub.",
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="updates",
             ),
             SettingField(
                 key="check_for_updates_on_startup",
@@ -1023,6 +1216,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Automatically check for updates when the app starts.",
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="updates",
             ),
             SettingField(
                 key="collapse_to_tray_on_close",
@@ -1067,6 +1262,8 @@ SCHEMA = [
                     "Persistent Discrete: always visible."
                 ),
                 affects=["chevron_dropdown", "hotswap_button"],
+                docs_path=DOCS_HOTSWAPS,
+                docs_anchor="hotswap-experience",
             ),
         ],
     ),
@@ -1080,6 +1277,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Show a console window for viewing application logs.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="enabling-the-console",
             ),
             SettingField(
                 key="log_to_main",
@@ -1089,6 +1288,8 @@ SCHEMA = [
                 tooltip="Also log to the Activity Log in the main window. Forced on if the console is disabled.",
                 depends="console_settings.enable_console",
                 force_when_dep_unmet=True,
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="log-routing",
             ),
             SettingField(
                 key="log_to_stdout",
@@ -1098,20 +1299,26 @@ SCHEMA = [
                 tooltip="Also log to stdout/terminal. Forced on if the console is disabled.",
                 depends="console_settings.enable_console",
                 force_when_dep_unmet=True,
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="log-routing",
             ),
             SettingField(
                 key="max_lines",
                 label="Max Line Limit",
                 type=SettingType.INTEGER,
                 default=500,
-                tooltip="Maximum number of lines to keep in the console history."
+                tooltip="Maximum number of lines to keep in the console history.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="console-appearance",
             ),
             SettingField(
                 key="font_size",
                 label="Font Size",
                 type=SettingType.INTEGER,
                 default=10,
-                tooltip="Font size for the console text."
+                tooltip="Font size for the console text.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="console-appearance",
             ),
             SettingField(
                 key="wrap_lines",
@@ -1119,6 +1326,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Soft-wrap long lines in the console window.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="console-appearance",
             ),
             SettingField(
                 key="auto_scroll_mode",
@@ -1127,6 +1336,8 @@ SCHEMA = [
                 default="Always",
                 options=["Always", "Bottom only", "Never"],
                 tooltip="Control how the console view follows new log messages.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="console-appearance",
             ),
             SettingField(
                 key="color_palette",
@@ -1134,14 +1345,18 @@ SCHEMA = [
                 type=SettingType.DROPDOWN,
                 default="Modern",
                 options=["Modern", "Classic", "Bright"],
-                tooltip="Choose a color scheme for log levels."
+                tooltip="Choose a color scheme for log levels.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="color-palettes",
             ),
             SettingField(
                 key="always_on_top",
                 label="Always On Top",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Keep the console window on top of other windows."
+                tooltip="Keep the console window on top of other windows.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="console-appearance",
             ),
         ]
     ),
@@ -1155,6 +1370,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Ask for confirmation before clearing the console output.",
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="dump-settings",
             ),
             SettingField(
                 key="condump_directory",
@@ -1164,6 +1381,8 @@ SCHEMA = [
                 tooltip="Directory to write console dumps to. Leave blank to ask each time.",
                 validator=validate_directory_path,
                 nullable=True,
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="dump-settings",
             ),
         ]
     ),
@@ -1178,6 +1397,8 @@ SCHEMA = [
                 default=7777,
                 tooltip="Port for the local API server.",
                 validator=validate_port,
+                docs_path=DOCS_NETWORK,
+                docs_anchor="port",
             ),
             SettingField(
                 key="available_on_lan",
@@ -1185,6 +1406,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Make the API server accessible from other devices on the local network.",
+                docs_path=DOCS_NETWORK,
+                docs_anchor="lan-availability",
             ),
             SettingField(
                 key="show_ip",
@@ -1192,6 +1415,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Print the server address(es) to the console when the API server starts.",
+                docs_path=DOCS_NETWORK,
+                docs_anchor="show-ip",
             ),
             SettingField(
                 key="use_api_keys",
@@ -1199,6 +1424,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Require an API key (Bearer) for incoming requests.",
+                docs_path=DOCS_NETWORK,
+                docs_anchor="api-keys",
             ),
             SettingField(
                 key="api_keys",
@@ -1215,6 +1442,8 @@ SCHEMA = [
                 ],
                 depends="network_settings.use_api_keys",
                 required=True,
+                docs_path=DOCS_NETWORK,
+                docs_anchor="api-keys",
             ),
             SettingField(
                 key="use_ip_whitelist",
@@ -1222,6 +1451,8 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Only allow API requests from the listed IP addresses.",
+                docs_path=DOCS_IP_WHITELIST,
+                docs_anchor="how-to-use-it",
             ),
             SettingField(
                 key="ip_whitelist",
@@ -1232,6 +1463,8 @@ SCHEMA = [
                 validator=validate_ip_address_list,
                 depends="network_settings.use_ip_whitelist",
                 required=True,
+                docs_path=DOCS_IP_WHITELIST,
+                docs_anchor="how-to-use-it",
             ),
         ]
     ),

@@ -3,8 +3,8 @@ from PySide6.QtWidgets import (
     QScrollArea, QLabel, QPushButton, QFrame, QMessageBox, QDialog, QListWidgetItem,
     QLineEdit, QTextEdit, QComboBox
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QSize, Property, QPoint, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QBrush
+from PySide6.QtCore import Qt, Signal, QTimer, QSize, Property, QPoint, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent, QUrl
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QBrush, QDesktopServices, QKeySequence, QShortcut
 from difflib import SequenceMatcher
 import threading
 import os
@@ -25,6 +25,7 @@ from utils.logger import Logger
 from utils.api_key_generator import generate_api_key
 from utils.ip_utils import normalize_ip_list
 from utils.update_checker import check_for_updates, read_local_version
+from utils.docs_links import build_docs_url
 
 class _SearchHighlightOverlay(QWidget):
     def __init__(self, parent: QWidget):
@@ -268,8 +269,48 @@ class SettingsWindow(QMainWindow):
         self._apply_category_item_icon(current, active=True)
         self._sync_paged_settings_view(scroll_to_top=self._should_use_paged_settings_view())
 
+    def _get_field_docs_url(self, field) -> str | None:
+        docs_path = str(getattr(field, "docs_path", "") or "").strip()
+        if not docs_path:
+            return None
+        docs_anchor = str(getattr(field, "docs_anchor", "") or "").strip() or None
+        return build_docs_url(docs_path, docs_anchor)
+
+    def _tag_docs_widget(self, widget: QWidget | None, docs_url: str | None) -> None:
+        if widget is None or not docs_url:
+            return
+        widget.setProperty("docsUrl", docs_url)
+
+    def _open_docs_from_sender(self) -> bool:
+        sender = self.sender()
+        docs_url = str(sender.property("docsUrl") or "").strip() if sender is not None else ""
+        if not docs_url:
+            return False
+        return self._open_docs_url(docs_url)
+
+    def _open_docs_url(self, docs_url: str | None) -> bool:
+        prepared = str(docs_url or "").strip()
+        if not prepared:
+            return False
+        return bool(QDesktopServices.openUrl(QUrl(prepared)))
+
+    def _docs_url_for_widget(self, widget: QWidget | None) -> str | None:
+        current = widget
+        while current is not None:
+            docs_url = str(current.property("docsUrl") or "").strip()
+            if docs_url:
+                return docs_url
+            current = current.parentWidget()
+        return None
+
+    def _open_docs_for_focused_widget(self) -> bool:
+        focus_widget = self.focusWidget()
+        docs_url = self._docs_url_for_widget(focus_widget)
+        return self._open_docs_url(docs_url)
+
     def _create_field_widget(self, field, category_key):
         widget = None
+        docs_url = self._get_field_docs_url(field)
         if field.type == SettingType.BOOLEAN:
             widget = Tumbler()
             widget.stateChanged.connect(self._on_setting_changed)
@@ -300,6 +341,9 @@ class SettingsWindow(QMainWindow):
             elif field.key == "condump_directory":
                 widget.setPlaceholderText("Ask (leave blank)...")
             widget.textChanged.connect(self._on_setting_changed)
+        elif field.type == SettingType.TEXTAREA:
+            widget = StyledTextEdit()
+            widget.textChanged.connect(self._on_setting_changed)
         elif field.type == SettingType.DROPDOWN:
             widget = StyledComboBox()
             if field.options:
@@ -329,7 +373,13 @@ class SettingsWindow(QMainWindow):
 
         elif field.type == SettingType.REDIRECT:
             btn_text = str(field.default) if field.default else "Open"
-            widget = RedirectCard(field.label, field.tooltip or "", btn_text)
+            widget = RedirectCard(
+                field.label,
+                field.tooltip or "",
+                btn_text,
+                docs_url=docs_url,
+                docs_handler=self._open_docs_from_sender,
+            )
             if field.action == "open_credential_manager":
                 widget.clicked.connect(self._open_credential_manager)
                 
@@ -352,6 +402,7 @@ class SettingsWindow(QMainWindow):
         
         if widget:
             self.field_widgets[f"{category_key}.{field.key}"] = widget
+            self._tag_docs_widget(widget, docs_url)
             
         return widget
 
@@ -583,6 +634,8 @@ class SettingsWindow(QMainWindow):
             
             # Fields
             for field in category.fields:
+                docs_url = self._get_field_docs_url(field)
+
                 # Handle Divider Type separately as it takes full width
                 if field.type == SettingType.DIVIDER:
                     widget = Divider(field.label)
@@ -605,29 +658,6 @@ class SettingsWindow(QMainWindow):
                         self._add_search_target(category, field, widget)
                     continue
 
-                # Use VBox for Textarea to give it more space
-                if field.type == SettingType.TEXTAREA:
-                    field_container = QWidget()
-                    field_container.setStyleSheet("background-color: transparent;")
-                    field_layout = QVBoxLayout(field_container)
-                    field_layout.setContentsMargins(0, 10, 0, 10)
-                    field_layout.setSpacing(6)
-                    
-                    label = QLabel(field.label)
-                    label.setToolTip(field.tooltip or "")
-                    # Consistent label styling with SettingRow
-                    label.setStyleSheet(f"font-size: {BrandColors.FONT_SIZE_REGULAR}; font-weight: 500; color: {BrandColors.TEXT_SECONDARY}; background-color: transparent;")
-                    field_layout.addWidget(label)
-                    
-                    widget = StyledTextEdit()
-                    widget.textChanged.connect(self._on_setting_changed)
-                    widget.setToolTip(field.tooltip or "")
-                    field_layout.addWidget(widget)
-                    self.field_widgets[f"{category.key}.{field.key}"] = widget
-                    card_layout.addWidget(field_container)
-                    self._add_search_target(category, field, field_container)
-                    continue
-                
                 # Handle ROW type (multiple controls in one row)
                 if field.type == SettingType.ROW:
                     sub_widgets = []
@@ -637,10 +667,17 @@ class SettingsWindow(QMainWindow):
                             sub_widgets.append(sub_w)
                     widget = MultiColumnRow(sub_widgets, field.ratios)
                     widget.setToolTip(field.tooltip or "")
+                    self._tag_docs_widget(widget, docs_url)
                     self.field_widgets[f"{category.key}.{field.key}"] = widget
                     
                     # Use SettingRow for consistent layout
-                    row = SettingRow(field.label, widget, field.tooltip)
+                    row = SettingRow(
+                        field.label,
+                        widget,
+                        field.tooltip,
+                        docs_url=docs_url,
+                        docs_handler=self._open_docs_from_sender,
+                    )
                     self.setting_rows[f"{category.key}.{field.key}"] = row
                     card_layout.addWidget(row)
                     self._add_search_target(category, field, row)
@@ -653,9 +690,22 @@ class SettingsWindow(QMainWindow):
                     # Pass tooltip as description to show it inline below the label
                     # Use SettingRow for everything else (stacked vertical layout)
                     if field.type == SettingType.BOOLEAN:
-                        row = ToggleRow(field.label, widget, field.tooltip, description=field.tooltip)
+                        row = ToggleRow(
+                            field.label,
+                            widget,
+                            field.tooltip,
+                            description=field.tooltip,
+                            docs_url=docs_url,
+                            docs_handler=self._open_docs_from_sender,
+                        )
                     else:
-                        row = SettingRow(field.label, widget, field.tooltip)
+                        row = SettingRow(
+                            field.label,
+                            widget,
+                            field.tooltip,
+                            docs_url=docs_url,
+                            docs_handler=self._open_docs_from_sender,
+                        )
                     self.setting_rows[f"{category.key}.{field.key}"] = row
                     card_layout.addWidget(row)
                     if field.type != SettingType.BUTTON:
@@ -743,6 +793,9 @@ class SettingsWindow(QMainWindow):
         self._highlight_overlay.raise_()
         self.scroll_area.viewport().installEventFilter(self._highlight_overlay)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self._highlight_overlay.update_target_geometry)
+
+        self.docs_shortcut = QShortcut(QKeySequence(Qt.Key_F1), self)
+        self.docs_shortcut.activated.connect(self._open_docs_for_focused_widget)
 
     def _begin_auto_scroll(self, duration_ms: int) -> None:
         self.is_auto_scrolling = True
