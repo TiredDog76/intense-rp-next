@@ -191,11 +191,18 @@ class SettingsWindow(QMainWindow):
         self.unsaved_changes = False
         self.field_widgets = {} # Map "category.key" -> widget
         self.setting_rows = {} # Map "category.key" -> SettingRow (for dependency toggling)
+        self.category_widgets = {}  # Map category name -> widget (for scrolling)
         self.category_widgets_by_key = {}  # Map category key -> card widget
         self.category_items_by_key = {}  # Map category key -> QListWidgetItem
+        self._category_defs_by_key = {category.key: category for category in SCHEMA}
+        self._category_order = [category.key for category in SCHEMA]
+        self._built_category_keys = set()
+        self._pending_category_build_keys = []
         self._persistent_profile_entries = {}
+        self._persistent_profile_options_loaded = False
         self._paged_settings_view_enabled = None
         self._active_docs_focus_container = None
+        self._suppress_dirty_tracking = False
 
         self._init_ui()
         self._load_values()
@@ -270,9 +277,13 @@ class SettingsWindow(QMainWindow):
         item.setIcon(self._get_sidebar_icon(icon_file, color))
 
     def _on_category_selection_changed(self, current: QListWidgetItem, previous: QListWidgetItem):
+        current_key = str(current.data(Qt.UserRole)) if current is not None else ""
+        if current_key:
+            self._ensure_category_built(current_key, refresh_profiles=(current_key == "system_settings"))
         self._apply_category_item_icon(previous, active=False)
         self._apply_category_item_icon(current, active=True)
         self._sync_paged_settings_view(scroll_to_top=self._should_use_paged_settings_view())
+        self._queue_visible_category_builds()
 
     def _get_field_docs_url(self, field) -> str | None:
         docs_path = str(getattr(field, "docs_path", "") or "").strip()
@@ -438,6 +449,298 @@ class SettingsWindow(QMainWindow):
             if field.type == SettingType.ROW:
                 yield from self._iter_fields(field.sub_fields)
 
+    def _resolve_category_insert_index(self, category_key: str) -> int:
+        insert_index = 0
+        for key in self._category_order:
+            if key == category_key:
+                break
+            if key in self.category_widgets_by_key:
+                insert_index += 1
+        return insert_index
+
+    def _register_search_target(self, category, field) -> None:
+        extra_labels = ""
+        if field.type == SettingType.ROW and field.sub_fields:
+            extra_labels = " ".join(sub.label for sub in field.sub_fields if sub.label)
+
+        self.search_targets.append({
+            "label_lower": (field.label or "").lower(),
+            "key_lower": (field.key or "").lower(),
+            "category_lower": (category.name or "").lower(),
+            "category_key_lower": (category.key or "").lower(),
+            "category_key": category.key,
+            "extra_lower": extra_labels.lower(),
+            "full_key": f"{category.key}.{field.key}",
+        })
+
+    def _apply_field_value(self, category, field) -> None:
+        if getattr(field, "transient", False):
+            return
+
+        key = f"{category.key}.{field.key}"
+        widget = self.field_widgets.get(key)
+        if widget is None:
+            return
+
+        value = self.config_manager.get_setting(category.key, field.key)
+        widget.blockSignals(True)
+        try:
+            if field.type == SettingType.BOOLEAN:
+                widget.setChecked(bool(value))
+            elif field.type in [SettingType.STRING, SettingType.DIRECTORY, SettingType.PASSWORD, SettingType.INTEGER]:
+                widget.setText(str(value) if value is not None else "")
+            elif field.type == SettingType.TEXTAREA:
+                widget.setPlainText(str(value) if value is not None else "")
+            elif field.type == SettingType.DROPDOWN:
+                if value and value in field.options:
+                    widget.setCurrentText(value)
+            elif field.type == SettingType.INPUT_PAIR:
+                widget.set_pairs(value or [])
+            elif field.type == SettingType.INPUT_LIST:
+                widget.set_items(value or [])
+        finally:
+            widget.blockSignals(False)
+
+    def _apply_category_values(self, category) -> None:
+        for field in self._iter_fields(category.fields):
+            self._apply_field_value(category, field)
+
+    def _refresh_loaded_state(self, *, refresh_profiles: bool = False) -> None:
+        self._update_dependencies()
+
+        preset_widget = self.field_widgets.get("formatting.formatting_preset")
+        if preset_widget:
+            self._on_preset_changed(preset_widget.currentText())
+
+        self._sync_config_storage_from_active_dir()
+        self._sync_behavior_category_visibility()
+        self._sync_paged_settings_view()
+        self._sync_application_settings_info()
+        if refresh_profiles:
+            self._maybe_refresh_persistent_profile_options(force=True)
+
+    def _build_category_card(self, category_key: str) -> QWidget | None:
+        category = self._category_defs_by_key.get(category_key)
+        if category is None:
+            return None
+
+        existing = self.category_widgets_by_key.get(category_key)
+        if existing is not None:
+            return existing
+
+        card = QWidget()
+        card.setStyleSheet(f"""
+            QWidget {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border-radius: 8px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(BrandColors.CARD_PADDING, 18, BrandColors.CARD_PADDING, BrandColors.CARD_PADDING)
+        card_layout.setSpacing(4)  # now SettingRow/ToggleRow have their own internal padding
+
+        self.category_widgets[category.name] = card
+        self.category_widgets_by_key[category.key] = card
+
+        header = self._create_card_header(category.key, category.name)
+        card_layout.addWidget(header)
+
+        if not self._has_immediate_subdivider(category.fields):
+            divider = QFrame()
+            divider.setFrameShape(QFrame.HLine)
+            divider.setFrameShadow(QFrame.Sunken)
+            divider.setFixedHeight(1)
+            divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
+            card_layout.addWidget(divider)
+            card_layout.addSpacing(6)
+
+        for field in category.fields:
+            docs_url = self._get_field_docs_url(field)
+
+            if field.type == SettingType.DIVIDER:
+                widget = Divider(field.label)
+                card_layout.addWidget(widget)
+                continue
+
+            if field.type == SettingType.DESCRIPTION:
+                widget = Description(field.default)
+                self.field_widgets[f"{category.key}.{field.key}"] = widget
+                card_layout.addWidget(widget)
+                continue
+
+            if field.type == SettingType.REDIRECT:
+                widget = self._create_field_widget(field, category.key)
+                if widget:
+                    self.setting_rows[f"{category.key}.{field.key}"] = widget
+                    card_layout.addWidget(widget)
+                continue
+
+            if field.type == SettingType.ROW:
+                sub_widgets = []
+                if field.sub_fields:
+                    for sub in field.sub_fields:
+                        sub_w = self._create_field_widget(sub, category.key)
+                        sub_widgets.append(sub_w)
+                widget = MultiColumnRow(sub_widgets, field.ratios)
+                widget.setToolTip(field.tooltip or "")
+                self._tag_docs_widget(widget, docs_url)
+
+                self.field_widgets[f"{category.key}.{field.key}"] = widget
+                row = SettingRow(
+                    field.label,
+                    widget,
+                    field.tooltip,
+                    docs_url=docs_url,
+                    docs_handler=self._open_docs_from_sender,
+                )
+                self.setting_rows[f"{category.key}.{field.key}"] = row
+                card_layout.addWidget(row)
+                continue
+
+            widget = self._create_field_widget(field, category.key)
+            if widget:
+                if field.type == SettingType.BOOLEAN:
+                    row = ToggleRow(
+                        field.label,
+                        widget,
+                        field.tooltip,
+                        description=field.tooltip,
+                        docs_url=docs_url,
+                        docs_handler=self._open_docs_from_sender,
+                    )
+                else:
+                    row = SettingRow(
+                        field.label,
+                        widget,
+                        field.tooltip,
+                        docs_url=docs_url,
+                        docs_handler=self._open_docs_from_sender,
+                    )
+                self.setting_rows[f"{category.key}.{field.key}"] = row
+                card_layout.addWidget(row)
+
+        item = self.category_items_by_key.get(category.key)
+        if item and item.isHidden():
+            card.setHidden(True)
+
+        insert_index = self._resolve_category_insert_index(category.key)
+        self.scroll_layout.insertWidget(insert_index, card)
+        self._built_category_keys.add(category.key)
+        return card
+
+    def _ensure_category_built(self, category_key: str | None, *, refresh_profiles: bool = False) -> QWidget | None:
+        normalized_key = str(category_key or "").strip()
+        if not normalized_key:
+            return None
+
+        card = self.category_widgets_by_key.get(normalized_key)
+        if card is None:
+            card = self._build_category_card(normalized_key)
+            category = self._category_defs_by_key.get(normalized_key)
+            if card is not None and category is not None:
+                previous_suppress = self._suppress_dirty_tracking
+                self._suppress_dirty_tracking = True
+                try:
+                    self._apply_category_values(category)
+                    self._refresh_loaded_state(refresh_profiles=refresh_profiles)
+                finally:
+                    self._suppress_dirty_tracking = previous_suppress
+        elif refresh_profiles:
+            self._maybe_refresh_persistent_profile_options(normalized_key, force=True)
+
+        return card
+
+    def _is_category_visible_in_sidebar(self, category_key: str) -> bool:
+        item = self.category_items_by_key.get(category_key)
+        return (item is None) or (not item.isHidden())
+
+    def _queue_visible_category_builds(self) -> None:
+        timer = getattr(self, "_category_build_timer", None)
+        if not isinstance(timer, QTimer):
+            return
+
+        if self._should_use_paged_settings_view():
+            self._pending_category_build_keys = []
+            timer.stop()
+            return
+
+        visible_keys = [
+            key for key in self._category_order
+            if key not in self._built_category_keys and self._is_category_visible_in_sidebar(key)
+        ]
+        if not visible_keys:
+            self._pending_category_build_keys = []
+            timer.stop()
+            return
+
+        merged = [key for key in self._pending_category_build_keys if key in visible_keys]
+        merged_set = set(merged)
+        merged.extend(key for key in visible_keys if key not in merged_set)
+        self._pending_category_build_keys = merged
+
+        if not timer.isActive():
+            timer.start(30 if not self.isVisible() else 0)
+
+    def _build_next_queued_category(self) -> None:
+        if self._should_use_paged_settings_view():
+            self._pending_category_build_keys = []
+            return
+
+        while self._pending_category_build_keys:
+            next_key = self._pending_category_build_keys.pop(0)
+            if next_key in self._built_category_keys:
+                continue
+            if not self._is_category_visible_in_sidebar(next_key):
+                continue
+
+            self._ensure_category_built(next_key, refresh_profiles=False)
+            if self._pending_category_build_keys and isinstance(getattr(self, "_category_build_timer", None), QTimer):
+                self._category_build_timer.start(0)
+            return
+
+    def _resolve_search_target_widget(self, target: dict, *, build: bool = False):
+        full_key = str(target.get("full_key") or "").strip()
+        if not full_key:
+            return None
+
+        widget = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
+        if widget is not None or not build:
+            return widget
+
+        category_key = str(target.get("category_key") or "").strip()
+        if category_key:
+            self._ensure_category_built(category_key, refresh_profiles=(category_key == "system_settings"))
+        return self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
+
+    def _maybe_refresh_persistent_profile_options(self, category_key: str | None = None, *, force: bool = False) -> None:
+        resolved_key = str(category_key or self._get_selected_category_key() or "").strip()
+        if resolved_key != "system_settings":
+            return
+        if (not force) and self._persistent_profile_options_loaded:
+            return
+
+        select_widget = self.field_widgets.get("system_settings.persistent_profile_to_delete")
+        if not isinstance(select_widget, StyledComboBox):
+            return
+
+        self._refresh_persistent_profile_options()
+
+    def _preload_initial_categories(self, target_count: int = 2) -> None:
+        desired = max(1, int(target_count))
+        if self._should_use_paged_settings_view():
+            desired = 1
+
+        built = 0
+        for key in self._category_order:
+            if not self._is_category_visible_in_sidebar(key):
+                continue
+            card = self._ensure_category_built(key, refresh_profiles=(key == "system_settings"))
+            if card is None:
+                continue
+            built += 1
+            if built >= desired:
+                break
+
     def _init_ui(self):
 
         central_widget = QWidget()
@@ -512,8 +815,6 @@ class SettingsWindow(QMainWindow):
                 background: none;
             }}
         """)
-        self.category_list.itemClicked.connect(self._on_category_clicked)
-        self.category_list.currentItemChanged.connect(self._on_category_selection_changed)
         left_layout.addWidget(self.category_list, 1)
 
         # Search bar at bottom of sidebar
@@ -612,14 +913,10 @@ class SettingsWindow(QMainWindow):
         self.scroll_layout.setSpacing(BrandColors.CARD_SPACING)
         self.scroll_layout.setAlignment(Qt.AlignTop)
         
-        self.category_widgets = {} # Map category name -> widget (for scrolling)
-        self.category_widgets_by_key = {}  # Map category key -> widget (for visibility/selection)
-        self.category_items_by_key = {}  # Map category key -> QListWidgetItem
         self.search_targets = []  # List of searchable setting widgets
 
-        # Generate Fields
+        # Generate sidebar items
         for category in SCHEMA:
-            # Add to list
             item = QListWidgetItem(category.name)
             item.setData(Qt.UserRole, category.key)
             icon_file = self.SIDEBAR_ICON_MAP.get(category.key)
@@ -628,116 +925,6 @@ class SettingsWindow(QMainWindow):
                 item.setIcon(self._get_sidebar_icon(icon_file, BrandColors.TEXT_SECONDARY))
             self.category_list.addItem(item)
             self.category_items_by_key[category.key] = item
-            
-            # Category Card
-            card = QWidget()
-            card.setStyleSheet(f"""
-                QWidget {{
-                    background-color: {BrandColors.SIDEBAR_BG};
-                    border-radius: 8px;
-                }}
-            """)
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(BrandColors.CARD_PADDING, 18, BrandColors.CARD_PADDING, BrandColors.CARD_PADDING)
-            card_layout.setSpacing(4)  # now SettingRow/ToggleRow have their own internal padding
-            
-            self.category_widgets[category.name] = card
-            self.category_widgets_by_key[category.key] = card
-            
-            # Header
-            header = self._create_card_header(category.key, category.name)
-            card_layout.addWidget(header)
-            
-            # Divider (skip when a subsection divider follows immediately)
-            if not self._has_immediate_subdivider(category.fields):
-                divider = QFrame()
-                divider.setFrameShape(QFrame.HLine)
-                divider.setFrameShadow(QFrame.Sunken)
-                divider.setFixedHeight(1)
-                divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
-                card_layout.addWidget(divider)
-                card_layout.addSpacing(6)
-            
-            # Fields
-            for field in category.fields:
-                docs_url = self._get_field_docs_url(field)
-
-                # Handle Divider Type separately as it takes full width
-                if field.type == SettingType.DIVIDER:
-                    widget = Divider(field.label)
-                    card_layout.addWidget(widget)
-                    continue
-                
-                # Handle Description Type separately
-                if field.type == SettingType.DESCRIPTION:
-                    widget = Description(field.default)
-                    self.field_widgets[f"{category.key}.{field.key}"] = widget
-                    card_layout.addWidget(widget)
-                    continue
-
-                # No handholding for Redirect Type (it renders its own title/description/button)
-                if field.type == SettingType.REDIRECT:
-                    widget = self._create_field_widget(field, category.key)
-                    if widget:
-                        self.setting_rows[f"{category.key}.{field.key}"] = widget
-                        card_layout.addWidget(widget)
-                        self._add_search_target(category, field, widget)
-                    continue
-
-                # Handle ROW type (multiple controls in one row)
-                if field.type == SettingType.ROW:
-                    sub_widgets = []
-                    if field.sub_fields:
-                        for sub in field.sub_fields:
-                            sub_w = self._create_field_widget(sub, category.key)
-                            sub_widgets.append(sub_w)
-                    widget = MultiColumnRow(sub_widgets, field.ratios)
-                    widget.setToolTip(field.tooltip or "")
-                    self._tag_docs_widget(widget, docs_url)
-                    self.field_widgets[f"{category.key}.{field.key}"] = widget
-                    
-                    # Use SettingRow for consistent layout
-                    row = SettingRow(
-                        field.label,
-                        widget,
-                        field.tooltip,
-                        docs_url=docs_url,
-                        docs_handler=self._open_docs_from_sender,
-                    )
-                    self.setting_rows[f"{category.key}.{field.key}"] = row
-                    card_layout.addWidget(row)
-                    self._add_search_target(category, field, row)
-                    continue
-                
-                # Standard field types - use appropriate row layout
-                widget = self._create_field_widget(field, category.key)
-                if widget:
-                    # Use ToggleRow for boolean fields (compact horizontal layout)
-                    # Pass tooltip as description to show it inline below the label
-                    # Use SettingRow for everything else (stacked vertical layout)
-                    if field.type == SettingType.BOOLEAN:
-                        row = ToggleRow(
-                            field.label,
-                            widget,
-                            field.tooltip,
-                            description=field.tooltip,
-                            docs_url=docs_url,
-                            docs_handler=self._open_docs_from_sender,
-                        )
-                    else:
-                        row = SettingRow(
-                            field.label,
-                            widget,
-                            field.tooltip,
-                            docs_url=docs_url,
-                            docs_handler=self._open_docs_from_sender,
-                        )
-                    self.setting_rows[f"{category.key}.{field.key}"] = row
-                    card_layout.addWidget(row)
-                    if field.type != SettingType.BUTTON:
-                        self._add_search_target(category, field, row)
-            
-            self.scroll_layout.addWidget(card)
 
         self.scroll_area.setWidget(self.scroll_content)
         self.scroll_area.setAlignment(Qt.AlignHCenter)
@@ -790,10 +977,6 @@ class SettingsWindow(QMainWindow):
         right_layout.addLayout(button_layout)
         main_layout.addWidget(right_widget)
 
-        # Select first category by default
-        self.category_list.setCurrentRow(0)
-        self._apply_category_item_icon(self.category_list.currentItem(), active=True)
-        
         # Setup dependency tracking
         self.field_defs = {} # Map "category.key" -> SettingField
         self._dep_override_cache = {} # Map "category.key" -> underlying value (when overriding display value)
@@ -801,7 +984,11 @@ class SettingsWindow(QMainWindow):
             for field in self._iter_fields(category.fields):
                 full_key = f"{category.key}.{field.key}"
                 self.field_defs[full_key] = field
-        
+            for field in category.fields:
+                if field.type in {SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION}:
+                    continue
+                self._register_search_target(category, field)
+
         # Debounce timer for updates
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
@@ -822,6 +1009,18 @@ class SettingsWindow(QMainWindow):
 
         self.docs_shortcut = QShortcut(QKeySequence(Qt.Key_F1), self)
         self.docs_shortcut.activated.connect(self._open_docs_for_focused_widget)
+
+        self._category_build_timer = QTimer(self)
+        self._category_build_timer.setSingleShot(True)
+        self._category_build_timer.timeout.connect(self._build_next_queued_category)
+
+        self.category_list.itemClicked.connect(self._on_category_clicked)
+        self.category_list.currentItemChanged.connect(self._on_category_selection_changed)
+
+        # Preload the first two visible cards because both are usually visible right
+        # away, then let the remaining cards build progressively.
+        self.category_list.setCurrentRow(0)
+        self._preload_initial_categories(target_count=2)
 
     def _begin_auto_scroll(self, duration_ms: int) -> None:
         self.is_auto_scrolling = True
@@ -853,44 +1052,18 @@ class SettingsWindow(QMainWindow):
             override_cache.clear()
         if hasattr(self, "_last_custom_template"):
             delattr(self, "_last_custom_template")
+        self._persistent_profile_entries = {}
+        self._persistent_profile_options_loaded = False
+        previous_suppress = self._suppress_dirty_tracking
+        self._suppress_dirty_tracking = True
+        try:
+            for category in SCHEMA:
+                self._apply_category_values(category)
 
-        for category in SCHEMA:
-            for field in self._iter_fields(category.fields):
-                if getattr(field, "transient", False):
-                    continue
-                key = f"{category.key}.{field.key}"
-                value = self.config_manager.get_setting(category.key, field.key)
-                widget = self.field_widgets.get(key)
-                
-                if widget:
-                    widget.blockSignals(True)
-                    if field.type == SettingType.BOOLEAN:
-                        widget.setChecked(bool(value))
-                    elif field.type in [SettingType.STRING, SettingType.DIRECTORY, SettingType.PASSWORD, SettingType.INTEGER]:
-                        widget.setText(str(value) if value is not None else "")
-                    elif field.type == SettingType.TEXTAREA:
-                        widget.setPlainText(str(value) if value is not None else "")
-                    elif field.type == SettingType.DROPDOWN:
-                        if value and value in field.options:
-                            widget.setCurrentText(value)
-                    elif field.type == SettingType.INPUT_PAIR:
-                        widget.set_pairs(value or [])
-                    elif field.type == SettingType.INPUT_LIST:
-                        widget.set_items(value or [])
-                    widget.blockSignals(False)
-        
-        self._update_dependencies()
-        # Trigger preset logic manually after load
-        preset_widget = self.field_widgets.get("formatting.formatting_preset")
-        if preset_widget:
-            self._on_preset_changed(preset_widget.currentText())
-
-        self._sync_config_storage_from_active_dir()
-        self._sync_behavior_category_visibility()
-        self._refresh_persistent_profile_options()
-        self._sync_paged_settings_view()
-            
-        self.unsaved_changes = False
+            self._refresh_loaded_state(refresh_profiles=(self._get_selected_category_key() == "system_settings"))
+        finally:
+            self._suppress_dirty_tracking = previous_suppress
+            self.unsaved_changes = False
 
     def refresh_from_config(self, force: bool = False) -> bool:
         if self.unsaved_changes and not force:
@@ -903,18 +1076,22 @@ class SettingsWindow(QMainWindow):
 
         self._load_values()
         self._sync_application_settings_info()
+        self._queue_visible_category_builds()
         return True
 
     def select_category_by_key(self, category_key: str) -> bool:
         item = self.category_items_by_key.get(category_key)
-        card = self.category_widgets_by_key.get(category_key)
-        if not item or not card:
+        if not item:
             return False
 
         paged_view = self._should_use_paged_settings_view()
 
         if item.isHidden():
             item.setHidden(False)
+
+        card = self._ensure_category_built(category_key, refresh_profiles=(category_key == "system_settings"))
+        if not card:
+            return False
         if not card.isVisible():
             card.setVisible(True)
 
@@ -932,6 +1109,7 @@ class SettingsWindow(QMainWindow):
         if not category_key or not field_key:
             return False
 
+        self._ensure_category_built(category_key, refresh_profiles=(category_key == "system_settings"))
         full_key = f"{category_key}.{field_key}"
         target = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
         if not target:
@@ -947,6 +1125,8 @@ class SettingsWindow(QMainWindow):
         return True
 
     def _on_setting_changed(self):
+        if self._suppress_dirty_tracking:
+            return
         self.unsaved_changes = True
         self.update_timer.start()
 
@@ -1148,21 +1328,6 @@ class SettingsWindow(QMainWindow):
         # Reserved for future UI-level forced overrides (none currently).
         return
 
-    def _add_search_target(self, category, field, widget):
-        extra_labels = ""
-        if field.type == SettingType.ROW and field.sub_fields:
-            extra_labels = " ".join(sub.label for sub in field.sub_fields if sub.label)
-
-        self.search_targets.append({
-            "label_lower": (field.label or "").lower(),
-            "key_lower": (field.key or "").lower(),
-            "category_lower": (category.name or "").lower(),
-            "category_key_lower": (category.key or "").lower(),
-            "category_key": category.key,
-            "extra_lower": extra_labels.lower(),
-            "widget": widget,
-        })
-
     def _on_search_text_changed(self, text):
         self.search_timer.stop()
         if text.strip():
@@ -1209,18 +1374,16 @@ class SettingsWindow(QMainWindow):
         best_score = 0.0
 
         for target in self.search_targets:
-            widget = target.get("widget")
-            if not widget:
+            category_key = target.get("category_key")
+            item = self.category_items_by_key.get(category_key) if category_key else None
+            if item and item.isHidden():
                 continue
 
-            if paged_view:
-                category_key = target.get("category_key")
-                item = self.category_items_by_key.get(category_key) if category_key else None
-                if item and item.isHidden():
-                    continue
+            widget = self._resolve_search_target_widget(target, build=False)
+            if paged_view and widget is not None:
                 if widget.isHidden():
                     continue
-            elif not widget.isVisible():
+            elif widget is not None and not widget.isVisible():
                 continue
 
             score = self._score_match(query, target)
@@ -1229,11 +1392,12 @@ class SettingsWindow(QMainWindow):
                 best_target = target
 
         if best_target and best_score >= 0.25:
-            widget = best_target["widget"]
-            if paged_view:
-                category_key = best_target.get("category_key")
-                if category_key:
-                    self.select_category_by_key(category_key)
+            category_key = best_target.get("category_key")
+            if category_key:
+                self.select_category_by_key(category_key)
+            widget = self._resolve_search_target_widget(best_target, build=True)
+            if widget is None or widget.isHidden():
+                return
             duration_ms = 280
             started = self._smooth_ensure_visible(widget, y_margin=80, duration_ms=duration_ms)
             if started:
@@ -1258,7 +1422,10 @@ class SettingsWindow(QMainWindow):
             self._sync_paged_settings_view(scroll_to_top=True)
             return
 
-        category_name = item.text()
+        category_key = str(item.data(Qt.UserRole) or "").strip() if item else ""
+        if category_key:
+            self._ensure_category_built(category_key, refresh_profiles=(category_key == "system_settings"))
+        category_name = item.text() if item else ""
         widget = self.category_widgets.get(category_name)
         if widget:
             self._smooth_ensure_visible(widget, y_margin=40, duration_ms=280)
@@ -1374,6 +1541,8 @@ class SettingsWindow(QMainWindow):
         if not selected_key:
             return
 
+        self._ensure_category_built(selected_key, refresh_profiles=False)
+
         prev_enabled = getattr(self, "_paged_settings_view_enabled", None)
         initial_apply = prev_enabled is None
         mode_changed = (not initial_apply) and (prev_enabled != enabled)
@@ -1400,9 +1569,14 @@ class SettingsWindow(QMainWindow):
                 card.setHidden(desired_hidden)
 
         if enabled:
+            timer = getattr(self, "_category_build_timer", None)
+            if isinstance(timer, QTimer):
+                timer.stop()
+            self._pending_category_build_keys = []
             if scroll_to_top or mode_changed or (initial_apply and enabled):
                 self._smooth_scroll_to(0, duration_ms=240)
         else:
+            self._queue_visible_category_builds()
             if mode_changed:
                 card = self.category_widgets_by_key.get(selected_key)
                 if card:
@@ -1432,7 +1606,7 @@ class SettingsWindow(QMainWindow):
             card.setVisible(visible)
 
     def _sync_behavior_category_visibility(self, *_args) -> None:
-        behavior_keys = [key for key in (self.category_widgets_by_key or {}) if self._is_behavior_category(key)]
+        behavior_keys = [key for key in self._category_order if self._is_behavior_category(key)]
         if not behavior_keys:
             return
 
@@ -1440,6 +1614,7 @@ class SettingsWindow(QMainWindow):
             for key in behavior_keys:
                 self._set_category_visible(key, True)
             self._sync_paged_settings_view()
+            self._queue_visible_category_builds()
             return
 
         active_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider())
@@ -1447,6 +1622,7 @@ class SettingsWindow(QMainWindow):
             for key in behavior_keys:
                 self._set_category_visible(key, True)
             self._sync_paged_settings_view()
+            self._queue_visible_category_builds()
             return
 
         for key in behavior_keys:
@@ -1457,23 +1633,29 @@ class SettingsWindow(QMainWindow):
             preferred_item = self.category_items_by_key.get(active_key)
             if preferred_item and not preferred_item.isHidden():
                 self.category_list.setCurrentItem(preferred_item)
-                preferred_card = self.category_widgets_by_key.get(active_key)
+                preferred_card = self._ensure_category_built(active_key, refresh_profiles=(active_key == "system_settings"))
                 if preferred_card:
                     self._smooth_ensure_visible(preferred_card, y_margin=40, duration_ms=280)
                 self._sync_paged_settings_view()
+                self._queue_visible_category_builds()
                 return
 
             for i in range(self.category_list.count()):
                 item = self.category_list.item(i)
                 if item and not item.isHidden():
                     self.category_list.setCurrentItem(item)
+                    fallback_key = str(item.data(Qt.UserRole) or "").strip()
+                    if fallback_key:
+                        self._ensure_category_built(fallback_key, refresh_profiles=(fallback_key == "system_settings"))
                     card = self.category_widgets.get(item.text())
                     if card:
                         self._smooth_ensure_visible(card, y_margin=40, duration_ms=280)
                     self._sync_paged_settings_view()
+                    self._queue_visible_category_builds()
                     return
 
         self._sync_paged_settings_view()
+        self._queue_visible_category_builds()
 
     def _on_config_storage_location_changed(self, text: str):
         is_custom = text == "Custom"
@@ -1494,32 +1676,36 @@ class SettingsWindow(QMainWindow):
         if not template_widget:
             return
 
-        if text == "Custom":
-            template_widget.setEnabled(True)
-            # We need to store the custom value temporarily if we switch away from Custom.
-            
-            if hasattr(self, "_last_custom_template"):
-                # Ignoring lint because we know it exists here
-                template_widget.setPlainText(self._last_custom_template)
+        previous_block = template_widget.blockSignals(True)
+        try:
+            if text == "Custom":
+                template_widget.setEnabled(True)
+                # We need to store the custom value temporarily if we switch away from Custom.
                 
-        else:
-            # If the widget is enabled, it means we are on Custom (or just started).
-            if template_widget.isEnabled():
-                self._last_custom_template = template_widget.toPlainText()
-            
-            template_widget.setEnabled(False)
-            if text == "Classic - Name":
-                template_widget.setPlainText("{{name}}: {{content}}")
-            elif text == "Classic - Role":
-                template_widget.setPlainText("{{role}}: {{content}}")
-            elif text == "XML-Like - Name":
-                template_widget.setPlainText("<{{name}}>{{content}}</{{name}}>")
-            elif text == "XML-Like - Role":
-                template_widget.setPlainText("<{{role}}>{{content}}</{{role}}>")
-            elif text == "Divided - Name":
-                template_widget.setPlainText("### {{name}}\n{{content}}")
-            elif text == "Divided - Role":
-                template_widget.setPlainText("### {{role}}\n{{content}}")
+                if hasattr(self, "_last_custom_template"):
+                    # Ignoring lint because we know it exists here
+                    template_widget.setPlainText(self._last_custom_template)
+                    
+            else:
+                # If the widget is enabled, it means we are on Custom (or just started).
+                if template_widget.isEnabled():
+                    self._last_custom_template = template_widget.toPlainText()
+                
+                template_widget.setEnabled(False)
+                if text == "Classic - Name":
+                    template_widget.setPlainText("{{name}}: {{content}}")
+                elif text == "Classic - Role":
+                    template_widget.setPlainText("{{role}}: {{content}}")
+                elif text == "XML-Like - Name":
+                    template_widget.setPlainText("<{{name}}>{{content}}</{{name}}>")
+                elif text == "XML-Like - Role":
+                    template_widget.setPlainText("<{{role}}>{{content}}</{{role}}>")
+                elif text == "Divided - Name":
+                    template_widget.setPlainText("### {{name}}\n{{content}}")
+                elif text == "Divided - Role":
+                    template_widget.setPlainText("### {{role}}\n{{content}}")
+        finally:
+            template_widget.blockSignals(previous_block)
 
     def _sync_application_settings_info(self):
         version_widget = self.field_widgets.get("application_settings.current_version_info")
@@ -1739,6 +1925,7 @@ class SettingsWindow(QMainWindow):
         old_token = select_widget.currentData(Qt.UserRole)
         entries = self._build_persistent_profile_entries()
         self._persistent_profile_entries = {token: (label, path) for token, label, path in entries}
+        self._persistent_profile_options_loaded = True
 
         select_widget.blockSignals(True)
         try:
@@ -1890,11 +2077,10 @@ class SettingsWindow(QMainWindow):
         storage_preset_widget = self.field_widgets.get("system_settings.config_storage_location")
         storage_custom_widget = self.field_widgets.get("system_settings.config_storage_custom_path")
 
-        requested_preset = storage_preset_widget.currentText() if storage_preset_widget else "Relative"
-        requested_custom_path = storage_custom_widget.text() if storage_custom_widget else ""
-
         prev_preset = self.config_manager.get_setting("system_settings", "config_storage_location")
         prev_custom_path = self.config_manager.get_setting("system_settings", "config_storage_custom_path")
+        requested_preset = storage_preset_widget.currentText() if storage_preset_widget else (prev_preset or "Relative")
+        requested_custom_path = storage_custom_widget.text() if storage_custom_widget else (prev_custom_path or "")
 
         target_config_dir = None
         try:
