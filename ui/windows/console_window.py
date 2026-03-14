@@ -9,17 +9,21 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow,
     QPlainTextEdit,
+    QTextEdit,
     QVBoxLayout,
     QHBoxLayout,
     QWidget,
     QPushButton,
     QFileDialog,
     QMessageBox,
+    QLineEdit,
+    QLabel,
 )
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextOption
+from PySide6.QtCore import Qt, Slot, QTimer
+from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextOption, QTextCursor, QTextFormat
 
 from ui.core.brand import BrandColors
+from ui.core.icons import IconUtils, IconType
 from utils.logger import Logger
 
 
@@ -31,6 +35,9 @@ class ConsoleWindow(QMainWindow):
     
     MAX_LINES = 500
     AUTO_SCROLL_MODES = {"Always", "Bottom only", "Never"}
+    SEARCH_DEBOUNCE_MS = 300
+    SEARCH_FLASH_INTERVAL_MS = 400
+    SEARCH_FLASH_STEPS = 6
     
     # Color Palettes
     # copypasted from original project
@@ -66,6 +73,13 @@ class ConsoleWindow(QMainWindow):
         self.config_manager = config_manager
         self._allow_close = False
         self._auto_scroll_mode = "Always"
+        self._line_count = 0
+        self._search_matches = []
+        self._search_current_index = -1
+        self._search_flash_visible = False
+        self._search_flash_steps_remaining = 0
+        self._search_refresh_origin = None
+        self._last_search_query = ""
         
         # Remove close button but keep minimize and maximize
         self.setWindowFlags(
@@ -78,7 +92,6 @@ class ConsoleWindow(QMainWindow):
         
         self.current_palette = self.PALETTES["Modern"]
         self._init_ui()
-        self._line_count = 0
         
         if self.config_manager:
             self.apply_settings()
@@ -91,10 +104,11 @@ class ConsoleWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Mini menu bar (Clear / Dump)
+        # Mini menu bar (Search / Clear / Dump)
         menu_bar = QWidget()
+        menu_bar.setObjectName("consoleMenuBar")
         menu_bar.setStyleSheet("""
-            QWidget {
+            QWidget#consoleMenuBar {
                 background-color: #101010;
                 border-bottom: 1px solid #1a1a1a;
             }
@@ -123,7 +137,129 @@ class ConsoleWindow(QMainWindow):
             }}
         """
 
+        compact_button_style = f"""
+            QPushButton {{
+                background-color: #1a1a1a;
+                color: {BrandColors.TEXT_PRIMARY};
+                border: 1px solid #333333;
+                padding: 6px;
+                min-width: 30px;
+                max-width: 30px;
+                border-radius: 6px;
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+                font-family: {BrandColors.FONT_FAMILY};
+            }}
+            QPushButton:hover {{
+                background-color: #222222;
+                border: 1px solid {BrandColors.ACCENT};
+            }}
+            QPushButton:pressed {{
+                background-color: {BrandColors.ACCENT};
+                border: 1px solid {BrandColors.ACCENT};
+            }}
+            QPushButton:disabled {{
+                color: {BrandColors.TEXT_DISABLED};
+                border: 1px solid #2a2a2a;
+                background-color: #151515;
+            }}
+        """
+
+        search_input_style = f"""
+            QLineEdit {{
+                background-color: #1a1a1a;
+                color: {BrandColors.TEXT_PRIMARY};
+                border: 1px solid #333333;
+                padding: 6px 32px 6px 28px;
+                border-radius: 6px;
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+                font-family: {BrandColors.FONT_FAMILY};
+            }}
+            QLineEdit:hover {{
+                background-color: #222222;
+                border: 1px solid #444444;
+            }}
+            QLineEdit:focus {{
+                background-color: #222222;
+                border: 1px solid {BrandColors.ACCENT};
+            }}
+        """
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search console...")
+        self.search_input.setFixedWidth(240)
+        self.search_input.setStyleSheet(search_input_style)
+        search_icon = IconUtils.get_icon(
+            IconType.SEARCH,
+            color=BrandColors.TEXT_SECONDARY,
+            size=16,
+            widget=self.search_input,
+        )
+        self.search_input.addAction(search_icon, QLineEdit.LeadingPosition)
+        clear_icon = IconUtils.get_icon(
+            "x.svg",
+            color=BrandColors.TEXT_SECONDARY,
+            size=16,
+            widget=self.search_input,
+        )
+        self.search_clear_action = self.search_input.addAction(clear_icon, QLineEdit.TrailingPosition)
+        self.search_clear_action.setVisible(False)
+        self.search_clear_action.triggered.connect(self._clear_search)
+        self.search_input.textChanged.connect(self._on_search_text_changed)
+        menu_layout.addWidget(self.search_input, 0)
+
         menu_layout.addStretch(1)
+
+        self.search_nav = QWidget()
+        self.search_nav.setStyleSheet("background-color: transparent; border: none;")
+        search_nav_layout = QHBoxLayout(self.search_nav)
+        search_nav_layout.setContentsMargins(0, 0, 0, 0)
+        search_nav_layout.setSpacing(6)
+
+        self.search_prev_btn = QPushButton()
+        self.search_prev_btn.setCursor(Qt.PointingHandCursor)
+        self.search_prev_btn.setToolTip("Previous match")
+        self.search_prev_btn.setFixedSize(30, 30)
+        self.search_prev_btn.setStyleSheet(compact_button_style)
+        self.search_prev_btn.setIcon(
+            IconUtils.get_icon(
+                "chevron-left.svg",
+                color=BrandColors.TEXT_PRIMARY,
+                size=16,
+                widget=self.search_prev_btn,
+            )
+        )
+        self.search_prev_btn.clicked.connect(self._goto_previous_search_match)
+        search_nav_layout.addWidget(self.search_prev_btn)
+
+        self.search_status_label = QLabel("0 / 0")
+        self.search_status_label.setAlignment(Qt.AlignCenter)
+        self.search_status_label.setStyleSheet(f"""
+            color: {BrandColors.TEXT_SECONDARY};
+            font-size: {BrandColors.FONT_SIZE_REGULAR};
+            font-family: {BrandColors.FONT_FAMILY};
+            padding: 0 2px;
+            min-width: 48px;
+        """)
+        search_nav_layout.addWidget(self.search_status_label)
+
+        self.search_next_btn = QPushButton()
+        self.search_next_btn.setCursor(Qt.PointingHandCursor)
+        self.search_next_btn.setToolTip("Next match")
+        self.search_next_btn.setFixedSize(30, 30)
+        self.search_next_btn.setStyleSheet(compact_button_style)
+        self.search_next_btn.setIcon(
+            IconUtils.get_icon(
+                "chevron-right.svg",
+                color=BrandColors.TEXT_PRIMARY,
+                size=16,
+                widget=self.search_next_btn,
+            )
+        )
+        self.search_next_btn.clicked.connect(self._goto_next_search_match)
+        search_nav_layout.addWidget(self.search_next_btn)
+
+        self.search_nav.hide()
+        menu_layout.addWidget(self.search_nav, 0)
 
         clear_btn = QPushButton("Clear")
         clear_btn.setCursor(Qt.PointingHandCursor)
@@ -201,6 +337,18 @@ class ConsoleWindow(QMainWindow):
         """)
         
         layout.addWidget(self.text_area)
+        self.text_area.textChanged.connect(self._on_console_text_changed)
+
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.setInterval(self.SEARCH_DEBOUNCE_MS)
+        self.search_timer.timeout.connect(self._perform_search)
+
+        self.search_flash_timer = QTimer(self)
+        self.search_flash_timer.setInterval(self.SEARCH_FLASH_INTERVAL_MS)
+        self.search_flash_timer.timeout.connect(self._advance_search_flash)
+
+        self._update_search_nav(search_active=False)
         
         # Main window styling
         self.setStyleSheet(f"""
@@ -208,6 +356,229 @@ class ConsoleWindow(QMainWindow):
                 background-color: #0c0c0c;
             }}
         """)
+
+    def _schedule_search(self, origin: str) -> None:
+        if not self.search_input.text().strip():
+            self.search_timer.stop()
+            return
+
+        if self._search_refresh_origin != "input" or origin == "input":
+            self._search_refresh_origin = origin
+        self.search_timer.start()
+
+    def _on_search_text_changed(self, text: str) -> None:
+        has_query = bool(text.strip())
+        self.search_clear_action.setVisible(has_query)
+        if has_query:
+            self._schedule_search("input")
+            return
+
+        self.search_timer.stop()
+        self._clear_search_results()
+
+    def _on_console_text_changed(self) -> None:
+        if self.search_input.text().strip():
+            self._schedule_search("document")
+
+    def _clear_search(self) -> None:
+        if self.search_input.text():
+            self.search_input.clear()
+            return
+
+        self._clear_search_results()
+
+    def _clear_search_results(self) -> None:
+        self._search_matches = []
+        self._search_current_index = -1
+        self._search_refresh_origin = None
+        self._last_search_query = ""
+        self._stop_search_flash()
+        self._update_search_nav(search_active=False)
+        self._refresh_search_highlights()
+
+    def _find_search_matches(self, query: str) -> list[int]:
+        query_key = query.casefold()
+        matches = []
+        block = self.text_area.document().firstBlock()
+        line_number = 0
+
+        while block.isValid():
+            if query_key in block.text().casefold():
+                matches.append(line_number)
+            block = block.next()
+            line_number += 1
+
+        return matches
+
+    def _perform_search(self) -> None:
+        query = self.search_input.text().strip()
+        if not query:
+            self._clear_search_results()
+            return
+
+        query_key = query.casefold()
+        origin = self._search_refresh_origin or "input"
+        previous_line = self._current_search_line()
+        matches = self._find_search_matches(query)
+
+        self._search_refresh_origin = None
+        self._search_matches = matches
+
+        if not matches:
+            self._search_current_index = -1
+            self._last_search_query = query_key
+            self._stop_search_flash()
+            self._update_search_nav(search_active=True)
+            self._refresh_search_highlights()
+            return
+
+        query_changed = query_key != self._last_search_query
+        self._last_search_query = query_key
+
+        if origin == "input":
+            if query_changed or self._search_current_index == -1:
+                next_index = 0
+            else:
+                next_index = min(self._search_current_index, len(matches) - 1)
+            should_jump = True
+        elif previous_line in matches:
+            next_index = matches.index(previous_line)
+            should_jump = False
+        else:
+            next_index = min(max(self._search_current_index, 0), len(matches) - 1)
+            should_jump = True
+
+        self._search_current_index = next_index
+        self._update_search_nav(search_active=True)
+
+        if should_jump:
+            self._jump_to_search_match(self._search_current_index, flash=True)
+        else:
+            self._refresh_search_highlights()
+
+    def _update_search_nav(self, *, search_active: bool) -> None:
+        self.search_nav.setVisible(search_active)
+        if not search_active:
+            self.search_status_label.setText("0 / 0")
+            self.search_prev_btn.setEnabled(False)
+            self.search_next_btn.setEnabled(False)
+            return
+
+        total = len(self._search_matches)
+        current = self._search_current_index + 1 if self._search_current_index >= 0 else 0
+        self.search_status_label.setText(f"{current} / {total}")
+        can_navigate = total > 1
+        self.search_prev_btn.setEnabled(can_navigate)
+        self.search_next_btn.setEnabled(can_navigate)
+
+    def _current_search_line(self) -> int | None:
+        if 0 <= self._search_current_index < len(self._search_matches):
+            return self._search_matches[self._search_current_index]
+        return None
+
+    def _goto_previous_search_match(self) -> None:
+        if not self._search_matches:
+            return
+        self._jump_to_search_match(self._search_current_index - 1, flash=True)
+
+    def _goto_next_search_match(self) -> None:
+        if not self._search_matches:
+            return
+        self._jump_to_search_match(self._search_current_index + 1, flash=True)
+
+    def _jump_to_search_match(self, index: int, *, flash: bool) -> None:
+        if not self._search_matches:
+            return
+
+        total = len(self._search_matches)
+        self._search_current_index = index % total
+        line_number = self._search_matches[self._search_current_index]
+        block = self.text_area.document().findBlockByNumber(line_number)
+        if not block.isValid():
+            self._refresh_search_highlights()
+            self._update_search_nav(search_active=True)
+            return
+
+        cursor = self.text_area.textCursor()
+        cursor.setPosition(block.position())
+        self.text_area.setTextCursor(cursor)
+        self.text_area.centerCursor()
+        self._update_search_nav(search_active=True)
+
+        if flash:
+            self._start_search_flash()
+        else:
+            self._refresh_search_highlights()
+
+    def _start_search_flash(self) -> None:
+        self.search_flash_timer.stop()
+        self._search_flash_visible = True
+        self._search_flash_steps_remaining = self.SEARCH_FLASH_STEPS
+        self._refresh_search_highlights()
+        self.search_flash_timer.start()
+
+    def _stop_search_flash(self) -> None:
+        self.search_flash_timer.stop()
+        self._search_flash_visible = False
+        self._search_flash_steps_remaining = 0
+
+    def _advance_search_flash(self) -> None:
+        if self._search_current_index < 0:
+            self._stop_search_flash()
+            self._refresh_search_highlights()
+            return
+
+        if self._search_flash_steps_remaining <= 1:
+            self._stop_search_flash()
+        else:
+            self._search_flash_steps_remaining -= 1
+            self._search_flash_visible = not self._search_flash_visible
+
+        self._refresh_search_highlights()
+
+    def _make_line_selection(self, line_number: int, background: QColor) -> QTextEdit.ExtraSelection | None:
+        block = self.text_area.document().findBlockByNumber(line_number)
+        if not block.isValid():
+            return None
+
+        selection = QTextEdit.ExtraSelection()
+        selection.cursor = QTextCursor(block)
+        selection.cursor.clearSelection()
+        line_format = QTextCharFormat()
+        line_format.setBackground(background)
+        line_format.setProperty(QTextFormat.FullWidthSelection, True)
+        selection.format = line_format
+        return selection
+
+    def _refresh_search_highlights(self) -> None:
+        if not self._search_matches:
+            self.text_area.setExtraSelections([])
+            return
+
+        base_color = QColor(BrandColors.ACCENT)
+        base_color.setAlpha(55)
+        active_color = QColor(BrandColors.ACCENT)
+        active_color.setAlpha(95)
+        flash_color = QColor(BrandColors.ACCENT)
+        flash_color.setAlpha(150)
+
+        current_line = self._current_search_line()
+        selections = []
+
+        for line_number in self._search_matches:
+            if line_number == current_line:
+                continue
+            selection = self._make_line_selection(line_number, base_color)
+            if selection is not None:
+                selections.append(selection)
+
+        if current_line is not None:
+            active_background = flash_color if self._search_flash_visible else active_color
+            active_selection = self._make_line_selection(current_line, active_background)
+            if active_selection is not None:
+                selections.append(active_selection)
+
+        self.text_area.setExtraSelections(selections)
 
     def _get_dump_directory(self) -> str:
         if not self.config_manager:
