@@ -2,7 +2,7 @@ from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLab
 from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent, QPropertyAnimation, QEasingCurve, QAbstractAnimation
 import os
 from pathlib import Path
-from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon
+from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon, QTextCursor
 from ui.core.brand import BrandColors
 from ui.core.animation_settings import animations_disabled
 from ui.core.icons import IconUtils, IconType
@@ -96,6 +96,37 @@ class MultiColumnRow(QWidget):
             ratio = ratios[i] if ratios and i < len(ratios) else 1
             layout.addWidget(widget, stretch=ratio)
 
+
+class _SettingsTextEdit(QTextEdit):
+    """
+    QTextEdit variant that preserves normal form navigation inside settings.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setTabChangesFocus(True)
+
+    def keyPressEvent(self, event):
+        if event.modifiers() == Qt.NoModifier:
+            if event.key() == Qt.Key_Up and self._try_move_focus(QTextCursor.Up, forward=False):
+                event.accept()
+                return
+            if event.key() == Qt.Key_Down and self._try_move_focus(QTextCursor.Down, forward=True):
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def _try_move_focus(self, direction, *, forward: bool) -> bool:
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return False
+
+        probe = self.textCursor()
+        if probe.movePosition(direction):
+            return False
+        return bool(self.focusNextPrevChild(forward))
+
+
 class StyledTextEdit(QFrame):
     textChanged = Signal()
 
@@ -110,7 +141,7 @@ class StyledTextEdit(QFrame):
         layout.setSpacing(0)
         
         # Inner Editor
-        self.editor = QTextEdit()
+        self.editor = _SettingsTextEdit(self)
         self.editor.setFrameShape(QFrame.NoFrame)
         self.editor.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.editor.textChanged.connect(self.textChanged.emit)
