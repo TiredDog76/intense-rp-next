@@ -4,7 +4,10 @@ icon: material/star-four-points
 
 # :material-star-four-points: Features
 
-IntenseRP Next v2 packs a lot of useful features under the hood. This page gives you an overview of what's available and links to detailed documentation for each feature.
+IntenseRP Next v2 packs a lot of useful features under the hood. This page gives you an overview of the app-wide features and links to detailed documentation for each one.
+
+!!! info "Provider settings moved"
+    DeepSeek, GLM, Moonshot, QwenLM, and Google AI Studio Behavior settings now live in the dedicated [:material-cloud: Providers](providers.md) section.
 
 ---
 
@@ -16,35 +19,11 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](features/formatting.md)
 
--   :providers-deepseek: **DeepSeek Behavior**
+-   :material-cloud: **Providers**
 
-    Configure DeepThink, search, anti-censorship, and more.
+    Provider-specific Behavior settings now live in their own section.
 
-    [:arrow_right: Learn More](features/deepseek-behavior.md)
-
--   :providers-zai: **GLM Behavior**
-
-    Configure Deep Think modes, Search status, and GLM-specific quirks.
-
-    [:arrow_right: Learn More](features/glm-behavior.md)
-
--   :providers-moonshot: **Moonshot Behavior**
-
-    Configure Thinking, Search, file uploads, and Kimi-specific notes.
-
-    [:arrow_right: Learn More](features/moonshot-behavior.md)
-
--   :providers-qwen: **QwenLM Behavior**
-
-    Configure Thinking, Web search, model selection, and token counting.
-
-    [:arrow_right: Learn More](features/qwen-behavior.md)
-
--   :providers-aistudio: **Google AI Studio Behavior**
-
-    Configure Gemini model selection, Thinking Level, Search, URL Context, and sampling controls.
-
-    [:arrow_right: Learn More](features/aistudio-behavior.md)
+    [:arrow_right: Learn More](providers.md)
 
 -   :material-key: **Login & Sessions**
 
@@ -82,7 +61,7 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
 ## Quick Reference
 
-Here's a quick rundown of all the major features you'll find in IntenseRP Next v2.
+Here's a quick rundown of the major app-wide features you'll find in IntenseRP Next v2.
 
 ### :material-format-text: Formatting
 
@@ -97,81 +76,13 @@ IntenseRP doesn't just forward your messages to the provider. It formats them in
 
 ---
 
-### :providers-deepseek: DeepSeek Behavior
+### :material-cloud: Providers
 
-Fine-tune how DeepSeek processes your requests.
+Provider-specific Behavior settings now live in their own section.
 
-| Feature | What It Does |
-|---------|-------------|
-| **DeepThink** | Toggle DeepSeek's reasoning mode for more thoughtful responses |
-| **Send DeepThink** | Include the thinking process in the response (wrapped in `<think>` tags) |
-| **Search** | Enable web search capabilities |
-| **File Upload Mode** | Send long prompts as a text file to bypass input limits |
-| **Anti-Censorship** | Suppress "Sorry, that's beyond my current scope" messages |
-| **Clean Regeneration** | Regenerate the last response instead of creating a new chat when the prompt is identical |
+If you are looking for DeepSeek / GLM / Moonshot / QwenLM / Google AI Studio toggles, model pickers, search settings, or provider-specific quirks:
 
----
-
-### :providers-zai: GLM Behavior
-
-Fine-tune how GLM Chat processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Deep Think** | Toggle GLM reasoning mode |
-| **Send Deep Think** | Include the thinking process in the response (wrapped in `<think>` tags) |
-| **Search** | Toggle GLM Search (search results are not sent to the client) |
-| **File Upload Mode** | Send long prompts as a text file to bypass input limits |
-| **Clean Regeneration** | Regenerate on duplicate prompts (currently unreliable for GLM) |
-
----
-
-### :providers-moonshot: Moonshot Behavior
-
-Fine-tune how Moonshot processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Enable Thinking** | Switches Kimi between Instant and Thinking modes |
-| **Send Thinking** | Include reasoning in response (wrapped in `<think>` tags) |
-| **Search** | Toggle Kimi search tooling |
-| **File Upload Mode** | Send long prompts as a text file |
-| **Anti-Censorship** | Suppress refusal-like stream outputs when detected |
-| **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
-
----
-
-### :providers-qwen: QwenLM Behavior
-
-Fine-tune how QwenLM processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Thinking** | Toggle QwenLM Thinking mode |
-| **Send Thinking** | Include thinking summaries in the response (wrapped in `<think>` tags) |
-| **Count Tokens** | Returns token usage in API responses |
-| **Web Search** | Toggle QwenLM Web search (search results are not sent to the client) |
-| **Model Picker (UI)** | Select Qwen's real model dropdown |
-| **File Upload Mode** | Send long prompts as a text file |
-| **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
-
----
-
-### :providers-aistudio: Google AI Studio Behavior
-
-Fine-tune how Google AI Studio processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Gemini Model Picker (UI)** | Select Google AI Studio's real Gemini model |
-| **Enable Thinking** | Uses a higher Thinking Level on supported Gemini 3 / 3.1 models |
-| **Send Thinking** | Includes Gemini thinking summaries in the response (wrapped in `<think>` tags) |
-| **Search** | Toggles Google Search grounding |
-| **URL Context** | Toggles the URL Context browsing tool |
-| **File Upload Mode** | Uploads prompts through AI Studio's media picker |
-| **Temperature / Top P / Max Output Tokens** | Applies AI Studio sampling controls before sending |
-| **Safety Filters** | Lowers AI Studio's safety sliders automatically once per browser session |
-| **Clean Regeneration** | Regenerates on duplicate prompts instead of opening a new chat |
+:material-arrow-right: **Open** [:material-cloud: Providers Overview](providers.md)
 
 ---
 
@@ -250,5 +161,11 @@ Application-wide settings and maintenance.
     Coming from v1? Learn what's changed.
 
     [:arrow_right: Migrate](migration.md)
+
+-   :material-cloud: **Providers**
+
+    Need provider-specific Behavior settings? They're in their own section now.
+
+    [:arrow_right: Browse Providers](providers.md)
 
 </div>

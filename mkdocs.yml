@@ -21,16 +21,18 @@ nav:
       - Accounts & Credentials: features/accounts.md
       - Formatting: features/formatting.md
       - STMP Support: features/stmp-support.md
-      - DeepSeek Behavior: features/deepseek-behavior.md
-      - GLM Behavior: features/glm-behavior.md
-      - Kimi Behavior: features/moonshot-behavior.md
-      - QwenLM Behavior: features/qwen-behavior.md
-      - Google AI Studio Behavior: features/aistudio-behavior.md
       - Login & Sessions: features/login-sessions.md
       - Network & API: features/network-api.md
       - Console & Logging: features/console-logging.md
       - Hotswaps: features/hotswaps.md
       - System: features/system.md
+  - Providers:
+      - Overview: providers.md
+      - DeepSeek Behavior: providers/deepseek-behavior.md
+      - GLM Behavior: providers/glm-behavior.md
+      - Kimi Behavior: providers/moonshot-behavior.md
+      - QwenLM Behavior: providers/qwen-behavior.md
+      - Google AI Studio Behavior: providers/aistudio-behavior.md
   - Experimental:
       - Overview: experimental.md
       - Better Model Names: experimental/better-model-names.md

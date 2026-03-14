@@ -143,7 +143,7 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
 
 QwenLM supports Auto Login (email + password). Persistent Sessions are still recommended, since they reduce how often you need to log in.
 
-See: [:material-key: Login & Sessions](login-sessions.md)
+See: [:material-key: Login & Sessions](../features/login-sessions.md)
 
 ---
 
@@ -196,6 +196,6 @@ All macros are stripped from the message before sending it to QwenLM.
 
 ---
 
-## :material-arrow-left: Back to Features
+## :material-arrow-left: Back to Providers
 
-[:material-arrow-left: Features Overview](../features.md)
+[:material-arrow-left: Providers Overview](../providers.md)

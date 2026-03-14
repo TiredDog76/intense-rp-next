@@ -168,6 +168,6 @@ All macros are stripped from the message before sending it to DeepSeek.
 
 ---
 
-## :material-arrow-left: Back to Features
+## :material-arrow-left: Back to Providers
 
-[:material-arrow-left: Features Overview](../features.md)
+[:material-arrow-left: Providers Overview](../providers.md)

@@ -6,7 +6,7 @@ icon: material/wrench-clock
 
 GLM Chat (chat.z.ai) works well as a provider, but it has a few quirks you should know about. This page goes deeper into the timing settings, known issues, and workarounds that can make your experience smoother.
 
-For the main GLM settings and behavior toggles, see [:material-chat-processing: GLM Behavior](../features/glm-behavior.md).
+For the main GLM settings and behavior toggles, see [:material-chat-processing: GLM Behavior](../providers/glm-behavior.md).
 
 ---
 
@@ -44,7 +44,7 @@ If you notice IntenseRP clicking things "too fast" for the UI to keep up (action
 
 ### Message Send Timeout
 
-How long (in seconds) IntenseRP waits for the send button to become active after typing or pasting your message into the text box. This is **not** the file upload timeout - that one lives under [:material-file-upload: File Upload Mode](../features/glm-behavior.md#file-upload-mode).
+How long (in seconds) IntenseRP waits for the send button to become active after typing or pasting your message into the text box. This is **not** the file upload timeout - that one lives under [:material-file-upload: File Upload Mode](../providers/glm-behavior.md#file-upload-mode).
 
 | | |
 |---|---|

@@ -133,7 +133,7 @@ GLM requires a CAPTCHA during login. Even with Auto Login enabled, you must comp
 !!! tip "Use Persistent Sessions"
     Persistent Sessions are strongly recommended for GLM. They help you avoid solving the CAPTCHA on every start.
 
-See: [:material-key: Login & Sessions](login-sessions.md)
+See: [:material-key: Login & Sessions](../features/login-sessions.md)
 
 ---
 
@@ -197,6 +197,6 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 
 ---
 
-## :material-arrow-left: Back to Features
+## :material-arrow-left: Back to Providers
 
-[:material-arrow-left: Features Overview](../features.md)
+[:material-arrow-left: Providers Overview](../providers.md)

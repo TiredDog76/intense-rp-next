@@ -83,31 +83,31 @@ Providers are prioritized in this order:
 
     DeepThink, Search, anti-censorship, and more.
 
-    [:arrow_right: DeepSeek Behavior](../features/deepseek-behavior.md)
+    [:arrow_right: DeepSeek Behavior](../providers/deepseek-behavior.md)
 
 -   :providers-zai: **GLM Behavior**
 
     Deep Think, modes, Search status, and GLM-specific notes.
 
-    [:arrow_right: GLM Behavior](../features/glm-behavior.md)
+    [:arrow_right: GLM Behavior](../providers/glm-behavior.md)
 
 -   :providers-moonshot: **Moonshot Behavior**
 
     Thinking, Search, file uploads, and Kimi-specific caveats.
 
-    [:arrow_right: Moonshot Behavior](../features/moonshot-behavior.md)
+    [:arrow_right: Moonshot Behavior](../providers/moonshot-behavior.md)
 
 -   :providers-qwen: **QwenLM Behavior**
 
     Thinking, Web search, model selection, and token counting.
 
-    [:arrow_right: QwenLM Behavior](../features/qwen-behavior.md)
+    [:arrow_right: QwenLM Behavior](../providers/qwen-behavior.md)
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 
     Gemini model selection, Thinking Level, Search, URL Context, and sampling controls.
 
-    [:arrow_right: Google AI Studio Behavior](../features/aistudio-behavior.md)
+    [:arrow_right: Google AI Studio Behavior](../providers/aistudio-behavior.md)
 
 -   :material-key: **Login & Sessions**
 
