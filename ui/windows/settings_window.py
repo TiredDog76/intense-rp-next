@@ -345,6 +345,13 @@ class SettingsWindow(QMainWindow):
         docs_url = self._docs_url_for_widget(focus_widget)
         return self._open_docs_url(docs_url)
 
+    def open_docs_for_shortcut(self) -> bool:
+        return self._open_docs_for_focused_widget()
+
+    def _focus_search_input(self) -> None:
+        self.search_input.setFocus(Qt.ShortcutFocusReason)
+        self.search_input.selectAll()
+
     def _create_field_widget(self, field, category_key):
         widget = None
         docs_url = self._get_field_docs_url(field)
@@ -1001,14 +1008,14 @@ class SettingsWindow(QMainWindow):
         self.search_timer.setInterval(300)
         self.search_timer.timeout.connect(self._perform_search)
 
+        self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.search_shortcut.activated.connect(self._focus_search_input)
+
         self._highlight_overlay = _SearchHighlightOverlay(self.scroll_area.viewport())
         self._highlight_overlay.setGeometry(self.scroll_area.viewport().rect())
         self._highlight_overlay.raise_()
         self.scroll_area.viewport().installEventFilter(self._highlight_overlay)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self._highlight_overlay.update_target_geometry)
-
-        self.docs_shortcut = QShortcut(QKeySequence(Qt.Key_F1), self)
-        self.docs_shortcut.activated.connect(self._open_docs_for_focused_widget)
 
         self._category_build_timer = QTimer(self)
         self._category_build_timer.setSingleShot(True)

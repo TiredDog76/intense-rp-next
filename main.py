@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
     QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon, QMenu
 )
-from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize, QUrl
+from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize, QUrl, QEvent
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QPixmap, QDesktopServices
 import qasync
@@ -39,6 +39,7 @@ from utils.news_state import NEWS_DOCS_URL, has_unviewed_news, mark_latest_news_
 from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
 from utils.resource_path import resolve_resource_path
+from utils.docs_links import DOCS_BASE_URL
 import shutil
 import socket
 import time
@@ -457,6 +458,10 @@ class MainWindow(QMainWindow):
         self._sync_news_button()
         self._sync_hotswap_button()
         self._maybe_show_welcome_window()
+
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
     def _cleanup_tray_icon(self) -> None:
         tray_icon = getattr(self, "_tray_icon", None)
@@ -1374,6 +1379,32 @@ class MainWindow(QMainWindow):
             self.help_window.settings_reloaded.connect(self.on_settings_reloaded)
         self.help_window.show()
         self.help_window.activateWindow()
+
+    def _open_docs_home(self) -> bool:
+        return bool(QDesktopServices.openUrl(QUrl(DOCS_BASE_URL)))
+
+    def _handle_global_docs_shortcut(self) -> bool:
+        active_window = QApplication.activeWindow()
+        if isinstance(active_window, SettingsWindow):
+            try:
+                if active_window.open_docs_for_shortcut():
+                    return True
+            except Exception:
+                pass
+        return self._open_docs_home()
+
+    def eventFilter(self, watched, event):
+        if (
+            event is not None
+            and event.type() == QEvent.KeyPress
+            and event.key() == Qt.Key_F1
+            and event.modifiers() == Qt.NoModifier
+            and (not event.isAutoRepeat())
+        ):
+            if self._handle_global_docs_shortcut():
+                event.accept()
+                return True
+        return super().eventFilter(watched, event)
 
     def on_settings_saved(self, affected=None):
         affected = affected or set()

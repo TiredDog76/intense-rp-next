@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
 )
 from PySide6.QtCore import Qt, Slot, QTimer
-from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextOption, QTextCursor, QTextFormat
+from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextOption, QTextCursor, QTextFormat, QKeySequence, QShortcut
 
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
@@ -344,6 +344,9 @@ class ConsoleWindow(QMainWindow):
         self.search_timer.setInterval(self.SEARCH_DEBOUNCE_MS)
         self.search_timer.timeout.connect(self._perform_search)
 
+        self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.search_shortcut.activated.connect(self._focus_search_input)
+
         self.search_flash_timer = QTimer(self)
         self.search_flash_timer.setInterval(self.SEARCH_FLASH_INTERVAL_MS)
         self.search_flash_timer.timeout.connect(self._advance_search_flash)
@@ -365,6 +368,10 @@ class ConsoleWindow(QMainWindow):
         if self._search_refresh_origin != "input" or origin == "input":
             self._search_refresh_origin = origin
         self.search_timer.start()
+
+    def _focus_search_input(self) -> None:
+        self.search_input.setFocus(Qt.ShortcutFocusReason)
+        self.search_input.selectAll()
 
     def _on_search_text_changed(self, text: str) -> None:
         has_query = bool(text.strip())
