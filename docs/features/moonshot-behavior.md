@@ -72,6 +72,16 @@ Toggles Kimi search tooling in the web UI.
 
 ---
 
+## :material-shield-check: Provider guardrails (automatic)
+
+Kimi's Memory feature can inject account-level context into chats.
+
+To keep chats predictable, IntenseRP watches Kimi's startup settings response and auto-disables Memory if it sees it enabled.
+
+This is done from the browser context, so it uses your active Kimi session and cookies rather than a separate HTTP client.
+
+---
+
 ## :material-file-upload: File Upload Mode
 
 Instead of typing your message into Kimi's editor, IntenseRP can upload it as a text file attachment.

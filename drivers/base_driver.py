@@ -412,6 +412,15 @@ class BaseDriver(ABC):
     ) -> None:
         return None
 
+    async def before_initial_navigation(self) -> None:
+        """
+        Optional hook: register routes/listeners before the first page navigation.
+
+        This is useful for providers that need to observe startup requests that fire
+        immediately when the landing page opens.
+        """
+        return None
+
     async def cleanup_background_tasks(self) -> None:
         return None
 
@@ -542,6 +551,8 @@ class BaseDriver(ABC):
                 self.page = pages[0] if pages else await self.context.new_page()
             except Exception:
                 self.page = await self.context.new_page()
+
+            await self.before_initial_navigation()
 
             start_url = self.get_start_url()
             Logger.info(f"Navigating to {start_url} ...")

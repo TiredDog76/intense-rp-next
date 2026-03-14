@@ -28,6 +28,24 @@ load_dotenv()
 class MoonshotDriver(BaseDriver):
     CHAT_ROUTE_GLOB = "**/apiv2/kimi.gateway.chat.v1.ChatService/Chat*"
     REGEN_ROUTE_GLOB = "**/apiv2/kimi.gateway.chat.v1.ChatService/RegenerateMessage*"
+    USER_SETTINGS_ROUTE_GLOB = "**/apiv2/kimi.usersetting.v1.UserSettingService/GetUserSetting*"
+    USER_SETTINGS_UPDATE_URL = "https://www.kimi.com/apiv2/kimi.usersetting.v1.UserSettingService/UpdateUserSetting"
+    MEMORY_DISABLE_UPDATE_PAYLOAD = {
+        "user_setting": {"memory": {}},
+        "update_mask": "memory.useSemanticMemory",
+    }
+    SETTINGS_REQUEST_HEADER_ALLOWLIST = {
+        "authorization",
+        "accept",
+        "accept-language",
+        "dnt",
+        "x-language",
+        "x-msh-device-id",
+        "x-msh-platform",
+        "x-msh-session-id",
+        "x-msh-version",
+        "x-traffic-id",
+    }
     CONNECT_MAX_FRAME_BYTES = 8 * 1024 * 1024
     MODEL_INSTANT = "K2.5 Instant"
     MODEL_THINKING = "K2.5 Thinking"
@@ -58,9 +76,61 @@ class MoonshotDriver(BaseDriver):
         self._connect_buffer = bytearray()
         self._search_and_think_warned = False
         self._degrade_notice_logged = False
+        self._memory_settings_disable_lock = asyncio.Lock()
+        self._memory_settings_last_attempt_ts: float = 0.0
 
     def get_start_url(self) -> str:
         return "https://www.kimi.com/"
+
+    async def before_initial_navigation(self) -> None:
+        if not self.page:
+            return
+
+        async def handle_user_settings_route(route):
+            request = route.request
+            try:
+                method = str(request.method or "").upper()
+            except Exception:
+                method = ""
+
+            if method != "POST":
+                await route.continue_()
+                return
+
+            request_headers: Dict[str, str] = {}
+            request_body: bytes | None = None
+            request_url = ""
+            try:
+                request_url = str(request.url or "")
+                request_headers = await request.all_headers()
+                request_body = self._extract_request_body_bytes(request)
+                response = await route.fetch()
+                body = await response.body()
+            except Exception as e:
+                Logger.debug(f"Moonshot: failed to inspect user settings response: {e}")
+                await route.continue_()
+                return
+
+            try:
+                await route.fulfill(response=response, body=body)
+            except Exception as e:
+                Logger.warning(f"Moonshot: failed to fulfill user settings route: {e}")
+                return
+
+            try:
+                await self._maybe_disable_memory_from_settings_body(
+                    body,
+                    request_headers,
+                    {
+                        "url": request_url,
+                        "method": method,
+                        "body": request_body,
+                    },
+                )
+            except Exception as e:
+                Logger.debug(f"Moonshot: memory guardrail failed while reading settings response: {e}")
+
+        await self.page.route(self.USER_SETTINGS_ROUTE_GLOB, handle_user_settings_route)
 
     async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         await self.check_ui_language(status_callback=status_callback)
@@ -77,6 +147,222 @@ class MoonshotDriver(BaseDriver):
     def _ece_requires_auto_login(self) -> bool:
         # Moonshot login uses a manual Google flow; accounts still help pick identity/profile.
         return False
+
+    @staticmethod
+    def _flag_is_true(value: Any) -> bool:
+        if value is True:
+            return True
+        if value is False or value is None:
+            return False
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on", "enabled"}
+        return False
+
+    @classmethod
+    def _memory_is_enabled(cls, memory: Any) -> bool:
+        if not isinstance(memory, dict):
+            return False
+        return cls._flag_is_true(memory.get("useSemanticMemory")) or cls._flag_is_true(
+            memory.get("useEpisodicMemory")
+        )
+
+    @classmethod
+    def _build_settings_request_headers(cls, source_headers: Any) -> Dict[str, str]:
+        if not isinstance(source_headers, dict):
+            return {}
+
+        forwarded: Dict[str, str] = {}
+        for key, value in source_headers.items():
+            try:
+                name = str(key or "").strip().lower()
+                text = str(value or "").strip()
+            except Exception:
+                continue
+            if not name or not text:
+                continue
+            if name in cls.SETTINGS_REQUEST_HEADER_ALLOWLIST:
+                forwarded[name] = text
+        return forwarded
+
+    @staticmethod
+    def _decode_request_body_text(body: bytes | None) -> str | None:
+        if not body:
+            return None
+        try:
+            return body.decode("utf-8")
+        except Exception:
+            decoded = body.decode("utf-8", errors="ignore")
+            return decoded or None
+
+    async def _maybe_disable_memory_from_settings_body(
+        self,
+        body: bytes,
+        source_headers: Any = None,
+        refresh_request: Any = None,
+    ) -> bool:
+        try:
+            decoded = body.decode("utf-8", errors="ignore")
+            payload = json.loads(decoded)
+        except Exception as e:
+            Logger.debug(f"Moonshot: could not parse user settings response: {e}")
+            return False
+
+        if not isinstance(payload, dict):
+            Logger.debug("Moonshot: user settings response was not a JSON object.")
+            return False
+
+        user_setting = payload.get("userSetting")
+        if not isinstance(user_setting, dict):
+            Logger.debug("Moonshot: user settings response did not contain a userSetting object.")
+            return False
+
+        memory = user_setting.get("memory")
+        if not isinstance(memory, dict):
+            Logger.debug("Moonshot: user settings response did not contain a memory section.")
+            return False
+
+        if not self._memory_is_enabled(memory):
+            Logger.debug("Moonshot: memory already looks disabled.")
+            return False
+
+        now = time.time()
+        last_attempt = float(getattr(self, "_memory_settings_last_attempt_ts", 0.0) or 0.0)
+        if (now - last_attempt) < 15.0:
+            Logger.debug("Moonshot: memory auto-disable was already attempted recently. Skipping duplicate request.")
+            return False
+
+        async with self._memory_settings_disable_lock:
+            now = time.time()
+            last_attempt = float(getattr(self, "_memory_settings_last_attempt_ts", 0.0) or 0.0)
+            if (now - last_attempt) < 15.0:
+                return False
+            self._memory_settings_last_attempt_ts = now
+
+            if not self.page:
+                return False
+
+            forwarded_headers = self._build_settings_request_headers(source_headers)
+            if "authorization" not in forwarded_headers:
+                Logger.warning("Moonshot: memory is enabled, but no Authorization header was found on GetUserSetting.")
+                return False
+
+            refresh_args = None
+            if isinstance(refresh_request, dict):
+                refresh_url = str(refresh_request.get("url") or "").strip()
+                refresh_method = str(refresh_request.get("method") or "POST").strip().upper() or "POST"
+                refresh_body = self._decode_request_body_text(refresh_request.get("body"))
+                if refresh_url:
+                    refresh_args = {
+                        "url": refresh_url,
+                        "method": refresh_method,
+                        "headers": dict(forwarded_headers),
+                        "body": refresh_body,
+                    }
+
+            Logger.info("Moonshot: Kimi memory is enabled. Disabling it from the browser context...")
+
+            try:
+                result = await self.page.evaluate(
+                    """async (args) => {
+                        const runRequest = async (request) => {
+                            const out = { ok: false, status: 0, text: "" };
+                            try {
+                                const resp = await fetch(request.url, {
+                                    method: request.method || "POST",
+                                    credentials: "include",
+                                    referrer: request.referrer || "https://www.kimi.com/settings",
+                                    headers: {
+                                        ...(request.headers || {}),
+                                        "content-type": "application/json",
+                                    },
+                                    body: request.body ?? undefined,
+                                });
+                                out.ok = !!resp.ok;
+                                out.status = resp.status || 0;
+                                try {
+                                    out.text = await resp.text();
+                                } catch (e) {
+                                    out.text = "";
+                                }
+                            } catch (e) {
+                                out.error = String(e);
+                            }
+                            return out;
+                        };
+
+                        const out = await runRequest({
+                            url: args.url,
+                            method: "POST",
+                            headers: args.headers,
+                            body: JSON.stringify(args.body),
+                        });
+
+                        if (out.ok && args.refresh) {
+                            await new Promise((resolve) => setTimeout(resolve, 200));
+                            out.refresh = await runRequest(args.refresh);
+                        }
+
+                        return out;
+                    }""",
+                    {
+                        "url": self.USER_SETTINGS_UPDATE_URL,
+                        "body": self.MEMORY_DISABLE_UPDATE_PAYLOAD,
+                        "headers": forwarded_headers,
+                        "refresh": refresh_args,
+                    },
+                )
+            except Exception as e:
+                Logger.warning(f"Moonshot: failed to disable Kimi memory from browser context: {e}")
+                return False
+
+            if isinstance(result, dict) and result.get("ok") is True:
+                refresh_result = result.get("refresh")
+                if isinstance(refresh_result, dict):
+                    if refresh_result.get("ok") is True:
+                        Logger.debug("Moonshot: refreshed Kimi settings after disabling memory.")
+                    else:
+                        try:
+                            refresh_status = int(refresh_result.get("status") or 0)
+                        except Exception:
+                            refresh_status = 0
+                        refresh_detail = str(
+                            refresh_result.get("error") or refresh_result.get("text") or ""
+                        ).strip()
+                        if refresh_detail:
+                            Logger.warning(
+                                f"Moonshot: memory was disabled, but settings refresh failed (status={refresh_status}): "
+                                f"{refresh_detail[:200]}"
+                            )
+                        else:
+                            Logger.warning(
+                                f"Moonshot: memory was disabled, but settings refresh failed (status={refresh_status})."
+                            )
+                Logger.success("Moonshot: disabled Kimi memory.")
+                return True
+
+            status = 0
+            detail = ""
+            if isinstance(result, dict):
+                try:
+                    status = int(result.get("status") or 0)
+                except Exception:
+                    status = 0
+
+                error = str(result.get("error") or "").strip()
+                if error:
+                    detail = error
+                else:
+                    text = str(result.get("text") or "").strip()
+                    if text:
+                        detail = text[:200]
+
+            if detail:
+                Logger.warning(f"Moonshot: failed to disable Kimi memory (status={status}): {detail}")
+            else:
+                Logger.warning(f"Moonshot: failed to disable Kimi memory (status={status}).")
+            return False
 
     @staticmethod
     def _normalize_text(value: str) -> str:
