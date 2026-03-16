@@ -5,6 +5,7 @@ import codecs
 import json
 import os
 import re
+import secrets
 import shutil
 import tempfile
 import time
@@ -19,6 +20,8 @@ from drivers.shared_utils import (
     clear_clean_regeneration_cache,
     extract_macro_overrides,
     format_messages,
+    resolve_rendered_injection,
+    split_leading_system_messages,
     strip_macros_from_messages,
 )
 from utils.cache_manager import CacheManager
@@ -175,6 +178,26 @@ class AIStudioDriver(BaseDriver):
         "button[aria-label='Agree to the copyright acknowledgement']"
     )
     PROMPT_MEDIA_CONTAINER_SELECTOR = "[data-test-id='prompt-media-container']"
+    SYSTEM_INSTRUCTIONS_STORAGE_KEY = "aistudio_all_system_instructions"
+    SYSTEM_INSTRUCTIONS_CARD_SELECTORS = [
+        "button.system-instructions-card",
+        "[data-test-id='system-instructions-card']",
+        ".system-instructions-card button",
+        ".system-instructions-card",
+    ]
+    SYSTEM_INSTRUCTIONS_TITLE_INPUT_SELECTORS = [
+        ".title-row input",
+        ".title-row > input",
+    ]
+    SYSTEM_INSTRUCTIONS_TEXTAREA_SELECTORS = [
+        "textarea.mat-mdc-tooltip-trigger.in-run-settings",
+        "textarea.in-run-settings.mat-mdc-tooltip-trigger",
+        "textarea.in-run-settings",
+    ]
+    SYSTEM_INSTRUCTIONS_CLOSE_SELECTORS = [
+        "button[data-test-close-button]",
+        "[data-test-close-button]",
+    ]
     SEND_BUTTON_SELECTORS = [
         "button[mattooltipclass='run-button-tooltip']",
         "[mattooltipclass='run-button-tooltip']",
@@ -238,6 +261,8 @@ class AIStudioDriver(BaseDriver):
         "send_deepthink",
         "search_enabled",
         "url_context_enabled",
+        "use_system_prompt_field",
+        "system_prompt_text",
         "send_as_text_file",
         "text_file_message",
         "temperature",
@@ -276,6 +301,7 @@ class AIStudioDriver(BaseDriver):
         self.clean_regen_message_cache_key = "aistudio_last_message.txt"
         self.clean_regen_state_cache_key = "aistudio_last_message_state.json"
         self._safety_filters_initialized = False
+        self._system_instructions_storage_reset_done = False
 
     @property
     def required_ui_language_label(self) -> str:
@@ -293,7 +319,136 @@ class AIStudioDriver(BaseDriver):
             self.clean_regen_message_cache_key,
             self.clean_regen_state_cache_key,
         )
+        await self._clear_persisted_system_instructions_if_needed()
         await self._ensure_safety_filters_initialized()
+
+    def _use_system_prompt_field_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("aistudio_behavior", "use_system_prompt_field"))
+        except Exception:
+            return False
+
+    async def _clear_persisted_system_instructions_if_needed(self) -> None:
+        """Clear AI Studio's locally persisted system instructions once per driver start."""
+        if self._system_instructions_storage_reset_done:
+            return
+        if not self._use_system_prompt_field_enabled():
+            return
+        if not self.page:
+            return
+
+        try:
+            storage_info = await self.page.evaluate(
+                """(storageKey) => {
+                    try {
+                        const raw = window.localStorage.getItem(storageKey);
+                        if (raw === null) {
+                            return { exists: false, count: 0, titles: [] };
+                        }
+
+                        let parsed = null;
+                        try {
+                            parsed = JSON.parse(raw);
+                        } catch (e) {}
+
+                        const titles = Array.isArray(parsed)
+                            ? parsed
+                                .filter((item) => item && typeof item === 'object')
+                                .slice(0, 5)
+                                .map((item) => (item.title || '').toString())
+                            : [];
+
+                        return {
+                            exists: true,
+                            count: Array.isArray(parsed) ? parsed.length : 0,
+                            titles,
+                            rawLength: raw.length,
+                        };
+                    } catch (e) {
+                        return {
+                            exists: false,
+                            error: (e && e.message) ? e.message.toString() : String(e),
+                        };
+                    }
+                }""",
+                self.SYSTEM_INSTRUCTIONS_STORAGE_KEY,
+            )
+        except Exception as e:
+            Logger.debug(f"Google AI Studio: failed to inspect system-instruction storage: {e}")
+            return
+
+        if not isinstance(storage_info, dict):
+            return
+
+        error_message = str(storage_info.get("error") or "").strip()
+        if error_message:
+            Logger.debug(
+                "Google AI Studio: could not inspect persisted system instructions "
+                f"before cleanup: {error_message}"
+            )
+            return
+
+        if not bool(storage_info.get("exists")):
+            self._system_instructions_storage_reset_done = True
+            return
+
+        titles = [
+            str(title or "").strip()
+            for title in list(storage_info.get("titles") or [])
+            if str(title or "").strip()
+        ]
+        titles_preview = f" titles={titles}" if titles else ""
+        Logger.info(
+            "Google AI Studio: clearing persisted system instructions from local storage "
+            f"(count={int(storage_info.get('count') or 0)}, rawLength={int(storage_info.get('rawLength') or 0)})"
+            f"{titles_preview}."
+        )
+
+        try:
+            cleared = await self.page.evaluate(
+                """(storageKey) => {
+                    try {
+                        window.localStorage.removeItem(storageKey);
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                }""",
+                self.SYSTEM_INSTRUCTIONS_STORAGE_KEY,
+            )
+        except Exception as e:
+            Logger.warning(
+                f"Google AI Studio: failed to clear persisted system instructions from local storage: {e}"
+            )
+            return
+
+        if not cleared:
+            Logger.warning(
+                "Google AI Studio: local-storage cleanup for persisted system instructions "
+                "did not complete."
+            )
+            return
+
+        Logger.info("Google AI Studio: refreshing the page after system-instruction cleanup...")
+        try:
+            await self.page.reload(wait_until="domcontentloaded", timeout=45000)
+        except Exception as e:
+            Logger.warning(
+                f"Google AI Studio: page reload after system-instruction cleanup failed: {e}. "
+                "Retrying via normal navigation..."
+            )
+            try:
+                await self._navigate_to_start_url(self.START_URL)
+            except Exception as nav_error:
+                Logger.warning(
+                    f"Google AI Studio: fallback navigation after storage cleanup failed: {nav_error}"
+                )
+                return
+
+        await self._accept_terms_of_service_if_present(timeout_ms=1500)
+        await self._wait_for_chat_ready(timeout_ms=60000)
+        await self.check_ui_language()
+        self._system_instructions_storage_reset_done = True
 
     @staticmethod
     def _normalize_text(value: str) -> str:
@@ -965,6 +1120,7 @@ class AIStudioDriver(BaseDriver):
         send_deepthink = bool(self.config_manager.get_setting("aistudio_behavior", "send_deepthink"))
         search_enabled = bool(self.config_manager.get_setting("aistudio_behavior", "enable_search"))
         url_context_enabled = bool(self.config_manager.get_setting("aistudio_behavior", "enable_url_context"))
+        use_system_prompt_field = self._use_system_prompt_field_enabled()
         send_as_text_file = bool(self.config_manager.get_setting("aistudio_behavior", "send_as_text_file"))
         text_file_message = str(
             self.config_manager.get_setting("aistudio_behavior", "text_file_message") or ""
@@ -1038,6 +1194,7 @@ class AIStudioDriver(BaseDriver):
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(search_enabled),
             "url_context_enabled": bool(url_context_enabled),
+            "use_system_prompt_field": bool(use_system_prompt_field),
             "send_as_text_file": bool(send_as_text_file),
             "text_file_message": text_file_message,
             "file_upload_timeout": int(file_upload_timeout),
@@ -1045,6 +1202,98 @@ class AIStudioDriver(BaseDriver):
             "top_p": float(top_p_value),
             "max_output_tokens": int(max_output_tokens),
         }
+
+    def _message_format_separator(self) -> str:
+        """Return the separator used by the shared formatting pipeline."""
+        apply_formatting = bool(self.config_manager.get_setting("formatting", "apply_formatting"))
+        if not apply_formatting:
+            return "\n"
+        divider = self.config_manager.get_setting("formatting", "formatting_divider") or ""
+        return str(divider).replace("\\n", "\n")
+
+    @staticmethod
+    def _message_content_as_text(message: Any) -> str:
+        """Convert a message object's content into plain text."""
+        content = None
+        try:
+            content = getattr(message, "content")
+        except Exception:
+            content = None
+        if content is None and isinstance(message, dict):
+            content = message.get("content", "")
+        return "" if content is None else str(content)
+
+    def _strip_leading_rendered_injection(self, text: str, injection_text: str) -> str:
+        """Remove one rendered injection prefix from a formatted prompt."""
+        if not text or not injection_text:
+            return text
+        if text == injection_text:
+            return ""
+        if text.startswith(injection_text):
+            remainder = text[len(injection_text) :]
+            return remainder[1:] if remainder.startswith("\n") else remainder
+        return text
+
+    def _strip_formatted_prefix(self, text: str, prefix: str) -> str:
+        """Remove a formatted message prefix and its following separator."""
+        if not text or not prefix:
+            return text
+        if text == prefix:
+            return ""
+        if not text.startswith(prefix):
+            return text
+
+        remainder = text[len(prefix) :]
+        separator = self._message_format_separator()
+        if separator and remainder.startswith(separator):
+            return remainder[len(separator) :]
+        if remainder.startswith("\n"):
+            return remainder[1:]
+        return remainder
+
+    def _prepare_prompt_payload(self, message_for_formatting: Union[str, List[Any]]) -> tuple[str, str]:
+        """Build the chat payload and optional AI Studio system-instructions text."""
+        formatted_message = self._format_messages(message_for_formatting)
+        if not self._use_system_prompt_field_enabled():
+            return formatted_message, ""
+
+        system_prompt_parts: list[str] = []
+        leading_system_messages: list[Any] = []
+        if isinstance(message_for_formatting, list):
+            leading_system_messages, _ = split_leading_system_messages(message_for_formatting)
+            for item in leading_system_messages:
+                content = self._message_content_as_text(item).strip()
+                if content:
+                    system_prompt_parts.append(content)
+
+        injection_position, rendered_injection = resolve_rendered_injection(
+            self.config_manager,
+            message_for_formatting,
+        )
+        use_before_injection = (
+            bool(rendered_injection)
+            and str(injection_position or "").strip().lower() == "before"
+        )
+        if use_before_injection:
+            rendered_injection = str(rendered_injection or "").strip()
+            if rendered_injection:
+                system_prompt_parts.append(rendered_injection)
+                formatted_message = self._strip_leading_rendered_injection(
+                    formatted_message,
+                    rendered_injection,
+                )
+
+        if leading_system_messages:
+            leading_prefix = self._format_messages(leading_system_messages)
+            if use_before_injection and rendered_injection:
+                leading_prefix = self._strip_leading_rendered_injection(
+                    leading_prefix,
+                    rendered_injection,
+                )
+            formatted_message = self._strip_formatted_prefix(formatted_message, leading_prefix)
+
+        system_prompt_text = "\n\n".join(part for part in system_prompt_parts if part)
+        return formatted_message, system_prompt_text
 
     async def _read_toggle_state_by_aria_label(self, aria_label: str) -> Optional[bool]:
         """Best-effort read a switch state using the control's aria-label."""
@@ -1341,40 +1590,115 @@ class AIStudioDriver(BaseDriver):
         if field is None:
             return False
 
-        try:
-            await field.evaluate(
-                """(el, value) => {
-                    const text = (value ?? '').toString();
-                    const apply = (input) => {
-                        if (!input) return false;
-                        try { input.focus(); } catch (e) {}
-                        const proto = Object.getPrototypeOf(input);
-                        const desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
-                        if (desc && typeof desc.set === 'function') {
-                            desc.set.call(input, text);
-                        } else {
-                            input.value = text;
+        return await self._set_text_control_value(field, value_text, nested_selector="input")
+
+    async def _set_text_control_value(
+        self,
+        field,
+        value_text: str,
+        *,
+        nested_selector: str | None = None,
+    ) -> bool:
+        """Force-set an input or textarea value while re-focusing between retries."""
+        if field is None:
+            return False
+
+        value_text = str(value_text or "")
+        nested_selector = str(nested_selector or "").strip()
+
+        for _ in range(4):
+            try:
+                await field.click(timeout=1500, force=True)
+            except Exception:
+                pass
+
+            try:
+                applied = await field.evaluate(
+                    """(el, payload) => {
+                        const value = (payload && payload.value !== undefined)
+                            ? (payload.value ?? '').toString()
+                            : '';
+                        const nestedSelector = (payload && payload.nestedSelector)
+                            ? payload.nestedSelector.toString()
+                            : '';
+
+                        const resolveTarget = () => {
+                            if (el && typeof el.value !== 'undefined') return el;
+                            if (nestedSelector && el && el.querySelector) {
+                                return el.querySelector(nestedSelector);
+                            }
+                            return null;
+                        };
+
+                        const target = resolveTarget();
+                        if (!target) return false;
+
+                        try { target.focus({ preventScroll: true }); } catch (e) {
+                            try { target.focus(); } catch (e2) {}
                         }
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                        input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                        let proto = target;
+                        let setter = null;
+                        while (proto && !setter) {
+                            const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                            if (desc && typeof desc.set === 'function') {
+                                setter = desc.set;
+                                break;
+                            }
+                            proto = Object.getPrototypeOf(proto);
+                        }
+
+                        if (setter) {
+                            setter.call(target, value);
+                        } else {
+                            target.value = value;
+                        }
+
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                        target.dispatchEvent(new Event('change', { bubbles: true }));
                         try {
-                            input.setSelectionRange(text.length, text.length);
+                            target.setSelectionRange(value.length, value.length);
                         } catch (e) {}
-                        return true;
-                    };
-                    if (apply(el)) return true;
-                    const nested = el.querySelector ? el.querySelector('input') : null;
-                    return apply(nested);
-                }""",
-                value_text,
-            )
-            return True
-        except Exception:
+
+                        return (target.value ?? '').toString() === value;
+                    }""",
+                    {
+                        "value": value_text,
+                        "nestedSelector": nested_selector,
+                    },
+                )
+            except Exception:
+                applied = False
+
+            if applied:
+                return True
+
             try:
                 await field.fill(value_text)
-                return True
+                current_value = await field.evaluate(
+                    """(el) => {
+                        const target = (el && typeof el.value !== 'undefined')
+                            ? el
+                            : (el && el.querySelector ? el.querySelector('input, textarea') : null);
+                        return target ? (target.value ?? '').toString() : '';
+                    }"""
+                )
+                if str(current_value or "") == value_text:
+                    return True
             except Exception:
-                return False
+                pass
+
+            await asyncio.sleep(0.08)
+
+        return False
+
+    async def _set_textarea_value(self, selector: str, value_text: str, *, timeout_ms: int = 8000) -> bool:
+        """Set a textarea value with the same resilient path used by the composer."""
+        field = await self._find_first_visible([selector], timeout_ms=timeout_ms)
+        if field is None:
+            return False
+
+        return await self._set_text_control_value(field, value_text, nested_selector="textarea")
 
     async def _set_temperature_value(self, value: float) -> None:
         formatted = f"{float(value):.4f}".rstrip("0").rstrip(".")
@@ -2029,6 +2353,126 @@ class AIStudioDriver(BaseDriver):
                 except Exception:
                     pass
 
+    async def _is_system_prompt_panel_open(self) -> bool:
+        """Return whether the AI Studio system-instructions editor is currently visible."""
+        title_input = await self._find_first_visible(
+            self.SYSTEM_INSTRUCTIONS_TITLE_INPUT_SELECTORS,
+            timeout_ms=0,
+        )
+        if title_input is not None:
+            return True
+
+        textarea = await self._find_first_visible(
+            self.SYSTEM_INSTRUCTIONS_TEXTAREA_SELECTORS,
+            timeout_ms=0,
+        )
+        return textarea is not None
+
+    async def _open_system_prompt_panel(self) -> bool:
+        """Open AI Studio's System Instructions panel."""
+        if not self.page:
+            return False
+        if await self._is_system_prompt_panel_open():
+            return True
+
+        trigger = await self._find_first_visible(self.SYSTEM_INSTRUCTIONS_CARD_SELECTORS, timeout_ms=8000)
+        if trigger is None:
+            Logger.warning("Google AI Studio: system-instructions trigger was not found.")
+            return False
+
+        for _ in range(4):
+            await self._dismiss_transient_overlays()
+            try:
+                await trigger.click(timeout=2000, force=True)
+            except Exception:
+                try:
+                    await trigger.evaluate("el => el.click()")
+                except Exception:
+                    pass
+
+            await self._ui_settle_pause(0.16)
+            if await self._is_system_prompt_panel_open():
+                return True
+
+        Logger.warning("Google AI Studio: system-instructions panel did not open.")
+        return False
+
+    async def _close_system_prompt_panel(self) -> bool:
+        """Close AI Studio's System Instructions panel."""
+        if not self.page:
+            return False
+        if not await self._is_system_prompt_panel_open():
+            return True
+
+        close_button = await self._find_first_visible(
+            self.SYSTEM_INSTRUCTIONS_CLOSE_SELECTORS,
+            timeout_ms=5000,
+        )
+        if close_button is None:
+            Logger.warning("Google AI Studio: system-instructions close button was not found.")
+            return False
+
+        for _ in range(4):
+            try:
+                await close_button.click(timeout=2000, force=True)
+            except Exception:
+                try:
+                    await close_button.evaluate("el => el.click()")
+                except Exception:
+                    pass
+
+            await self._ui_settle_pause(0.16)
+            if not await self._is_system_prompt_panel_open():
+                return True
+
+        Logger.warning("Google AI Studio: system-instructions panel did not close cleanly.")
+        return False
+
+    def _build_system_prompt_title(self) -> str:
+        """Generate a short unique label for AI Studio's system-instructions entry."""
+        return f"intenserp-{secrets.token_hex(8)}"
+
+    async def _sync_system_prompt_field(self, system_prompt_text: str) -> None:
+        """Write or clear AI Studio's System Instructions field for the current chat."""
+        if not self.page:
+            return
+
+        opened = await self._open_system_prompt_panel()
+        if not opened:
+            return
+
+        title_value = self._build_system_prompt_title()
+        if str(system_prompt_text or "").strip():
+            title_ok = await self._set_input_value(
+                self.SYSTEM_INSTRUCTIONS_TITLE_INPUT_SELECTORS[0],
+                title_value,
+                timeout_ms=5000,
+            )
+            if not title_ok:
+                title_field = await self._find_first_visible(
+                    self.SYSTEM_INSTRUCTIONS_TITLE_INPUT_SELECTORS,
+                    timeout_ms=2000,
+                )
+                title_ok = await self._set_text_control_value(title_field, title_value)
+            if not title_ok:
+                Logger.warning("Google AI Studio: failed to set the system-instructions title.")
+
+        textarea = await self._find_first_visible(
+            self.SYSTEM_INSTRUCTIONS_TEXTAREA_SELECTORS,
+            timeout_ms=8000,
+        )
+        if textarea is None:
+            Logger.warning("Google AI Studio: system-instructions textarea was not found.")
+            await self._close_system_prompt_panel()
+            return
+
+        body_ok = await self._set_text_control_value(textarea, str(system_prompt_text or ""))
+        if not body_ok:
+            Logger.warning("Google AI Studio: failed to set the system-instructions body.")
+
+        await self._close_system_prompt_panel()
+        await self._refocus_composer_before_send()
+
     async def enter_message(self, message: str) -> None:
         """Populate the prompt composer without relying on paste shortcuts."""
         if not self.page:
@@ -2039,35 +2483,9 @@ class AIStudioDriver(BaseDriver):
             Logger.warning("Google AI Studio: prompt textarea was not found.")
             return
 
-        try:
-            await editor.evaluate(
-                """(el, text) => {
-                    const value = (text ?? '').toString();
-                    const apply = (textarea) => {
-                        if (!textarea) return false;
-                        try { textarea.focus(); } catch (e) {}
-                        const proto = Object.getPrototypeOf(textarea);
-                        const desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
-                        if (desc && typeof desc.set === 'function') {
-                            desc.set.call(textarea, value);
-                        } else {
-                            textarea.value = value;
-                        }
-                        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                        textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                        return true;
-                    };
-                    if (apply(el)) return true;
-                    const nested = el.querySelector ? el.querySelector('textarea') : null;
-                    return apply(nested);
-                }""",
-                str(message or ""),
-            )
-        except Exception:
-            try:
-                await editor.fill(str(message or ""))
-            except Exception as e:
-                Logger.warning(f"Google AI Studio: failed to enter the prompt: {e}")
+        ok = await self._set_text_control_value(editor, str(message or ""), nested_selector="textarea")
+        if not ok:
+            Logger.warning("Google AI Studio: failed to enter the prompt.")
 
     async def _find_send_button(self, timeout_ms: int = 8000):
         """Locate the first visible AI Studio send/run button."""
@@ -2351,7 +2769,11 @@ class AIStudioDriver(BaseDriver):
             json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
         )
 
-    def _build_clean_regeneration_state(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_clean_regeneration_state(
+        self,
+        settings: Dict[str, Any],
+        system_prompt_text: str = "",
+    ) -> Dict[str, Any]:
         """Build the normalized cache snapshot used to decide if regenerate is safe."""
         return {
             "deepthink_enabled": bool(settings.get("deepthink_enabled")),
@@ -2359,6 +2781,8 @@ class AIStudioDriver(BaseDriver):
             "send_deepthink": bool(settings.get("send_deepthink")),
             "search_enabled": bool(settings.get("search_enabled")),
             "url_context_enabled": bool(settings.get("url_context_enabled")),
+            "use_system_prompt_field": bool(settings.get("use_system_prompt_field")),
+            "system_prompt_text": str(system_prompt_text or ""),
             "send_as_text_file": bool(settings.get("send_as_text_file")),
             "text_file_message": str(settings.get("text_file_message") or ""),
             "temperature": round(float(settings.get("temperature", 1.0)), 4),
@@ -2465,6 +2889,7 @@ class AIStudioDriver(BaseDriver):
         completion_claim_lock = asyncio.Lock()
         completion_claimed = False
 
+        await self._clear_persisted_system_instructions_if_needed()
         await self.require_english_ui()
 
         self.abort_requested = False
@@ -2613,13 +3038,16 @@ class AIStudioDriver(BaseDriver):
         await self.page.route(self.GENERATE_ROUTE_GLOB, handle_route)
 
         try:
-            formatted_message = self._format_messages(message_for_formatting)
+            formatted_message, system_prompt_text = self._prepare_prompt_payload(message_for_formatting)
             await self._ensure_safety_filters_initialized()
             clean_regeneration = bool(
                 self.config_manager.get_setting("aistudio_behavior", "clean_regeneration")
             )
             regenerated = False
-            clean_regen_state = self._build_clean_regeneration_state(effective_settings)
+            clean_regen_state = self._build_clean_regeneration_state(
+                effective_settings,
+                system_prompt_text=system_prompt_text,
+            )
 
             if clean_regeneration:
                 last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
@@ -2662,6 +3090,9 @@ class AIStudioDriver(BaseDriver):
                 await asyncio.sleep(0.2)
                 await self._apply_request_controls(effective_settings)
                 await asyncio.sleep(0.2)
+                if bool(effective_settings.get("use_system_prompt_field")):
+                    await self._sync_system_prompt_field(system_prompt_text)
+                    await self._ui_settle_pause(0.18)
 
                 if bool(effective_settings.get("send_as_text_file")):
                     file_payload = {

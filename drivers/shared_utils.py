@@ -134,6 +134,21 @@ def strip_macros_from_messages(
     return cleaned_messages, overrides
 
 
+def split_leading_system_messages(messages: List[Any]) -> tuple[List[Any], List[Any]]:
+    """Split a transcript into leading system messages and the remaining messages."""
+    split_index = 0
+    for msg in messages:
+        role = _coerce_role(msg).strip().lower()
+        if role != "system":
+            break
+        split_index += 1
+
+    if split_index <= 0:
+        return [], messages
+
+    return list(messages[:split_index]), list(messages[split_index:])
+
+
 def read_clean_regeneration_state(
     cache_manager: Any,
     state_cache_key: str,
@@ -214,40 +229,7 @@ def format_messages(config_manager: Any, messages: Union[str, List[Any]]) -> str
             return "\n".join(formatted_parts)
         return messages
 
-    user_name = "User"
-    char_name = "Character"
-    msgs_to_scan = messages if isinstance(messages, list) else []
-
-    if config_manager.get_setting("formatting", "enable_msg_objects"):
-        for msg in msgs_to_scan:
-            role = _get_message_field(msg, "role", "")
-            name = _get_message_name(msg)
-            if name:
-                if role == "user":
-                    user_name = name
-                elif role == "assistant":
-                    char_name = name
-
-    enable_ir2 = config_manager.get_setting("formatting", "enable_ir2")
-    enable_classic = config_manager.get_setting("formatting", "enable_classic_irp")
-    if enable_ir2 or enable_classic:
-        for msg in msgs_to_scan:
-            role = _get_message_field(msg, "role", "")
-            content = _get_message_field(msg, "content", "")
-            if role != "system":
-                continue
-
-            if enable_ir2:
-                ir2_match = _IR2_PATTERN.search(str(content))
-                if ir2_match:
-                    user_name = ir2_match.group(1)
-                    char_name = ir2_match.group(2)
-
-            if enable_classic:
-                classic_match = _CLASSIC_PATTERN.search(str(content))
-                if classic_match:
-                    char_name = classic_match.group(1)
-                    user_name = classic_match.group(2)
+    user_name, char_name = _resolve_display_names(config_manager, messages)
 
     template = config_manager.get_setting("formatting", "formatting_template") or ""
     divider = config_manager.get_setting("formatting", "formatting_divider") or ""
@@ -300,6 +282,24 @@ def format_messages(config_manager: Any, messages: Union[str, List[Any]]) -> str
     return final_message
 
 
+def resolve_rendered_injection(
+    config_manager: Any,
+    messages: Union[str, List[Any]],
+) -> tuple[str, str]:
+    """Return the configured injection position and its rendered text."""
+    if not config_manager.get_setting("formatting", "apply_formatting"):
+        return "", ""
+
+    injection_pos = str(config_manager.get_setting("formatting", "injection_position") or "")
+    injection_content = config_manager.get_setting("formatting", "injection_content")
+    if not injection_content:
+        return injection_pos, ""
+
+    user_name, char_name = _resolve_display_names(config_manager, messages)
+    rendered_injection = _render_injection(str(injection_content), user_name, char_name)
+    return injection_pos, rendered_injection
+
+
 def _coerce_role(message: Any) -> str:
     """Return a message role as a string regardless of message object shape."""
     role = _get_message_field(message, "role", "")
@@ -326,6 +326,46 @@ def _get_message_name(message: Any) -> Any:
     if name_value:
         return name_value
     return _get_message_field(message, "irp-next")
+
+
+def _resolve_display_names(config_manager: Any, messages: Union[str, List[Any]]) -> tuple[str, str]:
+    """Resolve user and assistant display names for formatting and injections."""
+    user_name = "User"
+    char_name = "Character"
+    msgs_to_scan = messages if isinstance(messages, list) else []
+
+    if config_manager.get_setting("formatting", "enable_msg_objects"):
+        for msg in msgs_to_scan:
+            role = _get_message_field(msg, "role", "")
+            name = _get_message_name(msg)
+            if name:
+                if role == "user":
+                    user_name = name
+                elif role == "assistant":
+                    char_name = name
+
+    enable_ir2 = config_manager.get_setting("formatting", "enable_ir2")
+    enable_classic = config_manager.get_setting("formatting", "enable_classic_irp")
+    if enable_ir2 or enable_classic:
+        for msg in msgs_to_scan:
+            role = _get_message_field(msg, "role", "")
+            content = _get_message_field(msg, "content", "")
+            if role != "system":
+                continue
+
+            if enable_ir2:
+                ir2_match = _IR2_PATTERN.search(str(content))
+                if ir2_match:
+                    user_name = ir2_match.group(1)
+                    char_name = ir2_match.group(2)
+
+            if enable_classic:
+                classic_match = _CLASSIC_PATTERN.search(str(content))
+                if classic_match:
+                    char_name = classic_match.group(1)
+                    user_name = classic_match.group(2)
+
+    return user_name, char_name
 
 
 def _render_injection(text: str, user_name: str, char_name: str) -> str:

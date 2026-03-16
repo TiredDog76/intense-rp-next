@@ -131,6 +131,26 @@ Toggles **URL Context** browsing.
 
 ---
 
+## :material-text-box-edit: System Prompt Field
+
+AI Studio has its own **System Instructions** box, and IntenseRP can optionally use it for the leading `system` messages in your chat.
+
+:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Use System Prompt Field**
+
+When this is enabled, IntenseRP:
+
+- pulls consecutive `system` messages from the start of the request
+- pastes them into AI Studio's native System Instructions UI
+- removes those leading `system` messages from the normal chat prompt before sending
+- also moves your configured prompt injection there when **Injection Position** is set to `Before`
+
+Anything after the first non-`system` message stays in the normal prompt on purpose. Mid-chat `system` messages are left alone, because AI Studio's separate system field is global to the whole chat and mixing both behaviors would get weird fast.
+
+!!! note "Startup cleanup"
+    AI Studio stores system instructions in browser local storage. When this option is enabled, IntenseRP clears that local cache once on page load and refreshes the tab so old instructions do not pile up.
+
+---
+
 ## :material-file-upload: File Upload Mode
 
 Google AI Studio can now upload the prompt as a text file through its native media picker flow.
@@ -260,6 +280,7 @@ All macros are stripped before sending.
 | **Send Thinking** | Includes Gemini thinking summaries in response | Off |
 | **Enable Search** | Toggles Google Search grounding | Off |
 | **Enable URL Context** | Toggles URL Context browsing | Off |
+| **Use System Prompt Field** | Moves leading system messages into AI Studio's System Instructions UI | Off |
 | **Send As Text File** | Uploads the prompt through AI Studio's media picker | Off |
 | **Text File Message** | Optional text sent alongside the uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait for the send button after file selection | `20` |

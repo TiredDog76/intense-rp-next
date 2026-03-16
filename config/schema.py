@@ -803,6 +803,18 @@ SCHEMA = [
                 docs_anchor="enable-url-context",
             ),
             SettingField(
+                key="use_system_prompt_field",
+                label="Use System Prompt Field",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Move leading system messages into AI Studio's System Instructions UI instead "
+                    "of sending them in the main chat prompt."
+                ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="system-prompt-field",
+            ),
+            SettingField(
                 key="send_as_text_file",
                 label="Send As Text File",
                 type=SettingType.BOOLEAN,
@@ -1465,4 +1477,3 @@ SCHEMA = [
         ]
     ),
 ]
-
