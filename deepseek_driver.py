@@ -1,3 +1,4 @@
+import codecs
 import time
 import json
 import asyncio
@@ -22,6 +23,8 @@ from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
 load_dotenv()
 
 class DeepSeekDriver(BaseDriver):
+    INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
+    INTERCEPT_IDLE_TIMEOUT_S = 75.0
     CHAT_READY_SELECTORS = [
         "textarea[placeholder='Message DeepSeek']",
         "textarea",
@@ -51,6 +54,11 @@ class DeepSeekDriver(BaseDriver):
         self.current_send_deepthink = None
         self.clean_regen_message_cache_key = "last_message.txt"
         self.clean_regen_state_cache_key = "last_message_state.json"
+        self._reset_stream_parser()
+
+    def _reset_stream_parser(self) -> None:
+        self._stream_text_decoder = codecs.getincrementaldecoder("utf-8")()
+        self._stream_text_buffer = ""
 
     def get_start_url(self) -> str:
         return "https://chat.deepseek.com/"
@@ -393,6 +401,7 @@ class DeepSeekDriver(BaseDriver):
         self.thinking_active = False
         self.abort_requested = False
         self.current_abort_event = abort_event
+        self._reset_stream_parser()
         resolved_model = (model or "").strip() or "deepseek-auto"
         self.current_model = resolved_model
 
@@ -469,6 +478,9 @@ class DeepSeekDriver(BaseDriver):
                                 full_response_body.extend(chunk)
                                 # Process chunk for streaming
                                 await self._process_chunk(chunk, response_queue)
+
+                            if not aborted and not self.abort_requested:
+                                await self._process_chunk(b"", response_queue, final=True)
                                 
                     except httpx.ReadError as e:
                         if not aborted and not self.abort_requested:
@@ -609,13 +621,13 @@ class DeepSeekDriver(BaseDriver):
                     return
             
             # Yield responses from queue
-            while True:
-                # Check for abort before waiting for next item
-                if self.abort_requested or (abort_event and abort_event.is_set()):
-                    Logger.debug("Abort detected in response loop, breaking...")
-                    break
-                    
-                item = await response_queue.get()
+            async for item in self._iterate_response_queue(
+                response_queue,
+                abort_event=abort_event,
+                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+                on_timeout=self._click_stop_button,
+            ):
                 if item is None:
                     break
                 if isinstance(item, dict) and "error" in item:
@@ -630,6 +642,7 @@ class DeepSeekDriver(BaseDriver):
             self.abort_requested = False
             self.current_model = None
             self.current_send_deepthink = None
+            self._reset_stream_parser()
             try:
                 await self.page.unroute("**/api/v0/chat/completion")
             except Exception:
@@ -694,11 +707,15 @@ class DeepSeekDriver(BaseDriver):
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         return format_messages(self.config_manager, messages)
 
-    async def _process_chunk(self, chunk: bytes, queue: asyncio.Queue):
+    async def _process_sse_line(self, line: str, queue: asyncio.Queue) -> None:
+        if not line.startswith("data:"):
+            return
+
+        data_str = line[len("data:") :].strip()
+        if data_str == "[DONE]":
+            return
+
         try:
-            text = chunk.decode("utf-8")
-            lines = text.split("\n")
-            
             # Cache settings once per chunk processing
             anti_censorship = self.config_manager.get_setting("deepseek_behavior", "anti_censorship")
             send_deepthink = (
@@ -706,184 +723,194 @@ class DeepSeekDriver(BaseDriver):
                 if self.current_send_deepthink is not None
                 else self.config_manager.get_setting("deepseek_behavior", "send_deepthink")
             )
+            data = json.loads(data_str)
+            content = ""
+            finish_reason = None
             
+            # Normalize updates to a list of operations
+            ops = []
+            
+            if "v" in data:
+                v = data["v"]
+                p = data.get("p")
+                o = data.get("o")
+                
+                # Case 1: Batch update (v is list of ops)
 
+                # ---------------- RYAN!! ----------------
+                    # TO RYAN: STOP REMOVING COMMENTS
+                    # I KNOW YOU HATE THEIR COLOR BUT THEY'RE FOR CONTRIBUTORS
+                    # YOU CAN JUST USE A DARK THEME IF IT BOTHERS YOU
+                # ---------------- RYAN!! ----------------
+
+                if p is None or (p == "response" and o == "BATCH"):
+                    if isinstance(v, list):
+                        ops = v
+                    elif isinstance(v, str):
+                        # Direct content update (inconsistent here - once I caught this happening but it seems like a bug on their side)
+                        if getattr(self, "thinking_active", False):
+                            if send_deepthink:
+                                content = v
+                        else:
+                            content = v
+                    elif isinstance(v, dict):
+                        # Initial response payload: {"response": {"fragments": [...]}}
+                        # DeepSeek now sends the first fragment inline in the
+                        # opening payload rather than as a separate APPEND event
+                        response_obj = v.get("response", v)
+                        if isinstance(response_obj, dict):
+                            fragments = response_obj.get("fragments")
+                            if isinstance(fragments, list) and fragments:
+                                ops = [{"p": "response/fragments", "o": "APPEND", "v": fragments}]
             
-            for line in lines:
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]": 
-                        continue
+                # Case 2: Single Path-based update
+                else:
+                    ops = [{"p": p, "o": o, "v": v}]
+
+            # Process all operations
+            should_stop_processing = False
+            
+            for item in ops:
+                if not isinstance(item, dict):
+                    continue
                     
-                    try:
-                        data = json.loads(data_str)
-                        content = ""
-                        finish_reason = None
-                        
-                        # Normalize updates to a list of operations
-                        ops = []
-                        
-                        if "v" in data:
-                            v = data["v"]
-                            p = data.get("p")
-                            o = data.get("o")
-                            
-                            # Case 1: Batch update (v is list of ops)
+                item_p = item.get("p")
+                item_o = item.get("o")
+                item_v = item.get("v")
+                
 
-                            # ---------------- RYAN!! ----------------
-                                # TO RYAN: STOP REMOVING COMMENTS
-                                # I KNOW YOU HATE THEIR COLOR BUT THEY'RE FOR CONTRIBUTORS
-                                # YOU CAN JUST USE A DARK THEME IF IT BOTHERS YOU
-                            # ---------------- RYAN!! ----------------
 
-                            if p is None or (p == "response" and o == "BATCH"):
-                                if isinstance(v, list):
-                                    ops = v
-                                elif isinstance(v, str):
-                                    # Direct content update (inconsistent here - once I caught this happening but it seems like a bug on their side)
-                                    if getattr(self, "thinking_active", False):
-                                        if send_deepthink:
-                                            content = v
-                                    else:
-                                        content = v
-                                elif isinstance(v, dict):
-                                    # Initial response payload: {"response": {"fragments": [...]}}
-                                    # DeepSeek now sends the first fragment inline in the
-                                    # opening payload rather than as a separate APPEND event
-                                    response_obj = v.get("response", v)
-                                    if isinstance(response_obj, dict):
-                                        fragments = response_obj.get("fragments")
-                                        if isinstance(fragments, list) and fragments:
-                                            ops = [{"p": "response/fragments", "o": "APPEND", "v": fragments}]
-                            
-                            # Case 2: Single Path-based update
-                            else:
-                                ops = [{"p": p, "o": o, "v": v}]
+                # Check for Anti-Censorship (CONTENT_FILTER)
+                if anti_censorship:
+                    if item_p in ("status", "response/status") and item_v == "CONTENT_FILTER":
+                        Logger.info("Anti-Censorship triggered: Suppressing refusal message.")
+                        finish_reason = "stop"
+                        if getattr(self, "thinking_active", False):
+                            if send_deepthink:
+                                content += "</think>"
+                            self.thinking_active = False
+                        should_stop_processing = True
+                        break
 
-                        # Process all operations
-                        should_stop_processing = False
-                        
-                        for item in ops:
-                            if not isinstance(item, dict):
-                                continue
+                # Status update
+                if item_p in ("status", "response/status"):
+                    if item_v == "FINISHED":
+                        finish_reason = "stop"
+                        # Close think tag if open
+                        if getattr(self, "thinking_active", False):
+                            if send_deepthink:
+                                content += "</think>"
+                            self.thinking_active = False
+                
+                # Fragments append (New Fragment)
+                # Handle both 'fragments' and 'response/fragments'
+                elif (item_p == "fragments" or item_p == "response/fragments") and item_o == "APPEND":
+                    fragments = item_v
+                    if isinstance(fragments, list):
+                        for frag in fragments:
+                            if isinstance(frag, dict):
+                                frag_type = frag.get("type")
+                                # Store type by index (len of list before append)
+                                if not hasattr(self, "fragment_types_list"):
+                                    self.fragment_types_list = []
+                                self.fragment_types_list.append(frag_type)
                                 
-                            item_p = item.get("p")
-                            item_o = item.get("o")
-                            item_v = item.get("v")
-                            
 
-
-                            # Check for Anti-Censorship (CONTENT_FILTER)
-                            if anti_censorship:
-                                if item_p in ("status", "response/status") and item_v == "CONTENT_FILTER":
-                                    Logger.info("Anti-Censorship triggered: Suppressing refusal message.")
-                                    finish_reason = "stop"
-                                    if getattr(self, "thinking_active", False):
+                                
+                                # Handle THINK start
+                                if frag_type == "THINK":
+                                    if send_deepthink:
+                                        content += "<think>"
+                                    self.thinking_active = True
+                                
+                                # Handle RESPONSE start (end of THINK if active)
+                                if frag_type == "RESPONSE" and getattr(self, "thinking_active", False):
+                                    if send_deepthink:
+                                        content += "</think>"
+                                    self.thinking_active = False
+                                
+                                # Initial content
+                                if "content" in frag:
+                                    if frag_type == "THINK":
                                         if send_deepthink:
-                                            content += "</think>"
-                                        self.thinking_active = False
-                                    should_stop_processing = True
-                                    break
-
-                            # Status update
-                            if item_p in ("status", "response/status"):
-                                if item_v == "FINISHED":
-                                    finish_reason = "stop"
-                                    # Close think tag if open
-                                    if getattr(self, "thinking_active", False):
-                                        if send_deepthink:
-                                            content += "</think>"
-                                        self.thinking_active = False
-                            
-                            # Fragments append (New Fragment)
-                            # Handle both 'fragments' and 'response/fragments'
-                            elif (item_p == "fragments" or item_p == "response/fragments") and item_o == "APPEND":
-                                fragments = item_v
-                                if isinstance(fragments, list):
-                                    for frag in fragments:
-                                        if isinstance(frag, dict):
-                                            frag_type = frag.get("type")
-                                            # Store type by index (len of list before append)
-                                            if not hasattr(self, "fragment_types_list"):
-                                                self.fragment_types_list = []
-                                            self.fragment_types_list.append(frag_type)
-                                            
-
-                                            
-                                            # Handle THINK start
-                                            if frag_type == "THINK":
-                                                if send_deepthink:
-                                                    content += "<think>"
-                                                self.thinking_active = True
-                                            
-                                            # Handle RESPONSE start (end of THINK if active)
-                                            if frag_type == "RESPONSE" and getattr(self, "thinking_active", False):
-                                                if send_deepthink:
-                                                    content += "</think>"
-                                                self.thinking_active = False
-                                            
-                                            # Initial content
-                                            if "content" in frag:
-                                                if frag_type == "THINK":
-                                                    if send_deepthink:
-                                                        content += frag["content"]
-                                                elif frag_type == "SEARCH":
-                                                    pass
-                                                else:
-                                                    content += frag["content"]
-
-                            # Content update: response/fragments/0/content OR fragments/0/content
-                            elif item_p and (item_p.startswith("response/fragments/") or item_p.startswith("fragments/")) and item_p.endswith("/content"):
-                                try:
-                                    parts = item_p.split("/")
-                                    # Index is 2 if response/fragments/0/content, or 1 if fragments/0/content
-                                    if parts[0] == "response":
-                                        index = int(parts[2])
-                                    else:
-                                        index = int(parts[1])
-                                    
-                                    if hasattr(self, "fragment_types_list") and index < len(self.fragment_types_list):
-                                        frag_type = self.fragment_types_list[index]
-                                        
-                                        if frag_type == "THINK":
-                                            if send_deepthink:
-                                                content += str(item_v)
-                                        elif frag_type == "SEARCH":
-                                            pass
-                                        else:
-                                            content += str(item_v)
-                                    else:
+                                            content += frag["content"]
+                                    elif frag_type == "SEARCH":
                                         pass
-                                except (ValueError, IndexError):
-                                    pass
-                                    
-                            # Status update: response/fragments/0/status
-                            elif item_p and (item_p.startswith("response/fragments/") or item_p.startswith("fragments/")) and item_p.endswith("/status"):
-                                if item_v == "FINISHED":
-                                    pass
+                                    else:
+                                        content += frag["content"]
 
-                        if should_stop_processing:
-                            pass
-
-                        if content or finish_reason:
-                            model_name = self.current_model or "deepseek-auto"
-                            openai_chunk = {
-                                "id": "chatcmpl-custom",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": model_name,
-                                "choices": [
-                                    {
-                                        "index": 0,
-                                        "delta": {"content": content} if content else {},
-                                        "finish_reason": finish_reason
-                                    }
-                                ]
-                            }
-                            await queue.put(f"data: {json.dumps(openai_chunk)}\n\n")
+                # Content update: response/fragments/0/content OR fragments/0/content
+                elif item_p and (item_p.startswith("response/fragments/") or item_p.startswith("fragments/")) and item_p.endswith("/content"):
+                    try:
+                        parts = item_p.split("/")
+                        # Index is 2 if response/fragments/0/content, or 1 if fragments/0/content
+                        if parts[0] == "response":
+                            index = int(parts[2])
+                        else:
+                            index = int(parts[1])
+                        
+                        if hasattr(self, "fragment_types_list") and index < len(self.fragment_types_list):
+                            frag_type = self.fragment_types_list[index]
                             
-                    except json.JSONDecodeError:
+                            if frag_type == "THINK":
+                                if send_deepthink:
+                                    content += str(item_v)
+                            elif frag_type == "SEARCH":
+                                pass
+                            else:
+                                content += str(item_v)
+                        else:
+                            pass
+                    except (ValueError, IndexError):
                         pass
+                        
+                # Status update: response/fragments/0/status
+                elif item_p and (item_p.startswith("response/fragments/") or item_p.startswith("fragments/")) and item_p.endswith("/status"):
+                    if item_v == "FINISHED":
+                        pass
+
+            if should_stop_processing:
+                pass
+
+            if content or finish_reason:
+                model_name = self.current_model or "deepseek-auto"
+                openai_chunk = {
+                    "id": "chatcmpl-custom",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": content} if content else {},
+                            "finish_reason": finish_reason
+                        }
+                    ]
+                }
+                await queue.put(f"data: {json.dumps(openai_chunk)}\n\n")
+                
+        except json.JSONDecodeError:
+            pass
+        except Exception as e:
+            Logger.error(f"Error processing stream line: {e}")
+
+    async def _process_chunk(self, chunk: bytes, queue: asyncio.Queue, *, final: bool = False):
+        try:
+            self._stream_text_buffer += self._stream_text_decoder.decode(chunk, final=final)
+
+            while True:
+                newline_idx = self._stream_text_buffer.find("\n")
+                if newline_idx == -1:
+                    break
+
+                line = self._stream_text_buffer[:newline_idx].rstrip("\r")
+                self._stream_text_buffer = self._stream_text_buffer[newline_idx + 1 :]
+                await self._process_sse_line(line, queue)
+
+            if final and self._stream_text_buffer.strip():
+                line = self._stream_text_buffer.rstrip("\r")
+                self._stream_text_buffer = ""
+                await self._process_sse_line(line, queue)
         except Exception as e:
             Logger.error(f"Error processing chunk: {e}")
 

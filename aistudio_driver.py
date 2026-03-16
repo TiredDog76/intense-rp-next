@@ -2696,36 +2696,16 @@ class AIStudioDriver(BaseDriver):
             if not completion_started.is_set():
                 await asyncio.wait_for(completion_started.wait(), timeout=20.0)
 
-            received_stream_item = False
-            while True:
-                if self.abort_requested or (abort_event and abort_event.is_set()):
-                    Logger.debug("Abort detected in Google AI Studio response loop, breaking...")
-                    break
-
-                wait_timeout_s = (
-                    self.INTERCEPT_IDLE_TIMEOUT_S
-                    if received_stream_item
-                    else self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
-                )
-                try:
-                    item = await asyncio.wait_for(response_queue.get(), timeout=wait_timeout_s)
-                except asyncio.TimeoutError:
-                    wait_phase = "intercepted first chunk" if not received_stream_item else "next stream chunk"
-                    Logger.error(
-                        f"Google AI Studio: timed out waiting for {wait_phase} ({wait_timeout_s:.0f}s)."
-                    )
-                    await response_queue.put(
-                        {"error": f"Google AI Studio timeout: no {wait_phase} within {wait_timeout_s:.0f}s."}
-                    )
-                    item = await response_queue.get()
-
-                if item is None:
-                    break
+            async for item in self._iterate_response_queue(
+                response_queue,
+                abort_event=abort_event,
+                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+            ):
                 if isinstance(item, dict) and "error" in item:
                     yield f"data: {json.dumps(item)}\n\n"
                     break
 
-                received_stream_item = True
                 yield item
         finally:
             self.current_abort_event = None

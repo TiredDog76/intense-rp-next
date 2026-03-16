@@ -34,6 +34,8 @@ class QwenLMDriver(BaseDriver):
     AUTH_URL = "https://chat.qwen.ai/auth"
     SETTINGS_URL = "https://chat.qwen.ai/api/v2/users/user/settings"
     SETTINGS_UPDATE_URL = "https://chat.qwen.ai/api/v2/users/user/settings/update"
+    INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
+    INTERCEPT_IDLE_TIMEOUT_S = 75.0
 
     COMPLETIONS_ROUTE_GLOB = "**/api/v2/chat/completions*"
 
@@ -2565,14 +2567,13 @@ class QwenLMDriver(BaseDriver):
                     yield f"data: {json.dumps({'error': 'QwenLM: completion request not observed'})}\n\n"
                     return
 
-            while True:
-                if self.abort_requested or (abort_event and abort_event.is_set()):
-                    Logger.debug("Abort detected in QwenLM response loop, breaking...")
-                    break
-
-                item = await response_queue.get()
-                if item is None:
-                    break
+            async for item in self._iterate_response_queue(
+                response_queue,
+                abort_event=abort_event,
+                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+                on_timeout=self._abort_generation_ui,
+            ):
                 if isinstance(item, dict) and "error" in item:
                     yield f"data: {json.dumps(item)}\n\n"
                     break

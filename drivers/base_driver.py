@@ -399,6 +399,67 @@ class BaseDriver(ABC):
             except Exception:
                 pass
 
+    async def _iterate_response_queue(
+        self,
+        response_queue: asyncio.Queue,
+        *,
+        abort_event: asyncio.Event | None = None,
+        first_chunk_timeout_s: float | None = None,
+        idle_timeout_s: float | None = None,
+        on_timeout: Callable[[], Any] | None = None,
+    ):
+        """
+        Yield provider stream items while guarding against silently stalled streams.
+
+        The drivers all use an internal queue between the intercepted provider request
+        and the async generator returned to the API layer. If the provider starts the
+        request but never produces a first chunk (or stops producing follow-up chunks),
+        waiting forever feels like client-side buffering. This helper surfaces a clear
+        error instead and lets providers perform a best-effort UI stop action.
+        """
+        received_stream_item = False
+
+        while True:
+            if self.abort_requested or (abort_event and abort_event.is_set()):
+                Logger.debug(f"Abort detected in {self.provider_label} response loop, breaking...")
+                break
+
+            wait_timeout_s = idle_timeout_s if received_stream_item else first_chunk_timeout_s
+            if wait_timeout_s and wait_timeout_s > 0:
+                try:
+                    item = await asyncio.wait_for(response_queue.get(), timeout=wait_timeout_s)
+                except asyncio.TimeoutError:
+                    wait_phase = (
+                        "intercepted first chunk" if not received_stream_item else "next stream chunk"
+                    )
+                    Logger.error(
+                        f"{self.provider_label}: timed out waiting for {wait_phase} "
+                        f"({wait_timeout_s:.0f}s)."
+                    )
+                    self.abort_requested = True
+                    if callable(on_timeout):
+                        try:
+                            timeout_result = on_timeout()
+                            if asyncio.iscoroutine(timeout_result):
+                                await timeout_result
+                        except Exception as exc:
+                            Logger.debug(f"{self.provider_label}: timeout handler failed: {exc}")
+                    yield {
+                        "error": (
+                            f"{self.provider_label} timeout: no {wait_phase} "
+                            f"within {wait_timeout_s:.0f}s."
+                        )
+                    }
+                    break
+            else:
+                item = await response_queue.get()
+
+            if item is None:
+                break
+
+            received_stream_item = True
+            yield item
+
     @abstractmethod
     def get_start_url(self) -> str:
         raise NotImplementedError

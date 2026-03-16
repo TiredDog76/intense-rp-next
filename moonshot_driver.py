@@ -942,43 +942,17 @@ class MoonshotDriver(BaseDriver):
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
                     self._write_clean_regeneration_state(clean_regen_state)
 
-            received_stream_item = False
-            while True:
-                if self.abort_requested or (abort_event and abort_event.is_set()):
-                    Logger.debug("Abort detected in Moonshot response loop, breaking...")
-                    break
-
-                wait_timeout_s = (
-                    self.INTERCEPT_IDLE_TIMEOUT_S
-                    if received_stream_item
-                    else self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
-                )
-                try:
-                    item = await asyncio.wait_for(response_queue.get(), timeout=wait_timeout_s)
-                except asyncio.TimeoutError:
-                    wait_phase = "intercepted first chunk" if not received_stream_item else "next stream chunk"
-                    Logger.error(
-                        f"Moonshot: timed out waiting for {wait_phase} "
-                        f"({wait_timeout_s:.0f}s)."
-                    )
-                    self.abort_requested = True
-                    await self._click_stop_button()
-                    timeout_err = {
-                        "error": (
-                            f"Moonshot timeout: no {wait_phase} within "
-                            f"{wait_timeout_s:.0f}s."
-                        )
-                    }
-                    yield f"data: {json.dumps(timeout_err)}\n\n"
-                    break
-
-                if item is None:
-                    break
+            async for item in self._iterate_response_queue(
+                response_queue,
+                abort_event=abort_event,
+                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+                on_timeout=self._click_stop_button,
+            ):
                 if isinstance(item, dict) and "error" in item:
                     yield f"data: {json.dumps(item)}\n\n"
                     break
 
-                received_stream_item = True
                 yield item
 
         finally:

@@ -30,6 +30,8 @@ class GLMDriver(BaseDriver):
     AUTH_URL = "https://chat.z.ai/auth"
 
     REFRESH_AFTER_GENERATION_DELAY_S = 2.0
+    INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
+    INTERCEPT_IDLE_TIMEOUT_S = 75.0
 
     MODEL_SELECTOR_BUTTON_SELECTOR = "button.modelSelectorButton"
     MODEL_DROPDOWN_ID = "f8T9iEf1QC"
@@ -1805,22 +1807,20 @@ class GLMDriver(BaseDriver):
                     yield f"data: {json.dumps({'error': 'GLM: completion request not observed'})}\n\n"
                     return
 
-            stream_completed = False
-            while True:
-                if self.abort_requested or (abort_event and abort_event.is_set()):
-                    Logger.debug("Abort detected in GLM response loop, breaking...")
-                    break
-
-                item = await response_queue.get()
-                if item is None:
-                    stream_completed = True
-                    break
+            stream_completed = True
+            async for item in self._iterate_response_queue(
+                response_queue,
+                abort_event=abort_event,
+                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+            ):
                 if isinstance(item, dict) and "error" in item:
+                    stream_completed = False
                     yield f"data: {json.dumps(item)}\n\n"
                     break
                 yield item
 
-            if stream_completed:
+            if stream_completed and not self.abort_requested and not (abort_event and abort_event.is_set()):
                 self._schedule_refresh_after_generation()
 
         finally:
