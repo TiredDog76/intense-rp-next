@@ -80,6 +80,7 @@ class ConsoleWindow(QMainWindow):
         self._search_flash_steps_remaining = 0
         self._search_refresh_origin = None
         self._last_search_query = ""
+        self._initial_focus_pending = True
         
         # Remove close button but keep minimize and maximize
         self.setWindowFlags(
@@ -360,6 +361,14 @@ class ConsoleWindow(QMainWindow):
             }}
         """)
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._initial_focus_pending:
+            return
+
+        self._initial_focus_pending = False
+        QTimer.singleShot(0, self._focus_console_output)
+
     def _schedule_search(self, origin: str) -> None:
         if not self.search_input.text().strip():
             self.search_timer.stop()
@@ -372,6 +381,9 @@ class ConsoleWindow(QMainWindow):
     def _focus_search_input(self) -> None:
         self.search_input.setFocus(Qt.ShortcutFocusReason)
         self.search_input.selectAll()
+
+    def _focus_console_output(self) -> None:
+        self.text_area.setFocus(Qt.OtherFocusReason)
 
     def _on_search_text_changed(self, text: str) -> None:
         has_query = bool(text.strip())
