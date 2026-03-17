@@ -17,9 +17,9 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
 2. **Is the browser open and logged in?**
     - A Chromium window should be open.
     - If you're on a provider login page, log in manually.
-    - DeepSeek / GLM Chat / QwenLM / Google AI Studio also support Auto Login.
+    - All providers also support Auto Login.
     - For GLM Chat, login requires solving a CAPTCHA (Persistent Sessions are strongly recommended).
-    - For Moonshot, Google login may require manual confirmation/challenge steps.
+    - For Moonshot, Google login may require manual confirmation/challenge steps, 2FA, or manually closing the popup after login.
     - For Google AI Studio, Auto Login can try to fill Google sign-in, but Google may still require manual confirmation.
 
 3. **Is the provider UI language set to English?**
@@ -150,11 +150,11 @@ See: [:material-cog: System](../features/system.md)
 Fixes, in order:
 
 1. If you use Auto Login, double-check your provider selection + email/password in **Providers & Credentials**.
-   (DeepSeek / GLM Chat / QwenLM / Google AI Studio)
+   (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio)
 2. GLM Chat requires a CAPTCHA during login. Auto Login can fill credentials, but you still need to solve the CAPTCHA in the browser window.
 3. Try toggling **Persistent Sessions** off and back on (then Start again).
 4. If Persistent Sessions is enabled but things feel "stuck", use **Delete Profile** (or **Clear All Profiles**) to reset the saved browser profile.
-5. For DeepSeek / GLM Chat / QwenLM / Google AI Studio, try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
+5. For DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio, try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:
 

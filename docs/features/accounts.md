@@ -15,7 +15,7 @@ You can store **multiple accounts per provider**, let IntenseRP pick one on star
 ## :material-information: Recommended setup
 
 1. Keep **Persistent Sessions** enabled (it's on by default) so you stay logged in between restarts.
-2. If you want Auto Login on **DeepSeek / GLM Chat / QwenLM / Google AI Studio**, enable **Auto Login** and add at least one account in **Credential Manager**.
+2. If you want Auto Login for your provider, enable **Auto Login** and add at least one account in **Credential Manager**.
 3. Keep a backup of your `[config_dir]` (Settings -> System -> Backup & Restore).
 4. (Optional) Enable:
     - **Select Least Used**: spreads usage across accounts
@@ -49,7 +49,7 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 1. Open **Settings**.
 2. Go to **Providers & Credentials**.
-3. (Optional) Enable **Auto Login** (DeepSeek / GLM Chat / QwenLM / Google AI Studio).
+3. (Optional) Enable **Auto Login** (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio).
 4. Open **Credential Manager** and add one or more accounts for your provider.
 5. (Optional) Enable **Select Least Used** and/or **Reload on Failure**.
 6. Click **Save**, then **Stop -> Start** the provider driver (so changes take effect).
@@ -64,7 +64,7 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 | Setting | Where | What it does |
 |---|---|---|
 | **Credential Manager** | Settings -> Providers & Credentials | Add and manage accounts per provider |
-| **Auto Login** | Settings -> Providers & Credentials | Uses a saved account for login (DeepSeek / GLM Chat / QwenLM / Google AI Studio) |
+| **Auto Login** | Settings -> Providers & Credentials | Uses a saved account for login |
 | **Select Least Used** | Settings -> Providers & Credentials | Chooses the least recently used account when starting the driver |
 | **Reload on Failure** | Settings -> Providers & Credentials | On early failures, restarts the driver and retries once with a rotated identity |
 
@@ -163,7 +163,7 @@ These files are encrypted using the same `settings.key` used for your main setti
 
 **GLM Chat:** IntenseRP can fill email/password, but GLM still requires a CAPTCHA step. Persistent Sessions are strongly recommended so you don't have to repeat the CAPTCHA every start.
 
-**Moonshot:** login is Google-based and may still require manual confirmation/challenges depending on your account security settings.
+**Moonshot:** login is Google-based. Auto Login can try to fill the popup, but Google may still require manual confirmation/challenges depending on your account security settings.
 
 **QwenLM:** standard email/password login. Auto Login can fill credentials automatically.
 

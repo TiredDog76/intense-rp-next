@@ -10,7 +10,7 @@ Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot 
 
 ## :material-login: Auto Login
 
-If you're tired of typing your password every time, Auto Login uses a saved account from **Credential Manager** and enters it automatically when the browser opens (DeepSeek / GLM Chat / QwenLM / Google AI Studio).
+If you're tired of typing your password every time, Auto Login uses a saved account from **Credential Manager** and enters it automatically when the browser opens.
 
 ![Login settings](../pics/features/login_settings.png)
 
@@ -22,7 +22,7 @@ If you're tired of typing your password every time, Auto Login uses a saved acco
 4. Open **Credential Manager** and add an account for your provider
 5. Click **Save**
 
-Next time you start IntenseRP, DeepSeek / GLM Chat / QwenLM / Google AI Studio can fill credentials and click login for you.
+Next time you start IntenseRP, the driver can fill credentials and click login for you.
 
 !!! tip "Multiple accounts / rotation"
     See [:material-account-switch: Accounts & Credentials](accounts.md) for how selection, rotation, and retry-on-failure work.
@@ -32,16 +32,15 @@ Next time you start IntenseRP, DeepSeek / GLM Chat / QwenLM / Google AI Studio c
     If you don't want to do that every time, enable Persistent Sessions (below).
 
 !!! note "Moonshot login"
-    Moonshot uses a manual Google login flow in IntenseRP.
-    Auto Login does not submit Moonshot credentials.
-    Depending on your account security settings, manual confirmation/challenge steps can still be required.
+    Moonshot uses a Google sign-in popup.
+    Auto Login can try to fill the popup automatically, but Google can still require manual confirmation/challenge steps or leave the popup open until you close it yourself.
 
 !!! note "Google AI Studio login"
     Google AI Studio also uses Google sign-in. Auto Login can try to fill the Google flow, but Persistent Sessions are strongly recommended because Google may still require manual confirmation.
 
 ### How It Works
 
-When IntenseRP detects you've been redirected to the provider sign-in page (DeepSeek / GLM Chat / QwenLM / Google AI Studio):
+When IntenseRP detects you've been redirected to the provider sign-in page:
 
 1. It waits for the login form to appear
 2. Fills in your email and password
@@ -90,7 +89,7 @@ This folder contains your provider session cookies and browser data. It's automa
     Persistent Sessions are strongly recommended for GLM Chat, because login requires a CAPTCHA.
 
 !!! tip "Best of Both Worlds"
-    You can use both features together! Enable Persistent Sessions so you're usually already logged in, and keep Auto Login as a backup for when the session expires (especially on DeepSeek / GLM Chat / QwenLM / Google AI Studio).
+    You can use both features together! Enable Persistent Sessions so you're usually already logged in, and keep Auto Login as a backup for when the session expires.
 
 ---
 
@@ -120,8 +119,6 @@ Deleting a profile folder:
     - **Just Auto Login**: Logs in fresh every time (slower, but always works)
     - **Just Persistent Sessions**: Stays logged in until the session expires
     - **Both**: Best reliability - persistent session when it works, auto login as fallback
-
-    For Moonshot, login is manual Google flow. Persistent Sessions still help reduce repeated manual logins.
 
 ??? question "My session keeps expiring?"
     Provider sessions do expire eventually. If Persistent Sessions isn't keeping you logged in long enough, make sure you also have Auto Login configured as a backup.

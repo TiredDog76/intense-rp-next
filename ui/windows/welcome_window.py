@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import secrets
-import string
 
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QFont, QFontMetrics, QIntValidator, QPixmap
@@ -201,7 +199,6 @@ class StaticCodeBlock(QPlainTextEdit):
 
 class WelcomeWindow(QDialog):
     settings_applied = Signal()
-    MOONSHOT_PLACEHOLDER_EMAIL = "test1@notanemail.notanemail"
 
     STEP_TITLES = [
         "Provider",
@@ -661,7 +658,7 @@ class WelcomeWindow(QDialog):
             elif provider == "GLM Chat":
                 desc = "May require CAPTCHA during login."
             elif provider == "Moonshot":
-                desc = "Manual Google login flow. Persistent sessions recommended."
+                desc = "Google popup login. Auto Login can fill it, but Persistent Sessions are still recommended."
             elif provider == "QwenLM":
                 desc = "Email/password login, very smooth experience."
             elif provider == "Google AI Studio":
@@ -694,7 +691,7 @@ class WelcomeWindow(QDialog):
         self._auto_login_row = ToggleRow(
             "Enable Auto Login",
             self._auto_login,
-            description="Fill credentials automatically (DeepSeek / GLM Chat / QwenLM / Google AI Studio).",
+            description="Fill credentials automatically (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio).",
         )
         layout.addWidget(self._auto_login_row, 0)
 
@@ -1032,25 +1029,10 @@ class WelcomeWindow(QDialog):
         return provider in {
             DriverProvider.DEEPSEEK,
             DriverProvider.GLM_CHAT,
+            DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
             DriverProvider.AI_STUDIO,
         }
-
-    def _get_or_create_moonshot_placeholder_password(self) -> str:
-        existing = getattr(self, "_moonshot_placeholder_password", "")
-        if isinstance(existing, str) and existing.strip():
-            return existing.strip()
-
-        alphabet = string.ascii_letters + string.digits
-        value = "".join(secrets.choice(alphabet) for _ in range(24))
-        setattr(self, "_moonshot_placeholder_password", value)
-        return value
-
-    def _ensure_moonshot_identity_prefilled(self) -> None:
-        if not self._email_input.text().strip():
-            self._email_input.setText(self.MOONSHOT_PLACEHOLDER_EMAIL)
-        if not self._password_input.text().strip():
-            self._password_input.setText(self._get_or_create_moonshot_placeholder_password())
 
     def _sync_provider_dependent_ui(self) -> None:
         provider = DriverProvider.from_setting(self._state.provider)
@@ -1061,8 +1043,8 @@ class WelcomeWindow(QDialog):
             )
         elif provider == DriverProvider.MOONSHOT:
             self._account_info.setText(
-                "Moonshot uses a manual Google login flow. We still keep a placeholder identity here so the "
-                "browser profile does not end up named 'manual'."
+                "Moonshot can attempt Auto Login through the Google popup now. "
+                "If Google asks for extra confirmation or leaves the popup hanging, just finish it manually."
             )
         elif provider == DriverProvider.QWEN_LM:
             self._account_info.setText(
@@ -1079,8 +1061,7 @@ class WelcomeWindow(QDialog):
             )
 
         supports_auto_login = self._provider_supports_auto_login()
-        needs_identity = provider == DriverProvider.MOONSHOT
-        show_identity_fields = supports_auto_login or needs_identity
+        show_identity_fields = supports_auto_login
 
         self._auto_login_row.setVisible(supports_auto_login)
         self._select_least_used_row.setVisible(supports_auto_login)
@@ -1089,19 +1070,12 @@ class WelcomeWindow(QDialog):
         self._email_row.setVisible(show_identity_fields)
         self._password_row.setVisible(show_identity_fields)
 
-        if needs_identity:
-            self._email_row.label.setText("Profile Email")
-            self._password_row.label.setText("Profile Token")
-            self._email_input.setPlaceholderText(self.MOONSHOT_PLACEHOLDER_EMAIL)
-            self._password_input.setPlaceholderText("Any random text (not used for login)")
-            self._ensure_moonshot_identity_prefilled()
-        else:
-            self._email_row.label.setText("Email")
-            self._password_row.label.setText("Password")
-            self._email_input.setPlaceholderText("Email")
-            self._password_input.setPlaceholderText("Password")
+        self._email_row.label.setText("Email")
+        self._password_row.label.setText("Password")
+        self._email_input.setPlaceholderText("Email")
+        self._password_input.setPlaceholderText("Password")
 
-        if not supports_auto_login:
+        if not show_identity_fields:
             self._auto_login.blockSignals(True)
             self._auto_login.setChecked(False)
             self._auto_login.blockSignals(False)
@@ -1119,13 +1093,6 @@ class WelcomeWindow(QDialog):
             self._send_reasoning_row.label.setText("Send DeepThink")
 
     def _on_auto_login_changed(self) -> None:
-        provider = DriverProvider.from_setting(self._state.provider)
-        if provider == DriverProvider.MOONSHOT:
-            self._email_input.setEnabled(True)
-            self._password_input.setEnabled(True)
-            self._clear_account_errors()
-            return
-
         enabled = bool(self._auto_login.isChecked())
 
         self._email_input.setEnabled(enabled)
@@ -1226,27 +1193,6 @@ class WelcomeWindow(QDialog):
 
     def _validate_account_step(self) -> bool:
         self._clear_account_errors()
-        provider = DriverProvider.from_setting(self._state.provider)
-        if provider == DriverProvider.MOONSHOT:
-            email = self._email_input.text().strip()
-            password = self._password_input.text()
-
-            ok = True
-            try:
-                validate_email(email)
-            except ValueError as exc:
-                self._email_input.set_error(True)
-                self._account_error.setText(str(exc))
-                self._account_error.setVisible(True)
-                ok = False
-
-            if not password.strip():
-                self._password_input.set_error(True)
-                self._account_error.setText("Profile token is empty.")
-                self._account_error.setVisible(True)
-                ok = False
-
-            return ok
 
         if not self._provider_supports_auto_login():
             return True
@@ -1391,20 +1337,14 @@ class WelcomeWindow(QDialog):
         supports_auto_login = provider_enum in {
             DriverProvider.DEEPSEEK,
             DriverProvider.GLM_CHAT,
+            DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
             DriverProvider.AI_STUDIO,
         }
-        should_write_identity = bool(supports_auto_login and self._state.auto_login) or (
-            provider_enum == DriverProvider.MOONSHOT
-        )
+        should_write_identity = bool(supports_auto_login and self._state.auto_login)
         if should_write_identity:
             email = self._state.email.strip()
             password = self._state.password
-            if provider_enum == DriverProvider.MOONSHOT:
-                if not email:
-                    email = self.MOONSHOT_PLACEHOLDER_EMAIL
-                if not password.strip():
-                    password = self._get_or_create_moonshot_placeholder_password()
 
             try:
                 validate_email(email)

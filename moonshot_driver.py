@@ -30,6 +30,7 @@ class MoonshotDriver(BaseDriver):
     REGEN_ROUTE_GLOB = "**/apiv2/kimi.gateway.chat.v1.ChatService/RegenerateMessage*"
     USER_SETTINGS_ROUTE_GLOB = "**/apiv2/kimi.usersetting.v1.UserSettingService/GetUserSetting*"
     USER_SETTINGS_UPDATE_URL = "https://www.kimi.com/apiv2/kimi.usersetting.v1.UserSettingService/UpdateUserSetting"
+    AUTH_HOST_MARKER = "accounts.google.com"
     MEMORY_DISABLE_UPDATE_PAYLOAD = {
         "user_setting": {"memory": {}},
         "update_mask": "memory.useSemanticMemory",
@@ -55,7 +56,30 @@ class MoonshotDriver(BaseDriver):
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
     AUTH_STATE_SETTLE_TIMEOUT_MS = 12000
     AUTH_STATE_STABLE_SIGNED_OUT_MS = 1800
+    GOOGLE_AUTO_LOGIN_TIMEOUT_MS = 20000
     LOGIN_LABEL_ALIASES = {"log in", "login", "sign in", "signin"}
+    LEGACY_PLACEHOLDER_EMAILS = {"test1@notanemail.notanemail"}
+    GOOGLE_EMAIL_SELECTORS = [
+        "input#identifierId",
+        "input[type='email']",
+        "input[autocomplete='username']",
+        "input[name='identifier']",
+    ]
+    GOOGLE_PASSWORD_SELECTORS = [
+        "input[type='password']",
+        "input[name='Passwd']",
+        "input[autocomplete='current-password']",
+    ]
+    GOOGLE_CONTINUE_SELECTORS = [
+        "button:has-text('Continue')",
+        "[role='button']:has-text('Continue')",
+        "div[role='button']:has-text('Continue')",
+        "button:has-text('Continue as')",
+        "[role='button']:has-text('Continue as')",
+        "button:has-text('Allow')",
+        "[role='button']:has-text('Allow')",
+    ]
+    GOOGLE_BUTTON_FALLBACK_SELECTOR = "button.VfPpkd-LgbsSe, div[role='button'].VfPpkd-LgbsSe"
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.MOONSHOT)
@@ -145,8 +169,7 @@ class MoonshotDriver(BaseDriver):
             pass
 
     def _ece_requires_auto_login(self) -> bool:
-        # Moonshot login uses a manual Google flow; accounts still help pick identity/profile.
-        return False
+        return True
 
     @staticmethod
     def _flag_is_true(value: Any) -> bool:
@@ -472,6 +495,346 @@ class MoonshotDriver(BaseDriver):
                 return False
             await asyncio.sleep(0.5)
 
+    async def _human_delay(self, delay_s: float = 0.8) -> None:
+        await asyncio.sleep(max(0.0, float(delay_s)))
+
+    async def _find_first_visible_on_page(
+        self,
+        target_page,
+        selectors: List[str],
+        timeout_ms: int = 0,
+        poll_interval_s: float = 0.15,
+    ):
+        if not target_page:
+            return None
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            try:
+                if target_page.is_closed():
+                    return None
+            except Exception:
+                pass
+
+            for selector in selectors:
+                locator = target_page.locator(selector)
+                try:
+                    count = await locator.count()
+                except Exception:
+                    count = 0
+                for idx in range(min(count, 10)):
+                    item = locator.nth(idx)
+                    try:
+                        if await item.is_visible():
+                            return item
+                    except Exception:
+                        continue
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return None
+
+            await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
+    async def _find_google_auth_page(self):
+        candidates = []
+        if self.page:
+            candidates.append(self.page)
+
+        context = getattr(self, "context", None)
+        if context:
+            try:
+                for candidate in context.pages:
+                    if candidate not in candidates:
+                        candidates.append(candidate)
+            except Exception:
+                pass
+
+        for candidate in candidates:
+            try:
+                if candidate.is_closed():
+                    continue
+            except Exception:
+                pass
+
+            try:
+                current_url = str(candidate.url or "")
+            except Exception:
+                current_url = ""
+
+            if self.AUTH_HOST_MARKER in current_url:
+                return candidate
+
+            auth_field = await self._find_first_visible_on_page(
+                candidate,
+                self.GOOGLE_EMAIL_SELECTORS + self.GOOGLE_PASSWORD_SELECTORS,
+                timeout_ms=0,
+            )
+            if auth_field is not None:
+                return candidate
+
+        return None
+
+    async def _wait_for_google_auth_page(self, timeout_ms: int = 15000):
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            auth_page = await self._find_google_auth_page()
+            if auth_page is not None:
+                return auth_page
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return None
+            await asyncio.sleep(0.25)
+
+    @classmethod
+    def _is_legacy_placeholder_pair(cls, email: str, password: str) -> bool:
+        normalized_email = str(email or "").strip().lower()
+        if normalized_email in cls.LEGACY_PLACEHOLDER_EMAILS:
+            return True
+
+        normalized_password = str(password or "").strip()
+        if (
+            normalized_email.endswith("@notanemail.notanemail")
+            and len(normalized_password) >= 20
+            and normalized_password.isalnum()
+        ):
+            return True
+
+        return False
+
+    async def _enter_google_login_value_on_page(self, target_page, selectors: List[str], value: str) -> bool:
+        field = await self._find_first_visible_on_page(target_page, selectors, timeout_ms=15000)
+        if field is None:
+            return False
+
+        try:
+            await target_page.bring_to_front()
+        except Exception:
+            pass
+
+        try:
+            await field.click(timeout=3000)
+        except Exception:
+            pass
+
+        await self._human_delay(0.55)
+
+        try:
+            await target_page.keyboard.press("Control+A")
+        except Exception:
+            pass
+        try:
+            await target_page.keyboard.press("Backspace")
+        except Exception:
+            pass
+
+        try:
+            await target_page.keyboard.insert_text(str(value or ""))
+        except Exception:
+            try:
+                await field.fill(str(value or ""))
+            except Exception:
+                return False
+
+        await self._human_delay(0.75)
+
+        try:
+            await target_page.keyboard.press("Enter")
+        except Exception:
+            return False
+
+        return True
+
+    async def _click_locator_with_enter_fallback(self, target_page, locator) -> bool:
+        try:
+            await target_page.bring_to_front()
+        except Exception:
+            pass
+
+        try:
+            await locator.click(timeout=3000)
+            return True
+        except Exception:
+            pass
+
+        try:
+            await locator.focus()
+        except Exception:
+            pass
+
+        try:
+            await locator.press("Enter", timeout=3000)
+            return True
+        except Exception:
+            pass
+
+        try:
+            await locator.evaluate(
+                "(el) => { if (el && typeof el.click === 'function') { el.click(); return true; } return false; }"
+            )
+            return True
+        except Exception:
+            return False
+
+    async def _read_locator_text(self, locator) -> str:
+        try:
+            return str(await locator.inner_text() or "").strip()
+        except Exception:
+            pass
+
+        try:
+            return str(await locator.text_content() or "").strip()
+        except Exception:
+            pass
+
+        try:
+            return str(await locator.get_attribute("aria-label") or "").strip()
+        except Exception:
+            return ""
+
+    async def _google_continue_step_visible(self, target_page) -> bool:
+        try:
+            body_text = await target_page.locator("body").inner_text()
+        except Exception:
+            body_text = ""
+
+        normalized = self._normalize_text(body_text)
+        return any(
+            phrase in normalized
+            for phrase in (
+                "sign in to",
+                "continue to",
+                "wants to access",
+                "wants additional access",
+                "continue as",
+            )
+        )
+
+    async def _find_google_continue_button(self, target_page):
+        direct = await self._find_first_visible_on_page(target_page, self.GOOGLE_CONTINUE_SELECTORS, timeout_ms=0)
+        if direct is not None:
+            return direct
+
+        candidates = target_page.locator("button, [role='button']")
+        try:
+            count = await candidates.count()
+        except Exception:
+            count = 0
+
+        for idx in range(min(count, 25)):
+            candidate = candidates.nth(idx)
+            try:
+                if not await candidate.is_visible():
+                    continue
+            except Exception:
+                continue
+
+            label = self._normalize_text(await self._read_locator_text(candidate))
+            if not label:
+                continue
+            if any(token in label for token in ("continue", "continue as", "allow")):
+                if "cancel" in label or "back" in label:
+                    continue
+                return candidate
+
+        if not await self._google_continue_step_visible(target_page):
+            return None
+
+        google_buttons = target_page.locator(self.GOOGLE_BUTTON_FALLBACK_SELECTOR)
+        try:
+            google_count = await google_buttons.count()
+        except Exception:
+            google_count = 0
+
+        visible_buttons = []
+        for idx in range(min(google_count, 10)):
+            candidate = google_buttons.nth(idx)
+            try:
+                if await candidate.is_visible():
+                    visible_buttons.append(candidate)
+            except Exception:
+                continue
+
+        if len(visible_buttons) >= 2:
+            return visible_buttons[1]
+        if visible_buttons:
+            return visible_buttons[0]
+        return None
+
+    async def _click_google_continue_if_present(self, target_page) -> bool:
+        button = await self._find_google_continue_button(target_page)
+        if button is None:
+            return False
+
+        label = self._normalize_text(await self._read_locator_text(button))
+        if label and ("cancel" in label or "back" in label):
+            return False
+
+        clicked = await self._click_locator_with_enter_fallback(target_page, button)
+        if clicked:
+            Logger.info("Moonshot: handled Google Continue/consent step.")
+            await self._human_delay(0.9)
+        return clicked
+
+    async def _perform_google_auto_login(self, email: str, password: str):
+        popup = await self._click_google_login_and_get_popup()
+        auth_page = popup
+        if auth_page is None:
+            auth_page = await self._wait_for_google_auth_page(timeout_ms=12000)
+        if auth_page is None:
+            return False, popup
+
+        try:
+            await auth_page.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+
+        email_entered = False
+        password_entered = False
+        continue_clicked = False
+        deadline = time.time() + 45.0
+
+        while time.time() < deadline:
+            if await self._is_logged_in():
+                return True, popup
+
+            try:
+                if auth_page.is_closed():
+                    break
+            except Exception:
+                pass
+
+            email_field = await self._find_first_visible_on_page(auth_page, self.GOOGLE_EMAIL_SELECTORS, timeout_ms=0)
+            if email_field is not None and (not email_entered):
+                email_entered = await self._enter_google_login_value_on_page(auth_page, self.GOOGLE_EMAIL_SELECTORS, email)
+                if email_entered:
+                    await self._human_delay(1.0)
+                    continue
+
+            password_field = await self._find_first_visible_on_page(auth_page, self.GOOGLE_PASSWORD_SELECTORS, timeout_ms=0)
+            if password_field is not None and (not password_entered):
+                password_entered = await self._enter_google_login_value_on_page(
+                    auth_page,
+                    self.GOOGLE_PASSWORD_SELECTORS,
+                    password,
+                )
+                if password_entered:
+                    await self._human_delay(1.0)
+                    continue
+
+            if await self._click_google_continue_if_present(auth_page):
+                continue_clicked = True
+                continue
+
+            await asyncio.sleep(0.25)
+
+        if await self._is_logged_in():
+            return True, popup
+
+        if email_entered or password_entered or continue_clicked:
+            ok = await self._wait_until_logged_in(timeout_ms=self.GOOGLE_AUTO_LOGIN_TIMEOUT_MS)
+            return ok, popup
+
+        return False, popup
+
     async def _click_google_login_and_get_popup(self):
         if not self.page:
             return None
@@ -528,12 +891,11 @@ class MoonshotDriver(BaseDriver):
                 "Proceeding with best-effort login detection."
             )
 
-        auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
-        if auto_login:
-            Logger.info(
-                "Moonshot: credential-based auto-login is intentionally disabled; "
-                "manual Google sign-in is required."
-            )
+        auto_login = False
+        try:
+            auto_login = bool(self.config_manager.get_setting("providers_credentials", "auto_login"))
+        except Exception:
+            auto_login = False
 
         user_info_container = await self._find_first_visible(
             [
@@ -574,12 +936,75 @@ class MoonshotDriver(BaseDriver):
             self._mark_active_ece_pair_used()
             return
 
-        await self._click_google_login_and_get_popup()
+        popup = None
+        if auto_login:
+            pair = self.ece_active_pair()
+            if pair and str(pair.email or "").strip() and str(pair.password or "").strip():
+                if self._is_legacy_placeholder_pair(pair.email, pair.password):
+                    Logger.warning(
+                        "Moonshot: the selected account still looks like an old placeholder identity from Quick Setup. "
+                        "Auto Login will be skipped until you replace it with real Google credentials in Credential Manager."
+                    )
+                    self.notify_user(
+                        "Moonshot Login",
+                        "Your saved Kimi account still looks like an old placeholder identity. "
+                        "Replace it with your real Google email/password in Credential Manager, or finish the login manually this time.",
+                        level="warning",
+                    )
+                else:
+                    Logger.info("Moonshot: Auto Login enabled. Attempting Google sign-in...")
+                    ok, popup = await self._perform_google_auto_login(pair.email, pair.password)
+                    if ok:
+                        Logger.success("Moonshot: login detected.")
+                        self.ece_mark_used(pair.email)
+
+                        popup_still_open = False
+                        if popup is not None:
+                            try:
+                                await self._human_delay(1.0)
+                                popup_still_open = not popup.is_closed()
+                            except Exception:
+                                popup_still_open = False
+
+                        if popup_still_open:
+                            self.notify_user(
+                                "Moonshot Login",
+                                "Kimi login succeeded, but the Google popup is still open. "
+                                "If it does not close on its own, you can close it manually.",
+                                level="info",
+                            )
+
+                        try:
+                            await self.page.bring_to_front()
+                        except Exception:
+                            pass
+                        return
+
+                    Logger.warning(
+                        "Moonshot: Auto Login could not complete cleanly. Falling back to manual completion in the browser."
+                    )
+                    self.notify_user(
+                        "Moonshot Login",
+                        "Auto Login filled what it could in the Google popup/window, but manual completion is still needed. "
+                        "Finish the Google flow in the browser, then return to IntenseRP. "
+                        "If the popup does not close on its own after login, you can close it manually.",
+                        level="warning",
+                    )
+            else:
+                Logger.warning(
+                    "Moonshot: Auto Login is enabled but no Moonshot account is configured in Credential Manager. "
+                    "Waiting for manual login..."
+                )
+
+        if await self._find_google_auth_page() is None:
+            popup = await self._click_google_login_and_get_popup()
+
         Logger.info("Moonshot: waiting for manual Google login...")
 
         self.notify_user(
             "Moonshot Login",
-            "Complete the Google login flow in the browser tab/window, then return to IntenseRP.",
+            "Complete the Google login flow in the browser tab/window, then return to IntenseRP. "
+            "If the popup does not close on its own after login, you can close it manually.",
             level="warning",
         )
 

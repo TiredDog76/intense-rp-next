@@ -114,8 +114,8 @@ class BaseDriver(ABC):
             self._ece_pending_profile_slot = None
             return
 
-        # Providers can require Auto Login for account selection. Some providers have to work manually though, so we
-        # allow bypassing this requirement for them (right now Moonshot does this)
+        # Providers can require Auto Login for account selection. Some providers may still support manual-only auth
+        # flows, so we allow bypassing this requirement for them when needed
         if self._ece_requires_auto_login() and (not auto_login):
             self._ece_active_pair = None
             self._ece_active_profile_slot = 0

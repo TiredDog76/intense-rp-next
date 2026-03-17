@@ -88,7 +88,7 @@ Before hitting Start, pick your provider and decide how you want to log in.
 1. Click the :material-cog: **Settings** button
 2. Go to **Providers & Credentials**
 3. Choose your **Provider** (DeepSeek, GLM Chat, Moonshot, QwenLM, or Google AI Studio)
-4. (Optional) Turn on :material-toggle-switch: **Auto Login** (DeepSeek / GLM Chat / QwenLM / Google AI Studio)
+4. (Optional) Turn on :material-toggle-switch: **Auto Login**
 5. Open **Credential Manager** and add your account(s)
 6. (Optional) Enable **Select Least Used** and/or **Reload on Failure**
 7. Hit :material-content-save: **Save**
@@ -107,7 +107,7 @@ Before hitting Start, pick your provider and decide how you want to log in.
     Persistent Sessions are strongly recommended if you do not want to solve it every start.
 
 !!! note "Moonshot login"
-    Moonshot uses a manual Google login flow in IntenseRP (no credential autofill step). Depending on your account security settings, manual confirmation/challenge steps may still be required.
+    Moonshot uses a Google popup login flow. If **Auto Login** is enabled, IntenseRP can try to fill the popup automatically, but Google may still ask for manual confirmation, 2FA, or leave the popup open until you close it yourself.
 
 !!! note "Google AI Studio login"
     Google AI Studio also uses Google sign-in. IntenseRP can try to auto-fill the Google login flow if **Auto Login** is enabled, but Persistent Sessions are strongly recommended because Google may still ask for manual confirmation.
@@ -120,7 +120,7 @@ Alright, the fun part!
 
 1. Click the big :material-play: **Start** button
 2. A browser window will pop up
-3. DeepSeek / GLM Chat / QwenLM / Google AI Studio can use auto-login. Moonshot requires manual Google login in the browser window.
+3. All providers can use auto-login, though Moonshot and Google AI Studio may still need manual confirmation in the browser.
 4. Once logged in, the status changes to :material-check-circle: **Running (Port 7777)**
 
 <div class="image-grid" markdown>
