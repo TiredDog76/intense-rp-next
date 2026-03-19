@@ -67,7 +67,7 @@ That matters because provider chat IDs are usually only valid for the account th
 
 ---
 
-## :material-warning-outline: DeepSeek special case
+## :material-alert-outline: DeepSeek special case
 
 DeepSeek has one extra rule here.
 
