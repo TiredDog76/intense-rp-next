@@ -1280,12 +1280,12 @@ SCHEMA = [
                 tooltip="When enabled, closing the main window hides it to the tray instead of exiting.",
             ),
             SettingField(
-                key="disable_animations",
-                label="Disable Animations",
+                key="enable_animations",
+                label="Enable Animations",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "Disable non-essential UI animations. "
+                    "Enable non-essential UI animations. "
                 ),
             ),
             SettingField(
