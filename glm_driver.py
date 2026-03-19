@@ -38,6 +38,10 @@ class GLMDriver(BaseDriver):
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
 
+    SIDEBAR_NEW_CHAT_BUTTON_SELECTOR = "button#sidebar-new-chat-button"
+    QUICK_NEW_CHAT_BUTTON_SELECTOR = "button[data-scene='chat']"
+    LEGACY_QUICK_NEW_CHAT_BUTTON_SELECTOR = "button#new-chat-button"
+
     MODEL_SELECTOR_BUTTON_SELECTOR = "button.modelSelectorButton"
     MODEL_DROPDOWN_ID = "f8T9iEf1QC"
     MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
@@ -961,14 +965,41 @@ class GLMDriver(BaseDriver):
         elif source != "auto":
             Logger.warning(f"GLM Chat: unknown new chat source '{source}'.")
 
-        selector = "button#sidebar-new-chat-button" if is_open else "button#new-chat-button"
-        btn = self.page.locator(selector)
-        if await btn.count() == 0:
+        selectors = (
+            [
+                self.SIDEBAR_NEW_CHAT_BUTTON_SELECTOR,
+                self.QUICK_NEW_CHAT_BUTTON_SELECTOR,
+                self.LEGACY_QUICK_NEW_CHAT_BUTTON_SELECTOR,
+            ]
+            if is_open
+            else [
+                self.QUICK_NEW_CHAT_BUTTON_SELECTOR,
+                self.LEGACY_QUICK_NEW_CHAT_BUTTON_SELECTOR,
+                self.SIDEBAR_NEW_CHAT_BUTTON_SELECTOR,
+            ]
+        )
+
+        btn = None
+        for selector in selectors:
+            locator = self.page.locator(selector)
+            count = await locator.count()
+            for idx in range(min(count, 5)):
+                candidate = locator.nth(idx)
+                try:
+                    if await candidate.is_visible():
+                        btn = candidate
+                        break
+                except Exception:
+                    continue
+            if btn is not None:
+                break
+
+        if btn is None:
             Logger.warning("GLM Chat: New Chat button not found.")
             return
 
         try:
-            await btn.first.click(timeout=self._ui_timeout)
+            await btn.click(timeout=self._ui_timeout)
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to click New Chat: {e}")
 

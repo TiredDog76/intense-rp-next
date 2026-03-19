@@ -51,7 +51,7 @@ class QwenLMDriver(BaseDriver):
     SIDEBAR_SELECTOR = "div.sidebar"
     SIDEBAR_OPEN_BUTTON_SELECTOR = "div.sidebar-side-fold-container-open"
     SIDEBAR_CLOSE_BUTTON_SELECTOR = "button.sidebar-toggle-button"
-    NEW_CHAT_BUTTON_SELECTOR = "div.sidebar-entry-list > :first-child"
+    NEW_CHAT_BUTTON_SELECTOR = "div.sidebar-entry-fixed-list-content"
 
     THINKING_TRIGGER_SELECTOR = "span.ant-select-selection-item:has(div.qwen-select-thinking-label)"
     THINKING_LABEL_SELECTOR = "span.qwen-select-thinking-label-text"
@@ -1424,34 +1424,94 @@ class QwenLMDriver(BaseDriver):
                 Logger.warning(f"QwenLM: failed to close sidebar: {e}")
                 return
 
+    async def _click_new_chat_entry(self) -> bool:
+        if not self.page:
+            return False
+
+        try:
+            clicked = await self.page.evaluate(
+                "(fixedSel) => {"
+                "  const isVisible = (el) => {"
+                "    try {"
+                "      if (!el) return false;"
+                "      const rect = el.getBoundingClientRect();"
+                "      if (!rect || rect.width <= 0 || rect.height <= 0) return false;"
+                "      const style = window.getComputedStyle(el);"
+                "      if (!style) return false;"
+                "      if (style.visibility === 'hidden' || style.display === 'none') return false;"
+                "      return true;"
+                "    } catch (e) { return false; }"
+                "  };"
+                "  const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();"
+                "  const readLabel = (el) => {"
+                "    const bits = [];"
+                "    const push = (value) => {"
+                "      const text = normalize(value);"
+                "      if (text) bits.push(text);"
+                "    };"
+                "    let current = el;"
+                "    for (let depth = 0; current && depth < 3; depth += 1, current = current.parentElement) {"
+                "      push(current.textContent);"
+                "      push(current.getAttribute && current.getAttribute('aria-label'));"
+                "      push(current.getAttribute && current.getAttribute('title'));"
+                "    }"
+                "    return bits.join(' ').trim();"
+                "  };"
+                "  const clickCandidate = (el) => {"
+                "    const targets = ["
+                "      el.closest('button'),"
+                "      el.closest('[role=\"button\"]'),"
+                "      el.closest('a'),"
+                "      el,"
+                "    ].filter(Boolean);"
+                "    for (const target of targets) {"
+                "      try { target.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) {}"
+                "      try { target.click(); return true; } catch (e) {}"
+                "    }"
+                "    return false;"
+                "  };"
+                "  const candidates = [];"
+                "  for (const el of Array.from(document.querySelectorAll(fixedSel))) {"
+                "    if (!isVisible(el)) continue;"
+                "    candidates.push({ el, label: readLabel(el) });"
+                "  }"
+                "  if (!candidates.length) return false;"
+                "  const scored = candidates"
+                "    .map((candidate, index) => {"
+                "      const label = candidate.label;"
+                "      let score = 0;"
+                "      if (label.includes('new chat')) score += 1000;"
+                "      else if (label.includes('new')) score += 300;"
+                "      if (label.includes('chat')) score += 150;"
+                "      if (label.includes('community')) score -= 1200;"
+                "      if (label.includes('discover')) score -= 800;"
+                "      if (label.includes('explore')) score -= 600;"
+                "      return { ...candidate, index, score };"
+                "    })"
+                "    .sort((left, right) => (right.score - left.score) || (left.index - right.index));"
+                "  for (const candidate of scored) {"
+                "    if (candidate.score < 0) continue;"
+                "    if (clickCandidate(candidate.el)) return true;"
+                "  }"
+                "  return false;"
+                "}",
+                self.NEW_CHAT_BUTTON_SELECTOR,
+            )
+        except Exception as e:
+            Logger.debug(f"QwenLM: failed to evaluate new-chat candidates: {e}")
+            return False
+
+        return bool(clicked)
+
     async def click_new_chat(self, source: str = "auto") -> None:
         if not self.page:
             return
 
-        btn = self.page.locator(self.NEW_CHAT_BUTTON_SELECTOR)
-        if await btn.count() == 0:
-            # sidebar entry list exists so pick its first child via JS
-            try:
-                clicked = await self.page.evaluate(
-                    "() => {"
-                    "  const list = document.querySelector('div.sidebar-entry-list');"
-                    "  if (!list) return false;"
-                    "  const first = list.firstElementChild;"
-                    "  if (!first) return false;"
-                    "  first.click();"
-                    "  return true;"
-                    "}"
-                )
-            except Exception:
-                clicked = False
-            if not clicked:
-                Logger.warning("QwenLM: New Chat button not found.")
-            return
+        if source not in {"auto", "sidebar", "simple"}:
+            Logger.warning(f"QwenLM: unknown new chat source '{source}'.")
 
-        try:
-            await btn.first.click(timeout=3000)
-        except Exception as e:
-            Logger.warning(f"QwenLM: failed to click New Chat: {e}")
+        if not await self._click_new_chat_entry():
+            Logger.warning("QwenLM: New Chat button not found.")
 
     async def _read_thinking_mode(self) -> str:
         if not self.page:
