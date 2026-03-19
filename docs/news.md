@@ -8,6 +8,20 @@ icon: material/newspaper-variant-outline
 
 This page is the changelog to view all the latests news and updates about IntenseRP Next.
 
+## March 19, 2026 - Update 2.6.1
+
+IntenseRP Next v2.6.1 is here with two small but useful upgrades.
+
+Moonshot now supports an experimental **Auto Login** flow for its Google popup, so IntenseRP can try to fill the sign-in steps for you before falling back to manual completion if Google decides to be Google.
+
+Multi-Slot Cache is also now available on every current driver except **Google AI Studio**, which means **DeepSeek**, **GLM Chat**, **Moonshot**, and **QwenLM** can now look through older cached chats instead of only remembering the latest one. This is especially useful if you swipe a lot. More about that in the [Multi-Slot Cache docs page](features/multi-slot-cache.md).
+
+[Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.6.1-patch){ .md-button .md-button--primary }
+[Join our Discord](https://discord.gg/ZWYNnXt7){ .md-button }
+[Suggest New Features](https://forms.gle/cRGEoTNKxUrjKRJ2A){ .md-button }
+
+---
+
 ## 🎉 March 14, 2026 - Update 2.6.0
 
 IntenseRP Next v2.6.0 is out, and the big headline is **Google AI Studio support**. It already includes streaming, Google login handling, model switching, and sampling controls, but it is still a bit beta-ish for now, so please poke it gently and let me know if something feels off.

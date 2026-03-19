@@ -14,4 +14,4 @@ the project is doing overall.
 
 If you want to help shape what gets prioritized, this is one of the easiest ways to do it:
 
-[Open the latest mini-survey](https://forms.gle/JCe8FQ27mPgdEGes7){ .md-button .md-button--primary }
+[Open the latest mini-survey](https://forms.gle/cRGEoTNKxUrjKRJ2A){ .md-button .md-button--primary }
