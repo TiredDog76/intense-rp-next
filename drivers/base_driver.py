@@ -136,6 +136,29 @@ class BaseDriver(ABC):
     def ece_active_pair(self) -> CredentialPair | None:
         return getattr(self, "_ece_active_pair", None)
 
+    def _get_multi_slot_cache_account_key(self) -> str:
+        """
+        Return a stable account bucket for provider-scoped multi-slot cache entries.
+
+        Prefer the selected Credential Manager email when available. When the active
+        account is unknown (for example manual-login flows), fall back to the active
+        browser profile path so different provider profiles do not share chat IDs.
+        """
+        pair = self.ece_active_pair()
+        email = str(getattr(pair, "email", "") or "").strip().lower()
+        if email:
+            return f"email:{email}"
+
+        try:
+            profile_dir = Path(self._get_persistent_profile_dir()).resolve()
+            profile_text = profile_dir.as_posix().strip()
+            if profile_text:
+                return f"profile:{profile_text}"
+        except Exception:
+            pass
+
+        return "profile:default"
+
     def ece_mark_used(self, email: str) -> None:
         if not email:
             return

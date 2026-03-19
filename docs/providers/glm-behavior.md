@@ -124,6 +124,13 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
 
     If you want to experiment with it anyway, try enabling **Refresh After Generation** under GLM Behavior -> Quirks. This reloads the page after each response and can sometimes restore the UI state so Regenerate becomes available again.
 
+!!! tip "Multi-Slot Cache"
+    GLM also supports **GLM Behavior** -> **Multi-Slot Cache**.
+
+    That lets IntenseRP keep up to 7 older cached GLM chats per account and try reopening one of those when the current prompt matches.
+
+    Same point as above, though: if GLM's regenerate UI is being annoying that day, Multi-Slot Cache inherits the same annoyance because it still depends on the Regenerate button working.
+
 ---
 
 ## :material-key: Login notes (CAPTCHA)

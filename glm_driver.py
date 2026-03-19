@@ -13,9 +13,13 @@ from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
     clear_clean_regeneration_cache,
     extract_macro_overrides,
+    find_multi_slot_cache_entry,
     format_messages,
     read_clean_regeneration_state,
+    read_multi_slot_cache_payload,
+    remove_multi_slot_cache_entry,
     strip_macros_from_messages,
+    upsert_multi_slot_cache_entry,
     write_clean_regeneration_state,
 )
 from utils.cache_manager import CacheManager
@@ -28,6 +32,7 @@ load_dotenv()
 class GLMDriver(BaseDriver):
     CHAT_URL = "https://chat.z.ai/"
     AUTH_URL = "https://chat.z.ai/auth"
+    CONVERSATION_URL_RE = re.compile(r"^https://chat\.z\.ai/c/([^/?#]+)", re.IGNORECASE)
 
     REFRESH_AFTER_GENERATION_DELAY_S = 2.0
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
@@ -61,6 +66,7 @@ class GLMDriver(BaseDriver):
 
         self.clean_regen_message_cache_key = "glm_last_message.txt"
         self.clean_regen_state_cache_key = "glm_last_message_state.json"
+        self.multi_slot_cache_key = "glm_multi_slot_cache.json"
 
         self._refresh_after_generation = False
         self._refresh_after_generation_task: asyncio.Task | None = None
@@ -727,6 +733,167 @@ class GLMDriver(BaseDriver):
             self.clean_regen_state_cache_key,
             state,
         )
+
+    def _build_multi_slot_cache_state(
+        self,
+        *,
+        effective_deepthink: bool,
+        enable_search: bool,
+        send_as_text_file: bool,
+    ) -> Dict[str, Any]:
+        return {
+            "deepthink_enabled": bool(effective_deepthink),
+            "search_enabled": bool(enable_search),
+            "send_as_text_file": bool(send_as_text_file),
+            "ui_model": self._get_configured_glm_model_friendly(),
+        }
+
+    def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
+        normalized_url = str(url or "").strip()
+        if not normalized_url:
+            return None
+
+        match = self.CONVERSATION_URL_RE.match(normalized_url)
+        if not match:
+            return None
+
+        conversation_id = str(match.group(1) or "").strip()
+        if not conversation_id:
+            return None
+
+        return {
+            "conversation_id": conversation_id,
+            "conversation_url": f"https://chat.z.ai/c/{conversation_id}",
+        }
+
+    async def _get_current_conversation_info(self) -> Optional[Dict[str, str]]:
+        if not self.page:
+            return None
+
+        try:
+            current_url = str(self.page.url or "")
+        except Exception:
+            current_url = ""
+
+        return self._parse_conversation_info_from_url(current_url)
+
+    async def _wait_for_current_conversation_info(
+        self,
+        timeout_ms: int = 6000,
+        poll_interval_s: float = 0.2,
+    ) -> Optional[Dict[str, str]]:
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            info = await self._get_current_conversation_info()
+            if info is not None:
+                return info
+
+            if time.time() >= deadline:
+                return None
+
+            await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
+    async def _open_cached_conversation(self, conversation_url: str) -> bool:
+        if not self.page:
+            return False
+
+        target_url = str(conversation_url or "").strip()
+        if not target_url:
+            return False
+
+        try:
+            await self.page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as e:
+            Logger.warning(f"Multi-Slot Cache (GLM): failed to open cached chat URL: {e}")
+            return False
+
+        try:
+            await self._wait_for_chat_shell_ready(timeout_ms=60000)
+        except Exception as e:
+            Logger.warning(f"Multi-Slot Cache (GLM): chat shell did not become ready: {e}")
+            return False
+
+        try:
+            if await self._chat_page_contains_sign_in():
+                Logger.warning("Multi-Slot Cache (GLM): cached chat URL requires sign-in.")
+                return False
+        except Exception:
+            pass
+
+        return True
+
+    async def _try_multi_slot_regeneration(
+        self,
+        *,
+        formatted_message: str,
+        multi_slot_state: Dict[str, Any],
+        completion_armed: asyncio.Event,
+        completion_started: asyncio.Event,
+    ) -> bool:
+        account_key = self._get_multi_slot_cache_account_key()
+        payload = read_multi_slot_cache_payload(
+            self.cache_manager,
+            self.multi_slot_cache_key,
+            log_label="Multi-Slot Cache (GLM)",
+        )
+        entry = find_multi_slot_cache_entry(payload, account_key, formatted_message, multi_slot_state)
+        if entry is None:
+            return False
+
+        current_info = await self._get_current_conversation_info()
+        if current_info is None or current_info["conversation_id"] != entry["conversation_id"]:
+            Logger.info("Multi-Slot Cache (GLM): opening cached conversation for regeneration...")
+            opened = await self._open_cached_conversation(entry["conversation_url"])
+            if not opened:
+                return False
+            current_info = await self._get_current_conversation_info()
+            if current_info is None or current_info["conversation_id"] != entry["conversation_id"]:
+                Logger.warning(
+                    "Multi-Slot Cache (GLM): cached conversation URL opened, but the expected "
+                    "chat ID was not available. Falling back to a new chat."
+                )
+                return False
+
+        try:
+            await self.apply_configured_model()
+            await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
+            await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
+            await asyncio.sleep(self._post_delay_s)
+        except Exception:
+            pass
+
+        regen_timeout = max(int(getattr(self, "_ui_timeout", 3000)), 5000)
+        Logger.info("Multi-Slot Cache (GLM): cached prompt match found. Attempting to regenerate...")
+        if not await self._click_regenerate(timeout_ms=regen_timeout, arm_event=completion_armed):
+            Logger.warning(
+                "Multi-Slot Cache (GLM): regenerate button unavailable. Removing cached entry."
+            )
+            remove_multi_slot_cache_entry(
+                self.cache_manager,
+                self.multi_slot_cache_key,
+                account_key,
+                entry["conversation_id"],
+                log_label="Multi-Slot Cache (GLM)",
+            )
+            return False
+
+        try:
+            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+        except asyncio.TimeoutError:
+            Logger.warning(
+                "Multi-Slot Cache (GLM): completion request not observed after clicking "
+                "Regenerate. Removing cached entry."
+            )
+            remove_multi_slot_cache_entry(
+                self.cache_manager,
+                self.multi_slot_cache_key,
+                account_key,
+                entry["conversation_id"],
+                log_label="Multi-Slot Cache (GLM)",
+            )
+            return False
+
+        return True
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         return format_messages(self.config_manager, messages)
@@ -1703,8 +1870,15 @@ class GLMDriver(BaseDriver):
 
         try:
             clean_regeneration = bool(self.config_manager.get_setting("glm_behavior", "clean_regeneration"))
+            multi_slot_cache_enabled = bool(
+                clean_regeneration
+                and self.config_manager.get_setting("glm_behavior", "multi_slot_cache")
+            )
             regenerated = False
             clean_regen_state: Dict[str, bool] | None = None
+            multi_slot_state: Dict[str, Any] | None = None
+            current_cache_matched = False
+            should_record_multi_slot = False
 
             if clean_regeneration:
                 clean_regen_state = {
@@ -1712,6 +1886,11 @@ class GLMDriver(BaseDriver):
                     "search_enabled": bool(enable_search),
                     "send_as_text_file": bool(send_as_text_file),
                 }
+                multi_slot_state = self._build_multi_slot_cache_state(
+                    effective_deepthink=bool(effective_deepthink),
+                    enable_search=bool(enable_search),
+                    send_as_text_file=bool(send_as_text_file),
+                )
 
                 last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
                 last_state = self._read_clean_regeneration_state()
@@ -1720,6 +1899,7 @@ class GLMDriver(BaseDriver):
                 state_matches = last_state == clean_regen_state
 
                 if message_matches and state_matches:
+                    current_cache_matched = True
                     Logger.info(
                         "Clean Regeneration (GLM): Message and settings match cache. Attempting to regenerate..."
                     )
@@ -1756,6 +1936,22 @@ class GLMDriver(BaseDriver):
                     )
                 else:
                     Logger.debug("Clean Regeneration (GLM): Message differs from cache. Creating new chat.")
+
+            if (
+                (not regenerated)
+                and multi_slot_cache_enabled
+                and multi_slot_state
+                and (not current_cache_matched)
+            ):
+                regenerated = await self._try_multi_slot_regeneration(
+                    formatted_message=formatted_message,
+                    multi_slot_state=multi_slot_state,
+                    completion_armed=completion_armed,
+                    completion_started=completion_started,
+                )
+                if regenerated and clean_regen_state:
+                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_clean_regeneration_state(clean_regen_state)
 
             if not regenerated:
                 Logger.info("GLM Chat: preparing new chat session...")
@@ -1795,6 +1991,7 @@ class GLMDriver(BaseDriver):
                 if clean_regeneration and clean_regen_state:
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
                     self._write_clean_regeneration_state(clean_regen_state)
+                    should_record_multi_slot = bool(multi_slot_cache_enabled and multi_slot_state)
 
             if not completion_started.is_set():
                 try:
@@ -1819,6 +2016,27 @@ class GLMDriver(BaseDriver):
                     yield f"data: {json.dumps(item)}\n\n"
                     break
                 yield item
+
+            if should_record_multi_slot and stream_completed and not self.abort_requested and not (abort_event and abort_event.is_set()):
+                conversation_info = await self._wait_for_current_conversation_info(timeout_ms=6000)
+                if conversation_info is None:
+                    Logger.debug(
+                        "Multi-Slot Cache (GLM): could not resolve conversation URL after generation; "
+                        "skipping cache save."
+                    )
+                else:
+                    upsert_multi_slot_cache_entry(
+                        self.cache_manager,
+                        self.multi_slot_cache_key,
+                        self._get_multi_slot_cache_account_key(),
+                        {
+                            "conversation_id": conversation_info["conversation_id"],
+                            "conversation_url": conversation_info["conversation_url"],
+                            "prompt": formatted_message,
+                            "state": multi_slot_state,
+                        },
+                        log_label="Multi-Slot Cache (GLM)",
+                    )
 
             if stream_completed and not self.abort_requested and not (abort_event and abort_event.is_set()):
                 self._schedule_refresh_after_generation()

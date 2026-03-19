@@ -25,6 +25,12 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](providers.md)
 
+-   :material-layers-triple-outline: **Multi-Slot Cache**
+
+    Reuse up to 7 older cached chats on supported providers instead of only the latest one.
+
+    [:arrow_right: Learn More](features/multi-slot-cache.md)
+
 -   :material-key: **Login & Sessions**
 
     Auto-login and persistent browser sessions.
@@ -83,6 +89,16 @@ Provider-specific Behavior settings now live in their own section.
 If you are looking for DeepSeek / GLM / Moonshot / QwenLM / Google AI Studio toggles, model pickers, search settings, or provider-specific quirks:
 
 :material-arrow-right: **Open** [:material-cloud: Providers Overview](providers.md)
+
+---
+
+### :material-layers-triple-outline: Multi-Slot Cache
+
+On supported providers, Multi-Slot Cache lets Clean Regeneration remember more than one old chat.
+
+It keeps up to 7 reusable prompt slots per provider/account, so IntenseRP can jump back to an older matching conversation and hit Regenerate there instead of only checking the very last chat.
+
+:material-arrow-right: **Open** [:material-layers-triple-outline: Multi-Slot Cache](features/multi-slot-cache.md)
 
 ---
 

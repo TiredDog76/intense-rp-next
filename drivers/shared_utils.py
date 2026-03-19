@@ -33,6 +33,8 @@ _CLEAN_REGEN_STATE_KEYS = (
     "search_enabled",
     "send_as_text_file",
 )
+_CLEAN_REGEN_MULTI_SLOT_VERSION = 1
+_CLEAN_REGEN_MULTI_SLOT_MAX_ITEMS = 7
 _MACRO_PATTERN = re.compile(r"\[\[\s*([a-zA-Z0-9_-]+)\s*\]\]")
 _IR2_PATTERN = re.compile(r"\[\[IR2u\]\](.*?)\[\[/IR2u\]\]-\[\[IR2a\]\](.*?)\[\[/IR2a\]\]")
 _CLASSIC_PATTERN = re.compile(r'DATA1: "(.*?)"\s*DATA2: "(.*?)"')
@@ -46,6 +48,194 @@ def clear_clean_regeneration_cache(
     """Clear cached prompt and state entries used by clean-regeneration flows."""
     cache_manager.clear_cache(message_cache_key)
     cache_manager.clear_cache(state_cache_key)
+
+
+def read_multi_slot_cache_payload(
+    cache_manager: Any,
+    cache_key: str,
+    *,
+    log_label: str = "Multi-Slot Cache",
+) -> Dict[str, Any]:
+    """Load and validate the persisted multi-slot clean-regeneration cache."""
+    raw = cache_manager.read_cache(cache_key)
+    if raw is None:
+        return {"version": _CLEAN_REGEN_MULTI_SLOT_VERSION, "accounts": {}}
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        Logger.warning(f"{log_label}: Cached multi-slot payload is invalid JSON, ignoring.")
+        return {"version": _CLEAN_REGEN_MULTI_SLOT_VERSION, "accounts": {}}
+
+    if not isinstance(data, dict):
+        return {"version": _CLEAN_REGEN_MULTI_SLOT_VERSION, "accounts": {}}
+
+    raw_accounts = data.get("accounts")
+    if not isinstance(raw_accounts, dict):
+        raw_accounts = {}
+
+    accounts: Dict[str, List[Dict[str, Any]]] = {}
+    for raw_account_key, raw_entries in raw_accounts.items():
+        account_key = str(raw_account_key or "").strip()
+        if not account_key or not isinstance(raw_entries, list):
+            continue
+
+        cleaned_entries: List[Dict[str, Any]] = []
+        for raw_entry in raw_entries:
+            normalized = _normalize_multi_slot_entry(raw_entry)
+            if normalized is not None:
+                cleaned_entries.append(normalized)
+
+        if cleaned_entries:
+            accounts[account_key] = cleaned_entries[-_CLEAN_REGEN_MULTI_SLOT_MAX_ITEMS :]
+
+    return {
+        "version": _CLEAN_REGEN_MULTI_SLOT_VERSION,
+        "accounts": accounts,
+    }
+
+
+def write_multi_slot_cache_payload(
+    cache_manager: Any,
+    cache_key: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Persist the normalized multi-slot clean-regeneration cache."""
+    accounts = payload.get("accounts") if isinstance(payload, dict) else {}
+    if not isinstance(accounts, dict):
+        accounts = {}
+
+    normalized_payload = {
+        "version": _CLEAN_REGEN_MULTI_SLOT_VERSION,
+        "accounts": accounts,
+    }
+    cache_manager.write_cache(
+        cache_key,
+        json.dumps(normalized_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+    )
+
+
+def find_multi_slot_cache_entry(
+    payload: Dict[str, Any],
+    account_key: str,
+    prompt: str,
+    state: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Return the newest cached entry that matches the prompt and state."""
+    if not isinstance(payload, dict):
+        return None
+
+    raw_accounts = payload.get("accounts")
+    if not isinstance(raw_accounts, dict):
+        return None
+
+    entries = raw_accounts.get(str(account_key or "").strip())
+    if not isinstance(entries, list):
+        return None
+
+    for entry in reversed(entries):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("prompt") != prompt:
+            continue
+        if entry.get("state") != state:
+            continue
+        normalized = _normalize_multi_slot_entry(entry)
+        if normalized is not None:
+            return normalized
+
+    return None
+
+
+def upsert_multi_slot_cache_entry(
+    cache_manager: Any,
+    cache_key: str,
+    account_key: str,
+    entry: Dict[str, Any],
+    *,
+    log_label: str = "Multi-Slot Cache",
+) -> None:
+    """Insert or replace a cached conversation entry, keeping only the newest slots."""
+    normalized_entry = _normalize_multi_slot_entry(entry)
+    cache_payload = read_multi_slot_cache_payload(
+        cache_manager,
+        cache_key,
+        log_label=log_label,
+    )
+    if normalized_entry is None:
+        return
+
+    normalized_account_key = str(account_key or "").strip()
+    if not normalized_account_key:
+        return
+
+    accounts = cache_payload.setdefault("accounts", {})
+    raw_entries = accounts.get(normalized_account_key, [])
+    if not isinstance(raw_entries, list):
+        raw_entries = []
+
+    cleaned_entries: List[Dict[str, Any]] = []
+    for raw_entry in raw_entries:
+        existing = _normalize_multi_slot_entry(raw_entry)
+        if existing is None:
+            continue
+        if existing["conversation_id"] == normalized_entry["conversation_id"]:
+            continue
+        cleaned_entries.append(existing)
+
+    cleaned_entries.append(normalized_entry)
+    accounts[normalized_account_key] = cleaned_entries[-_CLEAN_REGEN_MULTI_SLOT_MAX_ITEMS :]
+    write_multi_slot_cache_payload(cache_manager, cache_key, cache_payload)
+
+
+def remove_multi_slot_cache_entry(
+    cache_manager: Any,
+    cache_key: str,
+    account_key: str,
+    conversation_id: str,
+    *,
+    log_label: str = "Multi-Slot Cache",
+) -> bool:
+    """Remove a cached conversation entry and return whether anything changed."""
+    normalized_account_key = str(account_key or "").strip()
+    normalized_conversation_id = str(conversation_id or "").strip()
+    if not normalized_account_key or not normalized_conversation_id:
+        return False
+
+    cache_payload = read_multi_slot_cache_payload(
+        cache_manager,
+        cache_key,
+        log_label=log_label,
+    )
+    accounts = cache_payload.get("accounts")
+    if not isinstance(accounts, dict):
+        return False
+
+    raw_entries = accounts.get(normalized_account_key)
+    if not isinstance(raw_entries, list):
+        return False
+
+    kept_entries: List[Dict[str, Any]] = []
+    removed = False
+    for raw_entry in raw_entries:
+        existing = _normalize_multi_slot_entry(raw_entry)
+        if existing is None:
+            continue
+        if existing["conversation_id"] == normalized_conversation_id:
+            removed = True
+            continue
+        kept_entries.append(existing)
+
+    if not removed:
+        return False
+
+    if kept_entries:
+        accounts[normalized_account_key] = kept_entries
+    else:
+        accounts.pop(normalized_account_key, None)
+
+    write_multi_slot_cache_payload(cache_manager, cache_key, cache_payload)
+    return True
 
 
 def extract_macro_overrides(
@@ -378,3 +568,25 @@ def _render_injection(text: str, user_name: str, char_name: str) -> str:
     rendered = rendered.replace("{{username}}", user_name)
     rendered = rendered.replace("{{asstname}}", char_name)
     return rendered
+
+
+def _normalize_multi_slot_entry(entry: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(entry, dict):
+        return None
+
+    conversation_id = str(entry.get("conversation_id") or "").strip()
+    conversation_url = str(entry.get("conversation_url") or "").strip()
+    prompt = entry.get("prompt")
+    state = entry.get("state")
+
+    if not conversation_id or not conversation_url:
+        return None
+    if not isinstance(prompt, str) or not isinstance(state, dict):
+        return None
+
+    return {
+        "conversation_id": conversation_id,
+        "conversation_url": conversation_url,
+        "prompt": prompt,
+        "state": dict(state),
+    }

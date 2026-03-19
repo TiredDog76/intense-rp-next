@@ -132,6 +132,13 @@ When you send the exact same prompt twice in a row, IntenseRP can regenerate the
 !!! note "Censorship"
     DeepSeek automatically disables the regenerate button if the last response was censored. In that case, Clean Regeneration won't work, and IntenseRP will start a new chat instead.
 
+!!! tip "Multi-Slot Cache"
+    If you want Clean Regeneration to remember more than just the latest chat, enable **DeepSeek Behavior** -> **Multi-Slot Cache** as well.
+
+    It keeps up to 7 older cached DeepSeek chats per account, and if one of them matches the current prompt/settings, IntenseRP can reopen that chat and regenerate there instead.
+
+    DeepSeek censorship still blocks this. If a chat gets content-filtered, IntenseRP skips saving it to the multi-slot cache.
+
 ---
 
 ## :material-code-tags: Per-Message Macros

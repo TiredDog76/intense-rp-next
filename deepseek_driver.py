@@ -2,6 +2,7 @@ import codecs
 import time
 import json
 import asyncio
+import re
 import httpx
 from typing import List, Union, Any, Dict, Callable, Optional
 from dotenv import load_dotenv
@@ -11,9 +12,13 @@ from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
     clear_clean_regeneration_cache,
     extract_macro_overrides,
+    find_multi_slot_cache_entry,
     format_messages,
     read_clean_regeneration_state,
+    remove_multi_slot_cache_entry,
     strip_macros_from_messages,
+    upsert_multi_slot_cache_entry,
+    read_multi_slot_cache_payload,
     write_clean_regeneration_state,
 )
 from utils.cache_manager import CacheManager
@@ -25,6 +30,7 @@ load_dotenv()
 class DeepSeekDriver(BaseDriver):
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
+    CONVERSATION_URL_RE = re.compile(r"^https://chat\.deepseek\.com/a/chat/s/([^/?#]+)", re.IGNORECASE)
     CHAT_READY_SELECTORS = [
         "textarea[placeholder='Message DeepSeek']",
         "textarea",
@@ -54,6 +60,8 @@ class DeepSeekDriver(BaseDriver):
         self.current_send_deepthink = None
         self.clean_regen_message_cache_key = "last_message.txt"
         self.clean_regen_state_cache_key = "last_message_state.json"
+        self.multi_slot_cache_key = "deepseek_multi_slot_cache.json"
+        self._last_generation_censored = False
         self._reset_stream_parser()
 
     def _reset_stream_parser(self) -> None:
@@ -381,6 +389,160 @@ class DeepSeekDriver(BaseDriver):
             state,
         )
 
+    def _build_multi_slot_cache_state(
+        self,
+        *,
+        effective_deepthink: bool,
+        enable_search: bool,
+        send_as_text_file: bool,
+    ) -> Dict[str, bool]:
+        return {
+            "deepthink_enabled": bool(effective_deepthink),
+            "search_enabled": bool(enable_search),
+            "send_as_text_file": bool(send_as_text_file),
+        }
+
+    def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
+        normalized_url = str(url or "").strip()
+        if not normalized_url:
+            return None
+
+        match = self.CONVERSATION_URL_RE.match(normalized_url)
+        if not match:
+            return None
+
+        conversation_id = str(match.group(1) or "").strip()
+        if not conversation_id:
+            return None
+
+        return {
+            "conversation_id": conversation_id,
+            "conversation_url": f"https://chat.deepseek.com/a/chat/s/{conversation_id}",
+        }
+
+    async def _get_current_conversation_info(self) -> Optional[Dict[str, str]]:
+        if not self.page:
+            return None
+
+        try:
+            current_url = str(self.page.url or "")
+        except Exception:
+            current_url = ""
+
+        return self._parse_conversation_info_from_url(current_url)
+
+    async def _wait_for_current_conversation_info(
+        self,
+        timeout_ms: int = 6000,
+        poll_interval_s: float = 0.2,
+    ) -> Optional[Dict[str, str]]:
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            info = await self._get_current_conversation_info()
+            if info is not None:
+                return info
+
+            if time.time() >= deadline:
+                return None
+
+            await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
+    async def _open_cached_conversation(self, conversation_url: str) -> bool:
+        if not self.page:
+            return False
+
+        target_url = str(conversation_url or "").strip()
+        if not target_url:
+            return False
+
+        try:
+            await self.page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as e:
+            Logger.warning(f"Multi-Slot Cache (DeepSeek): failed to open cached chat URL: {e}")
+            return False
+
+        try:
+            shell_state = await self._wait_for_deepseek_shell_state(timeout_ms=60000)
+        except Exception as e:
+            Logger.warning(f"Multi-Slot Cache (DeepSeek): chat shell did not become ready: {e}")
+            return False
+
+        return shell_state == "chat"
+
+    async def _try_multi_slot_regeneration(
+        self,
+        *,
+        formatted_message: str,
+        multi_slot_state: Dict[str, Any],
+        completion_armed: asyncio.Event,
+        completion_started: asyncio.Event,
+    ) -> bool:
+        account_key = self._get_multi_slot_cache_account_key()
+        payload = read_multi_slot_cache_payload(
+            self.cache_manager,
+            self.multi_slot_cache_key,
+            log_label="Multi-Slot Cache (DeepSeek)",
+        )
+        entry = find_multi_slot_cache_entry(payload, account_key, formatted_message, multi_slot_state)
+        if entry is None:
+            return False
+
+        current_info = await self._get_current_conversation_info()
+        if current_info is None or current_info["conversation_id"] != entry["conversation_id"]:
+            Logger.info("Multi-Slot Cache (DeepSeek): opening cached conversation for regeneration...")
+            opened = await self._open_cached_conversation(entry["conversation_url"])
+            if not opened:
+                return False
+            current_info = await self._get_current_conversation_info()
+            if current_info is None or current_info["conversation_id"] != entry["conversation_id"]:
+                Logger.warning(
+                    "Multi-Slot Cache (DeepSeek): cached conversation URL opened, but the expected "
+                    "chat ID was not available. Falling back to a new chat."
+                )
+                return False
+
+        try:
+            await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
+            await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
+            await asyncio.sleep(0.25)
+        except Exception:
+            pass
+
+        Logger.info("Multi-Slot Cache (DeepSeek): cached prompt match found. Attempting to regenerate...")
+        completion_armed.set()
+        if not await self._click_regenerate():
+            completion_armed.clear()
+            Logger.warning(
+                "Multi-Slot Cache (DeepSeek): regenerate button unavailable. Removing cached entry."
+            )
+            remove_multi_slot_cache_entry(
+                self.cache_manager,
+                self.multi_slot_cache_key,
+                account_key,
+                entry["conversation_id"],
+                log_label="Multi-Slot Cache (DeepSeek)",
+            )
+            return False
+
+        try:
+            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+        except asyncio.TimeoutError:
+            completion_armed.clear()
+            Logger.warning(
+                "Multi-Slot Cache (DeepSeek): completion request not observed after clicking "
+                "Regenerate. Removing cached entry."
+            )
+            remove_multi_slot_cache_entry(
+                self.cache_manager,
+                self.multi_slot_cache_key,
+                account_key,
+                entry["conversation_id"],
+                log_label="Multi-Slot Cache (DeepSeek)",
+            )
+            return False
+
+        return True
+
     async def generate_response(self, message: Union[str, List[Any]], model: str = "deepseek-auto", stream: bool = False, temperature: float = None, top_p: float = None, max_tokens: int | None = None, abort_event: asyncio.Event = None):
         """
         Generates a response from DeepSeek.
@@ -402,6 +564,7 @@ class DeepSeekDriver(BaseDriver):
         self.abort_requested = False
         self.current_abort_event = abort_event
         self._reset_stream_parser()
+        self._last_generation_censored = False
         resolved_model = (model or "").strip() or "deepseek-auto"
         self.current_model = resolved_model
 
@@ -524,15 +687,26 @@ class DeepSeekDriver(BaseDriver):
             formatted_message = self._format_messages(message_for_formatting)
             
             # Check for Clean Regeneration
-            clean_regeneration = self.config_manager.get_setting("deepseek_behavior", "clean_regeneration")
+            clean_regeneration = bool(
+                self.config_manager.get_setting("deepseek_behavior", "clean_regeneration")
+            )
+            multi_slot_cache_enabled = bool(
+                clean_regeneration
+                and self.config_manager.get_setting("deepseek_behavior", "multi_slot_cache")
+            )
             regenerated = False
+            current_cache_matched = False
+            should_record_multi_slot = False
+            clean_regen_state = None
+            multi_slot_state = None
             
             if clean_regeneration:
-                clean_regen_state = {
-                    "deepthink_enabled": bool(effective_deepthink),
-                    "search_enabled": bool(enable_search),
-                    "send_as_text_file": bool(send_as_text_file),
-                }
+                clean_regen_state = self._build_multi_slot_cache_state(
+                    effective_deepthink=bool(effective_deepthink),
+                    enable_search=bool(enable_search),
+                    send_as_text_file=bool(send_as_text_file),
+                )
+                multi_slot_state = dict(clean_regen_state)
 
                 last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
                 last_state = self._read_clean_regeneration_state()
@@ -541,6 +715,7 @@ class DeepSeekDriver(BaseDriver):
                 state_matches = last_state == clean_regen_state
 
                 if message_matches and state_matches:
+                    current_cache_matched = True
                     Logger.info("Clean Regeneration: Message and settings match cache. Attempting to regenerate...")
                     completion_armed.set()
                     if await self._click_regenerate():
@@ -562,6 +737,22 @@ class DeepSeekDriver(BaseDriver):
                     Logger.info("Clean Regeneration: Message matches cache but settings changed. Creating new chat.")
                 else:
                     Logger.debug("Clean Regeneration: Message differs from cache. Creating new chat.")
+
+            if (
+                (not regenerated)
+                and multi_slot_cache_enabled
+                and multi_slot_state
+                and (not current_cache_matched)
+            ):
+                regenerated = await self._try_multi_slot_regeneration(
+                    formatted_message=formatted_message,
+                    multi_slot_state=multi_slot_state,
+                    completion_armed=completion_armed,
+                    completion_started=completion_started,
+                )
+                if regenerated and clean_regen_state:
+                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_clean_regeneration_state(clean_regen_state)
             
             if not regenerated:
                 # Trigger UI interaction
@@ -601,13 +792,9 @@ class DeepSeekDriver(BaseDriver):
                 
                 # Update cache
                 if clean_regeneration:
-                    clean_regen_state = {
-                        "deepthink_enabled": bool(effective_deepthink),
-                        "search_enabled": bool(enable_search),
-                        "send_as_text_file": bool(send_as_text_file),
-                    }
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
                     self._write_clean_regeneration_state(clean_regen_state)
+                    should_record_multi_slot = bool(multi_slot_cache_enabled and multi_slot_state)
 
             if not completion_started.is_set():
                 try:
@@ -621,6 +808,7 @@ class DeepSeekDriver(BaseDriver):
                     return
             
             # Yield responses from queue
+            stream_had_error = False
             async for item in self._iterate_response_queue(
                 response_queue,
                 abort_event=abort_event,
@@ -631,10 +819,38 @@ class DeepSeekDriver(BaseDriver):
                 if item is None:
                     break
                 if isinstance(item, dict) and "error" in item:
+                    stream_had_error = True
                     yield f"data: {json.dumps(item)}\n\n"
                     break
                 
                 yield item
+
+            if should_record_multi_slot and (not stream_had_error) and (not self.abort_requested):
+                if self._last_generation_censored:
+                    Logger.info(
+                        "Multi-Slot Cache (DeepSeek): skipping cache save because the conversation "
+                        "was censored."
+                    )
+                else:
+                    conversation_info = await self._wait_for_current_conversation_info(timeout_ms=6000)
+                    if conversation_info is None:
+                        Logger.debug(
+                            "Multi-Slot Cache (DeepSeek): could not resolve conversation URL after "
+                            "generation; skipping cache save."
+                        )
+                    else:
+                        upsert_multi_slot_cache_entry(
+                            self.cache_manager,
+                            self.multi_slot_cache_key,
+                            self._get_multi_slot_cache_account_key(),
+                            {
+                                "conversation_id": conversation_info["conversation_id"],
+                                "conversation_url": conversation_info["conversation_url"],
+                                "prompt": formatted_message,
+                                "state": multi_slot_state,
+                            },
+                            log_label="Multi-Slot Cache (DeepSeek)",
+                        )
                 
         finally:
             # Cleanup interception
@@ -642,6 +858,7 @@ class DeepSeekDriver(BaseDriver):
             self.abort_requested = False
             self.current_model = None
             self.current_send_deepthink = None
+            self._last_generation_censored = False
             self._reset_stream_parser()
             try:
                 await self.page.unroute("**/api/v0/chat/completion")
@@ -779,8 +996,11 @@ class DeepSeekDriver(BaseDriver):
                 item_v = item.get("v")
                 
 
-
+                
                 # Check for Anti-Censorship (CONTENT_FILTER)
+                if item_p in ("status", "response/status") and item_v == "CONTENT_FILTER":
+                    self._last_generation_censored = True
+
                 if anti_censorship:
                     if item_p in ("status", "response/status") and item_v == "CONTENT_FILTER":
                         Logger.info("Anti-Censorship triggered: Suppressing refusal message.")

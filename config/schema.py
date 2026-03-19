@@ -23,6 +23,7 @@ DOCS_HOTSWAPS = "features/hotswaps/"
 DOCS_IP_WHITELIST = "advanced/ip-whitelist/"
 DOCS_LOGIN = "features/login-sessions/"
 DOCS_MOONSHOT = "providers/moonshot-behavior/"
+DOCS_MULTI_SLOT_CACHE = "features/multi-slot-cache/"
 DOCS_NETWORK = "features/network-api/"
 DOCS_PROVIDER_SUPPORT = "advanced/provider-support/"
 DOCS_QWEN = "providers/qwen-behavior/"
@@ -348,6 +349,17 @@ SCHEMA = [
                 docs_path=DOCS_DEEPSEEK,
                 docs_anchor="clean-regeneration",
             ),
+            SettingField(
+                key="multi_slot_cache",
+                label="Multi-Slot Cache",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
+                depends="deepseek_behavior.clean_regeneration",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_MULTI_SLOT_CACHE,
+                docs_anchor="how-it-works",
+            ),
         ]
     ),
     SettingCategory(
@@ -452,6 +464,17 @@ SCHEMA = [
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
                 docs_path=DOCS_GLM,
                 docs_anchor="clean-regeneration-known-issues",
+            ),
+            SettingField(
+                key="multi_slot_cache",
+                label="Multi-Slot Cache",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
+                depends="glm_behavior.clean_regeneration",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_MULTI_SLOT_CACHE,
+                docs_anchor="how-it-works",
             ),
             SettingField(
                 key="quirks_divider",
@@ -592,6 +615,17 @@ SCHEMA = [
                 docs_path=DOCS_MOONSHOT,
                 docs_anchor="clean-regeneration",
             ),
+            SettingField(
+                key="multi_slot_cache",
+                label="Multi-Slot Cache",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
+                depends="moonshot_behavior.clean_regeneration",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_MULTI_SLOT_CACHE,
+                docs_anchor="how-it-works",
+            ),
         ],
     ),
     SettingCategory(
@@ -713,6 +747,17 @@ SCHEMA = [
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
                 docs_path=DOCS_QWEN,
                 docs_anchor="clean-regeneration",
+            ),
+            SettingField(
+                key="multi_slot_cache",
+                label="Multi-Slot Cache",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
+                depends="qwen_behavior.clean_regeneration",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_MULTI_SLOT_CACHE,
+                docs_anchor="how-it-works",
             ),
         ],
     ),

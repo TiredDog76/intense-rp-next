@@ -230,6 +230,11 @@ Otherwise it opens a fresh chat.
 
 :material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Clean Regeneration**
 
+!!! note "No Multi-Slot Cache here (yet)"
+    Google AI Studio does **not** support Multi-Slot Cache right now.
+
+    So for AI Studio, Clean Regeneration only checks the currently remembered latest chat instead of trying older cached conversations.
+
 ---
 
 ## :material-translate: UI language requirement

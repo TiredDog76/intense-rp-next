@@ -137,6 +137,11 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
 
 :material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Clean Regeneration**
 
+!!! tip "Multi-Slot Cache"
+    QwenLM also supports **QwenLM Behavior** -> **Multi-Slot Cache**.
+
+    That keeps up to 7 older cached Qwen chats per account, so IntenseRP can reopen a matching older conversation and regenerate there instead of only checking the most recent one.
+
 ---
 
 ## :material-key: Login notes

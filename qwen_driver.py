@@ -17,9 +17,13 @@ from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
     clear_clean_regeneration_cache,
     extract_macro_overrides,
+    find_multi_slot_cache_entry,
     format_messages,
     read_clean_regeneration_state,
+    read_multi_slot_cache_payload,
+    remove_multi_slot_cache_entry,
     strip_macros_from_messages,
+    upsert_multi_slot_cache_entry,
     write_clean_regeneration_state,
 )
 from utils.cache_manager import CacheManager
@@ -34,6 +38,7 @@ class QwenLMDriver(BaseDriver):
     AUTH_URL = "https://chat.qwen.ai/auth"
     SETTINGS_URL = "https://chat.qwen.ai/api/v2/users/user/settings"
     SETTINGS_UPDATE_URL = "https://chat.qwen.ai/api/v2/users/user/settings/update"
+    CONVERSATION_URL_RE = re.compile(r"^https://chat\.qwen\.ai/c/([^/?#]+)", re.IGNORECASE)
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
 
@@ -99,6 +104,7 @@ class QwenLMDriver(BaseDriver):
 
         self.clean_regen_message_cache_key = "qwen_last_message.txt"
         self.clean_regen_state_cache_key = "qwen_last_message_state.json"
+        self.multi_slot_cache_key = "qwen_multi_slot_cache.json"
 
         # Best-effort provider settings enforcement (once per session, can be retried)
         self._rp_settings_last_attempt_ts: float = 0.0
@@ -538,6 +544,166 @@ class QwenLMDriver(BaseDriver):
             self.clean_regen_state_cache_key,
             state,
         )
+
+    def _build_multi_slot_cache_state(
+        self,
+        *,
+        effective_deepthink: bool,
+        enable_search: bool,
+        send_as_text_file: bool,
+    ) -> Dict[str, Any]:
+        return {
+            "deepthink_enabled": bool(effective_deepthink),
+            "search_enabled": bool(enable_search),
+            "send_as_text_file": bool(send_as_text_file),
+            "ui_model": self._get_configured_qwen_model_label(),
+        }
+
+    def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
+        normalized_url = str(url or "").strip()
+        if not normalized_url:
+            return None
+
+        match = self.CONVERSATION_URL_RE.match(normalized_url)
+        if not match:
+            return None
+
+        conversation_id = str(match.group(1) or "").strip()
+        if not conversation_id:
+            return None
+
+        return {
+            "conversation_id": conversation_id,
+            "conversation_url": f"https://chat.qwen.ai/c/{conversation_id}",
+        }
+
+    async def _get_current_conversation_info(self) -> Optional[Dict[str, str]]:
+        if not self.page:
+            return None
+
+        try:
+            current_url = str(self.page.url or "")
+        except Exception:
+            current_url = ""
+
+        return self._parse_conversation_info_from_url(current_url)
+
+    async def _wait_for_current_conversation_info(
+        self,
+        timeout_ms: int = 6000,
+        poll_interval_s: float = 0.2,
+    ) -> Optional[Dict[str, str]]:
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            info = await self._get_current_conversation_info()
+            if info is not None:
+                return info
+
+            if time.time() >= deadline:
+                return None
+
+            await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
+    async def _open_cached_conversation(self, conversation_url: str) -> bool:
+        if not self.page:
+            return False
+
+        target_url = str(conversation_url or "").strip()
+        if not target_url:
+            return False
+
+        try:
+            await self.page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as e:
+            Logger.warning(f"Multi-Slot Cache (QwenLM): failed to open cached chat URL: {e}")
+            return False
+
+        try:
+            await self._wait_for_chat_ready(timeout_ms=60000)
+        except Exception as e:
+            Logger.warning(f"Multi-Slot Cache (QwenLM): chat shell did not become ready: {e}")
+            return False
+
+        try:
+            if not await self._has_token_cookie():
+                Logger.warning("Multi-Slot Cache (QwenLM): cached chat URL is not available for the active session.")
+                return False
+        except Exception:
+            pass
+
+        return True
+
+    async def _try_multi_slot_regeneration(
+        self,
+        *,
+        formatted_message: str,
+        multi_slot_state: Dict[str, Any],
+        completion_armed: asyncio.Event,
+        completion_started: asyncio.Event,
+    ) -> bool:
+        account_key = self._get_multi_slot_cache_account_key()
+        payload = read_multi_slot_cache_payload(
+            self.cache_manager,
+            self.multi_slot_cache_key,
+            log_label="Multi-Slot Cache (QwenLM)",
+        )
+        entry = find_multi_slot_cache_entry(payload, account_key, formatted_message, multi_slot_state)
+        if entry is None:
+            return False
+
+        current_info = await self._get_current_conversation_info()
+        if current_info is None or current_info["conversation_id"] != entry["conversation_id"]:
+            Logger.info("Multi-Slot Cache (QwenLM): opening cached conversation for regeneration...")
+            opened = await self._open_cached_conversation(entry["conversation_url"])
+            if not opened:
+                return False
+            current_info = await self._get_current_conversation_info()
+            if current_info is None or current_info["conversation_id"] != entry["conversation_id"]:
+                Logger.warning(
+                    "Multi-Slot Cache (QwenLM): cached conversation URL opened, but the expected "
+                    "chat ID was not available. Falling back to a new chat."
+                )
+                return False
+
+        try:
+            await self.apply_configured_model()
+            await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
+            await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
+            await asyncio.sleep(0.25)
+        except Exception:
+            pass
+
+        Logger.info("Multi-Slot Cache (QwenLM): cached prompt match found. Attempting to regenerate...")
+        if not await self._click_regenerate(arm_event=completion_armed):
+            Logger.warning(
+                "Multi-Slot Cache (QwenLM): regenerate button unavailable. Removing cached entry."
+            )
+            remove_multi_slot_cache_entry(
+                self.cache_manager,
+                self.multi_slot_cache_key,
+                account_key,
+                entry["conversation_id"],
+                log_label="Multi-Slot Cache (QwenLM)",
+            )
+            return False
+
+        try:
+            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+        except asyncio.TimeoutError:
+            Logger.warning(
+                "Multi-Slot Cache (QwenLM): completion request not observed after clicking "
+                "Regenerate. Removing cached entry."
+            )
+            remove_multi_slot_cache_entry(
+                self.cache_manager,
+                self.multi_slot_cache_key,
+                account_key,
+                entry["conversation_id"],
+                log_label="Multi-Slot Cache (QwenLM)",
+            )
+            return False
+
+        return True
 
     async def _ensure_rp_friendly_settings(self) -> bool:
         if not self.page:
@@ -2465,8 +2631,15 @@ class QwenLMDriver(BaseDriver):
 
         try:
             clean_regeneration = bool(self.config_manager.get_setting("qwen_behavior", "clean_regeneration"))
+            multi_slot_cache_enabled = bool(
+                clean_regeneration
+                and self.config_manager.get_setting("qwen_behavior", "multi_slot_cache")
+            )
             regenerated = False
             clean_regen_state: Dict[str, bool] | None = None
+            multi_slot_state: Dict[str, Any] | None = None
+            current_cache_matched = False
+            should_record_multi_slot = False
 
             if clean_regeneration:
                 clean_regen_state = {
@@ -2474,6 +2647,11 @@ class QwenLMDriver(BaseDriver):
                     "search_enabled": bool(enable_search),
                     "send_as_text_file": bool(send_as_text_file),
                 }
+                multi_slot_state = self._build_multi_slot_cache_state(
+                    effective_deepthink=bool(effective_deepthink),
+                    enable_search=bool(enable_search),
+                    send_as_text_file=bool(send_as_text_file),
+                )
 
                 last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
                 last_state = self._read_clean_regeneration_state()
@@ -2482,6 +2660,7 @@ class QwenLMDriver(BaseDriver):
                 state_matches = last_state == clean_regen_state
 
                 if message_matches and state_matches:
+                    current_cache_matched = True
                     Logger.info(
                         "Clean Regeneration (QwenLM): Message and settings match cache. Attempting to regenerate..."
                     )
@@ -2510,6 +2689,22 @@ class QwenLMDriver(BaseDriver):
                         Logger.warning(
                             "Clean Regeneration (QwenLM): Regenerate button not found/visible. Falling back to new chat."
                         )
+
+            if (
+                (not regenerated)
+                and multi_slot_cache_enabled
+                and multi_slot_state
+                and (not current_cache_matched)
+            ):
+                regenerated = await self._try_multi_slot_regeneration(
+                    formatted_message=formatted_message,
+                    multi_slot_state=multi_slot_state,
+                    completion_armed=completion_armed,
+                    completion_started=completion_started,
+                )
+                if regenerated and clean_regen_state:
+                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_clean_regeneration_state(clean_regen_state)
 
             if not regenerated:
                 Logger.info("QwenLM: preparing new chat session...")
@@ -2555,6 +2750,7 @@ class QwenLMDriver(BaseDriver):
                 if clean_regeneration and clean_regen_state:
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
                     self._write_clean_regeneration_state(clean_regen_state)
+                    should_record_multi_slot = bool(multi_slot_cache_enabled and multi_slot_state)
 
             if not completion_started.is_set():
                 try:
@@ -2567,6 +2763,7 @@ class QwenLMDriver(BaseDriver):
                     yield f"data: {json.dumps({'error': 'QwenLM: completion request not observed'})}\n\n"
                     return
 
+            stream_had_error = False
             async for item in self._iterate_response_queue(
                 response_queue,
                 abort_event=abort_event,
@@ -2575,10 +2772,32 @@ class QwenLMDriver(BaseDriver):
                 on_timeout=self._abort_generation_ui,
             ):
                 if isinstance(item, dict) and "error" in item:
+                    stream_had_error = True
                     yield f"data: {json.dumps(item)}\n\n"
                     break
 
                 yield item
+
+            if should_record_multi_slot and (not stream_had_error) and (not self.abort_requested):
+                conversation_info = await self._wait_for_current_conversation_info(timeout_ms=6000)
+                if conversation_info is None:
+                    Logger.debug(
+                        "Multi-Slot Cache (QwenLM): could not resolve conversation URL after "
+                        "generation; skipping cache save."
+                    )
+                else:
+                    upsert_multi_slot_cache_entry(
+                        self.cache_manager,
+                        self.multi_slot_cache_key,
+                        self._get_multi_slot_cache_account_key(),
+                        {
+                            "conversation_id": conversation_info["conversation_id"],
+                            "conversation_url": conversation_info["conversation_url"],
+                            "prompt": formatted_message,
+                            "state": multi_slot_state,
+                        },
+                        log_label="Multi-Slot Cache (QwenLM)",
+                    )
         finally:
             self.current_abort_event = None
             self.abort_requested = False

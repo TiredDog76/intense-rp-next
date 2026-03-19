@@ -134,6 +134,11 @@ Otherwise it starts a fresh chat.
 
 :material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Clean Regeneration**
 
+!!! tip "Multi-Slot Cache"
+    If you enable **Moonshot Behavior** -> **Multi-Slot Cache**, IntenseRP keeps up to 7 older cached Kimi chats per account instead of only remembering the latest one.
+
+    When one of those older chats matches the current prompt/settings, IntenseRP can reopen it and use Kimi's regenerate action there.
+
 ---
 
 ## :material-code-tags: Per-Message Macros
