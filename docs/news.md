@@ -15,6 +15,7 @@ IntenseRP Next is a free and open-source project, and I want to keep it that way
 If you were already looking for a way to support the project, you can also check out the [Support page](hands/support.md) for some options.
 
 
+
 ## March 19, 2026 - Update 2.6.1
 
 IntenseRP Next v2.6.1 is here with two small but useful upgrades.
