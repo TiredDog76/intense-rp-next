@@ -34,10 +34,10 @@ When enabled, IntenseRP launches Chromium using a **persistent browser context**
 ```
 The `<provider>` is one of `deepseek`, `glm_chat`, or `moonshot_kimi`. The `<identity>` is either a hashed email (when an account is selected) or `manual` (when no account is selected).
 
-Next time you start the app, it loads that same profile, so you usually won’t see a login page at all.
+Next time you start the app, it loads that same profile, so you usually won't see a login page at all.
 
 !!! tip "Best Reliability"
-    Keep **Auto Login** enabled as a fallback. If your session expires, Persistent Sessions won’t help, but Auto Login will still sign you in automatically.
+    Keep **Auto Login** enabled as a fallback. If your session expires, Persistent Sessions won't help, but Auto Login will still sign you in automatically.
 
 ---
 
@@ -57,7 +57,7 @@ What this does:
 - Forces a fresh login on next start
 
 !!! warning "This can't be undone"
-    Deleting a profile wipes the saved session data. If you don’t have Auto Login enabled, you’ll need to log in manually next time.
+    Deleting a profile wipes the saved session data. If you don't have Auto Login enabled, you'll need to log in manually next time.
 
 ---
 
@@ -74,7 +74,7 @@ What this does:
 - Forces a fresh login on next start
 
 !!! danger "This can't be undone"
-    This is a fresh start for Persistent Sessions. If you don’t have Auto Login enabled, you’ll need to log in manually next time.
+    This is a fresh start for Persistent Sessions. If you don't have Auto Login enabled, you'll need to log in manually next time.
 
 ---
 
@@ -101,7 +101,7 @@ If you want to see the exact active path on disk:
 That file contains the active config directory path.
 
 !!! note "Security Reality Check"
-    The settings file is encrypted, but the key (`settings.key`) lives right next to it. This protects against casual snooping, but it’s not meant as strong protection if someone has access to your files. Treat your config directory as sensitive.
+    The settings file is encrypted, but the key (`settings.key`) lives right next to it. This protects against casual snooping, but it's not meant as strong protection if someone has access to your files. Treat your config directory as sensitive.
 
 ---
 
@@ -119,7 +119,7 @@ This dropdown controls where IntenseRP stores `config_data` (settings, keys, pro
 | **Custom** | You choose | Advanced layouts (separate drive, synced folder, etc.) |
 
 !!! info "OS-specific options"
-    You’ll only see **Windows AppData** on Windows, and **Linux User Data** on Linux.
+    You'll only see **Windows AppData** on Windows, and **Linux User Data** on Linux.
 
 ---
 
@@ -143,11 +143,11 @@ During migration, IntenseRP will:
 
 - Copy the entire current config directory to the new location
 - Refuse "dangerous" targets (overlapping folders, filesystem roots, app folder, etc.)
-- Refuse non-empty target folders that don’t look like an IntenseRP config directory
-- Replace the destination contents when it’s allowed to proceed
+- Refuse non-empty target folders that don't look like an IntenseRP config directory
+- Replace the destination contents when it's allowed to proceed
 
 !!! warning "Pick a dedicated folder"
-    If you use **Custom**, point it to an empty folder (or a folder that already contains an IntenseRP config). Don’t point it at "Documents", "Desktop", or any folder with unrelated files.
+    If you use **Custom**, point it to an empty folder (or a folder that already contains an IntenseRP config). Don't point it at "Documents", "Desktop", or any folder with unrelated files.
 
 ---
 
@@ -234,7 +234,7 @@ IntenseRP compares only `version` to decide if an update is available. `aua` can
 
 ### If an update is available
 
-You’ll get an "Update Available" dialog and can choose a method based on how you installed the app:
+You'll get an "Update Available" dialog and can choose a method based on how you installed the app:
 
 - **Auto-Update** - available only in packaged builds on Windows/Linux
 - **Git** - available only when running from source (a git checkout)
@@ -246,7 +246,7 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
     - Runs a small updater and restarts the app
 
     !!! warning "Not available on source runs"
-        If you’re running `python main.py`, Auto-Update is disabled.
+        If you're running `python main.py`, Auto-Update is disabled.
 
 === ":material-git: Git"
 
@@ -262,7 +262,7 @@ You’ll get an "Update Available" dialog and can choose a method based on how y
     ```
 
     !!! warning "Not available in the .exe/.zip build"
-        Packaged builds don’t include a git checkout, so Git updating is disabled there.
+        Packaged builds don't include a git checkout, so Git updating is disabled there.
 
 ### Debug: `--fakeUpdate`
 
@@ -306,7 +306,7 @@ You can force-show the "Update Installed" dialog (without actually installing an
 ??? question "Config migration failed / was refused"
     Common reasons:
 
-    - The target folder is not empty and doesn’t look like an IntenseRP config directory
+    - The target folder is not empty and doesn't look like an IntenseRP config directory
     - The target is a filesystem root (e.g. `C:\\`, `/`)
     - The target overlaps the current config directory
     - The target contains (or is) the app folder
@@ -325,7 +325,7 @@ You can force-show the "Update Installed" dialog (without actually installing an
 
 ??? question "Update checks always fail"
     - Make sure you have internet access
-    - Check that GitHub isn’t blocked by your network/firewall
+    - Check that GitHub isn't blocked by your network/firewall
     - Try again later (GitHub can rate-limit or temporarily error)
 
 ---
