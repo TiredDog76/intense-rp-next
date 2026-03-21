@@ -898,6 +898,38 @@ SCHEMA = [
                 docs_anchor="file-upload-timeout",
             ),
             SettingField(
+                key="anti_censorship",
+                label="Anti-Censorship",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Detect AI Studio hard-censorship, replace the blocked assistant turn, "
+                    "and send up to 3 continue nudges automatically."
+                ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="anti-censorship",
+            ),
+            SettingField(
+                key="anti_censorship_replacement_message",
+                label="Replacement Message",
+                type=SettingType.TEXTAREA,
+                default=".",
+                tooltip="Text used to replace the blocked assistant message before retrying.",
+                depends="aistudio_behavior.anti_censorship",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="replacement-message",
+            ),
+            SettingField(
+                key="anti_censorship_continue_nudge",
+                label="Continue Nudge",
+                type=SettingType.TEXTAREA,
+                default="Continue.",
+                tooltip="Text sent as the follow-up user message after a blocked AI Studio turn.",
+                depends="aistudio_behavior.anti_censorship",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="continue-nudge",
+            ),
+            SettingField(
                 key="sampling_divider",
                 label="Sampling",
                 type=SettingType.DIVIDER,

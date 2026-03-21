@@ -260,6 +260,19 @@ That's DeepSeek's content filter kicking in. To hide this message:
 !!! note
     This doesn't bypass the filter; we just "snatch" the message before it's censored.
 
+### :material-shield-off: Google AI Studio says "Content blocked"
+
+That's AI Studio's harder backend-style censorship flow.
+
+If you want IntenseRP to try the edit + continue workaround:
+
+:material-arrow-right: **Settings** → **Google AI Studio Behavior** → :material-toggle-switch: **Anti-Censorship**
+
+!!! note
+    AI Studio's version is a bit weirder than DeepSeek's one.
+
+    IntenseRP replaces the blocked assistant turn, sends a continue nudge, and retries up to 3 follow-up nudges before giving up.
+
 ---
 
 ## :material-arrow-right-bold: What's Next?

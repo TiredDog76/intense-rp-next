@@ -178,6 +178,17 @@ class AIStudioDriver(BaseDriver):
         "button[aria-label='Agree to the copyright acknowledgement']"
     )
     PROMPT_MEDIA_CONTAINER_SELECTOR = "[data-test-id='prompt-media-container']"
+    ASSISTANT_TURN_SELECTOR = "div.chat-turn-container.code-block-aligner.model.render.ng-star-inserted"
+    ASSISTANT_EDIT_BUTTON_SELECTORS = [
+        "button.toggle-edit-button",
+        "button[class*='toggle-edit-button']",
+    ]
+    ASSISTANT_EDIT_TEXTAREA_SELECTORS = [
+        "textarea.textarea",
+        "textarea[class*='textarea']",
+        "textarea",
+    ]
+    SAFETY_RATINGS_BUTTON_SELECTOR = "button[aria-label*='Safety Ratings']"
     SYSTEM_INSTRUCTIONS_STORAGE_KEY = "aistudio_all_system_instructions"
     SYSTEM_INSTRUCTIONS_CARD_SELECTORS = [
         "button.system-instructions-card",
@@ -220,6 +231,11 @@ class AIStudioDriver(BaseDriver):
     ]
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 180.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
+    MAX_ANTI_CENSORSHIP_NUDGES = 3
+    RATE_LIMIT_HINT_RE = re.compile(
+        r"(rate\s*limit|too\s*many\s*requests|\b429\b|quota|limit\s*reached)",
+        flags=re.IGNORECASE,
+    )
     LOWEST_LEVEL_BY_MODEL: Dict[str, str] = {
         "gemini-3.1-pro-preview": "Low",
         "gemini-3.1-flash-lite-preview": "Minimal",
@@ -266,6 +282,9 @@ class AIStudioDriver(BaseDriver):
         "system_prompt_text",
         "send_as_text_file",
         "text_file_message",
+        "anti_censorship",
+        "anti_censorship_replacement_message",
+        "anti_censorship_continue_nudge",
         "temperature",
         "top_p",
         "max_output_tokens",
@@ -482,6 +501,39 @@ class AIStudioDriver(BaseDriver):
         while True:
             for selector in selectors:
                 locator = self.page.locator(selector)
+                try:
+                    count = await locator.count()
+                except Exception:
+                    count = 0
+
+                for idx in range(min(count, 10)):
+                    item = locator.nth(idx)
+                    try:
+                        if await item.is_visible():
+                            return item
+                    except Exception:
+                        continue
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return None
+
+            await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
+    async def _find_first_visible_within(
+        self,
+        root,
+        selectors: List[str],
+        timeout_ms: int = 0,
+        poll_interval_s: float = 0.15,
+    ):
+        """Return the first visible child locator inside ``root`` that matches any selector."""
+        if root is None:
+            return None
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            for selector in selectors:
+                locator = root.locator(selector)
                 try:
                     count = await locator.count()
                 except Exception:
@@ -1126,6 +1178,21 @@ class AIStudioDriver(BaseDriver):
         text_file_message = str(
             self.config_manager.get_setting("aistudio_behavior", "text_file_message") or ""
         )
+        anti_censorship = bool(self.config_manager.get_setting("aistudio_behavior", "anti_censorship"))
+        anti_censorship_replacement_message = str(
+            self.config_manager.get_setting(
+                "aistudio_behavior",
+                "anti_censorship_replacement_message",
+            )
+            or "."
+        )
+        anti_censorship_continue_nudge = str(
+            self.config_manager.get_setting(
+                "aistudio_behavior",
+                "anti_censorship_continue_nudge",
+            )
+            or "Continue."
+        )
 
         if mode == MODE_CHAT:
             deepthink_enabled = False
@@ -1198,6 +1265,9 @@ class AIStudioDriver(BaseDriver):
             "use_system_prompt_field": bool(use_system_prompt_field),
             "send_as_text_file": bool(send_as_text_file),
             "text_file_message": text_file_message,
+            "anti_censorship": bool(anti_censorship),
+            "anti_censorship_replacement_message": anti_censorship_replacement_message,
+            "anti_censorship_continue_nudge": anti_censorship_continue_nudge,
             "file_upload_timeout": int(file_upload_timeout),
             "temperature": float(temperature_value),
             "top_p": float(top_p_value),
@@ -2675,14 +2745,218 @@ class AIStudioDriver(BaseDriver):
         await queue.put(None)
         Logger.success("Google AI Studio response capture completed.")
 
+    @staticmethod
+    def _iter_nested_strings(value: Any):
+        """Yield every nested string inside a parsed AI Studio event payload."""
+        if isinstance(value, str):
+            yield value
+            return
+        if isinstance(value, dict):
+            for item in value.values():
+                yield from AIStudioDriver._iter_nested_strings(item)
+            return
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                yield from AIStudioDriver._iter_nested_strings(item)
+
+    @classmethod
+    def _event_looks_hard_censored(cls, event: Any) -> bool:
+        """Return whether a parsed event contains a hard-censorship style marker."""
+        for text in cls._iter_nested_strings(event):
+            normalized = cls._normalize_text(text)
+            if not normalized:
+                continue
+            if "content blocked" in normalized:
+                return True
+            if "could not generate output" in normalized:
+                return True
+            if "prohibited use policy" in normalized:
+                return True
+        return False
+
+    @classmethod
+    def _event_looks_rate_limited(cls, event: Any) -> bool:
+        """Return whether a parsed event contains rate-limit or quota wording."""
+        for text in cls._iter_nested_strings(event):
+            if cls.RATE_LIMIT_HINT_RE.search(str(text or "")):
+                return True
+        return False
+
+    @classmethod
+    def _error_looks_rate_limited(cls, message: str) -> bool:
+        """Return whether an error string should trigger reload-on-failure rotation."""
+        return bool(cls.RATE_LIMIT_HINT_RE.search(str(message or "")))
+
+    @staticmethod
+    def _build_rate_limit_error_message(status_code: int = 0) -> str:
+        """Build a rate-limit-like error string that the API worker can recognize."""
+        if int(status_code or 0) == 429:
+            return "Google AI Studio rate limit (429): too many requests."
+        return "Google AI Studio rate limit: quota or request limit reached."
+
+    async def _find_latest_visible_assistant_turn(self):
+        """Return the latest visible assistant turn and its hover container."""
+        if not self.page:
+            return None, None
+
+        turns = self.page.locator(self.ASSISTANT_TURN_SELECTOR)
+        try:
+            count = await turns.count()
+        except Exception:
+            count = 0
+
+        for idx in range(count - 1, -1, -1):
+            turn = turns.nth(idx)
+            try:
+                if not await turn.is_visible():
+                    continue
+            except Exception:
+                continue
+
+            container = turn.locator("xpath=..")
+            try:
+                return turn, container.first
+            except Exception:
+                return turn, turn
+
+        return None, None
+
+    async def _hover_assistant_turn_controls(self, turn, container) -> bool:
+        """Hover the latest assistant turn so edit/regenerate controls become visible."""
+        for target in (container, turn):
+            if target is None:
+                continue
+            try:
+                await target.hover(timeout=3000)
+                await asyncio.sleep(0.15)
+                return True
+            except Exception:
+                continue
+        return False
+
+    async def _is_latest_assistant_turn_content_blocked(self, timeout_ms: int = 0) -> bool:
+        """Return whether the latest assistant turn shows AI Studio's ``Content blocked`` marker."""
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            turn, container = await self._find_latest_visible_assistant_turn()
+            root = container or turn
+            if root is not None:
+                try:
+                    blocked = bool(
+                        await root.evaluate(
+                            r"""(el, selector) => {
+                                const normalize = (value) => (value || '').toString().replace(/\s+/g, ' ').trim().toLowerCase();
+                                const isVisible = (node) => {
+                                    if (!node) return false;
+                                    const rect = node.getBoundingClientRect();
+                                    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+                                    const style = window.getComputedStyle(node);
+                                    if (!style) return false;
+                                    return style.visibility !== 'hidden' && style.display !== 'none';
+                                };
+
+                                const buttons = Array.from(el.querySelectorAll(selector)).filter(isVisible);
+                                for (const button of buttons) {
+                                    const ariaLabel = normalize(button.getAttribute('aria-label'));
+                                    if (!ariaLabel.includes('safety ratings')) continue;
+
+                                    const text = normalize(button.textContent || '');
+                                    if (text.includes('content blocked')) return true;
+
+                                    const secondChild = button.childNodes && button.childNodes.length > 1
+                                        ? normalize(button.childNodes[1].textContent || '')
+                                        : '';
+                                    if (secondChild === 'content blocked') return true;
+                                }
+                                return false;
+                            }""",
+                            self.SAFETY_RATINGS_BUTTON_SELECTOR,
+                        )
+                    )
+                except Exception:
+                    blocked = False
+
+                if blocked:
+                    return True
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return False
+            await asyncio.sleep(0.1)
+
+    async def _replace_latest_assistant_message(self, replacement_text: str) -> bool:
+        """Edit the latest assistant turn in-place and replace it with the provided text."""
+        turn, container = await self._find_latest_visible_assistant_turn()
+        if turn is None or container is None:
+            Logger.warning("Google AI Studio: assistant turn for anti-censorship replacement was not found.")
+            return False
+
+        if not await self._hover_assistant_turn_controls(turn, container):
+            Logger.warning("Google AI Studio: could not reveal assistant controls for anti-censorship replacement.")
+            return False
+
+        edit_button = await self._find_first_visible_within(
+            container,
+            self.ASSISTANT_EDIT_BUTTON_SELECTORS,
+            timeout_ms=1200,
+        )
+        if edit_button is None:
+            Logger.warning("Google AI Studio: assistant edit button was not found.")
+            return False
+
+        try:
+            await edit_button.click(timeout=3000)
+        except Exception as e:
+            try:
+                await edit_button.click(timeout=3000, force=True)
+            except Exception:
+                Logger.warning(f"Google AI Studio: failed to open assistant edit mode: {e}")
+                return False
+
+        await self._ui_settle_pause(0.18)
+        textarea = await self._find_assistant_edit_textarea(container, timeout_ms=5000)
+        if textarea is None:
+            Logger.warning("Google AI Studio: assistant edit textarea was not found.")
+            return False
+
+        if not await self._set_text_control_value(textarea, str(replacement_text or "")):
+            Logger.warning("Google AI Studio: failed to replace the blocked assistant message.")
+            return False
+
+        await self._ui_settle_pause(0.28)
+        try:
+            await textarea.click(timeout=2000, force=True)
+        except Exception:
+            pass
+
+        try:
+            await textarea.press("Control+Enter", timeout=3000)
+        except Exception as e:
+            try:
+                if self.page:
+                    await self.page.keyboard.press("Control+Enter")
+            except Exception:
+                Logger.warning(f"Google AI Studio: failed to submit assistant edit with Ctrl+Enter: {e}")
+                return False
+
+        await self._ui_settle_pause(0.35)
+        await self._refocus_composer_before_send()
+        return True
+
+    async def _find_assistant_edit_textarea(self, container, timeout_ms: int = 0):
+        """Find the assistant-edit textarea using a global visible lookup only."""
+        _ = container
+        return await self._find_first_visible(
+            self.ASSISTANT_EDIT_TEXTAREA_SELECTORS,
+            timeout_ms=int(timeout_ms or 0),
+            poll_interval_s=0.1,
+        )
+
     async def _click_regenerate(self) -> bool:
         """Click the most recent visible regenerate button in the chat transcript."""
         if not self.page:
             return False
 
-        turns = self.page.locator(
-            "div.chat-turn-container.code-block-aligner.model.render.ng-star-inserted"
-        )
+        turns = self.page.locator(self.ASSISTANT_TURN_SELECTOR)
         count = 0
         try:
             count = await turns.count()
@@ -2701,15 +2975,8 @@ class AIStudioDriver(BaseDriver):
                 continue
 
             container = turn.locator("xpath=..")
-            try:
-                await container.first.hover(timeout=3000)
-            except Exception:
-                try:
-                    await turn.hover(timeout=3000)
-                except Exception:
-                    continue
-
-            await asyncio.sleep(0.15)
+            if not await self._hover_assistant_turn_controls(turn, container.first):
+                continue
             button = container.locator("button[name='rerun-button']")
             if await button.count() == 0:
                 button = turn.locator("xpath=ancestor::*[1]//button[@name='rerun-button']")
@@ -2818,6 +3085,13 @@ class AIStudioDriver(BaseDriver):
             "system_prompt_text": str(system_prompt_text or ""),
             "send_as_text_file": bool(settings.get("send_as_text_file")),
             "text_file_message": str(settings.get("text_file_message") or ""),
+            "anti_censorship": bool(settings.get("anti_censorship")),
+            "anti_censorship_replacement_message": str(
+                settings.get("anti_censorship_replacement_message") or "."
+            ),
+            "anti_censorship_continue_nudge": str(
+                settings.get("anti_censorship_continue_nudge") or "Continue."
+            ),
             "temperature": round(float(settings.get("temperature", 1.0)), 4),
             "top_p": round(float(settings.get("top_p", 0.95)), 4),
             "max_output_tokens": int(settings.get("max_output_tokens", 65536)),
@@ -2921,6 +3195,15 @@ class AIStudioDriver(BaseDriver):
         completion_started = asyncio.Event()
         completion_claim_lock = asyncio.Lock()
         completion_claimed = False
+        current_attempt_meta: Dict[str, Any] = {
+            "hard_censorship_hint": False,
+            "rate_limit_hint": False,
+            "no_text_detected": False,
+            "response_status": 0,
+            "encountered_error": False,
+            "emitted_text": False,
+            "aborted": False,
+        }
 
         await self._clear_persisted_system_instructions_if_needed()
         await self.require_english_ui()
@@ -2946,9 +3229,183 @@ class AIStudioDriver(BaseDriver):
             overrides=macros_overrides,
         )
         self.current_send_deepthink = bool(effective_settings["send_deepthink"])
+        anti_censorship_enabled = bool(effective_settings.get("anti_censorship"))
+
+        def _reset_attempt_state() -> None:
+            nonlocal response_queue, completion_armed, completion_started
+            nonlocal completion_claim_lock, completion_claimed, current_attempt_meta
+            response_queue = asyncio.Queue()
+            completion_armed = asyncio.Event()
+            completion_started = asyncio.Event()
+            completion_claim_lock = asyncio.Lock()
+            completion_claimed = False
+            current_attempt_meta = {
+                "hard_censorship_hint": False,
+                "rate_limit_hint": False,
+                "no_text_detected": False,
+                "response_status": 0,
+                "encountered_error": False,
+                "emitted_text": False,
+                "aborted": False,
+            }
+            self.thinking_active = False
+
+        async def _wait_for_attempt_start(log_label: str) -> bool:
+            if completion_started.is_set():
+                return True
+            try:
+                await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                return True
+            except asyncio.TimeoutError:
+                completion_armed.clear()
+                Logger.warning(
+                    f"{log_label}: completion request was not observed in time. "
+                    "This attempt will be abandoned."
+                )
+                return False
+
+        def _stream_item_error_message(item: Any) -> str | None:
+            if isinstance(item, dict) and ("error" in item):
+                return str(item.get("error") or "")
+            return None
+
+        def _attempt_error_message(items: List[Any]) -> str | None:
+            for item in items:
+                message = _stream_item_error_message(item)
+                if message:
+                    return message
+            return None
+
+        def _is_terminal_stop_chunk(item: Any) -> bool:
+            if not isinstance(item, str) or not item.startswith("data:"):
+                return False
+            try:
+                parsed = json.loads(item[len("data:") :].strip())
+            except Exception:
+                return False
+            choices = parsed.get("choices")
+            if not isinstance(choices, list) or not choices:
+                return False
+            choice = choices[0] if isinstance(choices[0], dict) else {}
+            finish_reason = choice.get("finish_reason")
+            delta = choice.get("delta")
+            return finish_reason == "stop" and (not delta)
+
+        def _buffered_chunks(items: List[Any], *, drop_terminal_stop: bool) -> List[str]:
+            chunks = [item for item in items if isinstance(item, str)]
+            if drop_terminal_stop and chunks and _is_terminal_stop_chunk(chunks[-1]):
+                chunks = chunks[:-1]
+            return chunks
+
+        async def _consume_attempt_items() -> List[Any]:
+            items: List[Any] = []
+            async for item in self._iterate_response_queue(
+                response_queue,
+                abort_event=abort_event,
+                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+            ):
+                items.append(item)
+                if _stream_item_error_message(item):
+                    break
+            return items
+
+        async def _attempt_clean_regeneration(
+            *,
+            clean_regeneration: bool,
+            formatted_message: str,
+            clean_regen_state: Dict[str, Any],
+        ) -> bool:
+            if not clean_regeneration:
+                return False
+
+            last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
+            last_state = self._read_clean_regeneration_state()
+            if (last_message != formatted_message) or (last_state != clean_regen_state):
+                return False
+
+            Logger.info(
+                "Clean Regeneration (Google AI Studio): Message and settings match cache. "
+                "Attempting to regenerate..."
+            )
+            try:
+                await self._apply_request_controls(effective_settings)
+                await asyncio.sleep(0.25)
+            except Exception:
+                pass
+
+            _reset_attempt_state()
+            completion_armed.set()
+            if not await self._click_regenerate():
+                completion_armed.clear()
+                Logger.warning(
+                    "Clean Regeneration (Google AI Studio): completion request was not observed "
+                    "after clicking Regenerate. Falling back to a new chat."
+                )
+                return False
+
+            return await _wait_for_attempt_start("Clean Regeneration (Google AI Studio)")
+
+        async def _start_new_chat_attempt(
+            *,
+            formatted_message: str,
+            system_prompt_text: str,
+        ) -> str | None:
+            _reset_attempt_state()
+            Logger.info("Google AI Studio: preparing a new chat session...")
+            await self.click_new_chat(source="auto")
+            await asyncio.sleep(0.2)
+            await self._apply_request_controls(effective_settings)
+            await asyncio.sleep(0.2)
+            if bool(effective_settings.get("use_system_prompt_field")):
+                await self._sync_system_prompt_field(system_prompt_text)
+                await self._ui_settle_pause(0.18)
+
+            if bool(effective_settings.get("send_as_text_file")):
+                file_payload = {
+                    "name": "prompt.txt",
+                    "mimeType": "text/plain",
+                    "buffer": formatted_message.encode("utf-8"),
+                }
+                try:
+                    await self.upload_file(file_payload)
+                except Exception as e:
+                    return f"Google AI Studio upload failed: {e}"
+                await self._ui_settle_pause(0.35)
+                text_file_message = str(effective_settings.get("text_file_message") or "")
+                if text_file_message.strip():
+                    await self.enter_message(text_file_message)
+                    await self._ui_settle_pause(0.1)
+                completion_armed.set()
+                Logger.info("Google AI Studio: sending request...")
+                await self.send_message(timeout=int(effective_settings.get("file_upload_timeout", 20)))
+            else:
+                await self.enter_message(formatted_message)
+                await asyncio.sleep(0.1)
+                completion_armed.set()
+                Logger.info("Google AI Studio: sending request...")
+                await self.send_message()
+
+            if await _wait_for_attempt_start("Google AI Studio"):
+                return None
+            return "Google AI Studio: completion request was not observed after sending the prompt."
+
+        async def _send_continue_nudge_attempt(continue_nudge: str) -> str | None:
+            _reset_attempt_state()
+            await self.enter_message(continue_nudge)
+            await self._ui_settle_pause(0.1)
+            completion_armed.set()
+            Logger.info("Google AI Studio: sending anti-censorship continue nudge...")
+            await self.send_message()
+            if await _wait_for_attempt_start("Google AI Studio Anti-Censorship"):
+                return None
+            return (
+                "Google AI Studio anti-censorship retry failed because the continue nudge "
+                "did not start a completion request."
+            )
 
         async def handle_route(route):
-            nonlocal completion_claimed
+            nonlocal completion_claimed, current_attempt_meta
             request = route.request
 
             try:
@@ -2988,6 +3445,8 @@ class AIStudioDriver(BaseDriver):
             aborted = False
             encountered_error = False
             emitted_text = False
+            hard_censorship_hint = False
+            rate_limit_hint = False
 
             try:
                 async with httpx.AsyncClient() as client:
@@ -3012,6 +3471,12 @@ class AIStudioDriver(BaseDriver):
 
                             full_response_body.extend(chunk)
                             for parsed_event in parser.feed(chunk):
+                                hard_censorship_hint = (
+                                    hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
+                                )
+                                rate_limit_hint = (
+                                    rate_limit_hint or self._event_looks_rate_limited(parsed_event)
+                                )
                                 emitted = await self._process_stream_event(
                                     parsed_event,
                                     response_queue,
@@ -3021,6 +3486,12 @@ class AIStudioDriver(BaseDriver):
 
                         if not aborted:
                             for parsed_event in parser.finish():
+                                hard_censorship_hint = (
+                                    hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
+                                )
+                                rate_limit_hint = (
+                                    rate_limit_hint or self._event_looks_rate_limited(parsed_event)
+                                )
                                 emitted = await self._process_stream_event(
                                     parsed_event,
                                     response_queue,
@@ -3043,16 +3514,39 @@ class AIStudioDriver(BaseDriver):
                     await self._enqueue_openai_delta(response_queue, "</think>")
                 self.thinking_active = False
 
-            if (not emitted_text) and (not encountered_error) and (not aborted):
-                message = (
-                    "Google AI Studio returned no assistant text. "
-                    "The request may have been submitted before the UI fully settled."
-                )
-                Logger.warning(message)
-                await response_queue.put({"error": message})
-                encountered_error = True
+            rate_limit_hint = bool(rate_limit_hint or response_status == 429)
+            no_text_detected = (not emitted_text) and (not encountered_error) and (not aborted)
+            if no_text_detected:
+                if rate_limit_hint:
+                    message = self._build_rate_limit_error_message(response_status)
+                    Logger.warning(message)
+                    await response_queue.put({"error": message})
+                    encountered_error = True
+                elif anti_censorship_enabled:
+                    Logger.warning(
+                        "Google AI Studio returned no assistant text, but anti-censorship is enabled. "
+                        "Deferring the final decision until blocked-turn checks finish."
+                    )
+                else:
+                    message = (
+                        "Google AI Studio returned no assistant text. "
+                        "The request may have been submitted before the UI fully settled."
+                    )
+                    Logger.warning(message)
+                    await response_queue.put({"error": message})
+                    encountered_error = True
 
-            if (not encountered_error) and (not aborted) and (not self.abort_requested):
+            current_attempt_meta = {
+                "hard_censorship_hint": bool(hard_censorship_hint),
+                "rate_limit_hint": bool(rate_limit_hint),
+                "no_text_detected": bool(no_text_detected),
+                "response_status": int(response_status),
+                "encountered_error": bool(encountered_error),
+                "emitted_text": bool(emitted_text),
+                "aborted": bool(aborted),
+            }
+
+            if emitted_text and (not encountered_error) and (not aborted) and (not self.abort_requested):
                 await self._enqueue_openai_delta(response_queue, "", finish_reason="stop")
 
             if "content-type" not in response_headers:
@@ -3062,7 +3556,10 @@ class AIStudioDriver(BaseDriver):
             try:
                 await route.fulfill(body=fulfill_body, status=response_status, headers=response_headers)
             except Exception as e:
-                Logger.error(f"Google AI Studio: error fulfilling route: {e}")
+                if "already handled" in str(e).lower():
+                    Logger.debug(f"Google AI Studio: route was already handled before fulfill completed: {e}")
+                else:
+                    Logger.error(f"Google AI Studio: error fulfilling route: {e}")
 
             await response_queue.put(None)
             if not encountered_error and not aborted and not self.abort_requested:
@@ -3076,101 +3573,139 @@ class AIStudioDriver(BaseDriver):
             clean_regeneration = bool(
                 self.config_manager.get_setting("aistudio_behavior", "clean_regeneration")
             )
-            regenerated = False
             clean_regen_state = self._build_clean_regeneration_state(
                 effective_settings,
                 system_prompt_text=system_prompt_text,
             )
 
-            if clean_regeneration:
-                last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
-                last_state = self._read_clean_regeneration_state()
-                if (last_message == formatted_message) and (last_state == clean_regen_state):
-                    Logger.info(
-                        "Clean Regeneration (Google AI Studio): Message and settings match cache. "
-                        "Attempting to regenerate..."
-                    )
-                    try:
-                        await self._apply_request_controls(effective_settings)
-                        await asyncio.sleep(0.25)
-                    except Exception:
-                        pass
-
-                    completion_armed.set()
-                    if not await self._click_regenerate():
-                        completion_armed.clear()
-                        Logger.warning(
-                            "Clean Regeneration (Google AI Studio): completion request was not observed "
-                            "after clicking Regenerate. Falling back to a new chat."
-                        )
-                    else:
-                        try:
-                            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
-                        except asyncio.TimeoutError:
-                            completion_armed.clear()
-                            Logger.warning(
-                                "Clean Regeneration (Google AI Studio): completion request was not observed "
-                                "after clicking Regenerate. Falling back to a new chat."
-                            )
-                        else:
-                            regenerated = True
-                            self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
-                            self._write_clean_regeneration_state(clean_regen_state)
-
+            regenerated = await _attempt_clean_regeneration(
+                clean_regeneration=clean_regeneration,
+                formatted_message=formatted_message,
+                clean_regen_state=clean_regen_state,
+            )
             if not regenerated:
-                Logger.info("Google AI Studio: preparing a new chat session...")
-                await self.click_new_chat(source="auto")
-                await asyncio.sleep(0.2)
-                await self._apply_request_controls(effective_settings)
-                await asyncio.sleep(0.2)
-                if bool(effective_settings.get("use_system_prompt_field")):
-                    await self._sync_system_prompt_field(system_prompt_text)
-                    await self._ui_settle_pause(0.18)
+                setup_error = await _start_new_chat_attempt(
+                    formatted_message=formatted_message,
+                    system_prompt_text=system_prompt_text,
+                )
+                if setup_error:
+                    yield f"data: {json.dumps({'error': setup_error})}\n\n"
+                    return
 
-                if bool(effective_settings.get("send_as_text_file")):
-                    file_payload = {
-                        "name": "prompt.txt",
-                        "mimeType": "text/plain",
-                        "buffer": formatted_message.encode("utf-8"),
-                    }
-                    try:
-                        await self.upload_file(file_payload)
-                    except Exception as e:
-                        yield f"data: {json.dumps({'error': f'Google AI Studio upload failed: {e}'})}\n\n"
-                        return
-                    await self._ui_settle_pause(0.35)
-                    text_file_message = str(effective_settings.get("text_file_message") or "")
-                    if text_file_message.strip():
-                        await self.enter_message(text_file_message)
-                        await self._ui_settle_pause(0.1)
-                    completion_armed.set()
-                    Logger.info("Google AI Studio: sending request...")
-                    await self.send_message(timeout=int(effective_settings.get("file_upload_timeout", 20)))
-                else:
-                    await self.enter_message(formatted_message)
-                    await asyncio.sleep(0.1)
-                    completion_armed.set()
-                    Logger.info("Google AI Studio: sending request...")
-                    await self.send_message()
-
+            if not anti_censorship_enabled:
                 if clean_regeneration:
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
                     self._write_clean_regeneration_state(clean_regen_state)
 
-            if not completion_started.is_set():
-                await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                async for item in self._iterate_response_queue(
+                    response_queue,
+                    abort_event=abort_event,
+                    first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                    idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+                ):
+                    if isinstance(item, dict) and "error" in item:
+                        yield f"data: {json.dumps(item)}\n\n"
+                        break
+                    yield item
+                return
 
-            async for item in self._iterate_response_queue(
-                response_queue,
-                abort_event=abort_event,
-                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
-                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
-            ):
-                if isinstance(item, dict) and "error" in item:
-                    yield f"data: {json.dumps(item)}\n\n"
+            aggregated_chunks: List[str] = []
+            final_error_message: str | None = None
+            hard_censorship_seen = False
+            continue_nudges_sent = 0
+
+            while True:
+                attempt_items = await _consume_attempt_items()
+                if self.abort_requested or (abort_event and abort_event.is_set()):
+                    final_error_message = None
+                    aggregated_chunks = []
                     break
 
-                yield item
+                attempt_error = _attempt_error_message(attempt_items)
+                hard_censored = await self._is_latest_assistant_turn_content_blocked(timeout_ms=750)
+                if (not hard_censored) and bool(current_attempt_meta.get("hard_censorship_hint")):
+                    hard_censored = True
+
+                if hard_censored:
+                    hard_censorship_seen = True
+                    clear_clean_regeneration_cache(
+                        self.cache_manager,
+                        self.clean_regen_message_cache_key,
+                        self.clean_regen_state_cache_key,
+                    )
+                    aggregated_chunks.extend(
+                        _buffered_chunks(attempt_items, drop_terminal_stop=True)
+                    )
+
+                    if continue_nudges_sent >= self.MAX_ANTI_CENSORSHIP_NUDGES:
+                        final_error_message = (
+                            "Google AI Studio hard-censored the response, and the anti-censorship "
+                            "workaround could not recover it after 3 continue nudges."
+                        )
+                        aggregated_chunks = []
+                        break
+
+                    replacement_message = str(
+                        effective_settings.get("anti_censorship_replacement_message") or "."
+                    )
+                    continue_nudge = str(
+                        effective_settings.get("anti_censorship_continue_nudge") or "Continue."
+                    )
+                    Logger.warning(
+                        "Google AI Studio: hard censorship detected. Replacing the blocked "
+                        "assistant turn and sending a continue nudge..."
+                    )
+                    if not await self._replace_latest_assistant_message(replacement_message):
+                        final_error_message = (
+                            "Google AI Studio hard-censored the response, and IntenseRP could not "
+                            "replace the blocked assistant message for retry."
+                        )
+                        aggregated_chunks = []
+                        break
+
+                    continue_nudges_sent += 1
+                    retry_error = await _send_continue_nudge_attempt(continue_nudge)
+                    if retry_error:
+                        final_error_message = retry_error
+                        if self._error_looks_rate_limited(final_error_message):
+                            aggregated_chunks = []
+                        break
+                    continue
+
+                aggregated_chunks.extend(
+                    _buffered_chunks(
+                        attempt_items,
+                        drop_terminal_stop=bool(
+                            attempt_error or current_attempt_meta.get("no_text_detected")
+                        ),
+                    )
+                )
+                final_error_message = attempt_error
+                if (not final_error_message) and bool(current_attempt_meta.get("no_text_detected")):
+                    final_error_message = (
+                        "Google AI Studio returned no assistant text. "
+                        "The request may have been submitted before the UI fully settled."
+                    )
+                if final_error_message and self._error_looks_rate_limited(final_error_message):
+                    aggregated_chunks = []
+                break
+
+            if clean_regeneration:
+                if (not hard_censorship_seen) and (not final_error_message):
+                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_clean_regeneration_state(clean_regen_state)
+                else:
+                    clear_clean_regeneration_cache(
+                        self.cache_manager,
+                        self.clean_regen_message_cache_key,
+                        self.clean_regen_state_cache_key,
+                    )
+
+            for chunk in aggregated_chunks:
+                yield chunk
+
+            if final_error_message:
+                yield f"data: {json.dumps({'error': final_error_message})}\n\n"
         finally:
             self.current_abort_event = None
             self.abort_requested = False

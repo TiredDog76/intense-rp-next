@@ -219,6 +219,54 @@ On first AI Studio startup, IntenseRP automatically moves AI Studio's safety sli
 
 ---
 
+## :material-shield-off: Anti-Censorship
+
+Google AI Studio can hard-block a reply on the backend. When that happens, you usually get either:
+
+- no usable assistant text in the stream, or
+- a turn in the UI that shows **Content blocked** in the **Safety Ratings** button area
+
+:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Anti-Censorship**
+
+When this is enabled, IntenseRP does an invasive recovery flow:
+
+1. It watches the intercepted AI Studio response and the latest assistant turn for a hard-block signal
+2. If the turn is blocked, IntenseRP edits that assistant message in-place
+3. It replaces the blocked turn with your configured **Replacement Message**
+4. It sends your configured **Continue Nudge** as a normal text message
+5. It retries this up to 3 follow-up nudges
+
+!!! note "Not the same as DeepSeek"
+    DeepSeek anti-censorship is basically a frontend snip. AI Studio's version is more of a backend recovery trick, because the censorship is enforced deeper in the request/response flow.
+
+!!! warning "Clean Regeneration gets disabled for that chat"
+    If IntenseRP detects hard censorship in the current AI Studio chat, it clears that chat out of the clean-regeneration cache.
+
+    In plain English: the next identical request will start fresh instead of trying to regenerate inside that now-cursed chat.
+
+### Replacement Message
+
+Text used to replace the blocked assistant turn before IntenseRP sends the continue nudge.
+
+Default is `.`.
+
+:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Replacement Message**
+
+### Continue Nudge
+
+Text IntenseRP sends as the next user message after a blocked assistant turn is replaced.
+
+Default is `Continue.`.
+
+:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Continue Nudge**
+
+!!! tip "Sent as plain text"
+    The continue nudge is always typed into the composer normally.
+
+    Even if **Send As Text File** is enabled for the original prompt, IntenseRP does **not** upload the nudge as a file.
+
+---
+
 ## :material-refresh: Clean Regeneration
 
 When enabled, IntenseRP tries to click AI Studio's regenerate action if:
@@ -234,6 +282,9 @@ Otherwise it opens a fresh chat.
     Google AI Studio does **not** support Multi-Slot Cache right now.
 
     So for AI Studio, Clean Regeneration only checks the currently remembered latest chat instead of trying older cached conversations.
+
+!!! note "Blocked chats are skipped"
+    If AI Studio hard-censors a turn and **Anti-Censorship** kicks in, IntenseRP clears that chat from the clean-regeneration cache instead of reusing it later.
 
 ---
 
@@ -289,6 +340,9 @@ All macros are stripped before sending.
 | **Send As Text File** | Uploads the prompt through AI Studio's media picker | Off |
 | **Text File Message** | Optional text sent alongside the uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait for the send button after file selection | `20` |
+| **Anti-Censorship** | Detects blocked AI Studio turns and runs the edit + continue workaround | Off |
+| **Replacement Message** | Text used to replace a blocked assistant turn before retrying | `.` |
+| **Continue Nudge** | Follow-up user message sent after a blocked turn | `Continue.` |
 | **Temperature** | Default temperature | `1.0` |
 | **Top P** | Default top-p value | `0.95` |
 | **Max Output Tokens** | Default output token budget | `65536` |
