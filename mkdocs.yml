@@ -61,6 +61,8 @@ nav:
       - Get Involved: community.md
   - Vote for New Stuff:
       - vote-for-new-stuff.md
+  - Support The Project:
+      - hands/support.md
 
 theme:
   name: material

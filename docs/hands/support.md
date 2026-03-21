@@ -61,6 +61,12 @@ If you want to support development financially, thank you! It helps me spend mor
 !!! note "No Ko-fi / Buy Me a Coffee right now"
     I'm Ukrainian, and due to regional Stripe/PayPal restrictions, platforms like Ko-fi or Buy Me a Coffee are effectively unavailable for me.
 
+### Donations via Donatello
+
+Donatello is a Ukrainian donation platform that supports various payment methods, including bank transfers and crypto. If you want to support IntenseRP Next, you can do that there (currently for Ukraine / EU residents only).
+
+[:arrow_right: Donate via Donatello](https://donatello.to/lyubomirt)
+
 ### Bank transfer (IBAN / SWIFT)
 
 ```
