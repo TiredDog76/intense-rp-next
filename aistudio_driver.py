@@ -194,6 +194,7 @@ class AIStudioDriver(BaseDriver):
         "textarea.in-run-settings.mat-mdc-tooltip-trigger",
         "textarea.in-run-settings",
     ]
+    SYSTEM_INSTRUCTIONS_SAVE_STATUS_SELECTOR = "div.saving-status"
     SYSTEM_INSTRUCTIONS_CLOSE_SELECTORS = [
         "button[data-test-close-button]",
         "[data-test-close-button]",
@@ -2428,6 +2429,37 @@ class AIStudioDriver(BaseDriver):
         Logger.warning("Google AI Studio: system-instructions panel did not close cleanly.")
         return False
 
+    async def _wait_for_system_prompt_save_status(self, timeout_ms: int = 12000) -> bool:
+        """Wait until AI Studio reports that the system instructions were saved."""
+        if not self.page:
+            return False
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            try:
+                save_visible = await self.page.evaluate(
+                    """(selector) => {
+                        return Array.from(document.querySelectorAll(selector)).some(
+                            (status) => status.classList.contains('visible')
+                        );
+                    }""",
+                    self.SYSTEM_INSTRUCTIONS_SAVE_STATUS_SELECTOR,
+                )
+            except Exception:
+                save_visible = False
+
+            if bool(save_visible):
+                await self._ui_settle_pause(0.12)
+                return True
+
+            if time.time() >= deadline:
+                Logger.warning(
+                    "Google AI Studio: system-instructions save status did not become visible in time."
+                )
+                return False
+
+            await asyncio.sleep(0.1)
+
     def _build_system_prompt_title(self) -> str:
         """Generate a short unique label for AI Studio's system-instructions entry."""
         return f"intenserp-{secrets.token_hex(8)}"
@@ -2470,6 +2502,7 @@ class AIStudioDriver(BaseDriver):
         if not body_ok:
             Logger.warning("Google AI Studio: failed to set the system-instructions body.")
 
+        await self._wait_for_system_prompt_save_status()
         await self._close_system_prompt_panel()
         await self._refocus_composer_before_send()
 
