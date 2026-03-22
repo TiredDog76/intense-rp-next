@@ -333,6 +333,106 @@ class Divider(QWidget):
 
         self.setMinimumHeight(layout.sizeHint().height())
 
+
+def _blend_hex_colors(color_a: str, color_b: str, ratio: float) -> str:
+    ratio = max(0.0, min(float(ratio), 1.0))
+    inv = 1.0 - ratio
+    first = QColor(color_a)
+    second = QColor(color_b)
+    return QColor(
+        int(round(first.red() * inv + second.red() * ratio)),
+        int(round(first.green() * inv + second.green() * ratio)),
+        int(round(first.blue() * inv + second.blue() * ratio)),
+        int(round(first.alpha() * inv + second.alpha() * ratio)),
+    ).name()
+
+
+class HintCard(QFrame):
+    VARIANT_STYLES = {
+        "info": {"accent": BrandColors.ACCENT, "icon": "info.svg"},
+        "warn": {"accent": BrandColors.WARNING, "icon": "alert-triangle.svg"},
+        "danger": {"accent": BrandColors.DANGER, "icon": "alert-triangle.svg"},
+        "success": {"accent": BrandColors.SUCCESS, "icon": "check.svg"},
+    }
+
+    def __init__(self, title: str, text: str, variant: str = "info", parent=None):
+        super().__init__(parent)
+        self.setObjectName("hintCard")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        palette = self._resolve_palette(variant)
+        self.setStyleSheet(
+            f"""
+            QFrame#hintCard {{
+                background-color: {palette["bg"]};
+                border: 1px solid {palette["border"]};
+                border-radius: 8px;
+            }}
+            """
+        )
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(10)
+
+        icon_label = QLabel()
+        icon_label.setStyleSheet("background-color: transparent;")
+        icon_label.setFixedSize(18, 18)
+        icon_label.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        pixmap = IconUtils.get_pixmap(
+            palette["icon"],
+            color=palette["accent"],
+            size=18,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not pixmap.isNull():
+            icon_label.setPixmap(pixmap)
+        layout.addWidget(icon_label, 0, Qt.AlignTop)
+
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(4)
+
+        title_text = str(title or "").strip()
+        if title_text:
+            title_label = QLabel(title_text)
+            title_label.setStyleSheet(
+                f"""
+                color: {palette["title"]};
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+                font-weight: 700;
+                background-color: transparent;
+                """
+            )
+            text_layout.addWidget(title_label)
+
+        body_label = QLabel("" if text is None else str(text))
+        body_label.setWordWrap(True)
+        body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        body_label.setStyleSheet(
+            f"""
+            color: {palette["text"]};
+            font-size: {BrandColors.FONT_SIZE_REGULAR};
+            background-color: transparent;
+            """
+        )
+        text_layout.addWidget(body_label)
+        layout.addLayout(text_layout, 1)
+
+    def _resolve_palette(self, variant: str) -> dict[str, str]:
+        resolved_variant = str(variant or "info").strip().lower()
+        style = self.VARIANT_STYLES.get(resolved_variant, self.VARIANT_STYLES["info"])
+        accent = style["accent"]
+        return {
+            "accent": accent,
+            "icon": style["icon"],
+            "bg": _blend_hex_colors(BrandColors.SIDEBAR_BG, accent, 0.22),
+            "border": _blend_hex_colors(BrandColors.SIDEBAR_BG, accent, 0.52),
+            "title": _blend_hex_colors("#f3f5f7", accent, 0.42),
+            "text": _blend_hex_colors("#eef2f5", accent, 0.18),
+        }
+
+
 class Description(QLabel):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)

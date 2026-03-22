@@ -16,7 +16,7 @@ from config.location import infer_preset_from_config_dir, migrate_config_dir, re
 from config.schema import SCHEMA, SettingType
 from drivers.providers import DriverProvider
 from ui.core.brand import BrandColors
-from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
+from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, HintCard, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
 from ui.widgets.redirect_card import RedirectCard
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
@@ -576,6 +576,17 @@ class SettingsWindow(QMainWindow):
                 card_layout.addWidget(widget)
                 continue
 
+            if field.type == SettingType.HINT:
+                widget = HintCard(
+                    field.label,
+                    field.default,
+                    variant=getattr(field, "hint_variant", None) or "info",
+                )
+                self.field_widgets[f"{category.key}.{field.key}"] = widget
+                self._tag_docs_widget(widget, docs_url)
+                card_layout.addWidget(widget)
+                continue
+
             if field.type == SettingType.REDIRECT:
                 widget = self._create_field_widget(field, category.key)
                 if widget:
@@ -993,7 +1004,7 @@ class SettingsWindow(QMainWindow):
                 full_key = f"{category.key}.{field.key}"
                 self.field_defs[full_key] = field
             for field in category.fields:
-                if field.type in {SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION}:
+                if field.type in {SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.HINT}:
                     continue
                 self._register_search_target(category, field)
 
@@ -2120,7 +2131,7 @@ class SettingsWindow(QMainWindow):
                         value = widget.get_pairs()
                     elif field.type == SettingType.INPUT_LIST:
                         value = widget.get_items()
-                    elif field.type in [SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.ROW, SettingType.REDIRECT]:
+                    elif field.type in [SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.HINT, SettingType.ROW, SettingType.REDIRECT]:
                         continue # These don't have values to save
                         
                     # Check dependencies

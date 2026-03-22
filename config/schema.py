@@ -41,6 +41,7 @@ class SettingType(Enum):
     DROPDOWN = "dropdown"
     DIVIDER = "divider"
     DESCRIPTION = "description"
+    HINT = "hint"
     BUTTON = "button"
     ROW = "row"
     INPUT_PAIR = "input_pair"
@@ -75,6 +76,7 @@ class SettingField:
     alternative_actions: Optional[List[AlternativeAction]] = None # For INPUT_PAIR-style fields
     docs_path: Optional[str] = None
     docs_anchor: Optional[str] = None
+    hint_variant: Optional[str] = None
 
 @dataclass
 class SettingCategory:
@@ -416,13 +418,14 @@ SCHEMA = [
             ),
             SettingField(
                 key="search_forced_off_note",
-                label="Search (Note)",
-                type=SettingType.DESCRIPTION,
+                label="Search",
+                type=SettingType.HINT,
                 default=(
-                    "Note: GLM Search results are not forwarded to the client for stability reasons. "
+                    "GLM Search results are not forwarded to the client for stability reasons. "
                     "You may still see citations in the response."
                 ),
                 tooltip=None,
+                hint_variant="info",
             ),
             SettingField(
                 key="enable_search",
@@ -569,13 +572,14 @@ SCHEMA = [
             ),
             SettingField(
                 key="search_and_think_note",
-                label="Search + Thinking (Note)",
-                type=SettingType.DESCRIPTION,
+                label="Search + Thinking",
+                type=SettingType.HINT,
                 default=(
                     "Kimi can emit multi-stage reasoning when Search and Thinking are both enabled. "
-                    "Some clients (including SillyTavern) may not parse this cleanly."
+                    "Some clients (including SillyTavern) may not parse this cleanly, avoid using both at the same time if you see weird formatting or missing content in the responses."
                 ),
                 tooltip=None,
+                hint_variant="warn",
             ),
             SettingField(
                 key="enable_search",
@@ -702,13 +706,14 @@ SCHEMA = [
             ),
             SettingField(
                 key="search_forced_off_note",
-                label="Search (Note)",
-                type=SettingType.DESCRIPTION,
+                label="Search",
+                type=SettingType.HINT,
                 default=(
-                    "Note: QwenLM Search results are not forwarded to the client for stability reasons. "
+                    "QwenLM Search results are not forwarded to the client for stability reasons. "
                     "You may still see citations in the response."
                 ),
                 tooltip=None,
+                hint_variant="info",
             ),
             SettingField(
                 key="enable_search",
