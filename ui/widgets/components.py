@@ -298,6 +298,7 @@ class StyledComboBox(QComboBox):
 class Divider(QWidget):
     def __init__(self, text=None, parent=None):
         super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 20, 0, 12)
         layout.setSpacing(12)
@@ -317,7 +318,10 @@ class Divider(QWidget):
                 font-size: {BrandColors.FONT_SIZE_LARGE};
                 letter-spacing: 0.5px;
             """)
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignVCenter | Qt.AlignCenter)
+            label.setContentsMargins(0, 2, 0, 2)
+            label.setMinimumHeight(24)
+            label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
             layout.addWidget(label)
             
             line2 = QFrame()
@@ -326,6 +330,8 @@ class Divider(QWidget):
             line2.setFixedHeight(1)
             line2.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
             layout.addWidget(line2)
+
+        self.setMinimumHeight(layout.sizeHint().height())
 
 class Description(QLabel):
     def __init__(self, text, parent=None):
@@ -356,6 +362,9 @@ class StyledButton(QPushButton):
             }}
             QPushButton:pressed {{
                 background-color: {BrandColors.ACCENT};
+            }}
+            QPushButton:disabled {{
+                color: {BrandColors.TEXT_DISABLED};
             }}
         """)
 

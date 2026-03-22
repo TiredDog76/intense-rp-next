@@ -27,6 +27,14 @@ Back up your active config directory to a `.zip`, or restore one.
 
 :material-arrow-right: [Backup & Import Settings](backup-import-settings.md)
 
+### :material-web: Browser Manager
+
+Shows the current Playwright/Patchright Chromium executable path and lets you **Install**, **Reinstall**, or **Delete** the browser bundle IntenseRP uses.
+
+If the API/browser services are still running, it will stop you and ask you to shut everything down first.
+
+:material-arrow-right: [Browser Manager](browser-manager.md)
+
 ### :material-puzzle-edit-outline: STMP Patcher
 
 Patches **RossAscends's STMP** so it includes per-message names, which makes name detection in IntenseRP much more reliable.

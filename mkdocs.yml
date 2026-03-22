@@ -50,6 +50,7 @@ nav:
           - Overview: util-reference.md
           - Help & Extras: util-reference/help-extras.md
           - Backup & Import Settings: util-reference/backup-import-settings.md
+          - Browser Manager: util-reference/browser-manager.md
           - STMP Patcher: util-reference/stmp-patcher.md
           - Contributors: util-reference/contributors.md
       - Help & Support:

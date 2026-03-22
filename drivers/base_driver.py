@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
-import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
@@ -12,6 +10,7 @@ from patchright.async_api import Browser, BrowserContext, Page, async_playwright
 from drivers.providers import DriverProvider, get_playwright_profile_dir
 from ece.manager import EceManager
 from ece.models import CredentialPair
+from utils.browser_manager import install_chromium_browser, probe_browser_executable_path
 from utils.logger import Logger
 
 
@@ -348,22 +347,9 @@ class BaseDriver(ABC):
         if cached_path and Path(cached_path).exists():
             return True
 
-        playwright = None
-        try:
-            playwright = await async_playwright().start()
-            browser_path = str(playwright.chromium.executable_path or "").strip()
-        except Exception as e:
-            Logger.debug(f"Browser executable probe failed: {e}")
-            return False
-        finally:
-            if playwright is not None:
-                try:
-                    await playwright.stop()
-                except Exception:
-                    pass
-
+        browser_path = await probe_browser_executable_path()
         BaseDriver._browser_executable_path = browser_path or None
-        return bool(browser_path) and Path(browser_path).exists()
+        return bool(browser_path)
 
     async def _install_browser_via_cli(
         self, status_callback: Optional[Callable[[str], None]] = None
@@ -371,41 +357,11 @@ class BaseDriver(ABC):
         """
         Run the browser installation using the patchright CLI (async).
         """
-        Logger.info("Verifying/Installing Chromium browser...")
-        if status_callback:
-            status_callback("Verifying Browser...")
-
         try:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m",
-                "patchright",
-                "install",
-                "chromium",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-            )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
-
-            if process.returncode == 0:
-                Logger.success("Chromium browser verified/installed.")
-                return True
-
-            error_msg = (
-                (stderr.decode() if stderr else "")
-                or (stdout.decode() if stdout else "")
-                or "Unknown error"
-            )
-            Logger.error(f"Failed to install Chromium browser: {error_msg}")
-            raise RuntimeError(f"Failed to install Chromium browser: {error_msg}")
-
-        except asyncio.TimeoutError:
-            Logger.error("Browser installation timed out.")
-            raise RuntimeError("Browser installation timed out after 5 minutes.")
-        except Exception as e:
-            Logger.error(f"Browser installation failed: {e}")
-            raise RuntimeError(f"Browser installation failed: {e}")
+            await install_chromium_browser(status_callback=status_callback)
+            return True
+        except Exception:
+            raise
 
     def request_abort(self) -> None:
         """

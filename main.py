@@ -1375,7 +1375,7 @@ class MainWindow(QMainWindow):
 
     def open_help(self):
         if not self.help_window:
-            self.help_window = HelpWindow(self.config_manager, None)
+            self.help_window = HelpWindow(self.config_manager, None, main_window=self)
             self.help_window.settings_reloaded.connect(self.on_settings_reloaded)
         self.help_window.show()
         self.help_window.activateWindow()

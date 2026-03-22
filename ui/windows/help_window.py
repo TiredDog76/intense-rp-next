@@ -8,6 +8,7 @@ from PySide6.QtGui import QDesktopServices
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.backup_import_window import BackupImportWindow
+from ui.niche.browser_manager_window import BrowserManagerWindow
 from ui.windows.contributors_window import ContributorsWindow
 from ui.niche.stmp_patcher_window import STMPPatcherWindow
 from utils.v1_migrator import V1Migrator
@@ -77,9 +78,10 @@ class HelpTile(QFrame):
 class HelpWindow(QMainWindow):
     settings_reloaded = Signal()
 
-    def __init__(self, config_manager, parent=None):
+    def __init__(self, config_manager, parent=None, main_window=None):
         super().__init__(parent)
         self.config_manager = config_manager
+        self.main_window = main_window
         self.setWindowTitle("Help & Extras")
         self.resize(440, 460)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG};")
@@ -120,6 +122,7 @@ class HelpWindow(QMainWindow):
 
         tiles = [
             ("Backup / Import",    IconType.BACKUP,       "Backup or restore your config directory (settings/key/profiles) using a .zip file.", self.show_backup_import),
+            ("Browser Manager",    IconType.BROWSER_MANAGER, "Install, reinstall, or remove the Playwright Chromium browser used by IntenseRP.", self.show_browser_manager),
             ("STMP Patcher",       IconType.PATCHER,      "Patches RossAscends's STMP to include per-message names.",                          self.show_stmp_patcher),
             ("Migrate from v1",    IconType.MIGRATE,      "",                                                                                  self.start_migration),
             ("Contributors",       IconType.CONTRIBUTORS, "",                                                                                  self.show_contributors),
@@ -141,6 +144,7 @@ class HelpWindow(QMainWindow):
         self.contributors_window = None
         self.stmp_patcher_window = None
         self.backup_import_window = None
+        self.browser_manager_window = None
 
     def start_migration(self):
         msg = QMessageBox(self)
@@ -185,6 +189,12 @@ class HelpWindow(QMainWindow):
             self.backup_import_window.settings_reloaded.connect(self.settings_reloaded.emit)
         self.backup_import_window.show()
         self.backup_import_window.activateWindow()
+
+    def show_browser_manager(self):
+        if not self.browser_manager_window:
+            self.browser_manager_window = BrowserManagerWindow(main_window=self.main_window, parent=None)  # Top level
+        self.browser_manager_window.show()
+        self.browser_manager_window.activateWindow()
 
     def open_contact_support(self):
         QDesktopServices.openUrl(QUrl("https://intense-rp-next.readthedocs.io/en/latest/hands/contact/"))

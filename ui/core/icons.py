@@ -22,6 +22,7 @@ class IconType(Enum):
     CONTRIBUTORS = "user-check.svg"
     PATCHER = "terminal.svg"
     BACKUP = "download-cloud.svg"
+    BROWSER_MANAGER = "globe.svg"
     DONATE = "heart.svg"
     DISCORD = "discord.svg"
 
