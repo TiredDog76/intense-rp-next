@@ -4,6 +4,7 @@ from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QAbstractButton
+from ui.core.brand import BrandColors
 from utils.logger import Logger
 from utils.resource_path import resolve_resource_path
 
@@ -29,6 +30,21 @@ class IconType(Enum):
 class IconUtils:
     _SVG_TEXT_CACHE: dict[str, str] = {}
     _PIXMAP_CACHE: dict[tuple[str, str, int, float, int], QPixmap] = {}
+
+    @staticmethod
+    def _build_icon(normal_pixmap: QPixmap, disabled_pixmap: QPixmap | None = None) -> QIcon:
+        if normal_pixmap.isNull():
+            return QIcon()
+
+        icon = QIcon()
+        for mode in (QIcon.Normal, QIcon.Active, QIcon.Selected):
+            icon.addPixmap(normal_pixmap, mode, QIcon.Off)
+            icon.addPixmap(normal_pixmap, mode, QIcon.On)
+
+        if disabled_pixmap is not None and not disabled_pixmap.isNull():
+            icon.addPixmap(disabled_pixmap, QIcon.Disabled, QIcon.Off)
+            icon.addPixmap(disabled_pixmap, QIcon.Disabled, QIcon.On)
+        return icon
 
     @staticmethod
     def _icon_path(filename: str, *, subdir: str | None = None) -> str:
@@ -117,9 +133,10 @@ class IconUtils:
         widget: object | None = None,
         y_offset: int = 0,
         subdir: str | None = None,
+        include_disabled: bool = False,
     ) -> QIcon:
         dpr = float(widget.devicePixelRatioF()) if widget is not None and hasattr(widget, "devicePixelRatioF") else 1.0
-        pixmap = IconUtils.get_pixmap(
+        normal_pixmap = IconUtils.get_pixmap(
             icon,
             color=color,
             size=size,
@@ -127,14 +144,42 @@ class IconUtils:
             y_offset=y_offset,
             subdir=subdir,
         )
-        return QIcon(pixmap) if not pixmap.isNull() else QIcon()
+        if normal_pixmap.isNull():
+            return QIcon()
+
+        disabled_pixmap = None
+        if include_disabled and color is not None:
+            disabled_pixmap = IconUtils.get_pixmap(
+                icon,
+                color=BrandColors.TEXT_DISABLED,
+                size=size,
+                dpr=dpr,
+                y_offset=y_offset,
+                subdir=subdir,
+            )
+
+        return IconUtils._build_icon(normal_pixmap, disabled_pixmap)
 
     @staticmethod
-    def apply_icon(button: QAbstractButton, icon_type: IconType, color: str = None, size: int = 16, y_offset: int = 0):
+    def apply_icon(
+        button: QAbstractButton,
+        icon_type: "IconType | str",
+        color: str = None,
+        size: int = 16,
+        y_offset: int = 0,
+        include_disabled: bool = False,
+    ):
         """
         Applies an SVG icon to a button.
         """
-        icon = IconUtils.get_icon(icon_type, color=color, size=size, widget=button, y_offset=y_offset)
+        icon = IconUtils.get_icon(
+            icon_type,
+            color=color,
+            size=size,
+            widget=button,
+            y_offset=y_offset,
+            include_disabled=include_disabled,
+        )
         if icon.isNull():
             return
 

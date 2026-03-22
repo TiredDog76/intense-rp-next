@@ -811,7 +811,13 @@ class WelcomeWindow(QDialog):
         self._api_key_value.textChanged.connect(lambda *_: self._sync_sillytavern_instructions())
 
         regenerate = StyledButton("Generate")
-        icon = IconUtils.get_icon("dices.svg", color=BrandColors.TEXT_PRIMARY, size=14, widget=regenerate)
+        icon = IconUtils.get_icon(
+            "dices.svg",
+            color=BrandColors.TEXT_PRIMARY,
+            size=14,
+            widget=regenerate,
+            include_disabled=True,
+        )
         if not icon.isNull():
             regenerate.setIcon(icon)
             regenerate.setIconSize(QSize(14, 14))

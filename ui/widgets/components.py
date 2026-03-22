@@ -895,7 +895,13 @@ class InputPairsWidget(QWidget):
         actions_row.setSpacing(8)
 
         self.add_button = StyledButton("Create New")
-        IconUtils.apply_icon(self.add_button, IconType.PLUS, BrandColors.TEXT_PRIMARY, size=14)
+        IconUtils.apply_icon(
+            self.add_button,
+            IconType.PLUS,
+            BrandColors.TEXT_PRIMARY,
+            size=14,
+            include_disabled=True,
+        )
         self.add_button.setIconSize(QSize(14, 14))
         # clicked(bool) passes a checked arg; ignore it.
         self.add_button.clicked.connect(lambda: self.add_pair())
@@ -927,6 +933,7 @@ class InputPairsWidget(QWidget):
                     color=BrandColors.TEXT_PRIMARY,
                     size=14,
                     widget=btn,
+                    include_disabled=True,
                 )
                 if not btn_icon.isNull():
                     btn.setIcon(btn_icon)
@@ -1068,7 +1075,13 @@ class InputListWidget(QWidget):
         actions_row.setSpacing(8)
 
         self.add_button = StyledButton("Create New")
-        IconUtils.apply_icon(self.add_button, IconType.PLUS, BrandColors.TEXT_PRIMARY, size=14)
+        IconUtils.apply_icon(
+            self.add_button,
+            IconType.PLUS,
+            BrandColors.TEXT_PRIMARY,
+            size=14,
+            include_disabled=True,
+        )
         self.add_button.setIconSize(QSize(14, 14))
         self.add_button.clicked.connect(lambda: self.add_item())
         actions_row.addWidget(self.add_button, 0)
