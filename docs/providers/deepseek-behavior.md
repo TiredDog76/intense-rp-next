@@ -98,7 +98,7 @@ This controls how long IntenseRP waits for DeepSeek's response stream to actuall
 
 Default is 45 seconds.
 
-If DeepSeek is being slow to wake up, or your machine/browser is having one of those "today is not my day" moments, raising this can help avoid false timeout errors.
+If DeepSeek is being slow to wake up, or your machine/browser is not the fastest, raising this can help avoid false timeout errors.
 
 !!! note
     This timeout is mainly about the start of the response stream, not the full generation time. Once the stream is active, the normal idle timeout logic takes over.
