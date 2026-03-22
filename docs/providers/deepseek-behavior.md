@@ -90,6 +90,21 @@ Default is 15 seconds, which should be plenty for most cases. Increase it if you
 
 ---
 
+## :material-timer-sand: First Chunk Timeout
+
+This controls how long IntenseRP waits for DeepSeek's response stream to actually start after the request has been sent.
+
+:material-arrow-right: **Settings** -> **DeepSeek Behavior** -> **First Chunk Timeout (s)**
+
+Default is 45 seconds.
+
+If DeepSeek is being slow to wake up, or your machine/browser is having one of those "today is not my day" moments, raising this can help avoid false timeout errors.
+
+!!! note
+    This timeout is mainly about the start of the response stream, not the full generation time. Once the stream is active, the normal idle timeout logic takes over.
+
+---
+
 ## :material-shield-off: Anti-Censorship
 
 DeepSeek has a content filter that sometimes triggers with a "Sorry, that's beyond my current scope" message. When Anti-Censorship is enabled, IntenseRP catches this and terminates the response cleanly instead of letting the refusal message through.
@@ -170,6 +185,7 @@ All macros are stripped from the message before sending it to DeepSeek.
 | **Enable Search** | Allows web search | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
+| **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
 | **Anti-Censorship** | Hides refusal messages | Off |
 | **Clean Regeneration** | Regenerates on duplicate prompts | Off |
 

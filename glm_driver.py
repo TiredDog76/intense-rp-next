@@ -92,6 +92,12 @@ class GLMDriver(BaseDriver):
         except Exception:
             msg_send_timeout = 5
         try:
+            first_chunk_timeout = float(
+                self.config_manager.get_setting("glm_behavior", "first_chunk_timeout") or self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
+            )
+        except Exception:
+            first_chunk_timeout = self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
+        try:
             refresh_after_generation = bool(
                 self.config_manager.get_setting("glm_behavior", "refresh_after_generation")
             )
@@ -101,6 +107,7 @@ class GLMDriver(BaseDriver):
         self._ui_timeout = max(ui_timeout, 500)
         self._post_delay_s = max(post_delay, 0) / 1000.0
         self._msg_send_timeout = max(msg_send_timeout, 1)
+        self._first_chunk_timeout_s = max(first_chunk_timeout, 5.0)
         self._refresh_after_generation = bool(refresh_after_generation)
 
     async def _await_pending_refresh_after_generation(self, abort_event: asyncio.Event | None = None) -> None:
@@ -1180,6 +1187,49 @@ class GLMDriver(BaseDriver):
 
         return False
 
+    async def _click_stop_button(self) -> bool:
+        if not self.page:
+            return False
+
+        stop_targets = (
+            self.page.locator("div[aria-label='Stop']")
+        )
+
+        for target in stop_targets:
+            try:
+                if await target.count() <= 0:
+                    continue
+                button = target.first
+                if not await button.is_visible():
+                    continue
+                try:
+                    await button.scroll_into_view_if_needed(timeout=self._ui_timeout)
+                except Exception:
+                    pass
+                await button.click(timeout=self._ui_timeout)
+                Logger.debug("GLM Chat: Stop button clicked.")
+                return True
+            except Exception:
+                continue
+
+        try:
+            clicked = await self.page.evaluate(
+                """() => {
+                    const match = document.querySelector("div[aria-label='Stop']");
+                    if (!match) return false;
+                    match.click();
+                    return true;
+                }"""
+            )
+            if clicked:
+                Logger.debug("GLM Chat: Stop button clicked via JS fallback.")
+                return True
+        except Exception as e:
+            Logger.debug(f"GLM Chat: JS stop click failed: {e}")
+
+        Logger.debug("GLM Chat: Stop button not found.")
+        return False
+
     async def _send_message(
         self, timeout: int | None = None, arm_event: asyncio.Event | None = None
     ) -> None:
@@ -1500,6 +1550,26 @@ class GLMDriver(BaseDriver):
         completion_started = asyncio.Event()
         completion_claim_lock = asyncio.Lock()
         completion_claimed = False
+        intercepted_activity_count = 0
+        intercepted_response: httpx.Response | None = None
+        intercepted_request_abort = asyncio.Event()
+        intercepted_request_finished = asyncio.Event()
+
+        def get_intercepted_activity_count() -> int:
+            return intercepted_activity_count
+
+        async def abort_intercepted_request() -> None:
+            intercepted_request_abort.set()
+            response = intercepted_response
+            if response is not None:
+                try:
+                    await response.aclose()
+                except Exception as e:
+                    Logger.debug(f"GLM Chat: failed to close intercepted response: {e}")
+            try:
+                await self._click_stop_button()
+            except Exception as e:
+                Logger.debug(f"GLM Chat: failed to click Stop during timeout handling: {e}")
 
         await self._await_pending_refresh_after_generation(abort_event=abort_event)
 
@@ -1533,7 +1603,7 @@ class GLMDriver(BaseDriver):
         formatted_message = self._format_messages(message_for_formatting)
 
         async def handle_route(route):
-            nonlocal completion_claimed
+            nonlocal completion_claimed, intercepted_activity_count, intercepted_response
             request = route.request
 
             # Ignore preflight and any requests we aren't actively expecting to stream.
@@ -1812,11 +1882,17 @@ class GLMDriver(BaseDriver):
                             request.url,
                             **request_kwargs,
                         ) as response:
+                            intercepted_response = response
                             for k, v in response.headers.items():
                                 response_headers[k] = v
 
                             async for chunk in response.aiter_bytes():
-                                if self.abort_requested or (abort_event and abort_event.is_set()):
+                                intercepted_activity_count += 1
+                                if (
+                                    intercepted_request_abort.is_set()
+                                    or self.abort_requested
+                                    or (abort_event and abort_event.is_set())
+                                ):
                                     Logger.debug("Abort detected during GLM streaming, stopping...")
                                     aborted = True
                                     break
@@ -1852,6 +1928,7 @@ class GLMDriver(BaseDriver):
 
                             if (
                                 (not aborted)
+                                and (not intercepted_request_abort.is_set())
                                 and (not self.abort_requested)
                                 and count_tokens_enabled
                                 and (openai_usage is not None)
@@ -1859,11 +1936,19 @@ class GLMDriver(BaseDriver):
                             ):
                                 enqueue_openai_usage(openai_usage)
                     except httpx.ReadError as e:
-                        if not aborted and not self.abort_requested:
+                        if (
+                            not aborted
+                            and (not intercepted_request_abort.is_set())
+                            and not self.abort_requested
+                        ):
                             Logger.error(f"Read error during GLM intercepted request: {e}")
                             response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
                     except Exception as e:
-                        if not aborted and not self.abort_requested:
+                        if (
+                            not aborted
+                            and (not intercepted_request_abort.is_set())
+                            and not self.abort_requested
+                        ):
                             Logger.error(f"Error during GLM intercepted request: {e}")
                             response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
             except RuntimeError as e:
@@ -1871,11 +1956,18 @@ class GLMDriver(BaseDriver):
                     Logger.debug(f"Ignored expected error during abort: {e}")
                 else:
                     raise
+            finally:
+                intercepted_response = None
 
-            if aborted or self.abort_requested:
-                Logger.warning("GLM Chat generation aborted by user.")
+            if aborted or intercepted_request_abort.is_set() or self.abort_requested:
+                Logger.warning("GLM Chat generation was aborted before completion.")
 
-            if (not aborted) and (not self.abort_requested) and (not emitted_openai_chunk):
+            if (
+                (not aborted)
+                and (not intercepted_request_abort.is_set())
+                and (not self.abort_requested)
+                and (not emitted_openai_chunk)
+            ):
                 # Surface a helpful error instead of silently returning an empty stream.
                 msg = (
                     "GLM Chat: intercepted completion produced no streamable output. "
@@ -1885,12 +1977,20 @@ class GLMDriver(BaseDriver):
                 response_queue.put_nowait(f"data: {json.dumps({'error': msg})}\n\n")
 
             try:
-                await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
+                if aborted or intercepted_request_abort.is_set() or self.abort_requested:
+                    await route.abort()
+                else:
+                    await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
             except Exception as e:
-                Logger.error(f"GLM Chat: error fulfilling route: {e}")
+                Logger.error(f"GLM Chat: error finalizing route: {e}")
 
             await response_queue.put(None)
-            if not aborted and not self.abort_requested:
+            intercepted_request_finished.set()
+            if (
+                not aborted
+                and (not intercepted_request_abort.is_set())
+                and not self.abort_requested
+            ):
                 Logger.success("GLM Chat response streaming completed.")
 
         route_owner = self.context or self.page
@@ -2039,8 +2139,10 @@ class GLMDriver(BaseDriver):
             async for item in self._iterate_response_queue(
                 response_queue,
                 abort_event=abort_event,
-                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                first_chunk_timeout_s=self._first_chunk_timeout_s,
                 idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+                on_timeout=abort_intercepted_request,
+                activity_counter=get_intercepted_activity_count,
             ):
                 if isinstance(item, dict) and "error" in item:
                     stream_completed = False
@@ -2073,6 +2175,11 @@ class GLMDriver(BaseDriver):
                 self._schedule_refresh_after_generation()
 
         finally:
+            if completion_started.is_set() and not intercepted_request_finished.is_set():
+                try:
+                    await asyncio.wait_for(intercepted_request_finished.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    Logger.debug("GLM Chat: timed out waiting for intercepted request cleanup.")
             self.current_abort_event = None
             self.abort_requested = False
             self.current_model = None

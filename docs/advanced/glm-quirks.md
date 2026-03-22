@@ -54,6 +54,20 @@ How long (in seconds) IntenseRP waits for the send button to become active after
 
 GLM occasionally takes a moment to "process" the pasted text before the send button lights up. If you're getting send-timeout errors, try raising this to 10 or 15.
 
+### First Chunk Timeout
+
+How long (in seconds) IntenseRP waits for GLM's response stream to actually begin after the request has already been sent.
+
+| | |
+|---|---|
+| **Setting** | First Chunk Timeout (s) |
+| **Default** | 45 seconds |
+| **Minimum** | 5 seconds |
+
+This is handy for the exact annoying case where GLM accepted the request, but the first visible response data takes a while to show up. Slow machines, overloaded browsers, or GLM servers being hammered can all make this happen.
+
+If you're seeing "timed out waiting for intercepted first chunk" errors, try bumping this up to 60 or 90.
+
 ### Refresh After Generation
 
 If enabled, IntenseRP waits 2 seconds after GLM finishes a response, then refreshes (reloads) the GLM Chat page.
@@ -175,6 +189,7 @@ This is a minor quirk, but worth knowing about if you notice a stray dot in your
 | **Model not in dropdown** | Silent fallback | Check logs, update IntenseRP |
 | **Slow UI clicks** | Timeout errors | Increase UI Click Timeout |
 | **Send button delayed** | Send timeout | Increase Message Send Timeout |
+| **Slow response start** | First chunk timeout | Increase First Chunk Timeout |
 | **File upload stalls** | Upload timeout | Increase File Upload Timeout |
 | **Text box can't be empty** | Upload fails | Keep Text File Filler set |
 

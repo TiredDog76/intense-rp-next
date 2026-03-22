@@ -332,6 +332,15 @@ SCHEMA = [
                 docs_anchor="file-upload-timeout",
             ),
             SettingField(
+                key="first_chunk_timeout",
+                label="First Chunk Timeout (s)",
+                type=SettingType.INTEGER,
+                default=45,
+                tooltip="Max seconds to wait for the response stream to start before timing out.",
+                docs_path=DOCS_DEEPSEEK,
+                docs_anchor="first-chunk-timeout",
+            ),
+            SettingField(
                 key="anti_censorship",
                 label="Anti-Censorship",
                 type=SettingType.BOOLEAN,
@@ -515,6 +524,15 @@ SCHEMA = [
                 tooltip="Max seconds to wait for the send button to become enabled after text entry (non-file mode).",
                 docs_path=DOCS_GLM_QUIRKS,
                 docs_anchor="message-send-timeout",
+            ),
+            SettingField(
+                key="first_chunk_timeout",
+                label="First Chunk Timeout (s)",
+                type=SettingType.INTEGER,
+                default=45,
+                tooltip="Max seconds to wait for the response stream to start before timing out.",
+                docs_path=DOCS_GLM_QUIRKS,
+                docs_anchor="first-chunk-timeout",
             ),
             SettingField(
                 key="refresh_after_generation",

@@ -386,6 +386,7 @@ class BaseDriver(ABC):
         first_chunk_timeout_s: float | None = None,
         idle_timeout_s: float | None = None,
         on_timeout: Callable[[], Any] | None = None,
+        activity_counter: Callable[[], int] | None = None,
     ):
         """
         Yield provider stream items while guarding against silently stalled streams.
@@ -397,39 +398,76 @@ class BaseDriver(ABC):
         error instead and lets providers perform a best-effort UI stop action.
         """
         received_stream_item = False
+        provider_activity_seen = False
+        loop = asyncio.get_running_loop()
+        last_activity_count: int | None = None
+        if callable(activity_counter):
+            try:
+                last_activity_count = max(0, int(activity_counter()))
+                provider_activity_seen = last_activity_count > 0
+            except Exception:
+                last_activity_count = None
 
         while True:
             if self.abort_requested or (abort_event and abort_event.is_set()):
                 Logger.debug(f"Abort detected in {self.provider_label} response loop, breaking...")
                 break
 
-            wait_timeout_s = idle_timeout_s if received_stream_item else first_chunk_timeout_s
+            wait_timeout_s = idle_timeout_s if (received_stream_item or provider_activity_seen) else first_chunk_timeout_s
             if wait_timeout_s and wait_timeout_s > 0:
-                try:
-                    item = await asyncio.wait_for(response_queue.get(), timeout=wait_timeout_s)
-                except asyncio.TimeoutError:
-                    wait_phase = (
-                        "intercepted first chunk" if not received_stream_item else "next stream chunk"
-                    )
-                    Logger.error(
-                        f"{self.provider_label}: timed out waiting for {wait_phase} "
-                        f"({wait_timeout_s:.0f}s)."
-                    )
-                    self.abort_requested = True
-                    if callable(on_timeout):
-                        try:
-                            timeout_result = on_timeout()
-                            if asyncio.iscoroutine(timeout_result):
-                                await timeout_result
-                        except Exception as exc:
-                            Logger.debug(f"{self.provider_label}: timeout handler failed: {exc}")
-                    yield {
-                        "error": (
-                            f"{self.provider_label} timeout: no {wait_phase} "
-                            f"within {wait_timeout_s:.0f}s."
+                deadline = loop.time() + wait_timeout_s
+                while True:
+                    timeout_left = deadline - loop.time()
+                    if timeout_left <= 0:
+                        wait_phase = (
+                            "intercepted first chunk" if not received_stream_item else "next stream chunk"
                         )
-                    }
-                    break
+                        Logger.error(
+                            f"{self.provider_label}: timed out waiting for {wait_phase} "
+                            f"({wait_timeout_s:.0f}s)."
+                        )
+                        self.abort_requested = True
+                        if callable(on_timeout):
+                            try:
+                                timeout_result = on_timeout()
+                                if asyncio.iscoroutine(timeout_result):
+                                    await timeout_result
+                            except Exception as exc:
+                                Logger.debug(f"{self.provider_label}: timeout handler failed: {exc}")
+                        yield {
+                            "error": (
+                                f"{self.provider_label} timeout: no {wait_phase} "
+                                f"within {wait_timeout_s:.0f}s."
+                            )
+                        }
+                        return
+
+                    try:
+                        item = await asyncio.wait_for(
+                            response_queue.get(),
+                            timeout=min(timeout_left, 0.5),
+                        )
+                        break
+                    except asyncio.TimeoutError:
+                        if callable(activity_counter):
+                            try:
+                                current_activity_count = max(0, int(activity_counter()))
+                            except Exception:
+                                current_activity_count = last_activity_count
+                            if (
+                                current_activity_count is not None
+                                and current_activity_count != last_activity_count
+                            ):
+                                last_activity_count = current_activity_count
+                                provider_activity_seen = True
+                                next_timeout_s = idle_timeout_s if idle_timeout_s and idle_timeout_s > 0 else wait_timeout_s
+                                wait_timeout_s = next_timeout_s
+                                deadline = loop.time() + next_timeout_s
+                        if self.abort_requested or (abort_event and abort_event.is_set()):
+                            Logger.debug(
+                                f"Abort detected in {self.provider_label} response loop while waiting for queue data."
+                            )
+                            return
             else:
                 item = await response_queue.get()
 

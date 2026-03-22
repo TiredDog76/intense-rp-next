@@ -369,6 +369,16 @@ class DeepSeekDriver(BaseDriver):
 
         return settings
 
+    def _get_first_chunk_timeout_s(self) -> float:
+        try:
+            value = float(
+                self.config_manager.get_setting("deepseek_behavior", "first_chunk_timeout")
+                or self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
+            )
+        except Exception:
+            value = self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
+        return max(value, 5.0)
+
     def _extract_deepseek_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
         return extract_macro_overrides(text, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
@@ -554,6 +564,26 @@ class DeepSeekDriver(BaseDriver):
         completion_started = asyncio.Event()
         completion_claim_lock = asyncio.Lock()
         completion_claimed = False
+        intercepted_activity_count = 0
+        intercepted_response: httpx.Response | None = None
+        intercepted_request_abort = asyncio.Event()
+        intercepted_request_finished = asyncio.Event()
+
+        def get_intercepted_activity_count() -> int:
+            return intercepted_activity_count
+
+        async def abort_intercepted_request() -> None:
+            intercepted_request_abort.set()
+            response = intercepted_response
+            if response is not None:
+                try:
+                    await response.aclose()
+                except Exception as e:
+                    Logger.debug(f"DeepSeek: failed to close intercepted response: {e}")
+            try:
+                await self._click_stop_button()
+            except Exception as e:
+                Logger.debug(f"DeepSeek: failed to click Stop during timeout handling: {e}")
 
         # Some selectors rely on English UI text; fail fast with a clear error instead of hanging.
         await self.require_english_ui()
@@ -586,7 +616,7 @@ class DeepSeekDriver(BaseDriver):
         self.current_send_deepthink = effective_send_deepthink
         
         async def handle_route(route):
-            nonlocal completion_claimed
+            nonlocal completion_claimed, intercepted_activity_count, intercepted_response
             request = route.request
             if not completion_armed.is_set():
                 await route.continue_()
@@ -626,14 +656,20 @@ class DeepSeekDriver(BaseDriver):
                     try:
                         Logger.info("Streaming response from DeepSeek...")
                         async with client.stream("POST", request.url, headers=headers, cookies=cookie_dict, json=post_data, timeout=60.0) as response:
+                            intercepted_response = response
                             # Capture headers to forward them later
                             # We specifically need Content-Type so the frontend knows it's an SSE stream
                             for k, v in response.headers.items():
                                 response_headers[k] = v
                             
                             async for chunk in response.aiter_bytes():
+                                intercepted_activity_count += 1
                                 # Check if abort was requested
-                                if self.abort_requested or (abort_event and abort_event.is_set()):
+                                if (
+                                    intercepted_request_abort.is_set()
+                                    or self.abort_requested
+                                    or (abort_event and abort_event.is_set())
+                                ):
                                     Logger.debug("Abort detected during streaming, stopping...")
                                     aborted = True
                                     break
@@ -642,15 +678,27 @@ class DeepSeekDriver(BaseDriver):
                                 # Process chunk for streaming
                                 await self._process_chunk(chunk, response_queue)
 
-                            if not aborted and not self.abort_requested:
+                            if (
+                                not aborted
+                                and (not intercepted_request_abort.is_set())
+                                and not self.abort_requested
+                            ):
                                 await self._process_chunk(b"", response_queue, final=True)
                                 
                     except httpx.ReadError as e:
-                        if not aborted and not self.abort_requested:
+                        if (
+                            not aborted
+                            and (not intercepted_request_abort.is_set())
+                            and not self.abort_requested
+                        ):
                             Logger.error(f"Read error during intercepted request: {e}")
                             await response_queue.put({"error": str(e)})
                     except Exception as e:
-                        if not aborted and not self.abort_requested:
+                        if (
+                            not aborted
+                            and (not intercepted_request_abort.is_set())
+                            and not self.abort_requested
+                        ):
                             Logger.error(f"Error during intercepted request: {e}")
                             await response_queue.put({"error": str(e)})
             except RuntimeError as e:
@@ -659,23 +707,31 @@ class DeepSeekDriver(BaseDriver):
                     Logger.debug(f"Ignored expected error during abort: {e}")
                 else:
                     raise
+            finally:
+                intercepted_response = None
             
-            # If aborted, click the stop button in DeepSeek UI
-            if aborted or self.abort_requested:
-                Logger.warning("Generation aborted by user.")
-                Logger.debug("Request was aborted, clicking Stop button...")
-                await self._click_stop_button()
+            # Log the aborted state; the timeout/abort path already attempted a UI stop click.
+            if aborted or intercepted_request_abort.is_set() or self.abort_requested:
+                Logger.warning("DeepSeek generation was aborted before completion.")
             
             # Fulfill the original request so the UI updates
             try:
-                # Forward the captured headers, especially Content-Type
-                await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
+                if aborted or intercepted_request_abort.is_set() or self.abort_requested:
+                    await route.abort()
+                else:
+                    # Forward the captured headers, especially Content-Type
+                    await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
             except Exception as e:
-                Logger.error(f"Error fulfilling route: {e}")
+                Logger.error(f"Error finalizing route: {e}")
             
             # Signal end of stream
             await response_queue.put(None)
-            if not aborted and not self.abort_requested:
+            intercepted_request_finished.set()
+            if (
+                not aborted
+                and (not intercepted_request_abort.is_set())
+                and not self.abort_requested
+            ):
                 Logger.success("Response streaming completed.")
 
         # Set up interception
@@ -812,9 +868,10 @@ class DeepSeekDriver(BaseDriver):
             async for item in self._iterate_response_queue(
                 response_queue,
                 abort_event=abort_event,
-                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                first_chunk_timeout_s=self._get_first_chunk_timeout_s(),
                 idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
-                on_timeout=self._click_stop_button,
+                on_timeout=abort_intercepted_request,
+                activity_counter=get_intercepted_activity_count,
             ):
                 if item is None:
                     break
@@ -853,6 +910,11 @@ class DeepSeekDriver(BaseDriver):
                         )
                 
         finally:
+            if completion_started.is_set() and not intercepted_request_finished.is_set():
+                try:
+                    await asyncio.wait_for(intercepted_request_finished.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    Logger.debug("DeepSeek: timed out waiting for intercepted request cleanup.")
             # Cleanup interception
             self.current_abort_event = None
             self.abort_requested = False

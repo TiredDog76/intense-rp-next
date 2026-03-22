@@ -200,6 +200,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Clean Regeneration** | Regenerates on duplicate prompts | Off (unstable for GLM) |
+| **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
 | **Refresh After Generation** | Reloads the GLM page after each response | Off |
 
 ---
