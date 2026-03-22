@@ -36,6 +36,11 @@ jobs:
             13. ➥ Feature Request - Request for new functionality
             16. 𓆣 Bug - Something isn't working
             18. ꕤ DEV - Developer-created notes/issues for tracking progress, project planning, and development state
+            19. DeepSeek - Issues, requests, or support related to DeepSeek
+            20. GLM - Issues, requests, or support related to GLM or Z.AI
+            21. Moonshot - Issues, requests, or support related to Moonshot or Kimi
+            22. Qwen - Issues, requests, or support related to Qwen
+            23. Gemini / AI Studio - Issues, requests, or support related to Gemini or AI Studio
 
             Issue Title: ${title}
             Issue Body: ${body}
@@ -106,7 +111,12 @@ jobs:
               '15': '⧖ In Progress',
               '16': '𓆣 Bug',
               '17': '𖦏 Investigating',
-              '18': 'ꕤ DEV'
+              '18': 'ꕤ DEV',
+              '19': 'DeepSeek',
+              '20': 'GLM',
+              '21': 'Moonshot',
+              '22': 'Qwen',
+              '23': 'Gemini / AI Studio'
             };
 
             const aiLabels = '${{ steps.ai.outputs.labels }}';
