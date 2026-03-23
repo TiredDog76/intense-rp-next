@@ -119,6 +119,11 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
 
 :material-arrow-right: **Settings** -> **GLM Behavior** -> **Clean Regeneration**
 
+!!! note "Pick one"
+    On GLM, you can use either **Clean Regeneration** (+ optional **Multi-Slot Cache**) or **Repetition Buster**.
+
+    They are opposite strategies, so IntenseRP only uses one of them at a time.
+
 !!! warning "Known issue (GLM)"
     Clean Regeneration is currently unreliable with GLM Chat. The option may error out even though your request still completes normally.
 
@@ -130,6 +135,21 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
     That lets IntenseRP keep up to 7 older cached GLM chats per account and try reopening one of those when the current prompt matches.
 
     Same point as above, though: if GLM's regenerate UI is being annoying that day, Multi-Slot Cache inherits the same annoyance because it still depends on the Regenerate button working.
+
+### :material-shuffle-variant: Repetition Buster
+
+Repetition Buster is basically the opposite of Clean Regeneration.
+
+Instead of trying to reuse the same chat, IntenseRP checks whether the current prompt matches the **immediately previous** one for the active GLM account/profile. That last-prompt memory is kept across restarts, because GLM's own caching can survive them too. If it matches, IntenseRP opens a throwaway fresh chat, sends a random **128-character** string there, and then opens another fresh chat for your real prompt.
+
+That random string is just a cache buster. The whole idea is to disturb GLM's context caching before the real request goes out, which can help if you're worried about suspiciously repetitive duplicate generations.
+
+:material-arrow-right: **Settings** -> **GLM Behavior** -> **Repetition Buster**
+
+!!! note "No Multi-Slot Cache here"
+    Multi-Slot Cache only works with Clean Regeneration, because it reopens an older chat and presses **Regenerate** there.
+
+    Repetition Buster does the opposite. It intentionally burns one throwaway chat and then starts another brand new one for the real request.
 
 ---
 
@@ -200,6 +220,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Clean Regeneration** | Regenerates on duplicate prompts | Off (unstable for GLM) |
+| **Repetition Buster** | Sends a throwaway cache-buster prompt before duplicate prompts | Off |
 | **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
 | **Refresh After Generation** | Reloads the GLM page after each response | Off |
 

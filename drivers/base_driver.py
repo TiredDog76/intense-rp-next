@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import secrets
+import string
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
@@ -157,6 +160,139 @@ class BaseDriver(ABC):
             pass
 
         return "profile:default"
+
+    def _read_cached_prompt(self, cache_manager: Any, cache_key: str) -> str | None:
+        """Read the last cached prompt used for duplicate-prompt heuristics."""
+        if cache_manager is None:
+            return None
+
+        try:
+            cached_prompt = cache_manager.read_cache(cache_key)
+        except Exception:
+            return None
+
+        if cached_prompt is None:
+            return None
+
+        return str(cached_prompt)
+
+    def _write_cached_prompt(self, cache_manager: Any, cache_key: str, prompt: str) -> None:
+        """Persist the latest prompt text for provider-side duplicate checks."""
+        if cache_manager is None:
+            return
+
+        try:
+            cache_manager.write_cache(cache_key, str(prompt))
+        except Exception:
+            return
+
+    def _cached_prompt_matches(self, cache_manager: Any, cache_key: str, prompt: str) -> bool:
+        """Return True when the provided prompt matches the last cached prompt."""
+        return self._read_cached_prompt(cache_manager, cache_key) == str(prompt)
+
+    def _read_account_scoped_prompt_cache(self, cache_manager: Any, cache_key: str) -> dict[str, str]:
+        """Load a simple account/profile -> prompt cache payload."""
+        if cache_manager is None:
+            return {}
+
+        try:
+            raw_payload = cache_manager.read_cache(cache_key)
+        except Exception:
+            return {}
+
+        if raw_payload is None:
+            return {}
+
+        try:
+            parsed = json.loads(raw_payload)
+        except Exception:
+            return {}
+
+        if not isinstance(parsed, dict):
+            return {}
+
+        raw_accounts = parsed.get("accounts")
+        if not isinstance(raw_accounts, dict):
+            return {}
+
+        normalized: dict[str, str] = {}
+        for raw_account_key, raw_prompt in raw_accounts.items():
+            account_key = str(raw_account_key or "").strip()
+            if not account_key or not isinstance(raw_prompt, str):
+                continue
+            normalized[account_key] = raw_prompt
+
+        return normalized
+
+    def _read_account_scoped_cached_prompt(
+        self,
+        cache_manager: Any,
+        cache_key: str,
+        *,
+        account_key: str | None = None,
+    ) -> str | None:
+        """Read the cached prompt for the active account/profile bucket."""
+        normalized_account_key = str(account_key or self._get_multi_slot_cache_account_key() or "").strip()
+        if not normalized_account_key:
+            return None
+
+        return self._read_account_scoped_prompt_cache(cache_manager, cache_key).get(normalized_account_key)
+
+    def _write_account_scoped_cached_prompt(
+        self,
+        cache_manager: Any,
+        cache_key: str,
+        prompt: str,
+        *,
+        account_key: str | None = None,
+    ) -> None:
+        """Persist the latest prompt for the active account/profile bucket."""
+        if cache_manager is None:
+            return
+
+        normalized_account_key = str(account_key or self._get_multi_slot_cache_account_key() or "").strip()
+        if not normalized_account_key:
+            return
+
+        payload = {
+            "version": 1,
+            "accounts": self._read_account_scoped_prompt_cache(cache_manager, cache_key),
+        }
+        payload["accounts"][normalized_account_key] = str(prompt)
+
+        try:
+            cache_manager.write_cache(
+                cache_key,
+                json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+            )
+        except Exception:
+            return
+
+    def _account_scoped_cached_prompt_matches(
+        self,
+        cache_manager: Any,
+        cache_key: str,
+        prompt: str,
+        *,
+        account_key: str | None = None,
+    ) -> bool:
+        """Return True when the provided prompt matches the active account/profile cache."""
+        return self._read_account_scoped_cached_prompt(
+            cache_manager,
+            cache_key,
+            account_key=account_key,
+        ) == str(prompt)
+
+    @staticmethod
+    def _generate_repetition_buster_text(length: int = 128) -> str:
+        """Generate a plain-ASCII cache-buster string for repetition-buster flows."""
+        try:
+            size = max(int(length), 1)
+        except Exception:
+            size = 128
+
+        alphabet = string.ascii_letters + string.digits
+        return "".join(secrets.choice(alphabet) for _ in range(size))
 
     def ece_mark_used(self, email: str) -> None:
         if not email:

@@ -131,6 +131,10 @@ Clean Regeneration (reusing the same chat when you send an identical prompt) is 
 
 If you want to experiment with it anyway, try enabling **Refresh After Generation** under GLM Behavior -> Quirks. This reloads the page after every response and can sometimes restore the UI state so Regenerate becomes available again.
 
+If your main goal is not "reuse the same chat" but more like "please stop acting weird on duplicate prompts", GLM also has **Repetition Buster**. That is the opposite strategy: IntenseRP sends a random 128-character throwaway prompt in a fresh chat, then opens another fresh chat for the real request.
+
+That means it creates extra chats on purpose, but it also avoids depending on GLM's flaky **Regenerate** button.
+
 ---
 
 ## :material-translate: UI Language Requirement
@@ -185,7 +189,7 @@ This is a minor quirk, but worth knowing about if you notice a stray dot in your
 |---|---|---|
 | **CAPTCHA on login** | Must solve manually | Use Persistent Sessions |
 | **UI language must be English** | Buttons not found | Change GLM UI to en-US |
-| **Clean Regen unreliable** | Spurious errors | Disable Clean Regeneration (or try Refresh After Generation) |
+| **Clean Regen unreliable** | Spurious errors | Use Repetition Buster, disable Clean Regeneration, or try Refresh After Generation |
 | **Model not in dropdown** | Silent fallback | Check logs, update IntenseRP |
 | **Slow UI clicks** | Timeout errors | Increase UI Click Timeout |
 | **Send button delayed** | Send timeout | Increase Message Send Timeout |

@@ -350,7 +350,7 @@ class MainWindow(QMainWindow):
         self.hotswap_button.setVisible(False)
         help_row.addWidget(self.hotswap_button)
 
-        self.help_button = QPushButton("Help")
+        self.help_button = QPushButton("Utils")
         self.help_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {BrandColors.SIDEBAR_BG};

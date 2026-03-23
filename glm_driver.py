@@ -71,6 +71,7 @@ class GLMDriver(BaseDriver):
         self.clean_regen_message_cache_key = "glm_last_message.txt"
         self.clean_regen_state_cache_key = "glm_last_message_state.json"
         self.multi_slot_cache_key = "glm_multi_slot_cache.json"
+        self.repetition_buster_cache_key = "glm_repetition_buster_prompt_cache.json"
 
         self._refresh_after_generation = False
         self._refresh_after_generation_task: asyncio.Task | None = None
@@ -758,6 +759,57 @@ class GLMDriver(BaseDriver):
             "send_as_text_file": bool(send_as_text_file),
             "ui_model": self._get_configured_glm_model_friendly(),
         }
+
+    async def _prepare_new_chat_request_ui(
+        self,
+        *,
+        effective_deepthink: bool,
+        enable_search: bool,
+        log_label: str = "GLM Chat: preparing new chat session...",
+    ) -> None:
+        Logger.info(log_label)
+        await self.click_new_chat(source="auto")
+        await asyncio.sleep(self._post_delay_s)
+
+        await self.apply_configured_model()
+        await self.set_deepthink_state(bool(effective_deepthink))
+        await self.set_search_state(bool(enable_search))
+        await asyncio.sleep(self._post_delay_s)
+
+    async def _send_text_request(
+        self,
+        message: str,
+        *,
+        send_timeout: int | None,
+        arm_event: asyncio.Event | None = None,
+        log_label: str = "GLM Chat: sending request...",
+    ) -> None:
+        await self._enter_message(message)
+        await asyncio.sleep(self._post_delay_s)
+        Logger.info(log_label)
+        await self._send_message(timeout=send_timeout, arm_event=arm_event)
+
+    async def _run_repetition_buster(
+        self,
+        *,
+        effective_deepthink: bool,
+        enable_search: bool,
+    ) -> None:
+        Logger.info(
+            "Repetition Buster (GLM): duplicate prompt detected. Sending a 128-character "
+            "cache-buster prompt in a throwaway chat first..."
+        )
+        await self._prepare_new_chat_request_ui(
+            effective_deepthink=effective_deepthink,
+            enable_search=enable_search,
+            log_label="Repetition Buster (GLM): opening throwaway chat...",
+        )
+        await self._send_text_request(
+            self._generate_repetition_buster_text(128),
+            send_timeout=self._msg_send_timeout,
+            log_label="Repetition Buster (GLM): sending cache-buster prompt...",
+        )
+        await asyncio.sleep(self._post_delay_s)
 
     def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
         normalized_url = str(url or "").strip()
@@ -1602,6 +1654,53 @@ class GLMDriver(BaseDriver):
 
         formatted_message = self._format_messages(message_for_formatting)
 
+        try:
+            repetition_buster_enabled = bool(
+                self.config_manager.get_setting("glm_behavior", "repetition_buster")
+            )
+        except Exception:
+            repetition_buster_enabled = False
+        try:
+            clean_regeneration_requested = bool(
+                self.config_manager.get_setting("glm_behavior", "clean_regeneration")
+            )
+        except Exception:
+            clean_regeneration_requested = False
+        try:
+            multi_slot_cache_requested = bool(
+                self.config_manager.get_setting("glm_behavior", "multi_slot_cache")
+            )
+        except Exception:
+            multi_slot_cache_requested = False
+
+        if repetition_buster_enabled and clean_regeneration_requested:
+            Logger.debug(
+                "Repetition Buster (GLM): Clean Regeneration is also enabled in config, "
+                "but Repetition Buster takes priority."
+            )
+
+        clean_regeneration = bool((not repetition_buster_enabled) and clean_regeneration_requested)
+        multi_slot_cache_enabled = bool(clean_regeneration and multi_slot_cache_requested)
+        prompt_matches_last = False
+        if repetition_buster_enabled:
+            prompt_matches_last = self._account_scoped_cached_prompt_matches(
+                self.cache_manager,
+                self.repetition_buster_cache_key,
+                formatted_message,
+            )
+        elif clean_regeneration:
+            prompt_matches_last = self._cached_prompt_matches(
+                self.cache_manager,
+                self.clean_regen_message_cache_key,
+                formatted_message,
+            )
+
+        if repetition_buster_enabled and prompt_matches_last:
+            await self._run_repetition_buster(
+                effective_deepthink=bool(effective_deepthink),
+                enable_search=bool(enable_search),
+            )
+
         async def handle_route(route):
             nonlocal completion_claimed, intercepted_activity_count, intercepted_response
             request = route.request
@@ -2000,11 +2099,6 @@ class GLMDriver(BaseDriver):
         await route_owner.route("**/api/v2/chat/completions**", handle_route)
 
         try:
-            clean_regeneration = bool(self.config_manager.get_setting("glm_behavior", "clean_regeneration"))
-            multi_slot_cache_enabled = bool(
-                clean_regeneration
-                and self.config_manager.get_setting("glm_behavior", "multi_slot_cache")
-            )
             regenerated = False
             clean_regen_state: Dict[str, bool] | None = None
             multi_slot_state: Dict[str, Any] | None = None
@@ -2023,10 +2117,9 @@ class GLMDriver(BaseDriver):
                     send_as_text_file=bool(send_as_text_file),
                 )
 
-                last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
                 last_state = self._read_clean_regeneration_state()
 
-                message_matches = last_message == formatted_message
+                message_matches = prompt_matches_last
                 state_matches = last_state == clean_regen_state
 
                 if message_matches and state_matches:
@@ -2055,7 +2148,11 @@ class GLMDriver(BaseDriver):
                             )
                         else:
                             regenerated = True
-                            self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                            self._write_cached_prompt(
+                                self.cache_manager,
+                                self.clean_regen_message_cache_key,
+                                formatted_message,
+                            )
                             self._write_clean_regeneration_state(clean_regen_state)
                     else:
                         Logger.warning(
@@ -2081,19 +2178,18 @@ class GLMDriver(BaseDriver):
                     completion_started=completion_started,
                 )
                 if regenerated and clean_regen_state:
-                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_cached_prompt(
+                        self.cache_manager,
+                        self.clean_regen_message_cache_key,
+                        formatted_message,
+                    )
                     self._write_clean_regeneration_state(clean_regen_state)
 
             if not regenerated:
-                Logger.info("GLM Chat: preparing new chat session...")
-                await self.click_new_chat(source="auto")
-                await asyncio.sleep(self._post_delay_s)
-
-                await self.apply_configured_model()
-
-                await self.set_deepthink_state(effective_deepthink)
-                await self.set_search_state(enable_search)
-                await asyncio.sleep(self._post_delay_s)
+                await self._prepare_new_chat_request_ui(
+                    effective_deepthink=bool(effective_deepthink),
+                    enable_search=bool(enable_search),
+                )
 
                 if send_as_text_file:
                     Logger.info("GLM Chat: sending message as text file...")
@@ -2114,15 +2210,26 @@ class GLMDriver(BaseDriver):
                     Logger.info("GLM Chat: sending request...")
                     await self._send_message(timeout=upload_timeout, arm_event=completion_armed)
                 else:
-                    await self._enter_message(formatted_message)
-                    await asyncio.sleep(self._post_delay_s)
-                    Logger.info("GLM Chat: sending request...")
-                    await self._send_message(timeout=self._msg_send_timeout, arm_event=completion_armed)
+                    await self._send_text_request(
+                        formatted_message,
+                        send_timeout=self._msg_send_timeout,
+                        arm_event=completion_armed,
+                    )
 
                 if clean_regeneration and clean_regen_state:
-                    self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                    self._write_cached_prompt(
+                        self.cache_manager,
+                        self.clean_regen_message_cache_key,
+                        formatted_message,
+                    )
                     self._write_clean_regeneration_state(clean_regen_state)
                     should_record_multi_slot = bool(multi_slot_cache_enabled and multi_slot_state)
+                elif repetition_buster_enabled:
+                    self._write_account_scoped_cached_prompt(
+                        self.cache_manager,
+                        self.repetition_buster_cache_key,
+                        formatted_message,
+                    )
 
             if not completion_started.is_set():
                 try:

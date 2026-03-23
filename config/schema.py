@@ -474,8 +474,23 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                depends="glm_behavior.repetition_buster!=true",
                 docs_path=DOCS_GLM,
                 docs_anchor="clean-regeneration-known-issues",
+            ),
+            SettingField(
+                key="repetition_buster",
+                label="Repetition Buster",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "The opposite of Clean Regeneration. "
+                    "On duplicate prompts, send a throwaway random cache-buster prompt first, "
+                    "then open another fresh chat for the real request."
+                ),
+                depends="glm_behavior.clean_regeneration!=true",
+                docs_path=DOCS_GLM,
+                docs_anchor="repetition-buster",
             ),
             SettingField(
                 key="multi_slot_cache",

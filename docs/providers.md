@@ -18,7 +18,7 @@ IntenseRP Next v2 currently supports five providers, and each one has its own Be
 
 -   :providers-zai: **GLM Behavior**
 
-    Configure Deep Think, Search, model selection, token counting, file uploads, and GLM-specific quirks.
+    Configure Deep Think, Search, model selection, token counting, file uploads, regeneration controls, and GLM-specific quirks.
 
     [:arrow_right: Learn More](providers/glm-behavior.md)
 
@@ -76,6 +76,7 @@ Fine-tune how GLM Chat processes your requests.
 | **Count Tokens** | Return token usage in API responses |
 | **File Upload Mode** | Send long prompts as a text file to bypass input limits |
 | **Clean Regeneration** | Regenerate on duplicate prompts (currently unreliable for GLM) |
+| **Repetition Buster** | Send a throwaway cache-buster prompt before duplicate prompts in a fresh chat |
 
 ---
 
