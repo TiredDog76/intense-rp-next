@@ -247,7 +247,7 @@ If IntenseRP Next v2 is useful to you, and you wish to help, thank you!! The eas
 
 If you want quicker back-and-forth or community troubleshooting, you can also join the [IntenseRP Next Discord server](https://discord.gg/ZWYNnXt7).
 
-If you want to help financially as well (optional, but appreciated), see: [Support the Project](https://intense-rp-next.readthedocs.io/en/latest/hands/support.md) in the docs.
+If you want to help financially as well (optional, but appreciated), see: [Support the Project](https://intense-rp-next.readthedocs.io/en/latest/hands/support/#financial-support-optional) in the docs.
 
 ## Security and privacy notes
 
