@@ -16,12 +16,15 @@ from utils.logger import Logger
 
 
 DISCORD_INVITE_URL = "https://discord.gg/4Gvjk2RdsK"
+REPOSITORY_URL = "https://github.com/LyubomirT/intense-rp-next"
+DOCS_HOME_URL = "https://intense-rp-next.readthedocs.io/en/latest/"
+DONATE_URL = f"{DOCS_HOME_URL}hands/support/#financial-support-optional"
 
 
 class HelpTile(QFrame):
     clicked = Signal()
 
-    def __init__(self, label: str, icon_type: IconType, tooltip: str = "", parent=None):
+    def __init__(self, label: str, icon_type: IconType | str, tooltip: str = "", parent=None):
         super().__init__(parent)
         self.setCursor(Qt.PointingHandCursor)
         if tooltip:
@@ -121,14 +124,15 @@ class HelpWindow(QMainWindow):
         layout.addLayout(grid)
 
         tiles = [
-            ("Backup / Import",    IconType.BACKUP,       "Backup or restore your config directory (settings/key/profiles) using a .zip file.", self.show_backup_import),
-            ("Browser Manager",    IconType.BROWSER_MANAGER, "Install, reinstall, or remove the Playwright Chromium browser used by IntenseRP.", self.show_browser_manager),
-            ("STMP Patcher",       IconType.PATCHER,      "Patches RossAscends's STMP to include per-message names.",                          self.show_stmp_patcher),
-            ("Migrate from v1",    IconType.MIGRATE,      "",                                                                                  self.start_migration),
-            ("Contributors",       IconType.CONTRIBUTORS, "",                                                                                  self.show_contributors),
-            ("Discord Server",     IconType.DISCORD,      "Join the IntenseRP Next Discord server for community help and quick questions.",    self.open_discord),
-            ("Contact & Support",  IconType.SUPPORT,      "Open the Contact & Support page.",                                                  self.open_contact_support),
-            ("Donate",             IconType.DONATE,       "Support the project financially.",                                                  self.open_donate),
+            ("Backup / Import", IconType.BACKUP, "Backup or restore your config directory (settings/key/profiles) using a .zip file.", self.show_backup_import),
+            ("Browser Manager", IconType.BROWSER_MANAGER, "Install, reinstall, or remove the Playwright Chromium browser used by IntenseRP.", self.show_browser_manager),
+            ("STMP Patcher", IconType.PATCHER, "Patches RossAscends's STMP to include per-message names.", self.show_stmp_patcher),
+            ("Migrate from v1", IconType.MIGRATE, "", self.start_migration),
+            ("Contributors", IconType.CONTRIBUTORS, "", self.show_contributors),
+            ("Discord Server", IconType.DISCORD, "Join the IntenseRP Next Discord server for community help and quick questions.", self.open_discord),
+            ("GitHub", IconType.GITHUB, "Open the IntenseRP Next GitHub repository.", self.open_github),
+            ("Donate", IconType.DONATE, "Support the project financially.", self.open_donate),
+            ("Docs", IconType.DOCS, "Open the IntenseRP Next documentation.", self.open_docs),
         ]
 
         for i, (label, icon_type, tooltip, handler) in enumerate(tiles):
@@ -196,13 +200,14 @@ class HelpWindow(QMainWindow):
         self.browser_manager_window.show()
         self.browser_manager_window.activateWindow()
 
-    def open_contact_support(self):
-        QDesktopServices.openUrl(QUrl("https://intense-rp-next.readthedocs.io/en/latest/hands/contact/"))
-
     def open_discord(self):
         QDesktopServices.openUrl(QUrl(DISCORD_INVITE_URL))
 
+    def open_github(self):
+        QDesktopServices.openUrl(QUrl(REPOSITORY_URL))
+
+    def open_docs(self):
+        QDesktopServices.openUrl(QUrl(DOCS_HOME_URL))
+
     def open_donate(self):
-        QDesktopServices.openUrl(QUrl(
-            "https://intense-rp-next.readthedocs.io/en/latest/hands/support/#financial-support-optional"
-        ))
+        QDesktopServices.openUrl(QUrl(DONATE_URL))

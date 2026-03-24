@@ -4,7 +4,7 @@ icon: material/help-box
 
 # :material-help-box: Help & Extras
 
-The **Help & Extras** window is a small launcher for utilities and project resources.
+The **Help & Extras** window is a small launcher for tools and project resources.
 
 ![Help & Extras window](../pics/util-reference/help_extras.png)
 
@@ -14,7 +14,7 @@ The **Help & Extras** window is a small launcher for utilities and project resou
 
 From the main window:
 
-1. Click **Help**
+1. Click **Tools**
 2. The **Help & Extras** window opens
 
 ---
@@ -61,11 +61,17 @@ Opens the IntenseRP Next Discord server for quick questions, shared troubleshoot
 
 :material-arrow-right: [Join Discord](https://discord.gg/4Gvjk2RdsK)
 
-### :material-email: Contact & Support
+### :material-source-repository: GitHub
 
-Opens the contact page with GitHub, Discord, Telegram, and email options.
+Opens the main IntenseRP Next GitHub repository.
 
-:material-arrow-right: [Means of Contact](../hands/contact.md)
+:material-arrow-right: [Open Repository](https://github.com/LyubomirT/intense-rp-next)
+
+### :material-book-open-page-variant: Docs
+
+Opens the main documentation page.
+
+:material-arrow-right: [Open Docs](https://intense-rp-next.readthedocs.io/en/latest/)
 
 ### :material-heart: Donate
 

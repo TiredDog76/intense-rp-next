@@ -22,7 +22,7 @@ Recently an issue has come up where a WAF (Web Application Firewall) on some pro
 
 From the main window:
 
-1. Click **Help**
+1. Click **Tools**
 2. Click **Browser Manager**
 
 ---

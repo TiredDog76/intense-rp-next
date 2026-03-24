@@ -26,6 +26,8 @@ class IconType(Enum):
     BROWSER_MANAGER = "globe.svg"
     DONATE = "heart.svg"
     DISCORD = "discord.svg"
+    GITHUB = "github.svg"
+    DOCS = "book-open-check.svg"
 
 class IconUtils:
     _SVG_TEXT_CACHE: dict[str, str] = {}

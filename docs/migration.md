@@ -40,7 +40,7 @@ v2 includes a built-in **v1 settings migrator**. It reads your v1 encrypted conf
 ### Step-by-step
 
 1. Open v2
-2. Click **Help**
+2. Click **Tools**
 3. Click **Migrate from v1**
 4. Select your **v1 installation root folder**
 
