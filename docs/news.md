@@ -25,7 +25,7 @@ Moonshot now supports an experimental **Auto Login** flow for its Google popup, 
 Multi-Slot Cache is also now available on every current driver except **Google AI Studio**, which means **DeepSeek**, **GLM Chat**, **Moonshot**, and **QwenLM** can now look through older cached chats instead of only remembering the latest one. This is especially useful if you swipe a lot. More about that in the [Multi-Slot Cache docs page](features/multi-slot-cache.md).
 
 [Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.6.1-patch){ .md-button .md-button--primary }
-[Join our Discord](https://discord.gg/ZWYNnXt7){ .md-button }
+[Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [Suggest New Features](https://forms.gle/cRGEoTNKxUrjKRJ2A){ .md-button }
 
 ---
@@ -37,7 +37,7 @@ IntenseRP Next v2.6.0 is out, and the big headline is **Google AI Studio support
 This update also brings some nice extra polish: Moonshot now gets RP-friendly auto-adjustments just like Qwen, the Settings window loads much faster, mini help buttons were added around settings, the console got its own search, and there is a new v1-style multiline XML-like formatting preset too.
 
 [Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.6.0-update){ .md-button .md-button--primary }
-[Join our Discord](https://discord.gg/ZWYNnXt7){ .md-button }
+[Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [Suggest New Features](https://forms.gle/JCe8FQ27mPgdEGes7){ .md-button }
 
 ---
@@ -48,7 +48,7 @@ The official Discord server is finally here! :tada:
 
 Based on the latest survey results, a majority vote favored creating a community space, so I've gone ahead and set it up. It's a little quiet for now since it's just starting out, but I'm hoping to expand it and see the community grow soon. If you want a place to chat, get support, or follow the latest updates more closely, come hang out!
 
-[Join the Discord Server](https://discord.gg/ZWYNnXt7){ .md-button .md-button--primary }
+[Join the Discord Server](https://discord.gg/4Gvjk2RdsK){ .md-button .md-button--primary }
 
 ---
 

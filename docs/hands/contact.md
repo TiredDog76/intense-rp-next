@@ -28,9 +28,9 @@ If you need to reach me or the community, these are the best places to do it.
 
     Best for: quick questions, shared troubleshooting, and casual feedback.
 
-    `discord.gg/ZWYNnXt7`
+    `discord.gg/4Gvjk2RdsK`
 
-    [:arrow_right: Join server](https://discord.gg/ZWYNnXt7)
+    [:arrow_right: Join server](https://discord.gg/4Gvjk2RdsK)
 
 -   :material-send: **Telegram**
 

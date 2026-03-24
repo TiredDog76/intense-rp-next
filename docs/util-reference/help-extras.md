@@ -59,7 +59,7 @@ Shows a scrollable list of contributors. Clicking a card opens their profile.
 
 Opens the IntenseRP Next Discord server for quick questions, shared troubleshooting, and casual feedback.
 
-:material-arrow-right: [Join Discord](https://discord.gg/ZWYNnXt7)
+:material-arrow-right: [Join Discord](https://discord.gg/4Gvjk2RdsK)
 
 ### :material-email: Contact & Support
 

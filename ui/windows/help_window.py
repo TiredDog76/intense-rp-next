@@ -15,7 +15,7 @@ from utils.v1_migrator import V1Migrator
 from utils.logger import Logger
 
 
-DISCORD_INVITE_URL = "https://discord.gg/ZWYNnXt7"
+DISCORD_INVITE_URL = "https://discord.gg/4Gvjk2RdsK"
 
 
 class HelpTile(QFrame):

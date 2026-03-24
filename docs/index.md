@@ -73,6 +73,6 @@ Instead of patching old code, I started from scratch. So, now we have:
 Most of the support resources are still being built. Meanwhile, you can:
 
 [Contact The Dev](hands/contact.md){ .md-button }
-[Join Discord](https://discord.gg/ZWYNnXt7){ .md-button }
+[Join Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [Report a Bug](https://github.com/LyubomirT/intense-rp-next/issues){ .md-button }
 [Support the Project](hands/support.md){ .md-button }

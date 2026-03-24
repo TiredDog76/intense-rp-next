@@ -18,7 +18,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/LyubomirT/intense-rp-next?style=flat-square" /></a>
   <a href="https://intense-rp-next.readthedocs.io/en/latest/"><img alt="Docs" src="https://img.shields.io/website?url=https%3A%2F%2Fintense-rp-next.readthedocs.io%2Fen%2Flatest%2F&label=docs&style=flat-square" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-stable-2ea44f?style=flat-square" />
-  <a href="https://discord.gg/ZWYNnXt7"><img alt="Discord" src="https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
+  <a href="https://discord.gg/4Gvjk2RdsK"><img alt="Discord" src="https://img.shields.io/badge/Discord-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@
   <a href="#documentation">Documentation</a> ·
   <a href="https://github.com/LyubomirT/intense-rp-next/releases">Releases</a> ·
   <a href="https://github.com/LyubomirT/intense-rp-next/issues">Issues</a> ·
-  <a href="https://discord.gg/ZWYNnXt7">Discord Server</a> ·
+  <a href="https://discord.gg/4Gvjk2RdsK">Discord Server</a> ·
 </p>
 
 <h1 align="center">🎬 Preview Video 🎬</h1>
@@ -245,7 +245,7 @@ zensical serve
 
 If IntenseRP Next v2 is useful to you, and you wish to help, thank you!! The easiest support is a [star](https://github.com/LyubomirT/intense-rp-next/stargazers) and a quick [issue report / feature request](https://github.com/LyubomirT/intense-rp-next/issues) when something is missing or broken.
 
-If you want quicker back-and-forth or community troubleshooting, you can also join the [IntenseRP Next Discord server](https://discord.gg/ZWYNnXt7).
+If you want quicker back-and-forth or community troubleshooting, you can also join the [IntenseRP Next Discord server](https://discord.gg/4Gvjk2RdsK).
 
 If you want to help financially as well (optional, but appreciated), see: [Support the Project](https://intense-rp-next.readthedocs.io/en/latest/hands/support/#financial-support-optional) in the docs.
 

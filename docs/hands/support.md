@@ -44,7 +44,7 @@ If you are not sure what to do, starring the repo and reporting what you tried (
 
     Quick UX notes, shared troubleshooting, and casual feedback fit well in the Discord server. For private stuff, use the [contact options](contact.md) instead.
 
-    [:arrow_right: Join Discord](https://discord.gg/ZWYNnXt7)
+    [:arrow_right: Join Discord](https://discord.gg/4Gvjk2RdsK)
 
 -   :material-share-variant: **Share it (optional)**
 

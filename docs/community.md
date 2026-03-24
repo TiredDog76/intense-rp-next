@@ -23,7 +23,7 @@ contact page has all of that in one place.
     Best for: support, quick questions, shared troubleshooting, and casual
     discussion.
 
-    [:arrow_right: Join Discord](https://discord.gg/ZWYNnXt7)
+    [:arrow_right: Join Discord](https://discord.gg/4Gvjk2RdsK)
 
 -   :material-github: **GitHub Repository**
 
