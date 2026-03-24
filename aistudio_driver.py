@@ -3291,24 +3291,28 @@ class AIStudioDriver(BaseDriver):
             delta = choice.get("delta")
             return finish_reason == "stop" and (not delta)
 
-        def _buffered_chunks(items: List[Any], *, drop_terminal_stop: bool) -> List[str]:
-            chunks = [item for item in items if isinstance(item, str)]
-            if drop_terminal_stop and chunks and _is_terminal_stop_chunk(chunks[-1]):
-                chunks = chunks[:-1]
-            return chunks
+        def _chunk_delta_content(item: Any) -> str | None:
+            if not isinstance(item, str) or not item.startswith("data:"):
+                return None
+            try:
+                parsed = json.loads(item[len("data:") :].strip())
+            except Exception:
+                return None
+            choices = parsed.get("choices")
+            if not isinstance(choices, list) or not choices:
+                return None
+            choice = choices[0] if isinstance(choices[0], dict) else {}
+            delta = choice.get("delta")
+            if not isinstance(delta, dict):
+                return None
+            content = delta.get("content")
+            return content if isinstance(content, str) else None
 
-        async def _consume_attempt_items() -> List[Any]:
-            items: List[Any] = []
-            async for item in self._iterate_response_queue(
-                response_queue,
-                abort_event=abort_event,
-                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
-                idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
-            ):
-                items.append(item)
-                if _stream_item_error_message(item):
-                    break
-            return items
+        def _attempt_terminal_stop_chunk(items: List[Any]) -> str | None:
+            for item in reversed(items):
+                if _is_terminal_stop_chunk(item):
+                    return item
+            return None
 
         async def _attempt_clean_regeneration(
             *,
@@ -3433,6 +3437,10 @@ class AIStudioDriver(BaseDriver):
             headers = await request.all_headers()
             headers.pop("content-length", None)
             headers.pop("host", None)
+            # Prefer an identity-encoded response so incremental JSON events can
+            # reach the parser as they arrive instead of being hidden behind
+            # response compression buffers.
+            headers["accept-encoding"] = "identity"
 
             cookies = await self.context.cookies()
             cookie_dict = {c["name"]: c["value"] for c in cookies}
@@ -3462,6 +3470,9 @@ class AIStudioDriver(BaseDriver):
                         response_status = int(response.status_code)
                         for k, v in response.headers.items():
                             response_headers[k] = v
+                        response_headers.pop("content-encoding", None)
+                        response_headers.pop("content-length", None)
+                        response_headers.pop("transfer-encoding", None)
 
                         async for chunk in response.aiter_bytes():
                             if self.abort_requested or (abort_event and abort_event.is_set()):
@@ -3609,22 +3620,61 @@ class AIStudioDriver(BaseDriver):
                     yield item
                 return
 
-            aggregated_chunks: List[str] = []
+            terminal_stop_chunk: str | None = None
             final_error_message: str | None = None
             hard_censorship_seen = False
             continue_nudges_sent = 0
 
             while True:
-                attempt_items = await _consume_attempt_items()
+                attempt_items: List[Any] = []
+                attempt_buffered_chunks: List[str] = []
+                attempt_thinking_active = False
+                attempt_stream_released = False
+                async for item in self._iterate_response_queue(
+                    response_queue,
+                    abort_event=abort_event,
+                    first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                    idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
+                ):
+                    attempt_items.append(item)
+                    if isinstance(item, str) and (not _is_terminal_stop_chunk(item)):
+                        content = _chunk_delta_content(item)
+                        if content == "<think>":
+                            attempt_thinking_active = True
+                        elif content == "</think>":
+                            attempt_thinking_active = False
+
+                        if (not attempt_stream_released) and content:
+                            blocked_now = await self._is_latest_assistant_turn_content_blocked(
+                                timeout_ms=75
+                            )
+                            if not blocked_now:
+                                attempt_stream_released = True
+
+                        if attempt_stream_released:
+                            if attempt_buffered_chunks:
+                                for buffered_chunk in attempt_buffered_chunks:
+                                    yield buffered_chunk
+                                attempt_buffered_chunks.clear()
+                            yield item
+                        else:
+                            attempt_buffered_chunks.append(item)
+                    if _stream_item_error_message(item):
+                        break
+
                 if self.abort_requested or (abort_event and abort_event.is_set()):
                     final_error_message = None
-                    aggregated_chunks = []
+                    terminal_stop_chunk = None
                     break
 
                 attempt_error = _attempt_error_message(attempt_items)
-                hard_censored = await self._is_latest_assistant_turn_content_blocked(timeout_ms=750)
-                if (not hard_censored) and bool(current_attempt_meta.get("hard_censorship_hint")):
-                    hard_censored = True
+                hard_censored = False
+                if not attempt_stream_released:
+                    hard_censored = await self._is_latest_assistant_turn_content_blocked(
+                        timeout_ms=750
+                    )
+                    if (not hard_censored) and bool(current_attempt_meta.get("hard_censorship_hint")):
+                        hard_censored = True
 
                 if hard_censored:
                     hard_censorship_seen = True
@@ -3633,16 +3683,13 @@ class AIStudioDriver(BaseDriver):
                         self.clean_regen_message_cache_key,
                         self.clean_regen_state_cache_key,
                     )
-                    aggregated_chunks.extend(
-                        _buffered_chunks(attempt_items, drop_terminal_stop=True)
-                    )
 
                     if continue_nudges_sent >= self.MAX_ANTI_CENSORSHIP_NUDGES:
                         final_error_message = (
                             "Google AI Studio hard-censored the response, and the anti-censorship "
                             "workaround could not recover it after 3 continue nudges."
                         )
-                        aggregated_chunks = []
+                        terminal_stop_chunk = None
                         break
 
                     replacement_message = str(
@@ -3660,34 +3707,28 @@ class AIStudioDriver(BaseDriver):
                             "Google AI Studio hard-censored the response, and IntenseRP could not "
                             "replace the blocked assistant message for retry."
                         )
-                        aggregated_chunks = []
+                        terminal_stop_chunk = None
                         break
 
                     continue_nudges_sent += 1
                     retry_error = await _send_continue_nudge_attempt(continue_nudge)
                     if retry_error:
                         final_error_message = retry_error
-                        if self._error_looks_rate_limited(final_error_message):
-                            aggregated_chunks = []
+                        terminal_stop_chunk = None
                         break
                     continue
 
-                aggregated_chunks.extend(
-                    _buffered_chunks(
-                        attempt_items,
-                        drop_terminal_stop=bool(
-                            attempt_error or current_attempt_meta.get("no_text_detected")
-                        ),
-                    )
-                )
+                terminal_stop_chunk = _attempt_terminal_stop_chunk(attempt_items)
                 final_error_message = attempt_error
-                if (not final_error_message) and bool(current_attempt_meta.get("no_text_detected")):
+                if (not final_error_message) and (
+                    bool(current_attempt_meta.get("no_text_detected")) or (not attempt_stream_released)
+                ):
                     final_error_message = (
                         "Google AI Studio returned no assistant text. "
                         "The request may have been submitted before the UI fully settled."
                     )
-                if final_error_message and self._error_looks_rate_limited(final_error_message):
-                    aggregated_chunks = []
+                if final_error_message or (not attempt_stream_released):
+                    terminal_stop_chunk = None
                 break
 
             if clean_regeneration:
@@ -3701,8 +3742,8 @@ class AIStudioDriver(BaseDriver):
                         self.clean_regen_state_cache_key,
                     )
 
-            for chunk in aggregated_chunks:
-                yield chunk
+            if terminal_stop_chunk and (not final_error_message):
+                yield terminal_stop_chunk
 
             if final_error_message:
                 yield f"data: {json.dumps({'error': final_error_message})}\n\n"

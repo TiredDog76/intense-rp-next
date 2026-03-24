@@ -436,8 +436,13 @@ class API:
             
             if request.stream:
                 return StreamingResponse(
-                    self.stream_generator(response_queue, abort_event, raw_request), 
-                    media_type="text/event-stream"
+                    self.stream_generator(response_queue, abort_event, raw_request),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                    },
                 )
             else:
                 # Accumulate response for non-streaming
@@ -532,7 +537,12 @@ class API:
                     "usage": usage_obj,
                 }
 
-    async def stream_generator(self, response_queue: asyncio.Queue, abort_event: asyncio.Event, raw_request: Request):
+    async def stream_generator(
+        self,
+        response_queue: asyncio.Queue,
+        abort_event: asyncio.Event,
+        raw_request: Request,
+    ):
         try:
             while True:
                 # Check if client disconnected

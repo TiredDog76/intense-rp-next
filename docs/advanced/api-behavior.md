@@ -89,8 +89,8 @@ Google AI Studio model IDs are also behavior presets:
 
     For providers with a real web UI model picker (GLM Chat, QwenLM, Google AI Studio), that *real* model is selected via the provider-specific Behavior settings. The API `*-auto` / `*-chat` / `*-reasoner` IDs still remain behavior presets.
 
-!!! note "AI Studio anti-censorship buffering"
-    When **Google AI Studio Behavior -> Anti-Censorship** is enabled, IntenseRP may temporarily buffer a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges before it forwards the final result.
+!!! note "AI Studio anti-censorship retries"
+    When **Google AI Studio Behavior -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.
 
 ---
 

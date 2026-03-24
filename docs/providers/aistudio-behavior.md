@@ -236,8 +236,10 @@ When this is enabled, IntenseRP does an invasive recovery flow:
 4. It sends your configured **Continue Nudge** as a normal text message
 5. It retries this up to 3 follow-up nudges
 
+Blocked attempts stay hidden from the API stream. As soon as a recovery attempt reaches real assistant answer text again, that retry streams normally.
+
 !!! note "Not the same as DeepSeek"
-    DeepSeek anti-censorship is basically a frontend snip. AI Studio's version is more of a backend recovery trick, because the censorship is enforced deeper in the request/response flow.
+    DeepSeek anti-censorship is basically a frontend workaround. AI Studio's version is more of a backend recovery trick, because the censorship is enforced deeper in the request/response flow.
 
 !!! warning "Clean Regeneration gets disabled for that chat"
     If IntenseRP detects hard censorship in the current AI Studio chat, it clears that chat out of the clean-regeneration cache.
