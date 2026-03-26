@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any, Callable
+from typing import List, Optional, Dict, Any, Callable, Literal, Union
 
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
@@ -111,11 +111,132 @@ class ChatCompletionRequest(BaseModel):
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
 
+
+CompletionPromptInput = Union[str, List[str]]
+RequestType = Literal["chat", "text"]
+
+
+class TextCompletionRequest(BaseModel):
+    prompt: CompletionPromptInput
+    model: str = "deepseek-auto"
+    stream: bool = False
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+
+QueuedRequest = Union[ChatCompletionRequest, TextCompletionRequest]
+
+
+def _normalize_text_completion_prompt(prompt: CompletionPromptInput) -> str:
+    if isinstance(prompt, str):
+        return prompt
+
+    if not isinstance(prompt, list):
+        raise HTTPException(status_code=422, detail="`prompt` must be a string or a list of strings.")
+
+    if not prompt:
+        raise HTTPException(status_code=422, detail="`prompt` must not be empty.")
+
+    for item in prompt:
+        if not isinstance(item, str):
+            raise HTTPException(
+                status_code=422,
+                detail="Only string prompts are currently supported for `/v1/completions`.",
+            )
+
+    if len(prompt) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Only a single prompt is currently supported for `/v1/completions`.",
+        )
+
+    return prompt[0]
+
+
+def _normalize_usage_object(usage: Any) -> dict[str, Any]:
+    if isinstance(usage, dict):
+        usage_obj = dict(usage)
+        try:
+            usage_obj["prompt_tokens"] = int(usage_obj.get("prompt_tokens") or 0)
+        except Exception:
+            usage_obj["prompt_tokens"] = 0
+        try:
+            usage_obj["completion_tokens"] = int(usage_obj.get("completion_tokens") or 0)
+        except Exception:
+            usage_obj["completion_tokens"] = 0
+        try:
+            usage_obj["total_tokens"] = int(usage_obj.get("total_tokens") or 0)
+        except Exception:
+            usage_obj["total_tokens"] = usage_obj["prompt_tokens"] + usage_obj["completion_tokens"]
+        return usage_obj
+
+    return {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    }
+
+
+def _make_text_completion_sse_chunk(parsed: dict, *, default_model: str) -> str | None:
+    if "error" in parsed:
+        return f"data: {json.dumps(parsed)}\n\n"
+
+    choices = parsed.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+
+    choice0 = choices[0] if isinstance(choices[0], dict) else {}
+    try:
+        index = int(choice0.get("index") or 0)
+    except Exception:
+        index = 0
+
+    text = ""
+    delta = choice0.get("delta")
+    if isinstance(delta, dict):
+        delta_content = delta.get("content")
+        if isinstance(delta_content, str):
+            text = delta_content
+
+    if not text:
+        message = choice0.get("message")
+        if isinstance(message, dict):
+            message_content = message.get("content")
+            if isinstance(message_content, str):
+                text = message_content
+
+    finish_reason = choice0.get("finish_reason")
+    created = parsed.get("created")
+    try:
+        created = int(created or 0)
+    except Exception:
+        created = 0
+    if created <= 0:
+        created = int(time.time())
+
+    completion_chunk = {
+        "id": "cmpl-custom",
+        "object": "text_completion",
+        "created": created,
+        "model": str(parsed.get("model") or default_model or ""),
+        "choices": [
+            {
+                "text": text,
+                "index": index,
+                "logprobs": None,
+                "finish_reason": finish_reason,
+            }
+        ],
+    }
+    return f"data: {json.dumps(completion_chunk)}\n\n"
+
 @dataclass
 class QueueEntry:
     id: str
     queued_at: float
-    request: ChatCompletionRequest
+    request: QueuedRequest
+    request_type: RequestType
     response_queue: asyncio.Queue
     abort_event: asyncio.Event
     api_key_name: Optional[str] = None
@@ -417,6 +538,7 @@ class API:
                 id=secrets.token_hex(4),
                 queued_at=time.time(),
                 request=request,
+                request_type="chat",
                 response_queue=response_queue,
                 abort_event=abort_event,
                 api_key_name=api_key_name,
@@ -497,28 +619,6 @@ class API:
                     else:
                         raise HTTPException(status_code=500, detail=error_message)
 
-                usage_obj: dict[str, Any]
-                if isinstance(usage, dict):
-                    usage_obj = dict(usage)
-                    try:
-                        usage_obj["prompt_tokens"] = int(usage_obj.get("prompt_tokens") or 0)
-                    except Exception:
-                        usage_obj["prompt_tokens"] = 0
-                    try:
-                        usage_obj["completion_tokens"] = int(usage_obj.get("completion_tokens") or 0)
-                    except Exception:
-                        usage_obj["completion_tokens"] = 0
-                    try:
-                        usage_obj["total_tokens"] = int(usage_obj.get("total_tokens") or 0)
-                    except Exception:
-                        usage_obj["total_tokens"] = usage_obj["prompt_tokens"] + usage_obj["completion_tokens"]
-                else:
-                    usage_obj = {
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "total_tokens": 0,
-                    }
-
                 return {
                     "id": "chatcmpl-custom",
                     "object": "chat.completion",
@@ -534,14 +634,140 @@ class API:
                             "finish_reason": finish_reason or "stop"
                         }
                     ],
-                    "usage": usage_obj,
+                    "usage": _normalize_usage_object(usage),
                 }
+
+        @self.app.post("/v1/completions")
+        async def text_completions(request: TextCompletionRequest, raw_request: Request):
+            api_key_name = self._authorize_request(raw_request)
+
+            if not self.driver.is_running:
+                raise HTTPException(status_code=503, detail="Driver is not running")
+
+            normalized_prompt = _normalize_text_completion_prompt(request.prompt)
+            normalized_request = request.model_copy(update={"prompt": normalized_prompt})
+
+            prompt_length = len(normalized_prompt)
+            stream_mode = "streaming" if normalized_request.stream else "non-streaming"
+            Logger.info(
+                f"Received text completion request ({prompt_length} chars, {stream_mode})"
+            )
+
+            response_queue = asyncio.Queue()
+            abort_event = asyncio.Event()
+
+            entry = QueueEntry(
+                id=secrets.token_hex(4),
+                queued_at=time.time(),
+                request=normalized_request,
+                request_type="text",
+                response_queue=response_queue,
+                abort_event=abort_event,
+                api_key_name=api_key_name,
+            )
+            try:
+                await self.request_queue.put(entry)
+            except RequestQueueFullError as exc:
+                Logger.warning(
+                    "Rejecting text completion request because the request queue is full "
+                    f"({exc.current_size}/{exc.max_size} pending requests)."
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail="Request queue is full. Please retry shortly.",
+                    headers={"Retry-After": "1"},
+                ) from exc
+
+            if normalized_request.stream:
+                return StreamingResponse(
+                    self.stream_generator(
+                        response_queue,
+                        abort_event,
+                        raw_request,
+                        chunk_transform=lambda chunk: _make_text_completion_sse_chunk(
+                            chunk,
+                            default_model=normalized_request.model,
+                        ),
+                    ),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                    },
+                )
+
+            content_parts: list[str] = []
+            finish_reason = None
+            error_message: str | None = None
+            usage: dict | None = None
+
+            while True:
+                chunk_str = await response_queue.get()
+                if chunk_str is None:
+                    break
+
+                parsed = _parse_sse_json(chunk_str)
+                if not parsed:
+                    continue
+
+                if "error" in parsed:
+                    error_message = (_extract_error_message(parsed) or "request failed").strip()
+                    if not error_message:
+                        error_message = "request failed"
+                    break
+
+                if isinstance(parsed.get("usage"), dict):
+                    usage = parsed.get("usage")
+
+                choices = parsed.get("choices")
+                if isinstance(choices, list) and choices:
+                    choice0 = choices[0] if isinstance(choices[0], dict) else {}
+                    delta = choice0.get("delta") if isinstance(choice0, dict) else {}
+                    if isinstance(delta, dict):
+                        content = delta.get("content")
+                        if isinstance(content, str) and content:
+                            content_parts.append(content)
+                    if isinstance(choice0, dict):
+                        finish_reason = choice0.get("finish_reason")
+
+            full_content = "".join(content_parts)
+
+            if error_message:
+                abort_event.set()
+                if self.current_abort_event is abort_event:
+                    self.driver.request_abort()
+
+                if content_parts:
+                    Logger.warning(
+                        "Non-streaming text completion returned partial content due to error: "
+                        + str(error_message)
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail=error_message)
+
+            return {
+                "id": "cmpl-custom",
+                "object": "text_completion",
+                "created": 0,
+                "model": normalized_request.model,
+                "choices": [
+                    {
+                        "text": full_content,
+                        "index": 0,
+                        "logprobs": None,
+                        "finish_reason": finish_reason or "stop",
+                    }
+                ],
+                "usage": _normalize_usage_object(usage),
+            }
 
     async def stream_generator(
         self,
         response_queue: asyncio.Queue,
         abort_event: asyncio.Event,
         raw_request: Request,
+        chunk_transform: Callable[[dict], str | None] | None = None,
     ):
         try:
             while True:
@@ -562,6 +788,13 @@ class API:
                     if chunk is None:
                         yield "data: [DONE]\n\n"
                         break
+                    if chunk_transform is not None:
+                        parsed = _parse_sse_json(chunk)
+                        if parsed is None:
+                            continue
+                        chunk = chunk_transform(parsed)
+                        if chunk is None:
+                            continue
                     yield chunk
                 except asyncio.TimeoutError:
                     # No chunk available, continue to check for disconnection
@@ -613,9 +846,10 @@ class API:
             while True:
                 entry = await self.request_queue.get()
                 request = entry.request
+                request_type = getattr(entry, "request_type", "chat")
                 response_queue = entry.response_queue
                 abort_event = entry.abort_event
-                Logger.info("Processing queued request...")
+                Logger.info(f"Processing queued {request_type} request...")
                 try:
                     if abort_event.is_set():
                         Logger.info("Queued request was already aborted. Skipping.")
@@ -662,8 +896,13 @@ class API:
                         early_error_message: str | None = None
 
                         try:
+                            driver_message = (
+                                request.messages
+                                if request_type == "chat"
+                                else _normalize_text_completion_prompt(request.prompt)
+                            )
                             async for chunk in self.driver.generate_response(
-                                message=request.messages,
+                                message=driver_message,
                                 model=request.model,
                                 stream=request.stream,
                                 temperature=request.temperature,

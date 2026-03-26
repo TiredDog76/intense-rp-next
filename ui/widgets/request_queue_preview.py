@@ -125,14 +125,24 @@ class RequestQueueItemCard(QFrame):
         self._time_label.setText(f"Added: {time_str}")
 
         msg_count = int(data.get("message_count") or 0)
+        request_type = str(data.get("request_type") or "chat").strip().lower()
+        prompt_length = int(data.get("prompt_length") or 0)
         api_key_name = data.get("api_key_name")
         model = str(data.get("model") or "")
         stream = bool(data.get("stream"))
 
         api_key_text = str(api_key_name) if api_key_name else "None"
+        if request_type == "text":
+            request_label = "Text Completion"
+            size_line = f"Prompt Length: {prompt_length} chars"
+        else:
+            request_label = "Chat Completion"
+            size_line = f"Messages: {msg_count}"
+
         self._meta_label.setText(
-            "Messages: {msg_count}\nAPI Key: {api_key}\nModel: {model}\nStreaming: {streaming}".format(
-                msg_count=msg_count,
+            "Type: {request_type}\n{size_line}\nAPI Key: {api_key}\nModel: {model}\nStreaming: {streaming}".format(
+                request_type=request_label,
+                size_line=size_line,
                 api_key=api_key_text,
                 model=model or "Unknown",
                 streaming="Yes" if stream else "No",

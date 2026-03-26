@@ -14,7 +14,7 @@ from drivers.shared_utils import (
     clear_clean_regeneration_cache,
     extract_macro_overrides,
     find_multi_slot_cache_entry,
-    format_messages,
+    format_request_messages,
     read_clean_regeneration_state,
     read_multi_slot_cache_payload,
     remove_multi_slot_cache_entry,
@@ -959,7 +959,7 @@ class GLMDriver(BaseDriver):
         return True
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
-        return format_messages(self.config_manager, messages)
+        return format_request_messages(self.config_manager, messages)
 
     async def set_sidebar_status(self, open: bool) -> None:
         if not self.page:

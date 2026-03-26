@@ -472,6 +472,18 @@ def format_messages(config_manager: Any, messages: Union[str, List[Any]]) -> str
     return final_message
 
 
+def format_request_messages(config_manager: Any, messages: Union[str, List[Any]]) -> str:
+    """Render a provider request payload with text-completion passthrough.
+
+    Chat transcripts still use the normal formatting pipeline. Raw strings are treated
+    as `/v1/completions` prompts and are sent unchanged so chat-only formatting layers
+    do not rewrite them.
+    """
+    if isinstance(messages, str):
+        return messages
+    return format_messages(config_manager, messages)
+
+
 def resolve_rendered_injection(
     config_manager: Any,
     messages: Union[str, List[Any]],

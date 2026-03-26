@@ -31,7 +31,7 @@ All providers follow the same general approach:
 2. Log in (manual or auto-login, depending on settings)
 3. Trigger a generation in the provider UI (type/upload + click send)
 4. Intercept the provider's internal streaming request
-5. Convert the provider stream into OpenAI-style SSE deltas (`/v1/chat/completions`)
+5. Convert the provider stream into OpenAI-style SSE deltas (`/v1/chat/completions` or `/v1/completions`)
 
 This is why IntenseRP can present an OpenAI-compatible API even though the underlying provider is a normal web chat app.
 

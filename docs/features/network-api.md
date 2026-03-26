@@ -154,6 +154,9 @@ IntenseRP exposes an OpenAI-compatible API. Here are the available endpoints:
 |----------|--------|-------------|
 | `/v1/models` | GET | List available models |
 | `/v1/chat/completions` | POST | Generate a chat completion |
+| `/v1/completions` | POST | Generate a text completion from a raw prompt |
+
+`/v1/completions` is the legacy prompt-based route. Unlike chat completions, it sends your prompt as-is after macro stripping, so chat templates, injections, and name scanning are skipped on purpose.
 
 ### Available Models
 

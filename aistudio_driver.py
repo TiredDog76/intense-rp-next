@@ -19,7 +19,7 @@ from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     clear_clean_regeneration_cache,
     extract_macro_overrides,
-    format_messages,
+    format_request_messages,
     resolve_rendered_injection,
     split_leading_system_messages,
     strip_macros_from_messages,
@@ -1325,6 +1325,8 @@ class AIStudioDriver(BaseDriver):
     def _prepare_prompt_payload(self, message_for_formatting: Union[str, List[Any]]) -> tuple[str, str]:
         """Build the chat payload and optional AI Studio system-instructions text."""
         formatted_message = self._format_messages(message_for_formatting)
+        if isinstance(message_for_formatting, str):
+            return formatted_message, ""
         if not self._use_system_prompt_field_enabled():
             return formatted_message, ""
 
@@ -3171,7 +3173,7 @@ class AIStudioDriver(BaseDriver):
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         """Render messages through the shared prompt-formatting pipeline."""
-        return format_messages(self.config_manager, messages)
+        return format_request_messages(self.config_manager, messages)
 
     async def generate_response(
         self,
@@ -3228,6 +3230,8 @@ class AIStudioDriver(BaseDriver):
             max_tokens=max_tokens,
             overrides=macros_overrides,
         )
+        if isinstance(message_for_formatting, str):
+            effective_settings["use_system_prompt_field"] = False
         self.current_send_deepthink = bool(effective_settings["send_deepthink"])
         anti_censorship_enabled = bool(effective_settings.get("anti_censorship"))
 

@@ -1290,10 +1290,20 @@ class MainWindow(QMainWindow):
                 rendered = []
                 for idx, (status, entry) in enumerate(entries, start=1):
                     req = getattr(entry, "request", None)
+                    request_type = str(getattr(entry, "request_type", "chat") or "chat").strip().lower()
                     try:
-                        msg_count = len(getattr(req, "messages", []) or [])
+                        if request_type == "text":
+                            prompt_value = getattr(req, "prompt", "") if req else ""
+                            if isinstance(prompt_value, list):
+                                prompt_value = prompt_value[0] if prompt_value else ""
+                            msg_count = 1 if str(prompt_value or "") else 0
+                            prompt_length = len(str(prompt_value or ""))
+                        else:
+                            msg_count = len(getattr(req, "messages", []) or [])
+                            prompt_length = 0
                     except Exception:
                         msg_count = 0
+                        prompt_length = 0
 
                     rendered.append(
                         {
@@ -1301,7 +1311,9 @@ class MainWindow(QMainWindow):
                             "id": getattr(entry, "id", ""),
                             "queued_at": getattr(entry, "queued_at", 0.0),
                             "status": status,
+                            "request_type": request_type,
                             "message_count": msg_count,
+                            "prompt_length": prompt_length,
                             "api_key_name": getattr(entry, "api_key_name", None),
                             "model": getattr(req, "model", "") if req else "",
                             "stream": bool(getattr(req, "stream", False)) if req else False,

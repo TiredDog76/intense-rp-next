@@ -13,7 +13,7 @@ from drivers.shared_utils import (
     clear_clean_regeneration_cache,
     extract_macro_overrides,
     find_multi_slot_cache_entry,
-    format_messages,
+    format_request_messages,
     read_clean_regeneration_state,
     remove_multi_slot_cache_entry,
     strip_macros_from_messages,
@@ -984,7 +984,7 @@ class DeepSeekDriver(BaseDriver):
             return False
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
-        return format_messages(self.config_manager, messages)
+        return format_request_messages(self.config_manager, messages)
 
     async def _process_sse_line(self, line: str, queue: asyncio.Queue) -> None:
         if not line.startswith("data:"):

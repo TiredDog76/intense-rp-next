@@ -171,7 +171,7 @@ Once the app says **Running (Port 7777)**:
 | Setting | Value |
 |---|---|
 | Endpoint | `http://127.0.0.1:7777/v1` |
-| API | OpenAI-compatible chat completions |
+| API | OpenAI-compatible chat or text completions |
 | API key | Leave blank (unless you enabled API keys) |
 | Model | `deepseek-*` / `glm-*` / `moonshot-*` |
 

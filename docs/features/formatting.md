@@ -6,6 +6,11 @@ icon: material/format-text
 
 When SillyTavern sends messages to IntenseRP, it doesn't just forward them straight to the active provider. Instead, it squishes everything into a single, neatly formatted prompt that the model can understand better. This page explains how that magic works.
 
+!!! note "Chat route only"
+    This formatting pipeline applies to chat-style requests such as `/v1/chat/completions`.
+
+    If you use the legacy `/v1/completions` text-completions route, IntenseRP skips templates, injections, and name scanning there and forwards the raw prompt text instead.
+
 ---
 
 ## :material-lightbulb: The Big Picture

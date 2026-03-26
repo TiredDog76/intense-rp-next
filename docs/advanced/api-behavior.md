@@ -13,12 +13,13 @@ This page documents how the built-in OpenAI-compatible API behaves at runtime: w
 
 ## :material-routes: Routes
 
-IntenseRP currently exposes two OpenAI-style endpoints:
+IntenseRP currently exposes three OpenAI-style endpoints:
 
 | Endpoint | Method | Purpose |
 |---|---:|---|
 | `/v1/models` | GET | List available model IDs |
 | `/v1/chat/completions` | POST | Generate a chat completion (streaming or non-streaming) |
+| `/v1/completions` | POST | Generate a legacy text completion from a raw prompt |
 
 If **API Keys** are enabled, both routes require:
 
@@ -98,10 +99,10 @@ Google AI Studio model IDs are also behavior presets:
 
 At a high level, a request goes through these layers:
 
-1. Client calls `POST /v1/chat/completions`
+1. Client calls `POST /v1/chat/completions` or `POST /v1/completions`
 2. IntenseRP enqueues the request (FIFO)
 3. A single worker dequeues one request at a time
-4. The driver formats messages, drives the selected provider UI, and intercepts its network stream
+4. The driver either formats chat messages or forwards a raw text-completion prompt, then drives the selected provider UI and intercepts its network stream
 5. IntenseRP forwards the stream to the client (or accumulates it and returns a single JSON response)
 
 ```mermaid
@@ -112,7 +113,7 @@ sequenceDiagram
     participant D as Provider Driver (Playwright)
     participant DS as Provider Backend
 
-    C->>A: POST /v1/chat/completions
+    C->>A: POST /v1/chat/completions or /v1/completions
     A->>Q: enqueue (request)
     Q->>D: worker dequeues (one at a time)
     D->>DS: proxied stream of provider request
@@ -147,7 +148,7 @@ If you want to see the queue without guessing (or digging through logs), Intense
 
 Once enabled, it shows the request currently being processed (if any), plus any waiting requests.
 
-Each entry includes a short request ID (useful when matching things up with logs), when it was added, message count, model, streaming mode, and the API key name (if you have API keys enabled).
+Each entry includes a short request ID (useful when matching things up with logs), when it was added, request type, message count or prompt length, model, streaming mode, and the API key name (if you have API keys enabled).
 
 You can drag the divider to resize it if you don't like the default width.
 
@@ -183,6 +184,22 @@ data: [DONE]
 !!! note "Usage in streams"
     For GLM Chat and QwenLM, if **Count Tokens** is enabled in the provider Behavior settings, IntenseRP emits one extra final chunk with `usage` (and `choices: []`) right before `data: [DONE]`.
 
+### Text completions stream shape
+
+For `POST /v1/completions`, IntenseRP still streams over SSE, but the payload uses the legacy completions shape:
+
+```json
+{
+  "id": "cmpl-custom",
+  "object": "text_completion",
+  "created": 1730000000,
+  "model": "deepseek-auto",
+  "choices": [
+    { "text": "Hello", "index": 0, "logprobs": null, "finish_reason": null }
+  ]
+}
+```
+
 ### Disconnect behavior
 
 If a streaming client disconnects, IntenseRP will:
@@ -204,6 +221,26 @@ When you set `stream: false`, the server still generates via streaming internall
     `temperature`, `top_p`, and `max_tokens` are accepted for OpenAI compatibility.
 
     Right now, Google AI Studio is the only provider that actively applies them in the web UI. Other providers currently ignore them.
+
+---
+
+## :material-code-string: Text Completions (`POST /v1/completions`)
+
+This route is the old prompt-based API shape. Instead of sending a chat transcript, you send one raw `prompt`, and IntenseRP forwards that prompt as-is after stripping recognized macros.
+
+Right now, IntenseRP supports one prompt per request on this route. If a client sends multiple prompts in one `/v1/completions` call, the request is rejected instead of trying to fan out multiple browser generations at once.
+
+That means the usual chat-only formatting layers are skipped here on purpose:
+
+- No chat templates
+- No injection block
+- No name scanning / name substitution
+- No system-message splitting tricks
+
+On Google AI Studio specifically, this also means IntenseRP will not try to use the separate **System Instructions** field for text completions, even if you normally have that feature enabled for chat requests.
+
+!!! warning "Macros"
+    Macros still work, but they are resolved directly from the raw prompt text. If the same prompt contains conflicting macros, the latest occurrence wins. In practice that makes them behave more like inline toggles while the prompt is being read top-to-bottom.
 
 ---
 
