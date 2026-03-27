@@ -129,6 +129,7 @@ class RequestQueueItemCard(QFrame):
         prompt_length = int(data.get("prompt_length") or 0)
         api_key_name = data.get("api_key_name")
         model = str(data.get("model") or "")
+        provider = str(data.get("provider") or "")
         stream = bool(data.get("stream"))
 
         api_key_text = str(api_key_name) if api_key_name else "None"
@@ -140,7 +141,8 @@ class RequestQueueItemCard(QFrame):
             size_line = f"Messages: {msg_count}"
 
         self._meta_label.setText(
-            "Type: {request_type}\n{size_line}\nAPI Key: {api_key}\nModel: {model}\nStreaming: {streaming}".format(
+            "Provider: {provider}\nType: {request_type}\n{size_line}\nAPI Key: {api_key}\nModel: {model}\nStreaming: {streaming}".format(
+                provider=provider or "Unknown",
                 request_type=request_label,
                 size_line=size_line,
                 api_key=api_key_text,
@@ -338,7 +340,7 @@ class RequestQueuePreview(QWidget):
         self._stop_button.setCursor(Qt.PointingHandCursor)
         self._stop_button.setFixedSize(32, 32)
         self._stop_button.setIconSize(QSize(16, 16))
-        self._stop_button.setToolTip("Abort current request and disconnect the client")
+        self._stop_button.setToolTip("Abort the current processing request(s) and disconnect the client")
         self._stop_button.setStyleSheet(
             f"""
             QPushButton {{

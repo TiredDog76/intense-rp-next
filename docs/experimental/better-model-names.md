@@ -155,4 +155,9 @@ Example (if you selected **Gemini 2.5 Flash** in Settings):
 - IntenseRP **still accepts the legacy IDs** (`deepseek-auto`, `glm-chat`, `moonshot-reasoner`, etc.).
 - This setting only changes what you see in `GET /v1/models` (and what your client will typically offer in its model dropdown).
 
+!!! note "Providers in Parallel"
+    If you enable **Providers in Parallel**, IntenseRP goes back to the legacy provider-prefixed IDs for routing.
+
+    In that mode, Better Model Names is effectively ignored for `GET /v1/models`.
+
 If something doesn't work after enabling this, you can simply disable the setting and go back to the legacy names.

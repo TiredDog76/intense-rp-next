@@ -29,6 +29,7 @@ DOCS_PROVIDER_SUPPORT = "advanced/provider-support/"
 DOCS_QWEN = "providers/qwen-behavior/"
 DOCS_REMOTE_CONTROL = "experimental/remote-control/"
 DOCS_BETTER_MODEL_NAMES = "experimental/better-model-names/"
+DOCS_PROVIDERS_IN_PARALLEL = "experimental/providers-in-parallel/"
 DOCS_SYSTEM = "features/system/"
 
 class SettingType(Enum):
@@ -1250,6 +1251,85 @@ SCHEMA = [
         name="Experimental",
         key="experimental",
         fields=[
+            SettingField(
+                key="providers_in_parallel",
+                label="Providers in Parallel",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Experimental. Launch one browser per selected provider and route requests by "
+                    "their model IDs. Applies on the next browser start and can use a lot of RAM."
+                ),
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="providers_in_parallel_note",
+                label="Providers in Parallel",
+                type=SettingType.HINT,
+                default=(
+                    "This opens extra browser windows, keeps them idle in memory, and routes by "
+                    "model IDs while active. Change the selection here, then restart the browser for it to take effect."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="experimental.providers_in_parallel",
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_enable_deepseek",
+                label="DeepSeek",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include DeepSeek in the parallel browser pool.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="providers_credentials.provider!=DeepSeek",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_enable_glm",
+                label="GLM Chat",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include GLM Chat in the parallel browser pool.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="providers_credentials.provider!=GLM Chat",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_enable_moonshot",
+                label="Moonshot",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include Moonshot in the parallel browser pool.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="providers_credentials.provider!=Moonshot",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_enable_qwen",
+                label="QwenLM",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include QwenLM in the parallel browser pool.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="providers_credentials.provider!=QwenLM",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_enable_aistudio",
+                label="Google AI Studio",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include Google AI Studio in the parallel browser pool.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="providers_credentials.provider!=Google AI Studio",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
             SettingField(
                 key="better_model_names",
                 label="Better Model Names",

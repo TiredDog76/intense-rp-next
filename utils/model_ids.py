@@ -66,6 +66,22 @@ LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
     },
 }
 
+LEGACY_MODEL_PREFIX_BY_PROVIDER: Dict[DriverProvider, str] = {
+    DriverProvider.DEEPSEEK: "deepseek",
+    DriverProvider.GLM_CHAT: "glm",
+    DriverProvider.MOONSHOT: "moonshot",
+    DriverProvider.QWEN_LM: "qwen",
+    DriverProvider.AI_STUDIO: "aistudio",
+}
+
+OWNED_BY_PROVIDER: Dict[DriverProvider, str] = {
+    DriverProvider.DEEPSEEK: "deepseek",
+    DriverProvider.GLM_CHAT: "glm",
+    DriverProvider.MOONSHOT: "moonshot",
+    DriverProvider.QWEN_LM: "qwen",
+    DriverProvider.AI_STUDIO: "aistudio",
+}
+
 
 def is_better_model_names_enabled(config_manager: Any) -> bool:
     try:
@@ -84,6 +100,14 @@ def get_legacy_model_ids(provider: DriverProvider) -> list[str]:
     if provider == DriverProvider.AI_STUDIO:
         return ["aistudio-auto", "aistudio-chat", "aistudio-reasoner"]
     return ["deepseek-auto", "deepseek-chat", "deepseek-reasoner"]
+
+
+def get_legacy_model_prefix(provider: DriverProvider) -> str:
+    return LEGACY_MODEL_PREFIX_BY_PROVIDER.get(provider, "deepseek")
+
+
+def get_owned_by_for_provider(provider: DriverProvider) -> str:
+    return OWNED_BY_PROVIDER.get(provider, "deepseek")
 
 
 def get_configured_glm_base_model(config_manager: Any) -> str:
@@ -186,6 +210,32 @@ def get_model_ids_for_provider(provider: DriverProvider, config_manager: Any) ->
         return ids
 
     return get_legacy_model_ids(provider)
+
+
+def get_model_ids_for_providers(
+    providers: Iterable[DriverProvider],
+    config_manager: Any,
+    *,
+    force_legacy: bool = False,
+) -> list[tuple[DriverProvider, str]]:
+    items: list[tuple[DriverProvider, str]] = []
+    for provider in providers:
+        model_ids = get_legacy_model_ids(provider) if force_legacy else get_model_ids_for_provider(provider, config_manager)
+        items.extend((provider, model_id) for model_id in model_ids)
+    return items
+
+
+def resolve_provider_from_model_id(model: Any) -> DriverProvider | None:
+    normalized = str(model or "").strip().lower()
+    if not normalized:
+        return None
+
+    for provider, prefix in LEGACY_MODEL_PREFIX_BY_PROVIDER.items():
+        normalized_prefix = f"{prefix}-"
+        if normalized == prefix or normalized.startswith(normalized_prefix):
+            return provider
+
+    return None
 
 
 def resolve_behavior_mode(model: Any, provider: DriverProvider) -> str:

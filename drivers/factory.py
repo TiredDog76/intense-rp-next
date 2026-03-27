@@ -12,6 +12,21 @@ from drivers.providers import DriverProvider
 from utils.logger import Logger
 
 
+def create_driver_for_provider(config_manager: Any, provider: DriverProvider) -> BaseDriver:
+    if provider == DriverProvider.DEEPSEEK:
+        return DeepSeekDriver(config_manager)
+    if provider == DriverProvider.GLM_CHAT:
+        return GLMDriver(config_manager)
+    if provider == DriverProvider.MOONSHOT:
+        return MoonshotDriver(config_manager)
+    if provider == DriverProvider.QWEN_LM:
+        return QwenLMDriver(config_manager)
+    if provider == DriverProvider.AI_STUDIO:
+        return AIStudioDriver(config_manager)
+
+    return DeepSeekDriver(config_manager)
+
+
 def create_driver(config_manager: Any) -> BaseDriver:
     provider_setting = None
     try:
@@ -25,16 +40,4 @@ def create_driver(config_manager: Any) -> BaseDriver:
         provider = DriverProvider.DEEPSEEK
 
     Logger.info(f"Selected driver provider: {provider.value}")
-
-    if provider == DriverProvider.DEEPSEEK:
-        return DeepSeekDriver(config_manager)
-    if provider == DriverProvider.GLM_CHAT:
-        return GLMDriver(config_manager)
-    if provider == DriverProvider.MOONSHOT:
-        return MoonshotDriver(config_manager)
-    if provider == DriverProvider.QWEN_LM:
-        return QwenLMDriver(config_manager)
-    if provider == DriverProvider.AI_STUDIO:
-        return AIStudioDriver(config_manager)
-
-    return DeepSeekDriver(config_manager)
+    return create_driver_for_provider(config_manager, provider)

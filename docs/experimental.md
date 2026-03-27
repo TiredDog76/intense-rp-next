@@ -19,6 +19,12 @@ Experimental features currently include:
 
     [:arrow_right: Read Better Model Names docs](experimental/better-model-names.md)
 
+-   :material-source-branch: **Providers in Parallel**
+
+    Keeps multiple provider browser windows alive at once and routes requests by the legacy provider-prefixed model IDs, so different providers can process requests side by side.
+
+    [:arrow_right: Read Providers in Parallel docs](experimental/providers-in-parallel.md)
+
 -   :material-remote-desktop: **Remote Control**
 
     Gives you a tiny browser-side control panel for **Stop**, **Restart**, **Hotswap**, **Switch Account**, and live logs. Very handy for when you don't want to go back to your PC every time.

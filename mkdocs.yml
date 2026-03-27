@@ -38,6 +38,7 @@ nav:
       - Experimental:
           - Overview: experimental.md
           - Better Model Names: experimental/better-model-names.md
+          - Providers in Parallel: experimental/providers-in-parallel.md
           - Remote Control: experimental/remote-control.md
       - Advanced:
           - Overview: advanced.md

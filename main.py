@@ -34,8 +34,10 @@ from ui.core.icons import IconUtils, IconType
 from ui.niche.hotswap_dialog import HotswapDialog, PROVIDER_ICON_MAP
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstalledInfo
+from drivers.parallel_manager import ParallelDriversManager
 from utils.logger import Logger, LogLevel, LEVEL_NAME_MAP
 from utils.news_state import NEWS_DOCS_URL, has_unviewed_news, mark_latest_news_viewed
+from utils.providers_in_parallel import get_current_provider, is_parallel_runtime_active
 from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
 from utils.resource_path import resolve_resource_path
@@ -641,7 +643,7 @@ class MainWindow(QMainWindow):
         return False
 
     def _can_switch_account(self) -> bool:
-        driver = getattr(self, "driver", None)
+        driver = self._get_current_runtime_driver()
         if driver is None:
             return False
 
@@ -651,6 +653,24 @@ class MainWindow(QMainWindow):
             return len(pairs) >= 2
         except Exception:
             return False
+
+    def _get_current_runtime_driver(self):
+        driver = getattr(self, "driver", None)
+        if isinstance(driver, ParallelDriversManager):
+            current_provider = get_current_provider(self.config_manager)
+            return driver.get_driver(current_provider) or driver.get_current_driver()
+        return driver
+
+    def _iter_runtime_drivers(self) -> list[tuple[DriverProvider, object]]:
+        driver = getattr(self, "driver", None)
+        if isinstance(driver, ParallelDriversManager):
+            return driver.iter_drivers()
+
+        runtime_driver = self._get_current_runtime_driver()
+        provider = getattr(runtime_driver, "provider", None)
+        if runtime_driver is None or not isinstance(provider, DriverProvider):
+            return []
+        return [(provider, runtime_driver)]
 
     def _get_hotswap_targets(self) -> list[str]:
         current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
@@ -1274,23 +1294,19 @@ class MainWindow(QMainWindow):
                 if not getattr(self, "queue_preview", None) or not self.queue_preview.isVisible():
                     return
 
-                entries = []
                 api = getattr(self, "api", None)
-                if api and getattr(api, "request_queue", None):
-                    current = getattr(api, "current_entry", None)
-                    if current:
-                        current_status = "cancelled" if current.abort_event.is_set() else "processing"
-                        entries.append((current_status, current))
-
-                    queued = await api.request_queue.snapshot()
-                    for entry in queued:
-                        status = "cancelled" if entry.abort_event.is_set() else "pending"
-                        entries.append((status, entry))
+                entries = await api.snapshot_requests() if api is not None else []
 
                 rendered = []
                 for idx, (status, entry) in enumerate(entries, start=1):
                     req = getattr(entry, "request", None)
                     request_type = str(getattr(entry, "request_type", "chat") or "chat").strip().lower()
+                    target_provider = getattr(entry, "target_provider", None)
+                    provider_name = (
+                        target_provider.value
+                        if isinstance(target_provider, DriverProvider)
+                        else "Unknown"
+                    )
                     try:
                         if request_type == "text":
                             prompt_value = getattr(req, "prompt", "") if req else ""
@@ -1312,6 +1328,7 @@ class MainWindow(QMainWindow):
                             "queued_at": getattr(entry, "queued_at", 0.0),
                             "status": status,
                             "request_type": request_type,
+                            "provider": provider_name,
                             "message_count": msg_count,
                             "prompt_length": prompt_length,
                             "api_key_name": getattr(entry, "api_key_name", None),
@@ -1498,7 +1515,7 @@ class MainWindow(QMainWindow):
     async def _account_switch_impl(self):
         self.start_button.setEnabled(False)
         self._update_status("Switching account...", "info")
-        driver = getattr(self, "driver", None)
+        driver = self._get_current_runtime_driver()
         if not driver:
             Logger.warning("No driver available for account switch.")
             self.start_button.setEnabled(True)
@@ -1893,8 +1910,11 @@ class MainWindow(QMainWindow):
                 self._update_tray_menu_state()
                 return
 
-            # Pass config manager to driver
-            self.driver = create_driver(self.config_manager)
+            # Pass config manager to the runtime driver
+            if is_parallel_runtime_active(self.config_manager):
+                self.driver = ParallelDriversManager(self.config_manager)
+            else:
+                self.driver = create_driver(self.config_manager)
             self.driver.notify_user_callback = self._notify_user
             self.driver.on_crash_callback = self.on_browser_crashed
 
@@ -1912,7 +1932,7 @@ class MainWindow(QMainWindow):
 
             # Optional provider UI language check (provider-specific enforcement; safe to no-op)
             # If the user cancels, stop startup gracefully
-            if not await self._ensure_driver_ui_language_is_compatible():
+            if not await self._ensure_runtime_ui_languages_are_compatible():
                 await self.stop_services()
                 return
 
@@ -1986,8 +2006,19 @@ class MainWindow(QMainWindow):
             self._sync_hotswap_button()
             self._update_tray_menu_state()
 
-    async def _ensure_driver_ui_language_is_compatible(self) -> bool:
-        driver = getattr(self, "driver", None)
+    async def _ensure_runtime_ui_languages_are_compatible(self) -> bool:
+        runtime_drivers = self._iter_runtime_drivers()
+        if not runtime_drivers:
+            return True
+
+        for _provider, driver in runtime_drivers:
+            if not await self._ensure_driver_ui_language_is_compatible(driver):
+                return False
+
+        return True
+
+    async def _ensure_driver_ui_language_is_compatible(self, driver=None) -> bool:
+        driver = driver or self._get_current_runtime_driver()
         if not driver:
             return True
 
