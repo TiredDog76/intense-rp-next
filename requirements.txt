@@ -49,7 +49,7 @@ pywin32-ctypes==0.2.3
 PyYAML==6.0.3
 pyyaml_env_tag==1.1
 qasync==0.28.0
-requests==2.32.5
+requests==2.33.0
 selectolax==0.4.6
 setuptools==80.9.0
 shiboken6==6.10.0
