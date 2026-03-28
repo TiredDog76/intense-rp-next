@@ -2220,13 +2220,17 @@ class SettingsWindow(QMainWindow):
         self._active_info_anchor = anchor
         self._info_bubble.set_anchor(anchor)
         self._info_bubble.show_for(anchor, title or "Setting", body, docs_url, preferred_global_pos=self._pending_info_pos)
+        self._clear_pending_info_request()
+
+    def _clear_pending_info_request(self) -> None:
+        self._info_timer.stop()
+        self._pending_info_anchor = None
+        self._pending_info_pos = None
 
     def _hide_info_bubble(self, *_args) -> None:
-        self._info_timer.stop()
+        self._clear_pending_info_request()
         self._info_hide_timer.stop()
-        self._pending_info_anchor = None
         self._active_info_anchor = None
-        self._pending_info_pos = None
         if hasattr(self, "_info_bubble") and self._info_bubble is not None:
             self._info_bubble.hide_now()
 
@@ -2246,26 +2250,58 @@ class SettingsWindow(QMainWindow):
             current = current.parentWidget()
         return False
 
+    def _cursor_is_over_info_bubble(self, global_pos: QPoint | None = None) -> bool:
+        bubble = getattr(self, "_info_bubble", None)
+        if bubble is None or not bubble.isVisible():
+            return False
+        return bubble.contains_global(global_pos or QCursor.pos())
+
+    def _cursor_hits_anchor(self, anchor: QWidget | None, global_pos: QPoint | None = None) -> bool:
+        if anchor is None:
+            return False
+
+        top_widget = QApplication.widgetAt(global_pos or QCursor.pos())
+        current = top_widget
+        while current is not None:
+            if current is anchor:
+                return True
+            current = current.parentWidget()
+        return False
+
     def eventFilter(self, obj, event):
         if obj is self.scroll_area.viewport() and event.type() == QEvent.Resize:
             self._hide_info_bubble()
 
         if isinstance(obj, QWidget):
             if self._is_info_bubble_widget(obj):
-                if event.type() == QEvent.Enter:
+                if event.type() in {QEvent.Enter, QEvent.HoverEnter, QEvent.MouseMove, QEvent.HoverMove}:
+                    self._clear_pending_info_request()
                     self._info_hide_timer.stop()
-                elif event.type() == QEvent.Leave:
+                elif event.type() in {QEvent.Leave, QEvent.HoverLeave}:
                     self._info_hide_timer.start()
                 return super().eventFilter(obj, event)
 
             anchor = self._find_info_anchor(obj)
             if anchor is not None:
-                if event.type() == QEvent.Enter:
+                cursor_pos = QCursor.pos()
+                cursor_over_bubble = self._cursor_is_over_info_bubble(cursor_pos)
+                cursor_hits_anchor = self._cursor_hits_anchor(anchor, cursor_pos)
+                if event.type() in {QEvent.Enter, QEvent.HoverEnter, QEvent.MouseMove, QEvent.HoverMove}:
+                    if cursor_over_bubble or not cursor_hits_anchor:
+                        # Only react when this anchor is the topmost thing under the
+                        # cursor. Qt can still emit hover-ish events for widgets hidden
+                        # beneath our floating info bubble, and those should not be able
+                        # to replace the bubble that is already visible
+                        self._clear_pending_info_request()
+                        return super().eventFilter(obj, event)
                     self._info_hide_timer.stop()
                     self._pending_info_anchor = anchor
-                    self._pending_info_pos = QCursor.pos()
+                    self._pending_info_pos = cursor_pos
                     self._info_timer.start()
-                elif event.type() == QEvent.Leave:
+                elif event.type() in {QEvent.Leave, QEvent.HoverLeave}:
+                    if cursor_over_bubble:
+                        self._info_hide_timer.stop()
+                        return super().eventFilter(obj, event)
                     self._info_hide_timer.start()
                 elif event.type() in {QEvent.MouseButtonPress, QEvent.FocusIn, QEvent.KeyPress, QEvent.Wheel}:
                     self._hide_info_bubble()
