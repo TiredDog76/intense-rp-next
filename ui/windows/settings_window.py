@@ -1087,7 +1087,7 @@ class SettingsWindow(QMainWindow):
             elif field.key == "config_storage_location":
                 widget.currentTextChanged.connect(self._on_config_storage_location_changed)
             elif (category_key == "system_settings") and (field.key == "persistent_profile_to_delete"):
-                widget.addItem("(Load saved profiles...)", "")
+                widget.addItem("(Click to load saved profiles...)", "")
                 widget.popupAboutToShow.connect(
                     lambda: self._maybe_refresh_persistent_profile_options(
                         "provider_login",

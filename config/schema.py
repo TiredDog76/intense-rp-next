@@ -117,6 +117,7 @@ SCHEMA = [
                     "Choose which provider web app IntenseRP should drive. "
                     "This takes effect the next time the browser is started."
                 ),
+                affects=["hotswap_button"],
                 docs_path=DOCS_PROVIDER_SUPPORT,
                 docs_anchor="how-providers-work-in-v2",
             ),
