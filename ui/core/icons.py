@@ -112,14 +112,14 @@ class IconUtils:
         filename = icon.value if isinstance(icon, IconType) else str(icon)
         icon_path = IconUtils._icon_path(filename, subdir=subdir)
 
-        if not os.path.exists(icon_path):
-            Logger.warning(f"Icon file not found: {icon_path}")
-            return QPixmap()
-
         cache_key = (icon_path, str(color or ""), int(size), round(float(dpr), 2), int(y_offset))
         cached = IconUtils._PIXMAP_CACHE.get(cache_key)
         if cached is not None:
             return cached
+
+        if not os.path.exists(icon_path):
+            Logger.warning(f"Icon file not found: {icon_path}")
+            return QPixmap()
 
         svg = IconUtils._read_svg_text(icon_path)
         pixmap = IconUtils._render_svg_to_pixmap(svg, color=color, size=size, dpr=dpr, y_offset=y_offset)

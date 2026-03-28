@@ -214,6 +214,8 @@ class StyledTextEdit(QFrame):
             self._update_style()
 
 class StyledComboBox(QComboBox):
+    popupAboutToShow = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.PointingHandCursor)
@@ -263,6 +265,10 @@ class StyledComboBox(QComboBox):
     def wheelEvent(self, event):
         # Ignore wheel events to prevent accidental value changes when scrolling
         event.ignore()
+
+    def showPopup(self):
+        self.popupAboutToShow.emit()
+        super().showPopup()
 
     def paintEvent(self, event):
         super().paintEvent(event)

@@ -30,6 +30,25 @@ from utils.ip_utils import normalize_ip_list
 from utils.update_checker import check_for_updates, read_local_version
 from utils.docs_links import build_docs_url
 
+INFO_BUBBLE_HOVER_EVENTS = frozenset({
+    QEvent.Enter,
+    QEvent.HoverEnter,
+    QEvent.MouseMove,
+    QEvent.HoverMove,
+})
+
+INFO_BUBBLE_HIDE_EVENTS = frozenset({
+    QEvent.Leave,
+    QEvent.HoverLeave,
+})
+
+INFO_BUBBLE_TRIGGER_EVENTS = INFO_BUBBLE_HOVER_EVENTS | INFO_BUBBLE_HIDE_EVENTS | frozenset({
+    QEvent.MouseButtonPress,
+    QEvent.FocusIn,
+    QEvent.KeyPress,
+    QEvent.Wheel,
+})
+
 class _SearchHighlightOverlay(QWidget):
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -752,6 +771,7 @@ class SettingsWindow(QMainWindow):
         self._section_defs_by_key = {section.key: section for section in self._section_defs}
         self._card_defs_by_key = dict(SETTINGS_CARDS)
         self._section_widgets = {}
+        self._section_layouts = {}
         self._card_widgets = {}
         self._sidebar_sections = {}
         self._selected_section_key = None
@@ -765,10 +785,14 @@ class SettingsWindow(QMainWindow):
         self._provider_behavior_user_selected = False
         self._provider_behavior_selector_card_key = "provider_defaults"
         self._provider_behavior_group_card_keys = {}
+        self._pending_provider_behavior_preload_keys = []
         self._persistent_profile_entries = {}
         self._persistent_profile_options_loaded = False
         self._active_docs_focus_container = None
         self._suppress_dirty_tracking = False
+        self._sidebar_icon_subdir_cache = {}
+        self._info_anchor_by_object_id = {}
+        self._info_bubble_widget_ids = set()
 
         self._init_ui()
         self._load_values()
@@ -782,15 +806,21 @@ class SettingsWindow(QMainWindow):
 
     def _get_sidebar_icon(self, icon_file: str, color: str, size: int = 18) -> QIcon:
         use_sidebar_subdir = ("/" not in icon_file) and ("\\" not in icon_file)
-        sidebar_exists = use_sidebar_subdir and Path(IconUtils._icon_path(icon_file, subdir="sidebar")).exists()
+        sidebar_subdir = None
+        if use_sidebar_subdir:
+            cached_subdir = self._sidebar_icon_subdir_cache.get(icon_file)
+            if cached_subdir is None:
+                cached_subdir = "sidebar" if Path(IconUtils._icon_path(icon_file, subdir="sidebar")).exists() else ""
+                self._sidebar_icon_subdir_cache[icon_file] = cached_subdir
+            sidebar_subdir = cached_subdir or None
         icon = IconUtils.get_icon(
             icon_file,
             color=color,
             size=size,
             widget=self,
-            subdir="sidebar" if sidebar_exists else None,
+            subdir=sidebar_subdir,
         )
-        if icon.isNull() and use_sidebar_subdir and not sidebar_exists:
+        if icon.isNull() and use_sidebar_subdir and sidebar_subdir:
             icon = IconUtils.get_icon(
                 icon_file,
                 color=color,
@@ -937,6 +967,12 @@ class SettingsWindow(QMainWindow):
         self.activateWindow()
         self.raise_()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        timer = getattr(self, "_provider_behavior_preload_timer", None)
+        if self._pending_provider_behavior_preload_keys and isinstance(timer, QTimer):
+            timer.start(40)
+
     def _focus_search_input(self) -> None:
         self.search_input.setFocus(Qt.ShortcutFocusReason)
         self.search_input.selectAll()
@@ -1009,6 +1045,14 @@ class SettingsWindow(QMainWindow):
                 widget.currentTextChanged.connect(self._on_preset_changed)
             elif field.key == "config_storage_location":
                 widget.currentTextChanged.connect(self._on_config_storage_location_changed)
+            elif (category_key == "system_settings") and (field.key == "persistent_profile_to_delete"):
+                widget.addItem("(Load saved profiles...)", "")
+                widget.popupAboutToShow.connect(
+                    lambda: self._maybe_refresh_persistent_profile_options(
+                        "provider_login",
+                        force=not self._persistent_profile_options_loaded,
+                    )
+                )
         elif field.type == SettingType.INPUT_PAIR:
             widget = InputPairsWidget(alternative_actions=field.alternative_actions)
             widget.pairsChanged.connect(self._on_setting_changed)
@@ -1045,6 +1089,7 @@ class SettingsWindow(QMainWindow):
                 widget.clicked.connect(self._reset_formatting)
             elif field.action == "delete_selected_persistent_profile":
                 widget.clicked.connect(self._delete_selected_persistent_profile)
+                widget.setEnabled(self._persistent_profile_options_loaded)
             elif field.action == "clear_all_persistent_profiles":
                 widget.clicked.connect(self._clear_all_persistent_profiles)
             elif field.action == "check_for_updates":
@@ -1070,6 +1115,63 @@ class SettingsWindow(QMainWindow):
             if key in self.category_widgets_by_key:
                 insert_index += 1
         return insert_index
+
+    def _remember_field_location(
+        self,
+        section_key: str,
+        card_key: str,
+        category_key: str,
+        field,
+        *,
+        provider_key: str | None = None,
+    ) -> None:
+        location = {
+            "section_key": section_key,
+            "card_key": card_key,
+            "provider_key": provider_key,
+        }
+        self._field_locations[f"{category_key}.{field.key}"] = location
+        if field.type == SettingType.ROW:
+            for sub in field.sub_fields or []:
+                self._field_locations[f"{category_key}.{sub.key}"] = location
+
+    def _prime_field_navigation_metadata(self) -> None:
+        for section in self._section_defs:
+            if section.key == "provider_behavior":
+                for behavior_key, groups in PROVIDER_BEHAVIOR_GROUPS.items():
+                    for index, group in enumerate(groups):
+                        card_key = f"provider_behavior::{behavior_key}::{index}"
+                        self._dynamic_card_titles.setdefault(card_key, str(group.get("title") or "Provider"))
+                        for field_key in group.get("fields", []):
+                            field = self._resolve_field_def(behavior_key, field_key)
+                            if field is None:
+                                continue
+                            self._remember_field_location(
+                                section.key,
+                                card_key,
+                                behavior_key,
+                                field,
+                                provider_key=behavior_key,
+                            )
+                            self._register_search_target_for_field(
+                                section.key,
+                                card_key,
+                                behavior_key,
+                                field,
+                                provider_key=behavior_key,
+                            )
+                continue
+
+            for card_key in section.card_keys:
+                card_def = self._card_defs_by_key.get(card_key)
+                if card_def is None:
+                    continue
+                for category_key, field_key in list(getattr(card_def, "field_refs", None) or []):
+                    field = self._resolve_field_def(category_key, field_key)
+                    if field is None:
+                        continue
+                    self._remember_field_location(section.key, card_key, category_key, field)
+                    self._register_search_target_for_field(section.key, card_key, category_key, field)
 
     def _register_search_target(self, category, field) -> None:
         extra_labels = ""
@@ -1367,6 +1469,7 @@ class SettingsWindow(QMainWindow):
 
     def _init_ui(self):
         self.search_targets = []
+        self._search_target_keys = set()
         self.field_defs = {}
         self._dep_override_cache = {}
         self.is_auto_scrolling = False
@@ -1377,6 +1480,7 @@ class SettingsWindow(QMainWindow):
         for category in SCHEMA:
             for field in self._iter_fields(category.fields):
                 self.field_defs[f"{category.key}.{field.key}"] = field
+        self._prime_field_navigation_metadata()
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -1640,6 +1744,10 @@ class SettingsWindow(QMainWindow):
         self.search_timer.setInterval(260)
         self.search_timer.timeout.connect(self._perform_search)
 
+        self._provider_behavior_preload_timer = QTimer(self)
+        self._provider_behavior_preload_timer.setSingleShot(True)
+        self._provider_behavior_preload_timer.timeout.connect(self._preload_next_provider_behavior_group)
+
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self.search_shortcut.activated.connect(self._focus_search_input)
 
@@ -1651,9 +1759,10 @@ class SettingsWindow(QMainWindow):
 
         self._info_bubble = _SettingInfoBubble(self.scroll_area.viewport())
         self._info_bubble.clicked.connect(self._open_docs_url)
-        self._info_bubble.installEventFilter(self)
-        for child in self._info_bubble.findChildren(QWidget):
-            child.installEventFilter(self)
+        bubble_widgets = [self._info_bubble, *self._info_bubble.findChildren(QWidget)]
+        self._info_bubble_widget_ids = {id(widget) for widget in bubble_widgets}
+        for widget in bubble_widgets:
+            widget.installEventFilter(self)
         self._info_timer = QTimer(self)
         self._info_timer.setSingleShot(True)
         self._info_timer.setInterval(360)
@@ -1694,6 +1803,7 @@ class SettingsWindow(QMainWindow):
             section_layout.setSpacing(BrandColors.CARD_SPACING)
             self.scroll_layout.addWidget(section_widget)
             self._section_widgets[section.key] = section_widget
+            self._section_layouts[section.key] = section_layout
 
             for card_key in section.card_keys:
                 card_def = self._card_defs_by_key.get(card_key)
@@ -1702,9 +1812,6 @@ class SettingsWindow(QMainWindow):
                 card_widget = self._build_card_widget(section.key, card_def)
                 section_layout.addWidget(card_widget)
                 self._card_widgets[card_key] = card_widget
-
-                if section.key == "provider_behavior":
-                    self._build_provider_behavior_group_cards(section_layout, section.key, card_def.key)
 
             section_layout.addStretch(1)
 
@@ -1893,19 +2000,76 @@ class SettingsWindow(QMainWindow):
         self._sync_provider_behavior_default_page(force=True)
         return card
 
-    def _build_provider_behavior_group_cards(self, section_layout, section_key: str, selector_card_key: str) -> None:
-        for behavior_key, groups in PROVIDER_BEHAVIOR_GROUPS.items():
-            provider_cards = []
-            for index, group in enumerate(groups):
-                card_key = f"provider_behavior::{behavior_key}::{index}"
-                self._dynamic_card_titles[card_key] = str(group.get("title") or "Provider")
-                card_widget = self._build_behavior_group_card(group, behavior_key, section_key, card_key)
-                card_widget.setProperty("sidebarTitle", str(group.get("title") or "Provider"))
-                card_widget.setVisible(False)
-                section_layout.addWidget(card_widget)
-                self._card_widgets[card_key] = card_widget
-                provider_cards.append(card_key)
-            self._provider_behavior_group_card_keys[behavior_key] = provider_cards
+    def _ensure_provider_behavior_group_cards_built(self, behavior_key: str, *, refresh_dirty: bool = True) -> None:
+        normalized_key = str(behavior_key or "").strip()
+        if not normalized_key or normalized_key in self._provider_behavior_group_card_keys:
+            return
+
+        section_layout = self._section_layouts.get("provider_behavior")
+        if section_layout is None:
+            return
+
+        groups = PROVIDER_BEHAVIOR_GROUPS.get(normalized_key, [])
+        provider_cards = []
+        insert_index = max(0, section_layout.count() - 1)
+        for index, group in enumerate(groups):
+            card_key = f"provider_behavior::{normalized_key}::{index}"
+            self._dynamic_card_titles[card_key] = str(group.get("title") or "Provider")
+            card_widget = self._build_behavior_group_card(group, normalized_key, "provider_behavior", card_key)
+            card_widget.setProperty("sidebarTitle", str(group.get("title") or "Provider"))
+            card_widget.setVisible(False)
+            section_layout.insertWidget(insert_index + len(provider_cards), card_widget)
+            self._card_widgets[card_key] = card_widget
+            provider_cards.append(card_key)
+
+        self._provider_behavior_group_card_keys[normalized_key] = provider_cards
+
+        category = self._category_defs_by_key.get(normalized_key)
+        previous_suppress = self._suppress_dirty_tracking
+        self._suppress_dirty_tracking = True
+        try:
+            if category is not None:
+                self._apply_category_values(category)
+            self._update_dependencies()
+        finally:
+            self._suppress_dirty_tracking = previous_suppress
+        if refresh_dirty:
+            self._update_dirty_markers()
+
+    def _queue_provider_behavior_preload(self, *, exclude: str | None = None) -> None:
+        excluded_key = str(exclude or "").strip()
+        pending = [
+            key
+            for key in PROVIDER_BEHAVIOR_GROUPS
+            if key != excluded_key and key not in self._provider_behavior_group_card_keys
+        ]
+        self._pending_provider_behavior_preload_keys = pending
+
+        timer = getattr(self, "_provider_behavior_preload_timer", None)
+        if not isinstance(timer, QTimer):
+            return
+        if not pending:
+            timer.stop()
+            return
+
+        timer.start(40 if self.isVisible() else 120)
+
+    def _preload_next_provider_behavior_group(self) -> None:
+        if not self.isVisible():
+            self._queue_provider_behavior_preload(exclude=self._provider_behavior_selected_key)
+            return
+
+        while self._pending_provider_behavior_preload_keys:
+            next_key = self._pending_provider_behavior_preload_keys.pop(0)
+            if next_key in self._provider_behavior_group_card_keys:
+                continue
+            self._ensure_provider_behavior_group_cards_built(next_key, refresh_dirty=False)
+            break
+
+        if self._pending_provider_behavior_preload_keys:
+            timer = getattr(self, "_provider_behavior_preload_timer", None)
+            if isinstance(timer, QTimer):
+                timer.start(0)
 
     def _build_behavior_group_card(self, group: dict, behavior_key: str, section_key: str, card_key: str):
         group_card = QWidget()
@@ -2090,6 +2254,16 @@ class SettingsWindow(QMainWindow):
         return None
 
     def _register_search_target_for_field(self, section_key: str, card_key: str, category_key: str, field, provider_key: str | None = None) -> None:
+        target_key = (
+            str(section_key or ""),
+            str(card_key or ""),
+            str(provider_key or ""),
+            f"{category_key}.{field.key}",
+        )
+        if target_key in self._search_target_keys:
+            return
+        self._search_target_keys.add(target_key)
+
         section = self._section_defs_by_key.get(section_key)
         card = self._card_defs_by_key.get(card_key)
         card_title = str(card.title if card else self._dynamic_card_titles.get(card_key, "")).strip()
@@ -2118,9 +2292,10 @@ class SettingsWindow(QMainWindow):
         )
 
     def _install_info_filters(self, widget: QWidget) -> None:
-        widget.installEventFilter(self)
-        for child in widget.findChildren(QWidget):
-            child.installEventFilter(self)
+        anchor = widget
+        for candidate in [widget, *widget.findChildren(QWidget)]:
+            candidate.installEventFilter(self)
+            self._info_anchor_by_object_id[id(candidate)] = anchor
 
     def _on_sidebar_section_requested(self, section_key: str) -> None:
         self._set_active_section(section_key, scroll_to_top=True)
@@ -2136,6 +2311,15 @@ class SettingsWindow(QMainWindow):
         self._selected_section_key = str(section_key or "").strip()
         if not self._selected_section_key:
             return
+
+        if self._selected_section_key == "provider_behavior":
+            provider_key = (
+                self._provider_behavior_selected_key
+                or self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider())
+                or "deepseek_behavior"
+            )
+            self._ensure_provider_behavior_group_cards_built(provider_key)
+            self._set_provider_behavior_page(provider_key, user_selected=False)
 
         self._hide_info_bubble()
         for key, section_widget in self._section_widgets.items():
@@ -2173,13 +2357,15 @@ class SettingsWindow(QMainWindow):
 
     def _set_provider_behavior_page(self, behavior_key: str, *, user_selected: bool) -> None:
         key = str(behavior_key or "").strip()
-        if key not in self._provider_behavior_group_card_keys:
-            return
         self._provider_behavior_selected_key = key
         if user_selected:
             self._provider_behavior_user_selected = True
         for provider_key, button in self._provider_behavior_buttons.items():
             button.setChecked(provider_key == key)
+        if self._selected_section_key == "provider_behavior":
+            self._ensure_provider_behavior_group_cards_built(key)
+        if key not in self._provider_behavior_group_card_keys:
+            return
 
         for provider_key, card_keys in self._provider_behavior_group_card_keys.items():
             is_active_provider = provider_key == key
@@ -2199,6 +2385,7 @@ class SettingsWindow(QMainWindow):
                 self._set_active_card(visible_cards[0] if visible_cards else None)
             else:
                 self._set_active_card(current_card)
+        self._queue_provider_behavior_preload(exclude=key)
 
     def _sync_provider_behavior_default_page(self, *, force: bool = False) -> None:
         if self._provider_behavior_user_selected and not force:
@@ -2269,42 +2456,46 @@ class SettingsWindow(QMainWindow):
         return False
 
     def eventFilter(self, obj, event):
-        if obj is self.scroll_area.viewport() and event.type() == QEvent.Resize:
+        event_type = event.type()
+
+        if obj is self.scroll_area.viewport() and event_type == QEvent.Resize:
             self._hide_info_bubble()
 
-        if isinstance(obj, QWidget):
-            if self._is_info_bubble_widget(obj):
-                if event.type() in {QEvent.Enter, QEvent.HoverEnter, QEvent.MouseMove, QEvent.HoverMove}:
-                    self._clear_pending_info_request()
-                    self._info_hide_timer.stop()
-                elif event.type() in {QEvent.Leave, QEvent.HoverLeave}:
-                    self._info_hide_timer.start()
-                return super().eventFilter(obj, event)
+        if not isinstance(obj, QWidget) or event_type not in INFO_BUBBLE_TRIGGER_EVENTS:
+            return super().eventFilter(obj, event)
 
-            anchor = self._find_info_anchor(obj)
-            if anchor is not None:
-                cursor_pos = QCursor.pos()
-                cursor_over_bubble = self._cursor_is_over_info_bubble(cursor_pos)
-                cursor_hits_anchor = self._cursor_hits_anchor(anchor, cursor_pos)
-                if event.type() in {QEvent.Enter, QEvent.HoverEnter, QEvent.MouseMove, QEvent.HoverMove}:
-                    if cursor_over_bubble or not cursor_hits_anchor:
-                        # Only react when this anchor is the topmost thing under the
-                        # cursor. Qt can still emit hover-ish events for widgets hidden
-                        # beneath our floating info bubble, and those should not be able
-                        # to replace the bubble that is already visible
-                        self._clear_pending_info_request()
-                        return super().eventFilter(obj, event)
+        if id(obj) in self._info_bubble_widget_ids:
+            if event_type in INFO_BUBBLE_HOVER_EVENTS:
+                self._clear_pending_info_request()
+                self._info_hide_timer.stop()
+            elif event_type in INFO_BUBBLE_HIDE_EVENTS:
+                self._info_hide_timer.start()
+            return super().eventFilter(obj, event)
+
+        anchor = self._info_anchor_by_object_id.get(id(obj))
+        if anchor is not None:
+            cursor_pos = QCursor.pos()
+            cursor_over_bubble = self._cursor_is_over_info_bubble(cursor_pos)
+            cursor_hits_anchor = self._cursor_hits_anchor(anchor, cursor_pos)
+            if event_type in INFO_BUBBLE_HOVER_EVENTS:
+                if cursor_over_bubble or not cursor_hits_anchor:
+                    # Only react when this anchor is the topmost thing under the
+                    # cursor. Qt can still emit hover-ish events for widgets hidden
+                    # beneath our floating info bubble, and those should not be able
+                    # to replace the bubble that is already visible.
+                    self._clear_pending_info_request()
+                    return super().eventFilter(obj, event)
+                self._info_hide_timer.stop()
+                self._pending_info_anchor = anchor
+                self._pending_info_pos = cursor_pos
+                self._info_timer.start()
+            elif event_type in INFO_BUBBLE_HIDE_EVENTS:
+                if cursor_over_bubble:
                     self._info_hide_timer.stop()
-                    self._pending_info_anchor = anchor
-                    self._pending_info_pos = cursor_pos
-                    self._info_timer.start()
-                elif event.type() in {QEvent.Leave, QEvent.HoverLeave}:
-                    if cursor_over_bubble:
-                        self._info_hide_timer.stop()
-                        return super().eventFilter(obj, event)
-                    self._info_hide_timer.start()
-                elif event.type() in {QEvent.MouseButtonPress, QEvent.FocusIn, QEvent.KeyPress, QEvent.Wheel}:
-                    self._hide_info_bubble()
+                    return super().eventFilter(obj, event)
+                self._info_hide_timer.start()
+            else:
+                self._hide_info_bubble()
 
         return super().eventFilter(obj, event)
 
@@ -2423,7 +2614,16 @@ class SettingsWindow(QMainWindow):
             for category in SCHEMA:
                 self._apply_category_values(category)
 
-            self._refresh_loaded_state(refresh_profiles=True)
+            self._refresh_loaded_state(refresh_profiles=False)
+            current_behavior_key = (
+                self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider())
+                or "deepseek_behavior"
+            )
+            self._ensure_provider_behavior_group_cards_built(current_behavior_key, refresh_dirty=False)
+            self._queue_provider_behavior_preload(exclude=current_behavior_key)
+            delete_btn = self.field_widgets.get("system_settings.delete_persistent_profile_btn")
+            if isinstance(delete_btn, QPushButton):
+                delete_btn.setEnabled(False)
         finally:
             self._suppress_dirty_tracking = previous_suppress
             self.unsaved_changes = False
@@ -2457,6 +2657,8 @@ class SettingsWindow(QMainWindow):
             return False
 
         self._set_active_section(section_key, scroll_to_top=True)
+        if resolved_key in PROVIDER_BEHAVIOR_GROUPS:
+            self._set_provider_behavior_page(resolved_key, user_selected=False)
         return True
 
     def focus_setting(self, category_key: str, field_key: str) -> bool:
@@ -2466,9 +2668,8 @@ class SettingsWindow(QMainWindow):
             return False
 
         full_key = f"{category_key}.{field_key}"
-        target = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
         location = self._field_locations.get(full_key)
-        if not target or not location:
+        if not location:
             return False
 
         section_key = str(location.get("section_key") or "")
@@ -2478,6 +2679,9 @@ class SettingsWindow(QMainWindow):
         self._set_active_card(card_key)
         if provider_key:
             self._set_provider_behavior_page(provider_key, user_selected=False)
+        target = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
+        if not target:
+            return False
         duration_ms = 280
         started = self._smooth_ensure_visible(target, y_margin=80, duration_ms=duration_ms)
         if started:

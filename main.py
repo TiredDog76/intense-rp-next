@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize, QUrl, QEvent
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QPixmap, QDesktopServices
+from PySide6.QtGui import QPixmap, QDesktopServices, QIcon
 import qasync
 
 from drivers.factory import create_driver
@@ -322,8 +322,13 @@ class MainWindow(QMainWindow):
             QPushButton:hover {{
                 background-color: {BrandColors.ITEM_HOVER};
             }}
+            QPushButton:disabled {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                color: {BrandColors.TEXT_DISABLED};
+            }}
         """)
         IconUtils.apply_icon(self.settings_button, IconType.SETTINGS, BrandColors.TEXT_PRIMARY)
+        self.settings_button.setIconSize(QSize(16, 16))
         self.settings_button.setCursor(Qt.PointingHandCursor)
         self.settings_button.clicked.connect(self.open_settings)
         button_layout.addWidget(self.settings_button, 1)
@@ -409,6 +414,7 @@ class MainWindow(QMainWindow):
         self._stop_task: asyncio.Task | None = None
         self._shutdown_task: asyncio.Task | None = None
         self.settings_window = None
+        self._settings_button_loading = False
         self.console_window = None
         self.help_window = None
         self._welcome_window = None
@@ -416,6 +422,11 @@ class MainWindow(QMainWindow):
         self._console_log_level = LogLevel.DEBUG
         self._mini_console_log_level = LogLevel.SUCCESS
         self._news_unread = False
+
+        self._settings_button_loading_timeout = QTimer(self)
+        self._settings_button_loading_timeout.setSingleShot(True)
+        self._settings_button_loading_timeout.setInterval(8000)
+        self._settings_button_loading_timeout.timeout.connect(self._on_settings_button_loading_timeout)
 
         # Initialize logging based on settings
         self._setup_logging()
@@ -1387,15 +1398,68 @@ class MainWindow(QMainWindow):
 
         self._schedule_queue_preview_refresh()
 
+    def _set_settings_button_loading(self, loading: bool) -> None:
+        loading = bool(loading)
+        if self._settings_button_loading == loading:
+            return
+
+        self._settings_button_loading = loading
+        if loading:
+            self.settings_button.setEnabled(False)
+            self.settings_button.setCursor(Qt.ArrowCursor)
+            self.settings_button.setText("Loading")
+            self.settings_button.setIcon(QIcon())
+            self._settings_button_loading_timeout.start()
+            return
+
+        self._settings_button_loading_timeout.stop()
+        self.settings_button.setText("Settings")
+        self.settings_button.setEnabled(True)
+        self.settings_button.setCursor(Qt.PointingHandCursor)
+        self.settings_button.setIconSize(QSize(16, 16))
+        IconUtils.apply_icon(self.settings_button, IconType.SETTINGS, BrandColors.TEXT_PRIMARY)
+
+    def _on_settings_button_loading_timeout(self) -> None:
+        if not self._settings_button_loading:
+            return
+        Logger.warning("Settings button loading state timed out. Resetting button state.")
+        self._set_settings_button_loading(False)
+
+    def _finish_open_settings(self) -> None:
+        if not self._settings_button_loading:
+            return
+
+        try:
+            if not self.settings_window:
+                # Pass None as parent to make it a top-level window with its own taskbar icon
+                self.settings_window = SettingsWindow(self.config_manager, None)
+                self.settings_window.settings_saved.connect(self.on_settings_saved)
+                self.settings_window.restart_requested.connect(self.on_restart_requested)
+            elif not self.settings_window.isVisible():
+                self.settings_window.refresh_from_config()
+            self.settings_window.present()
+        except Exception as exc:
+            Logger.error(f"Failed to open Settings: {exc}")
+            QMessageBox.warning(
+                self,
+                "Settings",
+                "Failed to open the Settings window.\n\n"
+                f"{exc}",
+            )
+        finally:
+            self._set_settings_button_loading(False)
+
     def open_settings(self):
-        if not self.settings_window:
-            # Pass None as parent to make it a top-level window with its own taskbar icon
-            self.settings_window = SettingsWindow(self.config_manager, None)
-            self.settings_window.settings_saved.connect(self.on_settings_saved)
-            self.settings_window.restart_requested.connect(self.on_restart_requested)
-        elif not self.settings_window.isVisible():
-            self.settings_window.refresh_from_config()
-        self.settings_window.present()
+        if self._settings_button_loading:
+            return
+
+        if self.settings_window and self.settings_window.isVisible():
+            self.settings_window.present()
+            return
+
+        self._set_settings_button_loading(True)
+        QApplication.processEvents()
+        QTimer.singleShot(60, self._finish_open_settings)
 
     def showEvent(self, event):
         super().showEvent(event)

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 
+@lru_cache(maxsize=None)
 def resolve_resource_path(*parts: str) -> Path:
     """
     Resolve a resource path in both dev and PyInstaller-frozen runs.
@@ -29,4 +31,3 @@ def resolve_resource_path(*parts: str) -> Path:
             return candidate
 
     return candidates[-1]
-
