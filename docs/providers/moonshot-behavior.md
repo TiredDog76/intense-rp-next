@@ -11,14 +11,6 @@ This page covers the toggles and options that control how IntenseRP interacts wi
     `moonshot-auto`, `moonshot-chat`, and `moonshot-reasoner`.
     These are behavior modes, not separate backend model selection.
 
-    If you enable **Settings -> Experimental -> Better Model Names**, the equivalent IDs become:
-
-    - `kimi-k2.5-auto`
-    - `kimi-k2.5`
-    - `kimi-k2.5-think`
-
-    Legacy IDs still work either way. See [:material-tag-text-outline: Better Model Names](../experimental/better-model-names.md).
-
 ---
 
 ## :material-login: Authentication

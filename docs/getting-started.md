@@ -173,7 +173,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 !!! info "Model IDs"
     The `*-auto` model is the default and respects your IntenseRP settings for the active provider.
 
-    There are also `*-chat` and `*-reasoner` variants, plus additional IDs if you enable **Better Model Names**.
+    There are also `*-chat` and `*-reasoner` variants.
     For the full list, see [:material-lan: Network & API](features/network-api.md).
 
 ![SillyTavern Endpoint Settings](pics/getting-started/preview_of_settings.png)

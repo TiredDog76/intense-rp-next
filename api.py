@@ -21,6 +21,7 @@ from utils.model_ids import (
     get_model_ids_for_provider,
     get_model_ids_for_providers,
     get_owned_by_for_provider,
+    is_supported_model_id,
     resolve_provider_from_model_id,
 )
 
@@ -423,6 +424,27 @@ class API:
 
         return provider
 
+    def _ensure_supported_model_id(self, model: Any, provider: DriverProvider) -> None:
+        normalized = str(model or "").strip()
+        if is_supported_model_id(provider, normalized):
+            return
+
+        supported_ids = get_model_ids_for_provider(
+            provider,
+            getattr(self.driver, "config_manager", None),
+        )
+        detail = (
+            f"Unsupported model `{normalized or '<empty>'}` for provider `{provider.value}`. "
+            f"Supported IDs: {', '.join(f'`{model_id}`' for model_id in supported_ids)}."
+        )
+        if provider == DriverProvider.AI_STUDIO:
+            detail += (
+                " Google AI Studio also accepts legacy IDs with Thinking Level suffixes like "
+                "`aistudio-auto-high` or `aistudio-auto-r4`."
+            )
+
+        raise HTTPException(status_code=400, detail=detail)
+
     def _find_processing_provider_for_abort_event(
         self, abort_event: asyncio.Event | None
     ) -> DriverProvider | None:
@@ -666,6 +688,7 @@ class API:
                 raise HTTPException(status_code=503, detail="Driver is not running")
 
             target_provider = self._resolve_request_provider(request.model)
+            self._ensure_supported_model_id(request.model, target_provider)
 
             # Log incoming request
             msg_count = len(request.messages)
@@ -793,6 +816,7 @@ class API:
                 raise HTTPException(status_code=503, detail="Driver is not running")
 
             target_provider = self._resolve_request_provider(request.model)
+            self._ensure_supported_model_id(request.model, target_provider)
 
             normalized_prompt = _normalize_text_completion_prompt(request.prompt)
             normalized_request = request.model_copy(update={"prompt": normalized_prompt})

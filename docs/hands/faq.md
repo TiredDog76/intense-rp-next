@@ -48,10 +48,6 @@ Quick answers to the questions that come up the most. If you need a step-by-step
     - QwenLM: `qwen-auto` / `qwen-chat` / `qwen-reasoner`
     - Google AI Studio: `aistudio-auto` / `aistudio-chat` / `aistudio-reasoner`
 
-    If you enabled **Settings -> Experimental -> Better Model Names**, you'll see base-model-style IDs instead (example: `deepseek-v3.2-auto`, `kimi-k2.5-auto`, `glm-5-auto`, `qwen3.5-plus-auto`).
-
-    Legacy IDs still work either way. See [:material-tag-text-outline: Better Model Names](../experimental/better-model-names.md).
-
 ??? question "Why are responses slow sometimes?"
     Two common reasons:
 

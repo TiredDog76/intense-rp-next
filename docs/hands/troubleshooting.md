@@ -238,7 +238,7 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - **Provider** (DeepSeek, GLM Chat, Moonshot, QwenLM, or Google AI Studio)
 - **Client** (SillyTavern or other client + version)
 - **Endpoint** (example: `http://127.0.0.1:7777/v1`)
-- **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto` / `qwen-auto` or Better Model Names IDs like `deepseek-v3.2-auto`)
+- **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto` / `qwen-auto` / `aistudio-auto`)
 - **Streaming** (`stream: true` or `stream: false`)
 - **Expected vs actual**
 - **Logs** (console dump or `logs/log_*.txt`)

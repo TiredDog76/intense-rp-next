@@ -20,14 +20,6 @@ For QwenLM, these model IDs map to simple behavior presets:
 | `qwen-chat` | Forces Thinking **off** and never emits `<think>` |
 | `qwen-reasoner` | Forces Thinking **on** (Send Thinking follows your setting) |
 
-!!! tip "Better Model Names (Experimental)"
-    If you enable **Settings -> Experimental -> Better Model Names**, the model IDs become base-model-style names like:
-
-    - `qwen3.5-plus-auto` / `qwen3.5-plus` / `qwen3.5-plus-think`
-
-    The base depends on your **QwenLM Behavior -> Model** selection.
-    Legacy IDs like `qwen-auto` still work either way.
-
 ---
 
 ## :material-chip: Real Qwen model selection (web UI)

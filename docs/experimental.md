@@ -13,12 +13,6 @@ Experimental features currently include:
 
 <div class="grid cards" markdown>
 
--   :material-tag-text-outline: **Better Model Names**
-
-    Use friendlier OpenAI-style model IDs (based on real base model names) like `deepseek-v3.2` / `kimi-k2.5` / `glm-5`, with `-auto` and `-think` variants.
-
-    [:arrow_right: Read Better Model Names docs](experimental/better-model-names.md)
-
 -   :material-source-branch: **Providers in Parallel**
 
     Keeps multiple provider browser windows alive at once and routes requests by the legacy provider-prefixed model IDs, so different providers can process requests side by side.

@@ -28,7 +28,6 @@ DOCS_NETWORK = "features/network-api/"
 DOCS_PROVIDER_SUPPORT = "advanced/provider-support/"
 DOCS_QWEN = "providers/qwen-behavior/"
 DOCS_REMOTE_CONTROL = "experimental/remote-control/"
-DOCS_BETTER_MODEL_NAMES = "experimental/better-model-names/"
 DOCS_PROVIDERS_IN_PARALLEL = "experimental/providers-in-parallel/"
 DOCS_SYSTEM = "features/system/"
 
@@ -1348,15 +1347,6 @@ SCHEMA = [
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
             SettingField(
-                key="better_model_names",
-                label="Friendlier Model Names",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Use friendlier model IDs in /v1/models. Legacy IDs are still accepted.",
-                docs_path=DOCS_BETTER_MODEL_NAMES,
-                docs_anchor="enable-it",
-            ),
-            SettingField(
                 key="classic_title",
                 label="Use the Classic Title Bar",
                 type=SettingType.BOOLEAN,
@@ -1906,7 +1896,6 @@ SETTINGS_CARDS = {
             ("experimental", "parallel_enable_moonshot"),
             ("experimental", "parallel_enable_qwen"),
             ("experimental", "parallel_enable_aistudio"),
-            ("experimental", "better_model_names"),
             ("experimental", "enable_remote_control"),
             ("experimental", "remote_control_password"),
         ],

@@ -36,7 +36,7 @@ icon: material/home
 
 -   :material-flask-outline: **Experimental**
 
-    Opt-in features that are still evolving (like Better Model Names).
+    Opt-in features that are still evolving.
 
     [:arrow_right: Experimental](experimental.md)
 

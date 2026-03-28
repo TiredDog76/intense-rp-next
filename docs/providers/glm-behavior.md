@@ -23,14 +23,6 @@ For GLM, these model IDs map to simple behavior presets:
 | `glm-chat` | Forces Deep Think **off** and never emits `<think>` |
 | `glm-reasoner` | Forces Deep Think **on** (Send Deep Think follows your setting) |
 
-!!! tip "Better Model Names (Experimental)"
-    If you enable **Settings -> Experimental -> Better Model Names**, the model IDs become base-model-style names like:
-
-    - `glm-5-auto` / `glm-5` / `glm-5-think`
-
-    The base (`glm-5`, `glm-4.7`, `glm-4.6`) depends on your **GLM Behavior -> Model** selection.
-    Legacy IDs like `glm-auto` still work either way.
-
 !!! note "About real GLM model selection"
     IntenseRP can also switch GLM's *real* model picker in the web UI.
 

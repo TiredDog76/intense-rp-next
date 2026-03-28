@@ -6,6 +6,7 @@ from drivers.providers import DriverProvider
 REMOVED_FIELDS = {
     ("application_settings", "paged_settings_view"),
     ("application_settings", "show_only_active_provider_behavior"),
+    ("experimental", "better_model_names"),
 }
 
 
