@@ -8,6 +8,21 @@ icon: material/newspaper-variant-outline
 
 This page is the changelog to view all the latests news and updates about IntenseRP Next.
 
+## March 28, 2026 - Update 2.6.3
+
+IntenseRP Next v2.6.3 is mostly a quality-of-life update, and the biggest visible change is the **Settings redesign**. The whole thing is meant to feel cleaner, easier to read, and a lot more intuitive to move around in.
+
+This update also brings **Providers in Parallel**, which can keep multiple provider browsers alive at once so different providers can work side by side, plus **Loadouts**, a validated `loadouts.json` system for people who would rather manage formatting and provider behavior through a file and quickly jump between presets instead of clicking through the UI every time.
+
+GLM also gets **GLM-5-Turbo** as a selectable real model option under **Provider Behavior -> GLM Chat -> Model**, alongside the existing GLM model choices.
+
+[Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.6.3-patch){ .md-button .md-button--primary }
+[Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
+[Suggest New Features](https://forms.gle/VGJua1w5sMwuo2tNA){ .md-button }
+[Support the Project](hands/support.md){ .md-button }
+
+---
+
 ## March 20, 2026 - About Sustainability
 
 IntenseRP Next is a free and open-source project, and I want to keep it that way. But maintaining and developing a project like this takes a lot of time and effort, especially considering that it's a one-person project. I've been thinking about a more sustainable way to support it in the long run, so I've created a [survey](https://forms.gle/Dx9BA2kogYcjbdm37) to see what the community is and isn't comfortable with. If you have a moment, please fill it out and share your thoughts! I'd really appreciate the feedback, it will help me pick the best path for the project.
