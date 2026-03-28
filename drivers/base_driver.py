@@ -370,6 +370,14 @@ class BaseDriver(ABC):
 
         Returns True only when rotation succeeded and the driver restarted successfully.
         """
+        prepare_loadouts = getattr(self.config_manager, "prepare_runtime_loadouts", None)
+        if callable(prepare_loadouts):
+            try:
+                prepare_loadouts(required_providers=[self.provider])
+            except Exception as exc:
+                Logger.error(f"Account rotation: loadouts validation failed: {exc}")
+                return False
+
         if not self.ece_rotate_identity(reason):
             return False
 

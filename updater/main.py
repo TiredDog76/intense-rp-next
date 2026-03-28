@@ -25,6 +25,7 @@ DEFAULT_PAYLOAD_DIRNAME = "intense-rp-next"
 DEFAULT_OPTIONAL_DIRNAME = "optional"
 DEFAULT_LOCK_WAIT_S = 300.0
 POSTUPDATE_FLAG_FILENAME = "postupdate_notes_url.txt"
+PRESERVED_ROOT_FILENAMES = ("loadouts.json",)
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,19 @@ def _merge_copy_dir(src: Path, dst: Path) -> None:
             shutil.copy2(item, dest)
 
 
+def _merge_copy_root_files(src_dir: Path, dst_dir: Path, filenames: tuple[str, ...]) -> None:
+    if not src_dir.exists() or not src_dir.is_dir():
+        return
+
+    for filename in filenames:
+        source = src_dir / filename
+        if not source.exists() or source.is_dir():
+            continue
+        destination = dst_dir / filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
 def _select_main_executable(install_dir: Path, preferred_name: Optional[str]) -> Path:
     """Find the main app executable in install_dir."""
     if not preferred_name:
@@ -273,6 +287,7 @@ def _perform_update(args: UpdateArgs, *, status_cb, progress_cb) -> None:
         progress_cb(60)
         _merge_copy_dir(backup_dir / "config_data", install_dir / "config_data")
         _merge_copy_dir(backup_dir / "logs", install_dir / "logs")
+        _merge_copy_root_files(backup_dir, install_dir, PRESERVED_ROOT_FILENAMES)
 
         copied_any = False
         for txt_path in backup_dir.glob("*_dir.txt"):

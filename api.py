@@ -397,6 +397,30 @@ class API:
             raise KeyError(f"No request queue is registered for provider: {provider.value}")
         return queue
 
+    def _get_active_loadout_name_for_provider(self, provider: DriverProvider) -> str | None:
+        try:
+            driver = self._get_driver_for_provider(provider)
+        except Exception:
+            driver = None
+
+        config_view = getattr(driver, "config_manager", None)
+        getter = getattr(config_view, "get_active_loadout_name", None)
+        if callable(getter):
+            try:
+                return getter(runtime=True)
+            except Exception:
+                pass
+
+        shared_config = getattr(self.driver, "config_manager", None)
+        fallback = getattr(shared_config, "get_runtime_active_loadout_name", None)
+        if callable(fallback):
+            try:
+                return fallback(provider)
+            except Exception:
+                pass
+
+        return None
+
     def _get_default_provider(self) -> DriverProvider:
         if self._drivers_by_provider:
             return next(iter(self._drivers_by_provider.keys()))
@@ -693,9 +717,11 @@ class API:
             # Log incoming request
             msg_count = len(request.messages)
             stream_mode = "streaming" if request.stream else "non-streaming"
+            loadout_name = self._get_active_loadout_name_for_provider(target_provider)
             Logger.info(
                 f"Received chat completion request for {target_provider.value} "
                 f"({msg_count} messages, {stream_mode})"
+                + (f" using loadout '{loadout_name}'" if loadout_name else "")
             )
 
             # Create a queue for the response chunks
@@ -823,9 +849,11 @@ class API:
 
             prompt_length = len(normalized_prompt)
             stream_mode = "streaming" if normalized_request.stream else "non-streaming"
+            loadout_name = self._get_active_loadout_name_for_provider(target_provider)
             Logger.info(
                 f"Received text completion request for {target_provider.value} "
                 f"({prompt_length} chars, {stream_mode})"
+                + (f" using loadout '{loadout_name}'" if loadout_name else "")
             )
 
             response_queue = asyncio.Queue()
@@ -1040,7 +1068,11 @@ class API:
                 request_type = getattr(entry, "request_type", "chat")
                 response_queue = entry.response_queue
                 abort_event = entry.abort_event
-                Logger.info(f"Processing queued {request_type} request for {provider.value}...")
+                loadout_name = self._get_active_loadout_name_for_provider(provider)
+                Logger.info(
+                    f"Processing queued {request_type} request for {provider.value}..."
+                    + (f" (loadout: {loadout_name})" if loadout_name else "")
+                )
                 try:
                     if abort_event.is_set():
                         Logger.info("Queued request was already aborted. Skipping.")

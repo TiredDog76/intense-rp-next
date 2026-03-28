@@ -22,6 +22,7 @@ DOCS_GLM_QUIRKS = "advanced/glm-quirks/"
 DOCS_HOTSWAPS = "features/hotswaps/"
 DOCS_IP_WHITELIST = "advanced/ip-whitelist/"
 DOCS_LOGIN = "features/login-sessions/"
+DOCS_LOADOUTS = "experimental/loadouts/"
 DOCS_MOONSHOT = "providers/moonshot-behavior/"
 DOCS_MULTI_SLOT_CACHE = "features/multi-slot-cache/"
 DOCS_NETWORK = "features/network-api/"
@@ -1269,6 +1270,31 @@ SCHEMA = [
         key="experimental",
         fields=[
             SettingField(
+                key="enable_loadouts",
+                label="Enable Loadouts",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Experimental. Power-user JSON loadouts that override Formatting and "
+                    "Provider Behavior at runtime. Takes effect on the next browser start."
+                ),
+                affects=["chevron_dropdown"],
+                docs_path=DOCS_LOADOUTS,
+            ),
+            SettingField(
+                key="create_loadouts_template",
+                label="Create Loadouts Template",
+                type=SettingType.BUTTON,
+                default="Create Template",
+                action="create_loadouts_template",
+                tooltip=(
+                    "Create or overwrite loadouts.json in the app root with one example "
+                    "loadout per provider."
+                ),
+                visible_depends="experimental.enable_loadouts",
+                docs_path=DOCS_LOADOUTS,
+            ),
+            SettingField(
                 key="providers_in_parallel",
                 label="Run Providers in Parallel",
                 type=SettingType.BOOLEAN,
@@ -1890,6 +1916,8 @@ SETTINGS_CARDS = {
         key="experimental_features",
         title="Experimental Features",
         field_refs=[
+            ("experimental", "enable_loadouts"),
+            ("experimental", "create_loadouts_template"),
             ("experimental", "providers_in_parallel"),
             ("experimental", "providers_in_parallel_note"),
             ("experimental", "parallel_enable_deepseek"),

@@ -37,6 +37,7 @@ nav:
           - Google AI Studio Behavior: providers/aistudio-behavior.md
       - Experimental:
           - Overview: experimental.md
+          - Loadouts: experimental/loadouts.md
           - Providers in Parallel: experimental/providers-in-parallel.md
           - Remote Control: experimental/remote-control.md
       - Advanced:

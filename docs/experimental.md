@@ -19,6 +19,12 @@ Experimental features currently include:
 
     [:arrow_right: Read Providers in Parallel docs](experimental/providers-in-parallel.md)
 
+-   :material-file-code-outline: **Loadouts**
+
+    Lets you override Formatting and Provider Behavior through a validated `loadouts.json` file, with per-provider switching from the Stop menu.
+
+    [:arrow_right: Read Loadouts docs](experimental/loadouts.md)
+
 -   :material-remote-desktop: **Remote Control**
 
     Gives you a tiny browser-side control panel for **Stop**, **Restart**, **Hotswap**, **Switch Account**, and live logs. Very handy for when you don't want to go back to your PC every time.

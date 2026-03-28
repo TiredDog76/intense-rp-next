@@ -12,19 +12,30 @@ from drivers.providers import DriverProvider
 from utils.logger import Logger
 
 
-def create_driver_for_provider(config_manager: Any, provider: DriverProvider) -> BaseDriver:
-    if provider == DriverProvider.DEEPSEEK:
-        return DeepSeekDriver(config_manager)
-    if provider == DriverProvider.GLM_CHAT:
-        return GLMDriver(config_manager)
-    if provider == DriverProvider.MOONSHOT:
-        return MoonshotDriver(config_manager)
-    if provider == DriverProvider.QWEN_LM:
-        return QwenLMDriver(config_manager)
-    if provider == DriverProvider.AI_STUDIO:
-        return AIStudioDriver(config_manager)
+def _provider_scoped_config(config_manager: Any, provider: DriverProvider) -> Any:
+    scoped_factory = getattr(config_manager, "for_provider", None)
+    if callable(scoped_factory):
+        try:
+            return scoped_factory(provider)
+        except Exception:
+            return config_manager
+    return config_manager
 
-    return DeepSeekDriver(config_manager)
+
+def create_driver_for_provider(config_manager: Any, provider: DriverProvider) -> BaseDriver:
+    scoped_config = _provider_scoped_config(config_manager, provider)
+    if provider == DriverProvider.DEEPSEEK:
+        return DeepSeekDriver(scoped_config)
+    if provider == DriverProvider.GLM_CHAT:
+        return GLMDriver(scoped_config)
+    if provider == DriverProvider.MOONSHOT:
+        return MoonshotDriver(scoped_config)
+    if provider == DriverProvider.QWEN_LM:
+        return QwenLMDriver(scoped_config)
+    if provider == DriverProvider.AI_STUDIO:
+        return AIStudioDriver(scoped_config)
+
+    return DeepSeekDriver(scoped_config)
 
 
 def create_driver(config_manager: Any) -> BaseDriver:

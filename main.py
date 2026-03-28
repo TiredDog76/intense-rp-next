@@ -18,6 +18,7 @@ import qasync
 from drivers.factory import create_driver
 from drivers.providers import DriverProvider, provider_options
 from api import API
+from config.loadouts import LoadoutValidationError
 from config.manager import ConfigManager
 from remote_control import RemoteControlActions
 from ui.windows.settings_window import SettingsWindow
@@ -32,12 +33,17 @@ from ui.core.animation_settings import sync_animations_disabled_from_config
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.hotswap_dialog import HotswapDialog, PROVIDER_ICON_MAP
+from ui.niche.loadout_switch_dialog import LoadoutSwitchDialog
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstalledInfo
 from drivers.parallel_manager import ParallelDriversManager
 from utils.logger import Logger, LogLevel, LEVEL_NAME_MAP
 from utils.news_state import NEWS_DOCS_URL, has_unviewed_news, mark_latest_news_viewed
-from utils.providers_in_parallel import get_current_provider, is_parallel_runtime_active
+from utils.providers_in_parallel import (
+    get_current_provider,
+    get_parallel_selected_providers,
+    is_parallel_runtime_active,
+)
 from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
 from utils.resource_path import resolve_resource_path
@@ -688,6 +694,30 @@ class MainWindow(QMainWindow):
         current_provider = DriverProvider.from_setting(current)
         current_value = current_provider.value if current_provider else "DeepSeek"
         return [provider_name for provider_name in provider_options() if provider_name != current_value]
+
+    def _loadouts_feature_enabled(self) -> bool:
+        return bool(self.config_manager.get_setting("experimental", "enable_loadouts"))
+
+    def _validate_runtime_loadouts(
+        self,
+        *,
+        providers: list[DriverProvider] | tuple[DriverProvider, ...] | None = None,
+        show_dialog: bool = True,
+    ) -> bool:
+        try:
+            self.config_manager.prepare_runtime_loadouts(required_providers=list(providers or []))
+            return True
+        except LoadoutValidationError as exc:
+            message = str(exc)
+        except ValueError as exc:
+            message = str(exc)
+        except Exception as exc:
+            message = f"Failed to validate loadouts: {exc}"
+
+        Logger.error(f"Loadouts validation failed: {message}")
+        if show_dialog:
+            QMessageBox.warning(self, "Loadouts", message)
+        return False
 
     def _get_remote_control_state(self) -> dict[str, object]:
         current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
@@ -1545,6 +1575,10 @@ class MainWindow(QMainWindow):
         if not self._can_switch_account():
             account_action.setEnabled(False)
 
+        if self._loadouts_feature_enabled():
+            loadout_action = menu.addAction("Switch Loadout")
+            loadout_action.triggered.connect(self._on_switch_loadout)
+
         hotswap_mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
         if (hotswap_mode or "Stop Menu") == "Stop Menu":
             hotswap_action = menu.addAction("Hotswap")
@@ -1575,6 +1609,42 @@ class MainWindow(QMainWindow):
     def _on_account_switch(self):
         asyncio.create_task(self._account_switch_impl())
 
+    def _on_switch_loadout(self):
+        provider = get_current_provider(self.config_manager)
+        try:
+            available = self.config_manager.load_loadouts_from_disk(provider)
+        except (LoadoutValidationError, ValueError) as exc:
+            QMessageBox.warning(self, "Loadouts", str(exc))
+            return
+        except Exception as exc:
+            QMessageBox.warning(self, "Loadouts", f"Failed to read loadouts.json.\n\n{exc}")
+            return
+
+        if self._are_services_running():
+            current_name = self.config_manager.get_runtime_active_loadout_name(provider)
+        else:
+            current_name = self.config_manager.get_preferred_loadout_name(provider, available)
+
+        dialog = LoadoutSwitchDialog(provider.value, available, current_name, parent=self)
+        if dialog.exec() != LoadoutSwitchDialog.Accepted:
+            return
+
+        selected_name = dialog.selected_loadout_name
+        if not selected_name or selected_name == current_name:
+            return
+
+        try:
+            self.config_manager.set_preferred_loadout_name(provider, selected_name)
+        except Exception as exc:
+            QMessageBox.warning(self, "Loadouts", f"Failed to switch loadout.\n\n{exc}")
+            return
+
+        Logger.info(f"Loadouts: selected '{selected_name}' for {provider.value}.")
+        if self._are_services_running():
+            asyncio.create_task(self._restart_services_impl())
+        else:
+            self._update_status(f"Selected loadout: {selected_name}", "info")
+
     async def _account_switch_impl(self):
         self.start_button.setEnabled(False)
         self._update_status("Switching account...", "info")
@@ -1582,6 +1652,11 @@ class MainWindow(QMainWindow):
         if not driver:
             Logger.warning("No driver available for account switch.")
             self.start_button.setEnabled(True)
+            return
+        provider = getattr(driver, "provider", None)
+        if isinstance(provider, DriverProvider) and (not self._validate_runtime_loadouts(providers=[provider])):
+            self.start_button.setEnabled(True)
+            self._update_status("Loadouts validation failed", "error")
             return
         try:
             success = await driver.ece_restart_with_rotation(
@@ -1971,6 +2046,21 @@ class MainWindow(QMainWindow):
                 self.start_button.set_chevron_visible(False)
                 self._sync_hotswap_button()
                 self._update_tray_menu_state()
+                return
+
+            required_providers = (
+                get_parallel_selected_providers(self.config_manager)
+                if bool(self.config_manager.get_setting("experimental", "providers_in_parallel"))
+                else [get_current_provider(self.config_manager)]
+            )
+            if not self._validate_runtime_loadouts(providers=required_providers):
+                self.start_button.setText("Start")
+                self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
+                self.start_button.setEnabled(True)
+                self.start_button.set_chevron_visible(False)
+                self._sync_hotswap_button()
+                self._update_tray_menu_state()
+                self._update_status("Loadouts validation failed", "error")
                 return
 
             # Pass config manager to the runtime driver

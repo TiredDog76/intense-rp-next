@@ -13,6 +13,7 @@ import shutil
 import re
 from pathlib import Path
 from config.formatting_presets import FORMATTING_PRESET_TEMPLATES
+from config.loadouts import write_template_file
 from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
 from config.schema import SCHEMA, SettingType, SETTINGS_SECTIONS, SETTINGS_CARDS, PROVIDER_BEHAVIOR_GROUPS
@@ -23,6 +24,7 @@ from ui.widgets.redirect_card import RedirectCard
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
 from ui.core.icons import IconUtils, IconType
+from ui.niche.loadout_switch_dialog import LOADOUT_CONTROLLED_MESSAGE
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
 from utils.api_key_generator import generate_api_key
@@ -796,6 +798,7 @@ class SettingsWindow(QMainWindow):
         self._provider_behavior_selector_card_key = "provider_defaults"
         self._provider_behavior_group_card_keys = {}
         self._pending_provider_behavior_preload_keys = []
+        self._loadout_controlled_cards = []
         self._persistent_profile_entries = {}
         self._persistent_profile_options_loaded = False
         self._active_docs_focus_container = None
@@ -1024,6 +1027,8 @@ class SettingsWindow(QMainWindow):
         if field.type == SettingType.BOOLEAN:
             widget = Tumbler()
             widget.stateChanged.connect(self._on_setting_changed)
+            if (category_key == "experimental") and (field.key == "enable_loadouts"):
+                widget.stateChanged.connect(self._on_loadouts_toggle_changed)
         elif field.type == SettingType.DIRECTORY:
             dialog_title = f"Select {field.label}" if field.label else "Select Directory"
             widget = DirectoryEntry(dialog_title=dialog_title)
@@ -1135,6 +1140,8 @@ class SettingsWindow(QMainWindow):
                 widget.clicked.connect(self._clear_all_persistent_profiles)
             elif field.action == "check_for_updates":
                 widget.clicked.connect(self._check_for_updates)
+            elif field.action == "create_loadouts_template":
+                widget.clicked.connect(self._create_loadouts_template)
         
         if widget:
             self.field_widgets[f"{category_key}.{field.key}"] = widget
@@ -1263,6 +1270,7 @@ class SettingsWindow(QMainWindow):
 
     def _refresh_loaded_state(self, *, refresh_profiles: bool = False) -> None:
         self._update_dependencies()
+        self._sync_loadout_controlled_sections()
 
         preset_widget = self.field_widgets.get("formatting.formatting_preset")
         if preset_widget:
@@ -1917,6 +1925,12 @@ class SettingsWindow(QMainWindow):
         divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
         layout.addWidget(divider)
 
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background-color: transparent;")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(6)
+
         if getattr(card_def, "description", None):
             desc = QLabel(str(card_def.description))
             desc.setWordWrap(True)
@@ -1929,7 +1943,7 @@ class SettingsWindow(QMainWindow):
                 padding-bottom: 6px;
                 """
             )
-            layout.addWidget(desc)
+            content_layout.addWidget(desc)
 
         for category_key, field_key in list(getattr(card_def, "field_refs", None) or []):
             field = self._resolve_field_def(category_key, field_key)
@@ -1937,7 +1951,22 @@ class SettingsWindow(QMainWindow):
                 continue
             entry = self._build_field_entry(field, category_key, section_key, card_def.key)
             if entry is not None:
-                layout.addWidget(entry)
+                content_layout.addWidget(entry)
+
+        layout.addWidget(content_widget)
+
+        if section_key == "formatting":
+            warning_widget = HintCard(
+                "Controlled by Loadouts",
+                LOADOUT_CONTROLLED_MESSAGE,
+                variant="warn",
+            )
+            layout.addWidget(warning_widget)
+            self._register_loadout_controlled_widgets(
+                section_key=section_key,
+                content_widget=content_widget,
+                warning_widget=warning_widget,
+            )
 
         return card
 
@@ -1970,6 +1999,12 @@ class SettingsWindow(QMainWindow):
         divider.setFixedHeight(1)
         divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
         layout.addWidget(divider)
+
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background-color: transparent;")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
 
         selector_wrap = _FlowLayoutHost(spacing=8)
         self._provider_behavior_group = QButtonGroup(self)
@@ -2038,7 +2073,20 @@ class SettingsWindow(QMainWindow):
             selector_wrap.flow_layout.addWidget(button)
             self._provider_behavior_buttons[behavior_key] = button
 
-        layout.addWidget(selector_wrap)
+        content_layout.addWidget(selector_wrap)
+        layout.addWidget(content_widget)
+
+        warning_widget = HintCard(
+            "Controlled by Loadouts",
+            LOADOUT_CONTROLLED_MESSAGE,
+            variant="warn",
+        )
+        layout.addWidget(warning_widget)
+        self._register_loadout_controlled_widgets(
+            section_key=section_key,
+            content_widget=content_widget,
+            warning_widget=warning_widget,
+        )
         self._sync_provider_behavior_default_page(force=True)
         return card
 
@@ -2163,13 +2211,33 @@ class SettingsWindow(QMainWindow):
         divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
         layout.addWidget(divider)
 
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background-color: transparent;")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(6)
+
         for field_key in group.get("fields", []):
             field = self._resolve_field_def(behavior_key, field_key)
             if field is None:
                 continue
             entry = self._build_field_entry(field, behavior_key, section_key, card_key, provider_key=behavior_key)
             if entry is not None:
-                layout.addWidget(entry)
+                content_layout.addWidget(entry)
+
+        layout.addWidget(content_widget)
+
+        warning_widget = HintCard(
+            "Controlled by Loadouts",
+            LOADOUT_CONTROLLED_MESSAGE,
+            variant="warn",
+        )
+        layout.addWidget(warning_widget)
+        self._register_loadout_controlled_widgets(
+            section_key=section_key,
+            content_widget=content_widget,
+            warning_widget=warning_widget,
+        )
 
         return group_card
 
@@ -2945,6 +3013,89 @@ class SettingsWindow(QMainWindow):
             else:
                 template_widget.setEnabled(is_custom)
 
+    def _is_loadouts_enabled_in_ui(self) -> bool:
+        widget = self.field_widgets.get("experimental.enable_loadouts")
+        if isinstance(widget, Tumbler):
+            return bool(widget.isChecked())
+        return bool(self.config_manager.get_setting("experimental", "enable_loadouts"))
+
+    def _is_loadout_controlled_full_key(self, full_key: str) -> bool:
+        normalized = str(full_key or "").strip()
+        if not normalized or "." not in normalized:
+            return False
+        category_key, _field_key = normalized.split(".", 1)
+        return (category_key == "formatting") or (category_key in PROVIDER_BEHAVIOR_GROUPS)
+
+    def _register_loadout_controlled_widgets(
+        self,
+        *,
+        section_key: str,
+        content_widget: QWidget,
+        warning_widget: QWidget,
+    ) -> None:
+        entry = {
+            "section_key": str(section_key or "").strip(),
+            "content_widget": content_widget,
+            "warning_widget": warning_widget,
+        }
+        self._loadout_controlled_cards.append(entry)
+        self._sync_loadout_controlled_sections()
+
+    def _sync_loadout_controlled_sections(self) -> None:
+        loadouts_enabled = self._is_loadouts_enabled_in_ui()
+        for entry in list(getattr(self, "_loadout_controlled_cards", []) or []):
+            section_key = str(entry.get("section_key") or "").strip()
+            content_widget = entry.get("content_widget")
+            warning_widget = entry.get("warning_widget")
+            if not isinstance(content_widget, QWidget) or not isinstance(warning_widget, QWidget):
+                continue
+            controlled = loadouts_enabled and section_key in {"formatting", "provider_behavior"}
+            content_widget.setVisible(not controlled)
+            warning_widget.setVisible(controlled)
+
+    def _on_loadouts_toggle_changed(self) -> None:
+        self._sync_loadout_controlled_sections()
+        self._clear_search_results()
+
+    def _create_loadouts_template(self) -> None:
+        target = self.config_manager.get_loadouts_path()
+        overwrite = False
+
+        if target.exists():
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Warning)
+            dialog.setWindowTitle("Overwrite Loadouts Template")
+            dialog.setText("loadouts.json already exists.")
+            dialog.setInformativeText(
+                "Creating a new template now will overwrite the existing file.\n\n"
+                f"Path:\n{target}"
+            )
+            overwrite_btn = dialog.addButton("Overwrite", QMessageBox.AcceptRole)
+            dialog.addButton("Cancel", QMessageBox.RejectRole)
+            dialog.exec()
+            if dialog.clickedButton() is not overwrite_btn:
+                return
+            overwrite = True
+
+        try:
+            write_template_file(target, overwrite=overwrite)
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Loadouts Template",
+                "Failed to write loadouts.json.\n\n"
+                f"{exc}",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Loadouts Template",
+            "loadouts.json is ready.\n\n"
+            f"Path:\n{target}\n\n"
+            "Edit it, save it, then restart or switch accounts/loadouts to apply changes.",
+        )
+
     def _on_search_text_changed(self, text):
         self.search_timer.stop()
         self.search_clear_action.setVisible(bool(text.strip()))
@@ -3106,6 +3257,8 @@ class SettingsWindow(QMainWindow):
         fuzzy_matches = []
 
         for target in self.search_targets:
+            if self._is_loadouts_enabled_in_ui() and self._is_loadout_controlled_full_key(target.get("full_key", "")):
+                continue
             score = self._score_match(query, target)
             if score >= 0.80:
                 direct_matches.append((score, target))
