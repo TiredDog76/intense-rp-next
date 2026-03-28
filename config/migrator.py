@@ -2,6 +2,13 @@ from typing import Dict, Any
 from config.formatting_presets import LEGACY_V2_FORMATTING_PRESET_MAP
 from drivers.providers import DriverProvider
 
+
+REMOVED_FIELDS = {
+    ("application_settings", "paged_settings_view"),
+    ("application_settings", "show_only_active_provider_behavior"),
+}
+
+
 class SettingsMigrator:
     @staticmethod
     def migrate(settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -51,7 +58,13 @@ class SettingsMigrator:
                     providers_credentials["select_least_used"] = bool(select_least_used)
                 if "reload_on_failure" not in providers_credentials and reload_on_failure is not None:
                     providers_credentials["reload_on_failure"] = bool(reload_on_failure)
-                    
+
+        # Migration: remove obsolete settings that no longer exist in the UI
+        for category_key, field_key in REMOVED_FIELDS:
+            category = settings.get(category_key)
+            if isinstance(category, dict):
+                category.pop(field_key, None)
+
         # Future migrations will be added here
         # e.g. v1 to v2
         

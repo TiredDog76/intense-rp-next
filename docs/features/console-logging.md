@@ -16,7 +16,7 @@ The console is a separate window that shows real-time logs with color-coded mess
 
 ### Enabling the Console
 
-:material-arrow-right: **Settings** → **Console Settings** → **Enable Console**
+:material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Console Window** → **Open a Console Window**
 
 When you turn this on, a console window pops up showing everything happening in real-time. You can minimize it, but it won't close until you disable it in settings.
 
@@ -41,7 +41,7 @@ Messages are color-coded so you can spot problems at a glance:
 
 Not a fan of the default colors? Sure then, pick your poison :upside_down:
 
-:material-arrow-right: **Settings** → **Console Settings** → **Color Palette**
+:material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Console Window** → **Color Theme**
 
 | Palette | Style |
 |---------|-------|
@@ -84,7 +84,7 @@ When the console is enabled, you get some control over where logs end up:
 
 Each output target has its own minimum severity threshold. Messages below the chosen level are silently dropped for that target, so you can keep your terminal quiet while still logging everything to a file, for example.
 
-:material-arrow-right: **Settings** → **System Settings** → **Logging Levels**
+:material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Logging Levels**
 
 | Setting | Controls | Default |
 |---------|----------|---------|
@@ -110,7 +110,7 @@ Setting a target to "Warning" means it only receives Warning and Error messages.
 
 But what if you want to keep logs for later? Enter Logfiles - IntenseRP can save logs to timestamped files for you to review or share.
 
-:material-arrow-right: **Settings** → **Logfiles** → **Enable Logfiles**
+:material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Log to Files** → **Log to Files**
 
 ![Logfiles settings](../pics/features/logfiles_settings.png)
 

@@ -278,12 +278,12 @@ When enabled, IntenseRP tries to click AI Studio's regenerate action if:
 
 Otherwise it opens a fresh chat.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Clean Regeneration**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Reuse Matching Chat**
 
-!!! note "No Multi-Slot Cache here (yet)"
-    Google AI Studio does **not** support Multi-Slot Cache right now.
+!!! note "No Search Older Matching Chats here (yet)"
+    Google AI Studio does **not** support **Search Older Matching Chats** right now.
 
-    So for AI Studio, Clean Regeneration only checks the currently remembered latest chat instead of trying older cached conversations.
+    So for AI Studio, **Reuse Matching Chat** only checks the currently remembered latest chat instead of trying older cached conversations.
 
 !!! note "Blocked chats are skipped"
     If AI Studio hard-censors a turn and **Anti-Censorship** kicks in, IntenseRP clears that chat from the clean-regeneration cache instead of reusing it later.
@@ -349,7 +349,7 @@ All macros are stripped before sending.
 | **Top P** | Default top-p value | `0.95` |
 | **Max Output Tokens** | Default output token budget | `65536` |
 | **Auto Login Redirect Timeout (s)** | Wait before falling back to manual Google completion | `15` |
-| **Clean Regeneration** | Regenerates on duplicate prompts | Off |
+| **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 
 ---
 

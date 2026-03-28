@@ -5,6 +5,7 @@ class BrandColors:
     TUMBLER_ACTIVE_BG = ACCENT
     TEXT_PRIMARY = "#ffffff"
     TEXT_SECONDARY = "#a0a0a0"
+    TEXT_SOFT = "#c2c7cf"
     TEXT_DISABLED = "#555555"
     WINDOW_BG = "#1e1e1e"
     SIDEBAR_BG = "#252526"
@@ -42,6 +43,6 @@ class BrandColors:
     BUTTON_MIN_WIDTH = 80  # Minimum width for buttons
     CARD_PADDING = 20  # Internal card padding
     CARD_SPACING = 24  # Space between cards
-    CONTENT_MAX_WIDTH = 820  # Max width for settings content (readability)
+    CONTENT_MAX_WIDTH = 920  # Max width for settings content (readability)
     DIVIDER_MARGIN_TOP = 16  # Top margin for section dividers
     DIVIDER_MARGIN_BOTTOM = 8  # Bottom margin for section dividers

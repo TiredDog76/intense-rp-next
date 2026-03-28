@@ -1,19 +1,21 @@
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
     QScrollArea, QLabel, QPushButton, QFrame, QMessageBox, QDialog, QListWidgetItem,
-    QLineEdit, QTextEdit, QComboBox
+    QLineEdit, QTextEdit, QComboBox, QSizePolicy, QLayout, QLayoutItem,
+    QGraphicsOpacityEffect, QButtonGroup
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QSize, Property, QPoint, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, QEvent, QUrl
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QBrush, QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, Signal, QTimer, QSize, QRect, Property, QPoint, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, QParallelAnimationGroup, QEvent, QUrl
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QBrush, QDesktopServices, QKeySequence, QShortcut, QPolygon, QCursor
 from difflib import SequenceMatcher
 import threading
 import os
 import shutil
+import re
 from pathlib import Path
 from config.formatting_presets import FORMATTING_PRESET_TEMPLATES
 from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
-from config.schema import SCHEMA, SettingType
+from config.schema import SCHEMA, SettingType, SETTINGS_SECTIONS, SETTINGS_CARDS, PROVIDER_BEHAVIOR_GROUPS
 from drivers.providers import DriverProvider
 from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, HintCard, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
@@ -152,6 +154,557 @@ class _SearchHighlightOverlay(QWidget):
 
         painter.end()
 
+
+class _SidebarSectionWidget(QWidget):
+    section_requested = Signal(str)
+    card_requested = Signal(str, str)
+
+    def __init__(self, section_key: str, title: str, icon_file: str, icon_loader, parent=None):
+        super().__init__(parent)
+        self.section_key = str(section_key)
+        self._icon_file = str(icon_file or "")
+        self._icon_loader = icon_loader
+        self._active = False
+        self._card_buttons = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+
+        self.top_button = QPushButton(str(title or ""))
+        self.top_button.setCursor(Qt.PointingHandCursor)
+        self.top_button.setFlat(True)
+        self.top_button.setCheckable(False)
+        self.top_button.setAttribute(Qt.WA_Hover, True)
+        self.top_button.clicked.connect(lambda: self.section_requested.emit(self.section_key))
+        layout.addWidget(self.top_button)
+
+        self.children = QWidget()
+        self.children.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.children_layout = QVBoxLayout(self.children)
+        self.children_layout.setContentsMargins(20, 2, 0, 4)
+        self.children_layout.setSpacing(1)
+        layout.addWidget(self.children)
+
+        self._update_top_button_style()
+        self.set_cards([])
+        self.set_expanded(False)
+
+    def set_cards(self, cards: list[tuple[str, str]]) -> None:
+        while self.children_layout.count():
+            item = self.children_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._card_buttons = {}
+
+        for card_key, card_title in cards:
+            button = QPushButton(str(card_title or ""))
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFlat(True)
+            button.setAttribute(Qt.WA_Hover, True)
+            button.clicked.connect(
+                lambda _checked=False, c=card_key: self.card_requested.emit(self.section_key, c)
+            )
+            button.setStyleSheet(
+                f"""
+                QPushButton {{
+                    text-align: left;
+                    color: {BrandColors.TEXT_SOFT};
+                    background-color: transparent;
+                    border: none;
+                    padding: 7px 14px;
+                    font-size: {BrandColors.FONT_SIZE_REGULAR};
+                    font-family: {BrandColors.FONT_FAMILY};
+                }}
+                QPushButton:hover {{
+                    color: {BrandColors.TEXT_PRIMARY};
+                }}
+                """
+            )
+            self.children_layout.addWidget(button)
+            self._card_buttons[str(card_key)] = button
+        self.children.adjustSize()
+
+    def set_active(self, active: bool) -> None:
+        self._active = bool(active)
+        self._update_top_button_style()
+
+    def set_active_card(self, card_key: str | None) -> None:
+        active_card = str(card_key or "").strip()
+        for key, button in self._card_buttons.items():
+            if key == active_card:
+                button.setStyleSheet(
+                    f"""
+                    QPushButton {{
+                        text-align: left;
+                        color: {BrandColors.TEXT_PRIMARY};
+                        background-color: transparent;
+                        border: none;
+                        padding: 7px 14px;
+                        font-size: {BrandColors.FONT_SIZE_REGULAR};
+                        font-family: {BrandColors.FONT_FAMILY};
+                        font-weight: 700;
+                    }}
+                    QPushButton:hover {{
+                        color: {BrandColors.TEXT_PRIMARY};
+                    }}
+                    """
+                )
+            else:
+                button.setStyleSheet(
+                    f"""
+                    QPushButton {{
+                        text-align: left;
+                        color: {BrandColors.TEXT_SOFT};
+                        background-color: transparent;
+                        border: none;
+                        padding: 7px 14px;
+                        font-size: {BrandColors.FONT_SIZE_REGULAR};
+                        font-family: {BrandColors.FONT_FAMILY};
+                    }}
+                    QPushButton:hover {{
+                        color: {BrandColors.TEXT_PRIMARY};
+                    }}
+                    """
+                )
+
+    def set_expanded(self, expanded: bool) -> None:
+        self.children.setVisible(bool(expanded) and bool(self._card_buttons))
+
+    def _update_top_button_style(self) -> None:
+        if self._active:
+            bg = BrandColors.CATEGORY_ACTIVE_BG
+            border = BrandColors.CATEGORY_ACTIVE_BORDER
+            fg = BrandColors.TEXT_PRIMARY
+            weight = "700"
+        else:
+            bg = "transparent"
+            border = "transparent"
+            fg = BrandColors.TEXT_SECONDARY
+            weight = "500"
+
+        self.top_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                text-align: left;
+                background-color: {bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: 8px;
+                padding: 12px 14px;
+                font-size: {BrandColors.FONT_SIZE_LARGE};
+                font-family: {BrandColors.FONT_FAMILY};
+                font-weight: {weight};
+            }}
+            QPushButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER if not self._active else BrandColors.CATEGORY_ACTIVE_BG};
+                color: {BrandColors.TEXT_PRIMARY};
+            }}
+            """
+        )
+
+        if self._icon_file:
+            icon_color = BrandColors.TEXT_PRIMARY if self._active else BrandColors.TEXT_SECONDARY
+            self.top_button.setIcon(self._icon_loader(self._icon_file, icon_color))
+            self.top_button.setIconSize(QSize(18, 18))
+
+
+class _FlowLayout(QLayout):
+    def __init__(self, parent=None, margin=0, spacing=8):
+        super().__init__(parent)
+        self._items: list[QLayoutItem] = []
+        self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientations()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._do_layout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        return size
+
+    def _do_layout(self, rect: QRect, test_only: bool):
+        x = rect.x()
+        y = rect.y()
+        line_height = 0
+
+        for item in self._items:
+            widget = item.widget()
+            if widget is not None and not widget.isVisible():
+                continue
+
+            next_x = x + item.sizeHint().width() + self.spacing()
+            if line_height > 0 and next_x - self.spacing() > rect.right() and x > rect.x():
+                x = rect.x()
+                y = y + line_height + self.spacing()
+                next_x = x + item.sizeHint().width() + self.spacing()
+                line_height = 0
+
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+
+        return y + line_height - rect.y()
+
+
+class _FlowLayoutHost(QWidget):
+    def __init__(self, spacing: int = 8, parent=None):
+        super().__init__(parent)
+        self._flow_layout = _FlowLayout(self, margin=0, spacing=spacing)
+        self.setLayout(self._flow_layout)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    @property
+    def flow_layout(self) -> _FlowLayout:
+        return self._flow_layout
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self._flow_layout.heightForWidth(width)
+
+    def sizeHint(self):
+        parent_width = self.parentWidget().width() if self.parentWidget() is not None else 520
+        width = max(260, int(parent_width))
+        height = max(42, self._flow_layout.heightForWidth(width))
+        return QSize(width, height)
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._flow_layout.invalidate()
+        self.updateGeometry()
+
+
+class _BehaviorSectionDivider(QWidget):
+    def __init__(self, title: str, icon_file: str, parent=None):
+        super().__init__(parent)
+        self._title = str(title or "")
+        self._icon_file = str(icon_file or "")
+        self.setMinimumHeight(44)
+
+        self._icon_label = QLabel(self)
+        self._icon_label.setStyleSheet("background-color: transparent;")
+        self._icon_label.setFixedSize(18, 18)
+
+        self._text_label = QLabel(self._title, self)
+        self._text_label.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_PRIMARY};
+            font-size: {BrandColors.FONT_SIZE_LARGE};
+            font-weight: 700;
+            background-color: {BrandColors.SIDEBAR_BG};
+            padding: 0 6px;
+            """
+        )
+
+        pixmap = IconUtils.get_pixmap(
+            self._icon_file,
+            color=BrandColors.ACCENT,
+            size=18,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not pixmap.isNull():
+            self._icon_label.setPixmap(pixmap)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        inset = max(48, int(self.width() * 0.15))
+        text_size = self._text_label.sizeHint()
+        icon_size = self._icon_label.size()
+        total_width = icon_size.width() + 10 + text_size.width()
+        y = (self.height() - max(icon_size.height(), text_size.height())) // 2
+        self._icon_label.move(inset, y + max(0, (text_size.height() - icon_size.height()) // 2))
+        self._text_label.setGeometry(
+            inset + icon_size.width() + 10,
+            y,
+            text_size.width(),
+            text_size.height(),
+        )
+        self._content_bounds = QRect(inset, y, total_width, max(icon_size.height(), text_size.height()))
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(QPen(QColor(BrandColors.INPUT_BORDER), 1))
+
+        gap_rect = getattr(self, "_content_bounds", QRect())
+        gap_left = max(0, gap_rect.left() - 12)
+        gap_right = min(self.width(), gap_rect.right() + 12)
+        center_y = self.height() // 2
+
+        if gap_left > 0:
+            painter.drawLine(0, center_y, gap_left, center_y)
+        if gap_right < self.width():
+            painter.drawLine(gap_right, center_y, self.width(), center_y)
+        painter.end()
+
+
+class _SettingInfoBubble(QWidget):
+    clicked = Signal(str)
+
+    def __init__(self, parent: QWidget):
+        super().__init__(parent)
+        self._docs_url = ""
+        self._arrow_edge = "bottom"
+        self._arrow_x = 24
+        self._arrow_size = 10
+        self._current_anchor = None
+
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WA_NoMousePropagation, True)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.hide()
+
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self._opacity_effect.setOpacity(0.0)
+        self.setGraphicsEffect(self._opacity_effect)
+
+        self._pos_anim = QPropertyAnimation(self, b"pos")
+        self._pos_anim.setDuration(160)
+        self._pos_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        self._opacity_anim = QPropertyAnimation(self._opacity_effect, b"opacity")
+        self._opacity_anim.setDuration(160)
+        self._opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        self._anim_group = QParallelAnimationGroup(self)
+        self._anim_group.addAnimation(self._pos_anim)
+        self._anim_group.addAnimation(self._opacity_anim)
+
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(16, 14, 16, 14 + self._arrow_size)
+        self._layout.setSpacing(6)
+
+        self._title = QLabel("")
+        self._title.setWordWrap(True)
+        self._title.setStyleSheet(
+            f"""
+            color: {BrandColors.ACCENT};
+            font-size: {BrandColors.FONT_SIZE_LARGE};
+            font-weight: 700;
+            background-color: transparent;
+            """
+        )
+        self._title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._layout.addWidget(self._title)
+
+        self._body = QLabel("")
+        self._body.setWordWrap(True)
+        self._body.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_SOFT};
+            font-size: {BrandColors.FONT_SIZE_SMALL};
+            background-color: transparent;
+            """
+        )
+        self._body.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._layout.addWidget(self._body)
+
+        footer = QWidget()
+        footer.setStyleSheet("background-color: #111214;")
+        footer.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(0, 4, 0, 0)
+        footer_layout.setSpacing(6)
+
+        self._footer_text = QLabel("Click for More Info")
+        self._footer_text.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_SECONDARY};
+            font-size: {BrandColors.FONT_SIZE_SMALL};
+            background-color: #111214;
+            """
+        )
+        self._footer_text.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        footer_layout.addWidget(self._footer_text, 0)
+
+        self._footer_icon = QLabel()
+        self._footer_icon.setStyleSheet("background-color: #111214;")
+        self._footer_icon.setFixedSize(12, 12)
+        self._footer_icon.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        footer_layout.addWidget(self._footer_icon, 0)
+        footer_layout.addStretch(1)
+        self._layout.addWidget(footer)
+
+    def set_anchor(self, anchor_widget: QWidget | None):
+        self._current_anchor = anchor_widget
+
+    def show_for(
+        self,
+        anchor_widget: QWidget,
+        title: str,
+        body: str,
+        docs_url: str | None,
+        preferred_global_pos: QPoint | None = None,
+    ) -> None:
+        self._current_anchor = anchor_widget
+        self._docs_url = str(docs_url or "").strip()
+        self._title.setText(str(title or ""))
+        self._body.setText(str(body or ""))
+        self._footer_text.setVisible(bool(self._docs_url))
+        self._footer_icon.setVisible(bool(self._docs_url))
+
+        icon = IconUtils.get_pixmap(
+            "external-link.svg",
+            color=BrandColors.TEXT_SECONDARY,
+            size=12,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not icon.isNull():
+            self._footer_icon.setPixmap(icon)
+
+        width = min(360, max(280, self.parentWidget().width() - 24))
+        self.setFixedWidth(width)
+        self._layout.setContentsMargins(16, 14, 16, 14 + self._arrow_size)
+        self.adjustSize()
+
+        parent = self.parentWidget()
+        if parent is None:
+            return
+
+        anchor_rect = QRect(
+            parent.mapFromGlobal(anchor_widget.mapToGlobal(QPoint(0, 0))),
+            anchor_widget.size(),
+        )
+        pointer_local = parent.mapFromGlobal(preferred_global_pos or QCursor.pos())
+        spacing = 12
+        bubble_size = self.sizeHint()
+
+        place_above = (pointer_local.y() + spacing + bubble_size.height()) > parent.height()
+        if place_above:
+            self._arrow_edge = "bottom"
+            final_y = min(anchor_rect.top() - bubble_size.height() - spacing, pointer_local.y() - bubble_size.height() - 14)
+            final_y = max(8, final_y)
+            self._layout.setContentsMargins(16, 14, 16, 14 + self._arrow_size)
+        else:
+            self._arrow_edge = "top"
+            final_y = max(anchor_rect.bottom() + spacing, pointer_local.y() + 14)
+            final_y = min(parent.height() - bubble_size.height() - 8, final_y)
+            self._layout.setContentsMargins(16, 14 + self._arrow_size, 16, 14)
+
+        final_x = pointer_local.x() - min(36, bubble_size.width() // 5)
+        final_x = max(8, min(final_x, parent.width() - bubble_size.width() - 8))
+        self._arrow_x = max(18, min(pointer_local.x() - final_x, bubble_size.width() - 18))
+
+        final_pos = QPoint(final_x, final_y)
+        start_pos = QPoint(final_x, final_y + 8)
+
+        self.move(start_pos)
+        self.show()
+        self.raise_()
+
+        self._pos_anim.stop()
+        self._opacity_anim.stop()
+        self._pos_anim.setStartValue(start_pos)
+        self._pos_anim.setEndValue(final_pos)
+        self._opacity_anim.setStartValue(0.0)
+        self._opacity_anim.setEndValue(1.0)
+        self._anim_group.start()
+        self.update()
+
+    def hide_now(self) -> None:
+        self._anim_group.stop()
+        self.hide()
+        self._current_anchor = None
+
+    def contains_global(self, global_pos: QPoint) -> bool:
+        local = self.mapFromGlobal(global_pos)
+        return self.rect().contains(local)
+
+    def mousePressEvent(self, event):
+        event.accept()
+        if self._docs_url:
+            self.clicked.emit(self._docs_url)
+
+    def mouseReleaseEvent(self, event):
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        event.accept()
+
+    def enterEvent(self, event):
+        event.accept()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        event.accept()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        bg = QColor("#111214")
+        border = QColor(BrandColors.INPUT_BORDER)
+        rect = self.rect()
+
+        if self._arrow_edge == "top":
+            bubble_rect = rect.adjusted(0, self._arrow_size, 0, 0)
+            triangle = QPolygon(
+                [
+                    QPoint(self._arrow_x, 0),
+                    QPoint(self._arrow_x - self._arrow_size, self._arrow_size),
+                    QPoint(self._arrow_x + self._arrow_size, self._arrow_size),
+                ]
+            )
+        else:
+            bubble_rect = rect.adjusted(0, 0, 0, -self._arrow_size)
+            triangle = QPolygon(
+                [
+                    QPoint(self._arrow_x, rect.height()),
+                    QPoint(self._arrow_x - self._arrow_size, rect.height() - self._arrow_size),
+                    QPoint(self._arrow_x + self._arrow_size, rect.height() - self._arrow_size),
+                ]
+            )
+
+        painter.setPen(QPen(border, 1))
+        painter.setBrush(QBrush(bg))
+        painter.drawRoundedRect(bubble_rect, 10, 10)
+        painter.drawPolygon(triangle)
+        painter.end()
+
 class SettingsWindow(QMainWindow):
     settings_saved = Signal(set)
     restart_requested = Signal()
@@ -182,6 +735,7 @@ class SettingsWindow(QMainWindow):
         DriverProvider.AI_STUDIO: "aistudio_behavior",
     }
 
+
     def __init__(self, config_manager: ConfigManager, parent=None):
         super().__init__(parent)
         self.config_manager = config_manager
@@ -192,16 +746,27 @@ class SettingsWindow(QMainWindow):
         self.unsaved_changes = False
         self.field_widgets = {} # Map "category.key" -> widget
         self.setting_rows = {} # Map "category.key" -> SettingRow (for dependency toggling)
-        self.category_widgets = {}  # Map category name -> widget (for scrolling)
-        self.category_widgets_by_key = {}  # Map category key -> card widget
-        self.category_items_by_key = {}  # Map category key -> QListWidgetItem
         self._category_defs_by_key = {category.key: category for category in SCHEMA}
         self._category_order = [category.key for category in SCHEMA]
-        self._built_category_keys = set()
-        self._pending_category_build_keys = []
+        self._section_defs = list(SETTINGS_SECTIONS)
+        self._section_defs_by_key = {section.key: section for section in self._section_defs}
+        self._card_defs_by_key = dict(SETTINGS_CARDS)
+        self._section_widgets = {}
+        self._card_widgets = {}
+        self._sidebar_sections = {}
+        self._selected_section_key = None
+        self._selected_card_key = None
+        self._field_locations = {}
+        self._field_display_key = {}
+        self._display_rows = {}
+        self._dynamic_card_titles = {}
+        self._provider_behavior_buttons = {}
+        self._provider_behavior_selected_key = None
+        self._provider_behavior_user_selected = False
+        self._provider_behavior_selector_card_key = "provider_defaults"
+        self._provider_behavior_group_card_keys = {}
         self._persistent_profile_entries = {}
         self._persistent_profile_options_loaded = False
-        self._paged_settings_view_enabled = None
         self._active_docs_focus_container = None
         self._suppress_dirty_tracking = False
 
@@ -217,13 +782,22 @@ class SettingsWindow(QMainWindow):
 
     def _get_sidebar_icon(self, icon_file: str, color: str, size: int = 18) -> QIcon:
         use_sidebar_subdir = ("/" not in icon_file) and ("\\" not in icon_file)
-        return IconUtils.get_icon(
+        sidebar_exists = use_sidebar_subdir and Path(IconUtils._icon_path(icon_file, subdir="sidebar")).exists()
+        icon = IconUtils.get_icon(
             icon_file,
             color=color,
             size=size,
             widget=self,
-            subdir="sidebar" if use_sidebar_subdir else None,
+            subdir="sidebar" if sidebar_exists else None,
         )
+        if icon.isNull() and use_sidebar_subdir and not sidebar_exists:
+            icon = IconUtils.get_icon(
+                icon_file,
+                color=color,
+                size=size,
+                widget=self,
+            )
+        return icon
 
     def _create_card_header(self, category_key: str, title: str) -> QWidget:
         header = QWidget()
@@ -349,6 +923,20 @@ class SettingsWindow(QMainWindow):
     def open_docs_for_shortcut(self) -> bool:
         return self._open_docs_for_focused_widget()
 
+    def present(self) -> None:
+        maximize = bool(self.config_manager.get_setting("application_settings", "open_settings_full_screen"))
+        if not self.isVisible():
+            if maximize:
+                self.showMaximized()
+            else:
+                self.showNormal()
+                self.show()
+        else:
+            if maximize and not self.isMaximized():
+                self.showMaximized()
+        self.activateWindow()
+        self.raise_()
+
     def _focus_search_input(self) -> None:
         self.search_input.setFocus(Qt.ShortcutFocusReason)
         self.search_input.selectAll()
@@ -359,10 +947,6 @@ class SettingsWindow(QMainWindow):
         if field.type == SettingType.BOOLEAN:
             widget = Tumbler()
             widget.stateChanged.connect(self._on_setting_changed)
-            if category_key == "application_settings" and field.key == "show_only_active_provider_behavior":
-                widget.stateChanged.connect(self._sync_behavior_category_visibility)
-            if category_key == "application_settings" and field.key == "paged_settings_view":
-                widget.stateChanged.connect(self._sync_paged_settings_view)
         elif field.type == SettingType.DIRECTORY:
             dialog_title = f"Select {field.label}" if field.label else "Select Directory"
             widget = DirectoryEntry(dialog_title=dialog_title)
@@ -392,12 +976,33 @@ class SettingsWindow(QMainWindow):
         elif field.type == SettingType.DROPDOWN:
             widget = StyledComboBox()
             if field.options:
-                widget.addItems(field.options)
+                for option in field.options:
+                    widget.addItem(str(option))
             if not getattr(field, "transient", False):
                 widget.currentTextChanged.connect(self._on_setting_changed)
 
             if category_key == "providers_credentials" and field.key == "provider":
-                widget.currentTextChanged.connect(self._sync_behavior_category_visibility)
+                widget.setIconSize(QSize(16, 16))
+                for index in range(widget.count()):
+                    provider_name = widget.itemText(index)
+                    icon_file = {
+                        "DeepSeek": "providers/deepseek.svg",
+                        "GLM Chat": "providers/zai.svg",
+                        "Moonshot": "providers/moonshot.svg",
+                        "QwenLM": "providers/qwen.svg",
+                        "Google AI Studio": "providers/aistudio.svg",
+                    }.get(provider_name)
+                    if not icon_file:
+                        continue
+                    icon = IconUtils.get_icon(
+                        icon_file,
+                        color=BrandColors.TEXT_PRIMARY,
+                        size=16,
+                        widget=widget,
+                    )
+                    if not icon.isNull():
+                        widget.setItemIcon(index, icon)
+                widget.currentTextChanged.connect(lambda *_: self._sync_provider_behavior_default_page())
             
             # Specific logic for formatting preset
             if field.key == "formatting_preset":
@@ -521,11 +1126,11 @@ class SettingsWindow(QMainWindow):
             self._on_preset_changed(preset_widget.currentText())
 
         self._sync_config_storage_from_active_dir()
-        self._sync_behavior_category_visibility()
-        self._sync_paged_settings_view()
+        self._sync_provider_behavior_default_page(force=True)
         self._sync_application_settings_info()
         if refresh_profiles:
             self._maybe_refresh_persistent_profile_options(force=True)
+        self._update_dirty_markers()
 
     def _build_category_card(self, category_key: str) -> QWidget | None:
         category = self._category_defs_by_key.get(category_key)
@@ -733,7 +1338,7 @@ class SettingsWindow(QMainWindow):
 
     def _maybe_refresh_persistent_profile_options(self, category_key: str | None = None, *, force: bool = False) -> None:
         resolved_key = str(category_key or self._get_selected_category_key() or "").strip()
-        if resolved_key != "system_settings":
+        if resolved_key not in {"system_settings", "provider_login"}:
             return
         if (not force) and self._persistent_profile_options_loaded:
             return
@@ -761,6 +1366,17 @@ class SettingsWindow(QMainWindow):
                 break
 
     def _init_ui(self):
+        self.search_targets = []
+        self.field_defs = {}
+        self._dep_override_cache = {}
+        self.is_auto_scrolling = False
+        self._auto_scroll_reset_timer = QTimer()
+        self._auto_scroll_reset_timer.setSingleShot(True)
+        self._auto_scroll_reset_timer.timeout.connect(self._end_auto_scroll)
+
+        for category in SCHEMA:
+            for field in self._iter_fields(category.fields):
+                self.field_defs[f"{category.key}.{field.key}"] = field
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -768,134 +1384,164 @@ class SettingsWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Left Sidebar (Categories + Search)
         left_widget = QWidget()
-        left_widget.setFixedWidth(250)
+        left_widget.setFixedWidth(320)
+        left_widget.setStyleSheet(f"background-color: {BrandColors.SIDEBAR_BG};")
         left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setContentsMargins(12, 12, 12, 0)
         left_layout.setSpacing(0)
 
-        self.category_list = QListWidget()
-        self.category_list.setFixedWidth(250)
-        self.category_list.setSpacing(4)
-        self.category_list.setIconSize(QSize(18, 18))
-        self.category_list.setStyleSheet(f"""
-            QListWidget {{
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setFrameShape(QFrame.NoFrame)
+        self.sidebar_scroll.setStyleSheet(
+            f"""
+            QScrollArea {{
                 background-color: {BrandColors.SIDEBAR_BG};
                 border: none;
-                outline: none;
-                padding: 8px;
-                font-size: {BrandColors.FONT_SIZE_REGULAR}; /* Applied to widget directly */
-                font-family: {BrandColors.FONT_FAMILY};
-            }}
-            QListWidget::item {{
-                padding: 10px 12px;
-                color: {BrandColors.TEXT_SECONDARY};
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 8px;
-            }}
-            QListWidget::item:selected {{
-                background-color: {BrandColors.CATEGORY_ACTIVE_BG};
-                color: {BrandColors.TEXT_PRIMARY};
-                border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
-                font-weight: 600;
-            }}
-            QListWidget::item:selected:hover {{
-                background-color: {BrandColors.CATEGORY_ACTIVE_BG};
-                color: {BrandColors.TEXT_PRIMARY};
-                border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
-            }}
-            QListWidget::item:hover {{
-                background-color: {BrandColors.ITEM_HOVER};
-                color: {BrandColors.TEXT_PRIMARY};
             }}
             QScrollBar:vertical {{
                 border: none;
                 background: {BrandColors.SIDEBAR_BG};
-                width: 12px;
+                width: 10px;
                 margin: 0px;
-                border-radius: 6px;
             }}
             QScrollBar::handle:vertical {{
                 background: #555555;
-                min-height: 20px;
-                border-radius: 6px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background: #666666;
+                border-radius: 5px;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
-                subcontrol-position: bottom;
-                subcontrol-origin: margin;
             }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
             }}
-        """)
-        left_layout.addWidget(self.category_list, 1)
+            """
+        )
+        self.sidebar_content = QWidget()
+        self.sidebar_layout = QVBoxLayout(self.sidebar_content)
+        self.sidebar_layout.setContentsMargins(0, 0, 0, 12)
+        self.sidebar_layout.setSpacing(4)
+        self.sidebar_scroll.setWidget(self.sidebar_content)
+        left_layout.addWidget(self.sidebar_scroll, 1)
 
-        # Search bar at bottom of sidebar
+        self.search_nav = QWidget()
+        self.search_nav.setStyleSheet("background-color: transparent;")
+        search_nav_layout = QHBoxLayout(self.search_nav)
+        search_nav_layout.setContentsMargins(0, 0, 0, 6)
+        search_nav_layout.setSpacing(6)
+        search_nav_layout.addStretch(1)
+
+        compact_button_style = f"""
+            QPushButton {{
+                background-color: {BrandColors.INPUT_BG};
+                color: {BrandColors.TEXT_PRIMARY};
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 6px;
+                padding: 5px;
+            }}
+            QPushButton:hover {{
+                border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
+                background-color: {BrandColors.ITEM_HOVER};
+            }}
+            QPushButton:disabled {{
+                color: {BrandColors.TEXT_DISABLED};
+                border: 1px solid {BrandColors.INPUT_BORDER};
+            }}
+        """
+
+        self.search_prev_btn = QPushButton()
+        self.search_prev_btn.setCursor(Qt.PointingHandCursor)
+        self.search_prev_btn.setFixedSize(28, 28)
+        self.search_prev_btn.setStyleSheet(compact_button_style)
+        self.search_prev_btn.setIcon(
+            IconUtils.get_icon("chevron-left.svg", color=BrandColors.TEXT_PRIMARY, size=14, widget=self.search_prev_btn)
+        )
+        self.search_prev_btn.clicked.connect(self._goto_previous_search_match)
+        search_nav_layout.addWidget(self.search_prev_btn)
+
+        self.search_status_label = QLabel("0 / 0")
+        self.search_status_label.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_SOFT};
+            font-size: {BrandColors.FONT_SIZE_REGULAR};
+            font-family: {BrandColors.FONT_FAMILY};
+            padding: 0 2px;
+            min-width: 52px;
+            """
+        )
+        self.search_status_label.setAlignment(Qt.AlignCenter)
+        search_nav_layout.addWidget(self.search_status_label)
+
+        self.search_next_btn = QPushButton()
+        self.search_next_btn.setCursor(Qt.PointingHandCursor)
+        self.search_next_btn.setFixedSize(28, 28)
+        self.search_next_btn.setStyleSheet(compact_button_style)
+        self.search_next_btn.setIcon(
+            IconUtils.get_icon("chevron-right.svg", color=BrandColors.TEXT_PRIMARY, size=14, widget=self.search_next_btn)
+        )
+        self.search_next_btn.clicked.connect(self._goto_next_search_match)
+        search_nav_layout.addWidget(self.search_next_btn)
+        self.search_nav.hide()
+        left_layout.addWidget(self.search_nav, 0)
+
         self.search_bar = QWidget()
-        self.search_bar.setStyleSheet(f"""
+        self.search_bar.setStyleSheet(
+            f"""
             QWidget {{
                 background-color: {BrandColors.SIDEBAR_BG};
                 border-top: 1px solid {BrandColors.INPUT_BORDER};
             }}
-        """)
+            """
+        )
         search_layout = QHBoxLayout(self.search_bar)
-        search_layout.setContentsMargins(8, 6, 8, 6)
+        search_layout.setContentsMargins(0, 8, 0, 8)
         search_layout.setSpacing(6)
-
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search settings…")
-        self.search_input.setStyleSheet(f"""
+        self.search_input.setPlaceholderText("Search settings...")
+        self.search_input.setStyleSheet(
+            f"""
             QLineEdit {{
                 background-color: {BrandColors.INPUT_BG};
                 color: {BrandColors.TEXT_PRIMARY};
                 border: 2px solid {BrandColors.INPUT_BORDER};
                 border-radius: 6px;
-                padding: 6px 10px 6px 28px;
+                padding: 7px 10px 7px 28px;
                 font-size: {BrandColors.FONT_SIZE_REGULAR};
                 font-family: {BrandColors.FONT_FAMILY};
             }}
             QLineEdit:focus {{
                 border: 2px solid {BrandColors.ACCENT};
             }}
-        """)
-        search_icon = IconUtils.get_icon(
-            IconType.SEARCH,
-            color=BrandColors.TEXT_SECONDARY,
-            size=16,
-            widget=self.search_input,
+            """
         )
-        self.search_input.addAction(search_icon, QLineEdit.LeadingPosition)
+        self.search_input.addAction(
+            IconUtils.get_icon(IconType.SEARCH, color=BrandColors.TEXT_SECONDARY, size=16, widget=self.search_input),
+            QLineEdit.LeadingPosition,
+        )
+        self.search_clear_action = self.search_input.addAction(
+            IconUtils.get_icon("x.svg", color=BrandColors.TEXT_SECONDARY, size=16, widget=self.search_input),
+            QLineEdit.TrailingPosition,
+        )
+        self.search_clear_action.setVisible(False)
+        self.search_clear_action.triggered.connect(self._clear_search)
         self.search_input.textChanged.connect(self._on_search_text_changed)
         search_layout.addWidget(self.search_input, 1)
-
         left_layout.addWidget(self.search_bar, 0)
-        main_layout.addWidget(left_widget)
+        main_layout.addWidget(left_widget, 0)
 
-        # Right Content Area
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(30, 30, 30, 30)
-        
-        # Scroll Area for Settings
+        right_layout.setContentsMargins(30, 24, 30, 24)
+        right_layout.setSpacing(0)
+
         self.scroll_area = SmoothScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
-        
-        # Connect scroll signal
         self.scroll_area.verticalScrollBar().valueChanged.connect(self._on_scroll)
-        self.is_auto_scrolling = False
-        self._auto_scroll_reset_timer = QTimer()
-        self._auto_scroll_reset_timer.setSingleShot(True)
-        self._auto_scroll_reset_timer.timeout.connect(self._end_auto_scroll)
-        
-        # Custom Scrollbar Styling
-        self.scroll_area.setStyleSheet(f"""
+        self.scroll_area.verticalScrollBar().valueChanged.connect(self._hide_info_bubble)
+        self.scroll_area.setStyleSheet(
+            f"""
             QScrollArea {{
                 background-color: {BrandColors.WINDOW_BG};
                 border: none;
@@ -917,46 +1563,32 @@ class SettingsWindow(QMainWindow):
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
-                subcontrol-position: bottom;
-                subcontrol-origin: margin;
             }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
             }}
-        """)
-        
+            """
+        )
+
         self.scroll_content = QWidget()
         self.scroll_content.setMaximumWidth(BrandColors.CONTENT_MAX_WIDTH)
         self.scroll_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_layout.setContentsMargins(0, 0, 10, 0) # Add right margin for scrollbar space
+        self.scroll_layout.setContentsMargins(0, 0, 10, 0)
         self.scroll_layout.setSpacing(BrandColors.CARD_SPACING)
         self.scroll_layout.setAlignment(Qt.AlignTop)
-        
-        self.search_targets = []  # List of searchable setting widgets
-
-        # Generate sidebar items
-        for category in SCHEMA:
-            item = QListWidgetItem(category.name)
-            item.setData(Qt.UserRole, category.key)
-            icon_file = self.SIDEBAR_ICON_MAP.get(category.key)
-            if icon_file:
-                item.setData(Qt.UserRole + 1, icon_file)
-                item.setIcon(self._get_sidebar_icon(icon_file, BrandColors.TEXT_SECONDARY))
-            self.category_list.addItem(item)
-            self.category_items_by_key[category.key] = item
-
         self.scroll_area.setWidget(self.scroll_content)
         self.scroll_area.setAlignment(Qt.AlignHCenter)
-        right_layout.addWidget(self.scroll_area)
+        right_layout.addWidget(self.scroll_area, 1)
 
-        # Bottom Buttons
         button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 20, 0, 0) # Add top margin to separate from content
-        button_layout.addStretch()
-        
+        button_layout.setContentsMargins(0, 18, 0, 0)
+        button_layout.setSpacing(12)
+        button_layout.addStretch(1)
+
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setCursor(Qt.PointingHandCursor)
-        self.cancel_btn.setStyleSheet(f"""
+        self.cancel_btn.setStyleSheet(
+            f"""
             QPushButton {{
                 background-color: {BrandColors.SIDEBAR_BG};
                 color: {BrandColors.TEXT_PRIMARY};
@@ -968,56 +1600,44 @@ class SettingsWindow(QMainWindow):
             QPushButton:hover {{
                 background-color: {BrandColors.ITEM_HOVER};
             }}
-        """)
+            """
+        )
         IconUtils.apply_icon(self.cancel_btn, IconType.CANCEL, BrandColors.TEXT_PRIMARY, size=16, y_offset=2)
         self.cancel_btn.clicked.connect(self.close)
         button_layout.addWidget(self.cancel_btn)
-        
+
         self.save_btn = QPushButton("Save")
         self.save_btn.setCursor(Qt.PointingHandCursor)
-        self.save_btn.setStyleSheet(f"""
+        self.save_btn.setStyleSheet(
+            f"""
             QPushButton {{
                 background-color: {BrandColors.ACCENT};
                 color: {BrandColors.TEXT_PRIMARY};
                 border: none;
                 padding: 10px 20px;
                 border-radius: 6px;
-                font-weight: bold;
+                font-weight: 700;
                 font-size: {BrandColors.FONT_SIZE_REGULAR};
             }}
             QPushButton:hover {{
                 background-color: #4a80e0;
             }}
-        """)
+            """
+        )
         IconUtils.apply_icon(self.save_btn, IconType.CONFIRM, BrandColors.TEXT_PRIMARY, size=16, y_offset=2)
         self.save_btn.clicked.connect(self.save_settings)
         button_layout.addWidget(self.save_btn)
-        
         right_layout.addLayout(button_layout)
-        main_layout.addWidget(right_widget)
+        main_layout.addWidget(right_widget, 1)
 
-        # Setup dependency tracking
-        self.field_defs = {} # Map "category.key" -> SettingField
-        self._dep_override_cache = {} # Map "category.key" -> underlying value (when overriding display value)
-        for category in SCHEMA:
-            for field in self._iter_fields(category.fields):
-                full_key = f"{category.key}.{field.key}"
-                self.field_defs[full_key] = field
-            for field in category.fields:
-                if field.type in {SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.HINT}:
-                    continue
-                self._register_search_target(category, field)
-
-        # Debounce timer for updates
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
         self.update_timer.setInterval(100)
         self.update_timer.timeout.connect(self._update_dependencies)
 
-        # Debounce timer for settings search
         self.search_timer = QTimer()
         self.search_timer.setSingleShot(True)
-        self.search_timer.setInterval(300)
+        self.search_timer.setInterval(260)
         self.search_timer.timeout.connect(self._perform_search)
 
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
@@ -1029,17 +1649,704 @@ class SettingsWindow(QMainWindow):
         self.scroll_area.viewport().installEventFilter(self._highlight_overlay)
         self.scroll_area.verticalScrollBar().valueChanged.connect(self._highlight_overlay.update_target_geometry)
 
-        self._category_build_timer = QTimer(self)
-        self._category_build_timer.setSingleShot(True)
-        self._category_build_timer.timeout.connect(self._build_next_queued_category)
+        self._info_bubble = _SettingInfoBubble(self.scroll_area.viewport())
+        self._info_bubble.clicked.connect(self._open_docs_url)
+        self._info_bubble.installEventFilter(self)
+        for child in self._info_bubble.findChildren(QWidget):
+            child.installEventFilter(self)
+        self._info_timer = QTimer(self)
+        self._info_timer.setSingleShot(True)
+        self._info_timer.setInterval(360)
+        self._info_timer.timeout.connect(self._show_pending_info_bubble)
+        self._info_hide_timer = QTimer(self)
+        self._info_hide_timer.setSingleShot(True)
+        self._info_hide_timer.setInterval(140)
+        self._info_hide_timer.timeout.connect(self._hide_info_bubble)
+        self._pending_info_anchor = None
+        self._active_info_anchor = None
+        self._pending_info_pos = None
+        self._search_matches = []
+        self._search_match_index = -1
 
-        self.category_list.itemClicked.connect(self._on_category_clicked)
-        self.category_list.currentItemChanged.connect(self._on_category_selection_changed)
+        self._build_sections()
+        first_section = self._section_defs[0].key if self._section_defs else None
+        if first_section:
+            self._set_active_section(first_section, scroll_to_top=False)
 
-        # Preload the first two visible cards because both are usually visible right
-        # away, then let the remaining cards build progressively.
-        self.category_list.setCurrentRow(0)
-        self._preload_initial_categories(target_count=2)
+    def _build_sections(self) -> None:
+        for section in self._section_defs:
+            sidebar = _SidebarSectionWidget(
+                section.key,
+                section.label,
+                section.icon,
+                self._get_sidebar_icon,
+                parent=self.sidebar_content,
+            )
+            sidebar.set_cards(self._sidebar_cards_for_section(section.key))
+            sidebar.section_requested.connect(self._on_sidebar_section_requested)
+            sidebar.card_requested.connect(self._on_sidebar_card_requested)
+            self.sidebar_layout.addWidget(sidebar)
+            self._sidebar_sections[section.key] = sidebar
+
+            section_widget = QWidget()
+            section_layout = QVBoxLayout(section_widget)
+            section_layout.setContentsMargins(0, 0, 0, 0)
+            section_layout.setSpacing(BrandColors.CARD_SPACING)
+            self.scroll_layout.addWidget(section_widget)
+            self._section_widgets[section.key] = section_widget
+
+            for card_key in section.card_keys:
+                card_def = self._card_defs_by_key.get(card_key)
+                if card_def is None:
+                    continue
+                card_widget = self._build_card_widget(section.key, card_def)
+                section_layout.addWidget(card_widget)
+                self._card_widgets[card_key] = card_widget
+
+                if section.key == "provider_behavior":
+                    self._build_provider_behavior_group_cards(section_layout, section.key, card_def.key)
+
+            section_layout.addStretch(1)
+
+        self.sidebar_layout.addStretch(1)
+
+    def _sidebar_cards_for_section(self, section_key: str) -> list[tuple[str, str]]:
+        section = self._section_defs_by_key.get(section_key)
+        if section is None:
+            return []
+
+        if section_key != "provider_behavior":
+            return [
+                (card_key, self._card_defs_by_key[card_key].title)
+                for card_key in section.card_keys
+                if card_key in self._card_defs_by_key
+            ]
+
+        behavior_key = self._provider_behavior_selected_key or self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider()) or "deepseek_behavior"
+        cards: list[tuple[str, str]] = []
+        selector_def = self._card_defs_by_key.get(self._provider_behavior_selector_card_key)
+        if selector_def is not None:
+            cards.append((self._provider_behavior_selector_card_key, selector_def.title))
+        for card_key in self._provider_behavior_group_card_keys.get(behavior_key, []):
+            title = str(self._card_widgets.get(card_key).property("sidebarTitle") or "").strip()
+            if title:
+                cards.append((card_key, title))
+        return cards
+
+    def _build_card_widget(self, section_key: str, card_def):
+        if getattr(card_def, "special", None) == "provider_behavior":
+            return self._build_provider_behavior_card(section_key, card_def)
+        return self._build_standard_card(section_key, card_def)
+
+    def _build_standard_card(self, section_key: str, card_def):
+        card = QWidget()
+        card.setStyleSheet(
+            f"""
+            QWidget {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border-radius: 8px;
+            }}
+            """
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(BrandColors.CARD_PADDING + 4, 18, BrandColors.CARD_PADDING + 4, BrandColors.CARD_PADDING)
+        layout.setSpacing(6)
+
+        title = QLabel(card_def.title)
+        title.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_PRIMARY};
+            font-size: {BrandColors.FONT_SIZE_TITLE};
+            font-weight: 700;
+            background-color: transparent;
+            """
+        )
+        layout.addWidget(title)
+
+        divider = QFrame()
+        divider.setFixedHeight(1)
+        divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
+        layout.addWidget(divider)
+
+        if getattr(card_def, "description", None):
+            desc = QLabel(str(card_def.description))
+            desc.setWordWrap(True)
+            desc.setStyleSheet(
+                f"""
+                color: {BrandColors.TEXT_SECONDARY};
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+                background-color: transparent;
+                padding-top: 4px;
+                padding-bottom: 6px;
+                """
+            )
+            layout.addWidget(desc)
+
+        for category_key, field_key in list(getattr(card_def, "field_refs", None) or []):
+            field = self._resolve_field_def(category_key, field_key)
+            if field is None:
+                continue
+            entry = self._build_field_entry(field, category_key, section_key, card_def.key)
+            if entry is not None:
+                layout.addWidget(entry)
+
+        return card
+
+    def _build_provider_behavior_card(self, section_key: str, card_def):
+        card = QWidget()
+        card.setStyleSheet(
+            f"""
+            QWidget {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border-radius: 8px;
+            }}
+            """
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(BrandColors.CARD_PADDING + 4, 18, BrandColors.CARD_PADDING + 4, BrandColors.CARD_PADDING)
+        layout.setSpacing(10)
+
+        title = QLabel(card_def.title)
+        title.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_PRIMARY};
+            font-size: {BrandColors.FONT_SIZE_TITLE};
+            font-weight: 700;
+            background-color: transparent;
+            """
+        )
+        layout.addWidget(title)
+
+        divider = QFrame()
+        divider.setFixedHeight(1)
+        divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
+        layout.addWidget(divider)
+
+        selector_wrap = _FlowLayoutHost(spacing=8)
+        self._provider_behavior_group = QButtonGroup(self)
+        self._provider_behavior_group.setExclusive(True)
+
+        provider_sequence = [
+            DriverProvider.DEEPSEEK,
+            DriverProvider.GLM_CHAT,
+            DriverProvider.MOONSHOT,
+            DriverProvider.QWEN_LM,
+            DriverProvider.AI_STUDIO,
+        ]
+
+        for provider in provider_sequence:
+            behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
+            if not behavior_key:
+                continue
+
+            button = QPushButton(provider.value)
+            button.setCheckable(True)
+            button.setCursor(Qt.PointingHandCursor)
+            provider_icon = {
+                DriverProvider.DEEPSEEK: "providers/deepseek.svg",
+                DriverProvider.GLM_CHAT: "providers/zai.svg",
+                DriverProvider.MOONSHOT: "providers/moonshot.svg",
+                DriverProvider.QWEN_LM: "providers/qwen.svg",
+                DriverProvider.AI_STUDIO: "providers/aistudio.svg",
+            }.get(provider)
+            if provider_icon:
+                icon = IconUtils.get_icon(
+                    provider_icon,
+                    color=BrandColors.TEXT_PRIMARY,
+                    size=16,
+                    widget=button,
+                )
+                if not icon.isNull():
+                    button.setIcon(icon)
+                    button.setIconSize(QSize(16, 16))
+            button.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background-color: #1d1f23;
+                    color: {BrandColors.TEXT_SECONDARY};
+                    border: 1px solid {BrandColors.INPUT_BORDER};
+                    border-radius: 8px;
+                    padding: 8px 14px;
+                    font-size: {BrandColors.FONT_SIZE_REGULAR};
+                    font-family: {BrandColors.FONT_FAMILY};
+                    font-weight: 600;
+                }}
+                QPushButton:hover {{
+                    color: {BrandColors.TEXT_PRIMARY};
+                    border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
+                }}
+                QPushButton:checked {{
+                    background-color: {BrandColors.CATEGORY_ACTIVE_BG};
+                    color: {BrandColors.TEXT_PRIMARY};
+                    border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
+                }}
+                """
+            )
+            button.clicked.connect(
+                lambda checked=False, key=behavior_key: self._set_provider_behavior_page(key, user_selected=True)
+            )
+            self._provider_behavior_group.addButton(button)
+            selector_wrap.flow_layout.addWidget(button)
+            self._provider_behavior_buttons[behavior_key] = button
+
+        layout.addWidget(selector_wrap)
+        self._sync_provider_behavior_default_page(force=True)
+        return card
+
+    def _build_provider_behavior_group_cards(self, section_layout, section_key: str, selector_card_key: str) -> None:
+        for behavior_key, groups in PROVIDER_BEHAVIOR_GROUPS.items():
+            provider_cards = []
+            for index, group in enumerate(groups):
+                card_key = f"provider_behavior::{behavior_key}::{index}"
+                self._dynamic_card_titles[card_key] = str(group.get("title") or "Provider")
+                card_widget = self._build_behavior_group_card(group, behavior_key, section_key, card_key)
+                card_widget.setProperty("sidebarTitle", str(group.get("title") or "Provider"))
+                card_widget.setVisible(False)
+                section_layout.addWidget(card_widget)
+                self._card_widgets[card_key] = card_widget
+                provider_cards.append(card_key)
+            self._provider_behavior_group_card_keys[behavior_key] = provider_cards
+
+    def _build_behavior_group_card(self, group: dict, behavior_key: str, section_key: str, card_key: str):
+        group_card = QWidget()
+        group_card.setStyleSheet(
+            f"""
+            QWidget {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border-radius: 8px;
+            }}
+            """
+        )
+        layout = QVBoxLayout(group_card)
+        layout.setContentsMargins(BrandColors.CARD_PADDING + 4, 18, BrandColors.CARD_PADDING + 4, BrandColors.CARD_PADDING)
+        layout.setSpacing(6)
+
+        header = QWidget()
+        header.setStyleSheet("background-color: transparent;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(10)
+
+        icon_label = QLabel()
+        icon_label.setStyleSheet("background-color: transparent;")
+        icon_label.setFixedSize(18, 18)
+        pixmap = IconUtils.get_pixmap(
+            str(group.get("icon") or "settings.svg"),
+            color=BrandColors.ACCENT,
+            size=18,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not pixmap.isNull():
+            icon_label.setPixmap(pixmap)
+        header_layout.addWidget(icon_label, 0, Qt.AlignVCenter)
+
+        title = QLabel(str(group.get("title") or "Group"))
+        title.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_PRIMARY};
+            font-size: {BrandColors.FONT_SIZE_TITLE};
+            font-weight: 700;
+            background-color: transparent;
+            """
+        )
+        header_layout.addWidget(title, 1, Qt.AlignVCenter)
+        layout.addWidget(header)
+
+        divider = QFrame()
+        divider.setFixedHeight(1)
+        divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
+        layout.addWidget(divider)
+
+        for field_key in group.get("fields", []):
+            field = self._resolve_field_def(behavior_key, field_key)
+            if field is None:
+                continue
+            entry = self._build_field_entry(field, behavior_key, section_key, card_key, provider_key=behavior_key)
+            if entry is not None:
+                layout.addWidget(entry)
+
+        return group_card
+
+    def _build_field_entry(self, field, category_key: str, section_key: str, card_key: str, provider_key: str | None = None):
+        docs_url = self._get_field_docs_url(field)
+        full_key = f"{category_key}.{field.key}"
+
+        if field.type == SettingType.DIVIDER:
+            return Divider(field.label)
+
+        if field.type == SettingType.DESCRIPTION:
+            widget = Description(field.default)
+            self.field_widgets[full_key] = widget
+            return widget
+
+        if field.type == SettingType.HINT:
+            widget = HintCard(
+                field.label,
+                field.default,
+                variant=getattr(field, "hint_variant", None) or "info",
+            )
+            self.field_widgets[full_key] = widget
+            widget.setProperty("settingInfoTitle", field.label)
+            widget.setProperty("settingInfoBody", str(field.default or ""))
+            if docs_url:
+                widget.setProperty("docsUrl", docs_url)
+            self._field_locations[full_key] = {
+                "section_key": section_key,
+                "card_key": card_key,
+                "provider_key": provider_key,
+            }
+            self._install_info_filters(widget)
+            self._register_search_target_for_field(section_key, card_key, category_key, field, provider_key=provider_key)
+            return widget
+
+        if field.type == SettingType.REDIRECT:
+            widget = self._create_field_widget(field, category_key)
+            self.setting_rows[full_key] = widget
+            self._display_rows[full_key] = widget
+            self._field_display_key[full_key] = full_key
+            self._field_locations[full_key] = {
+                "section_key": section_key,
+                "card_key": card_key,
+                "provider_key": provider_key,
+            }
+            self._install_info_filters(widget)
+            self._register_search_target_for_field(section_key, card_key, category_key, field, provider_key=provider_key)
+            return widget
+
+        if field.type == SettingType.ROW:
+            sub_widgets = []
+            for sub in field.sub_fields or []:
+                sub_widget = self._create_field_widget(sub, category_key)
+                sub_widgets.append(sub_widget)
+                sub_full_key = f"{category_key}.{sub.key}"
+                self._field_display_key[sub_full_key] = full_key
+                self._field_locations[sub_full_key] = {
+                    "section_key": section_key,
+                    "card_key": card_key,
+                    "provider_key": provider_key,
+                }
+            widget = MultiColumnRow(sub_widgets, field.ratios)
+            row = SettingRow(
+                field.label,
+                widget,
+                field.tooltip,
+                docs_url=docs_url,
+                docs_handler=self._open_docs_from_sender,
+            )
+            self.field_widgets[full_key] = widget
+            self.setting_rows[full_key] = row
+            self._display_rows[full_key] = row
+            self._field_display_key[full_key] = full_key
+            self._field_locations[full_key] = {
+                "section_key": section_key,
+                "card_key": card_key,
+                "provider_key": provider_key,
+            }
+            self._install_info_filters(row)
+            self._register_search_target_for_field(section_key, card_key, category_key, field, provider_key=provider_key)
+            return row
+
+        widget = self._create_field_widget(field, category_key)
+        if widget is None:
+            return None
+
+        if field.type == SettingType.BOOLEAN:
+            row = ToggleRow(
+                field.label,
+                widget,
+                field.tooltip,
+                description=field.tooltip,
+                docs_url=docs_url,
+                docs_handler=self._open_docs_from_sender,
+            )
+        else:
+            row = SettingRow(
+                field.label,
+                widget,
+                field.tooltip,
+                docs_url=docs_url,
+                docs_handler=self._open_docs_from_sender,
+            )
+
+        self.setting_rows[full_key] = row
+        self._display_rows[full_key] = row
+        self._field_display_key[full_key] = full_key
+        self._field_locations[full_key] = {
+            "section_key": section_key,
+            "card_key": card_key,
+            "provider_key": provider_key,
+        }
+        self._install_info_filters(row)
+        self._register_search_target_for_field(section_key, card_key, category_key, field, provider_key=provider_key)
+        return row
+
+    def _resolve_field_def(self, category_key: str, field_key: str):
+        category = self._category_defs_by_key.get(category_key)
+        if category is None:
+            return None
+        for field in self._iter_fields(category.fields):
+            if field.key == field_key:
+                return field
+        return None
+
+    def _register_search_target_for_field(self, section_key: str, card_key: str, category_key: str, field, provider_key: str | None = None) -> None:
+        section = self._section_defs_by_key.get(section_key)
+        card = self._card_defs_by_key.get(card_key)
+        card_title = str(card.title if card else self._dynamic_card_titles.get(card_key, "")).strip()
+        provider_label = ""
+        if provider_key:
+            for provider, behavior_key in self.BEHAVIOR_CATEGORY_BY_PROVIDER.items():
+                if behavior_key == provider_key:
+                    provider_label = provider.value
+                    break
+        extra_labels = ""
+        if field.type == SettingType.ROW and field.sub_fields:
+            extra_labels = " ".join(sub.label for sub in field.sub_fields if sub.label)
+        self.search_targets.append(
+            {
+                "section_key": section_key,
+                "card_key": card_key,
+                "provider_key": provider_key,
+                "label_lower": str(field.label or "").lower(),
+                "key_lower": str(field.key or "").lower(),
+                "section_lower": str(section.label if section else "").lower(),
+                "card_lower": card_title.lower(),
+                "provider_lower": provider_label.lower(),
+                "extra_lower": extra_labels.lower(),
+                "full_key": f"{category_key}.{field.key}",
+            }
+        )
+
+    def _install_info_filters(self, widget: QWidget) -> None:
+        widget.installEventFilter(self)
+        for child in widget.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def _on_sidebar_section_requested(self, section_key: str) -> None:
+        self._set_active_section(section_key, scroll_to_top=True)
+
+    def _on_sidebar_card_requested(self, section_key: str, card_key: str) -> None:
+        self._set_active_section(section_key, scroll_to_top=False)
+        self._set_active_card(card_key)
+        card = self._card_widgets.get(card_key)
+        if card:
+            self._smooth_ensure_visible(card, y_margin=32, duration_ms=240)
+
+    def _set_active_section(self, section_key: str, *, scroll_to_top: bool) -> None:
+        self._selected_section_key = str(section_key or "").strip()
+        if not self._selected_section_key:
+            return
+
+        self._hide_info_bubble()
+        for key, section_widget in self._section_widgets.items():
+            visible = key == self._selected_section_key
+            section_widget.setVisible(visible)
+        for key, sidebar in self._sidebar_sections.items():
+            is_active = key == self._selected_section_key
+            sidebar.set_active(is_active)
+            sidebar.set_expanded(is_active)
+            if is_active:
+                sidebar.set_cards(self._sidebar_cards_for_section(key))
+
+        visible_cards = self._visible_card_keys_for_section(self._selected_section_key)
+        first_card = visible_cards[0] if visible_cards else None
+        self._set_active_card(first_card)
+        if scroll_to_top:
+            self._smooth_scroll_to(0, duration_ms=220)
+
+    def _visible_card_keys_for_section(self, section_key: str) -> list[str]:
+        section = self._section_defs_by_key.get(section_key)
+        if section is None:
+            return []
+        if section_key != "provider_behavior":
+            return [card_key for card_key in section.card_keys if card_key in self._card_widgets]
+        behavior_key = self._provider_behavior_selected_key or self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider()) or "deepseek_behavior"
+        return [self._provider_behavior_selector_card_key] + list(self._provider_behavior_group_card_keys.get(behavior_key, []))
+
+    def _set_active_card(self, card_key: str | None) -> None:
+        self._selected_card_key = str(card_key or "").strip() or None
+        for section_key, sidebar in self._sidebar_sections.items():
+            if section_key == self._selected_section_key:
+                sidebar.set_active_card(self._selected_card_key)
+            else:
+                sidebar.set_active_card(None)
+
+    def _set_provider_behavior_page(self, behavior_key: str, *, user_selected: bool) -> None:
+        key = str(behavior_key or "").strip()
+        if key not in self._provider_behavior_group_card_keys:
+            return
+        self._provider_behavior_selected_key = key
+        if user_selected:
+            self._provider_behavior_user_selected = True
+        for provider_key, button in self._provider_behavior_buttons.items():
+            button.setChecked(provider_key == key)
+
+        for provider_key, card_keys in self._provider_behavior_group_card_keys.items():
+            is_active_provider = provider_key == key
+            for card_key in card_keys:
+                widget = self._card_widgets.get(card_key)
+                if widget is not None:
+                    widget.setVisible(is_active_provider)
+
+        sidebar = self._sidebar_sections.get("provider_behavior")
+        if sidebar is not None:
+            sidebar.set_cards(self._sidebar_cards_for_section("provider_behavior"))
+
+        visible_cards = self._visible_card_keys_for_section("provider_behavior")
+        if self._selected_section_key == "provider_behavior":
+            current_card = self._selected_card_key
+            if current_card not in visible_cards:
+                self._set_active_card(visible_cards[0] if visible_cards else None)
+            else:
+                self._set_active_card(current_card)
+
+    def _sync_provider_behavior_default_page(self, *, force: bool = False) -> None:
+        if self._provider_behavior_user_selected and not force:
+            return
+        provider = self._get_selected_provider()
+        behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider) or "deepseek_behavior"
+        self._set_provider_behavior_page(behavior_key, user_selected=False)
+
+    def _show_pending_info_bubble(self) -> None:
+        anchor = self._pending_info_anchor
+        if anchor is None or not anchor.isVisible():
+            return
+        self._info_hide_timer.stop()
+        title = str(anchor.property("settingInfoTitle") or "").strip()
+        body = str(anchor.property("settingInfoBody") or "").strip()
+        docs_url = str(anchor.property("docsUrl") or "").strip() or None
+        if not title and not body:
+            return
+        self._active_info_anchor = anchor
+        self._info_bubble.set_anchor(anchor)
+        self._info_bubble.show_for(anchor, title or "Setting", body, docs_url, preferred_global_pos=self._pending_info_pos)
+
+    def _hide_info_bubble(self, *_args) -> None:
+        self._info_timer.stop()
+        self._info_hide_timer.stop()
+        self._pending_info_anchor = None
+        self._active_info_anchor = None
+        self._pending_info_pos = None
+        if hasattr(self, "_info_bubble") and self._info_bubble is not None:
+            self._info_bubble.hide_now()
+
+    def _find_info_anchor(self, widget: QWidget | None):
+        current = widget
+        while current is not None:
+            if str(current.property("settingInfoTitle") or "").strip() or str(current.property("settingInfoBody") or "").strip():
+                return current
+            current = current.parentWidget()
+        return None
+
+    def _is_info_bubble_widget(self, widget: QWidget | None) -> bool:
+        current = widget
+        while current is not None:
+            if current is self._info_bubble:
+                return True
+            current = current.parentWidget()
+        return False
+
+    def eventFilter(self, obj, event):
+        if obj is self.scroll_area.viewport() and event.type() == QEvent.Resize:
+            self._hide_info_bubble()
+
+        if isinstance(obj, QWidget):
+            if self._is_info_bubble_widget(obj):
+                if event.type() == QEvent.Enter:
+                    self._info_hide_timer.stop()
+                elif event.type() == QEvent.Leave:
+                    self._info_hide_timer.start()
+                return super().eventFilter(obj, event)
+
+            anchor = self._find_info_anchor(obj)
+            if anchor is not None:
+                if event.type() == QEvent.Enter:
+                    self._info_hide_timer.stop()
+                    self._pending_info_anchor = anchor
+                    self._pending_info_pos = QCursor.pos()
+                    self._info_timer.start()
+                elif event.type() == QEvent.Leave:
+                    self._info_hide_timer.start()
+                elif event.type() in {QEvent.MouseButtonPress, QEvent.FocusIn, QEvent.KeyPress, QEvent.Wheel}:
+                    self._hide_info_bubble()
+
+        return super().eventFilter(obj, event)
+
+    def _current_field_value(self, full_key: str, field_def):
+        widget = self.field_widgets.get(full_key)
+        if widget is None or field_def is None:
+            return None
+
+        value = None
+        if field_def.type == SettingType.BOOLEAN:
+            value = widget.isChecked()
+        elif field_def.type in [SettingType.STRING, SettingType.PASSWORD]:
+            value = widget.text()
+        elif field_def.type == SettingType.DIRECTORY:
+            value = widget.text().strip()
+            if getattr(field_def, "nullable", False) and not value:
+                value = None
+        elif field_def.type == SettingType.INTEGER:
+            text_value = widget.text()
+            value = int(text_value) if text_value else 0
+        elif field_def.type == SettingType.TEXTAREA:
+            value = widget.toPlainText()
+        elif field_def.type == SettingType.DROPDOWN:
+            value = widget.currentText()
+        elif field_def.type == SettingType.INPUT_PAIR:
+            value = []
+            for pair in widget.get_pairs():
+                if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                    continue
+                left = str(pair[0] or "")
+                right = str(pair[1] or "")
+                if not left.strip() and not right.strip():
+                    continue
+                value.append([left, right])
+        elif field_def.type == SettingType.INPUT_LIST:
+            value = widget.get_items()
+
+        is_enabled = self._is_dependency_met(getattr(field_def, "depends", None)) if getattr(field_def, "depends", None) else True
+        if (not is_enabled) and (full_key in self._dep_override_cache):
+            value = self._dep_override_cache[full_key]
+        return value
+
+    def _update_dirty_markers(self) -> None:
+        dirty_display_keys = set()
+
+        for full_key, field_def in (self.field_defs or {}).items():
+            if getattr(field_def, "transient", False):
+                continue
+            if field_def.type in {
+                SettingType.BUTTON,
+                SettingType.DESCRIPTION,
+                SettingType.DIVIDER,
+                SettingType.HINT,
+                SettingType.REDIRECT,
+                SettingType.ROW,
+            }:
+                continue
+            if full_key not in self.field_widgets:
+                continue
+
+            category_key, field_key = full_key.split(".", 1)
+            current_value = self._current_field_value(full_key, field_def)
+            saved_value = self.config_manager.get_setting(category_key, field_key)
+            if full_key == "system_settings.config_storage_location":
+                saved_value = infer_preset_from_config_dir(Path(self.config_manager.config_dir).resolve())[0]
+            elif full_key == "system_settings.config_storage_custom_path":
+                saved_value = infer_preset_from_config_dir(Path(self.config_manager.config_dir).resolve())[1]
+            if current_value != saved_value:
+                dirty_display_keys.add(self._field_display_key.get(full_key, full_key))
+
+        any_dirty = False
+        for display_key, row in (self._display_rows or {}).items():
+            is_dirty = display_key in dirty_display_keys
+            if hasattr(row, "set_dirty"):
+                row.set_dirty(is_dirty)
+            any_dirty = any_dirty or is_dirty
+
+        self.unsaved_changes = any_dirty
 
     def _begin_auto_scroll(self, duration_ms: int) -> None:
         self.is_auto_scrolling = True
@@ -1073,13 +2380,14 @@ class SettingsWindow(QMainWindow):
             delattr(self, "_last_custom_template")
         self._persistent_profile_entries = {}
         self._persistent_profile_options_loaded = False
+        self._provider_behavior_user_selected = False
         previous_suppress = self._suppress_dirty_tracking
         self._suppress_dirty_tracking = True
         try:
             for category in SCHEMA:
                 self._apply_category_values(category)
 
-            self._refresh_loaded_state(refresh_profiles=(self._get_selected_category_key() == "system_settings"))
+            self._refresh_loaded_state(refresh_profiles=True)
         finally:
             self._suppress_dirty_tracking = previous_suppress
             self.unsaved_changes = False
@@ -1095,31 +2403,24 @@ class SettingsWindow(QMainWindow):
 
         self._load_values()
         self._sync_application_settings_info()
-        self._queue_visible_category_builds()
         return True
 
     def select_category_by_key(self, category_key: str) -> bool:
-        item = self.category_items_by_key.get(category_key)
-        if not item:
+        resolved_key = str(category_key or "").strip()
+        if not resolved_key:
             return False
 
-        paged_view = self._should_use_paged_settings_view()
+        section_key = resolved_key
+        if resolved_key not in self._section_defs_by_key:
+            for full_key, location in (self._field_locations or {}).items():
+                if full_key.startswith(f"{resolved_key}."):
+                    section_key = str(location.get("section_key") or "")
+                    break
 
-        if item.isHidden():
-            item.setHidden(False)
-
-        card = self._ensure_category_built(category_key, refresh_profiles=(category_key == "system_settings"))
-        if not card:
+        if section_key not in self._section_defs_by_key:
             return False
-        if not card.isVisible():
-            card.setVisible(True)
 
-        self.category_list.setCurrentItem(item)
-        if paged_view:
-            self._sync_paged_settings_view(scroll_to_top=True)
-            return True
-
-        self._smooth_ensure_visible(card, y_margin=40, duration_ms=280)
+        self._set_active_section(section_key, scroll_to_top=True)
         return True
 
     def focus_setting(self, category_key: str, field_key: str) -> bool:
@@ -1128,13 +2429,19 @@ class SettingsWindow(QMainWindow):
         if not category_key or not field_key:
             return False
 
-        self._ensure_category_built(category_key, refresh_profiles=(category_key == "system_settings"))
         full_key = f"{category_key}.{field_key}"
         target = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
-        if not target:
+        location = self._field_locations.get(full_key)
+        if not target or not location:
             return False
 
-        self.select_category_by_key(category_key)
+        section_key = str(location.get("section_key") or "")
+        card_key = str(location.get("card_key") or "")
+        provider_key = str(location.get("provider_key") or "").strip() or None
+        self._set_active_section(section_key, scroll_to_top=False)
+        self._set_active_card(card_key)
+        if provider_key:
+            self._set_provider_behavior_page(provider_key, user_selected=False)
         duration_ms = 280
         started = self._smooth_ensure_visible(target, y_margin=80, duration_ms=duration_ms)
         if started:
@@ -1146,7 +2453,7 @@ class SettingsWindow(QMainWindow):
     def _on_setting_changed(self):
         if self._suppress_dirty_tracking:
             return
-        self.unsaved_changes = True
+        QTimer.singleShot(0, self._update_dirty_markers)
         self.update_timer.start()
 
     def _on_input_pair_alternative_action(
@@ -1342,44 +2649,169 @@ class SettingsWindow(QMainWindow):
                     widget.setVisible(should_show)
 
         self._apply_forced_overrides()
+        if not self._suppress_dirty_tracking:
+            self._update_dirty_markers()
 
     def _apply_forced_overrides(self) -> None:
-        # Reserved for future UI-level forced overrides (none currently).
-        return
+        preset_widget = self.field_widgets.get("formatting.formatting_preset")
+        template_widget = self.field_widgets.get("formatting.formatting_template")
+        template_row = self.setting_rows.get("formatting.formatting_template")
+        if preset_widget is not None and template_widget is not None:
+            is_custom = str(preset_widget.currentText() or "") == "Custom"
+            if template_row is not None:
+                template_row.setEnabled(is_custom)
+            else:
+                template_widget.setEnabled(is_custom)
 
     def _on_search_text_changed(self, text):
         self.search_timer.stop()
+        self.search_clear_action.setVisible(bool(text.strip()))
         if text.strip():
+            self.search_nav.show()
             self.search_timer.start()
         else:
-            self._clear_flash()
+            self._clear_search_results()
+
+    def _clear_search(self) -> None:
+        self.search_input.clear()
+
+    def _clear_search_results(self) -> None:
+        self._search_matches = []
+        self._search_match_index = -1
+        self.search_nav.hide()
+        self.search_status_label.setText("0 / 0")
+        self.search_prev_btn.setEnabled(False)
+        self.search_next_btn.setEnabled(False)
+        self._clear_flash()
+
+    def _update_search_nav_ui(self) -> None:
+        total = len(self._search_matches)
+        current = self._search_match_index + 1 if total > 0 and self._search_match_index >= 0 else 0
+        self.search_status_label.setText(f"{current} / {total}")
+        can_navigate = total > 1
+        self.search_prev_btn.setEnabled(can_navigate)
+        self.search_next_btn.setEnabled(can_navigate)
+
+    def _activate_search_target(self, target: dict) -> None:
+        section_key = str(target.get("section_key") or "")
+        card_key = str(target.get("card_key") or "")
+        provider_key = str(target.get("provider_key") or "").strip() or None
+        if section_key:
+            self._set_active_section(section_key, scroll_to_top=False)
+        if provider_key:
+            self._set_provider_behavior_page(provider_key, user_selected=False)
+        if card_key:
+            self._set_active_card(card_key)
+        full_key = str(target.get("full_key") or "")
+        widget = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
+        if widget is None or widget.isHidden():
+            return
+        duration_ms = 280
+        started = self._smooth_ensure_visible(widget, y_margin=80, duration_ms=duration_ms)
+        if started:
+            QTimer.singleShot(duration_ms, lambda w=widget: self._flash_widget(w))
+        else:
+            self._flash_widget(widget)
+
+    def _goto_search_match(self, index: int) -> None:
+        if not self._search_matches:
+            return
+        total = len(self._search_matches)
+        self._search_match_index = index % total
+        self._update_search_nav_ui()
+        self._activate_search_target(self._search_matches[self._search_match_index])
+
+    def _goto_previous_search_match(self) -> None:
+        if not self._search_matches:
+            return
+        self._goto_search_match(self._search_match_index - 1)
+
+    def _goto_next_search_match(self) -> None:
+        if not self._search_matches:
+            return
+        self._goto_search_match(self._search_match_index + 1)
 
     def _score_match(self, query: str, target: dict) -> float:
         candidates = [
             target.get("label_lower", ""),
             target.get("key_lower", ""),
-            target.get("category_lower", ""),
-            target.get("category_key_lower", ""),
+            target.get("section_lower", ""),
+            target.get("card_lower", ""),
+            target.get("provider_lower", ""),
             target.get("extra_lower", ""),
         ]
+        combined = " ".join(cand for cand in candidates if cand).strip()
+        direct_score = self._direct_match_score(query, candidates, combined)
+        if direct_score > 0.0:
+            return direct_score
+        return self._fuzzy_match_score(query, candidates)
 
+    def _normalize_search_text(self, text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(text or "").lower())
+
+    def _direct_match_score(self, query: str, candidates: list[str], combined: str) -> float:
+        normalized_query = self._normalize_search_text(query)
+        query_terms = [term for term in re.split(r"\s+", str(query or "").strip().lower()) if term]
         best = 0.0
+
+        for index, cand in enumerate(candidates):
+            if not cand:
+                continue
+
+            weight = 1.0
+            if index == 0:
+                weight = 1.0
+            elif index == 1:
+                weight = 0.96
+            elif index == 3:
+                weight = 0.93
+            elif index == 4:
+                weight = 0.88
+            else:
+                weight = 0.84
+
+            normalized_cand = self._normalize_search_text(cand)
+            if query == cand:
+                best = max(best, 1.0 * weight)
+                continue
+            if normalized_query and normalized_query == normalized_cand:
+                best = max(best, 0.995 * weight)
+                continue
+            if cand.startswith(query):
+                best = max(best, 0.975 * weight)
+                continue
+            if normalized_query and normalized_cand.startswith(normalized_query):
+                best = max(best, 0.965 * weight)
+                continue
+            if query and query in cand:
+                idx = cand.find(query)
+                best = max(best, (0.93 + (1 - idx / max(len(cand), 1)) * 0.03) * weight)
+                continue
+            if normalized_query and normalized_query in normalized_cand:
+                idx = normalized_cand.find(normalized_query)
+                best = max(best, (0.91 + (1 - idx / max(len(normalized_cand), 1)) * 0.03) * weight)
+
+        if query_terms and combined:
+            all_terms_present = all(term in combined for term in query_terms)
+            if all_terms_present:
+                best = max(best, 0.82)
+
+        return best
+
+    def _fuzzy_match_score(self, query: str, candidates: list[str]) -> float:
+        best = 0.0
+        normalized_query = self._normalize_search_text(query)
         for cand in candidates:
             if not cand:
                 continue
-            if query == cand:
-                best = max(best, 1.0)
-                continue
-            if cand.startswith(query):
-                best = max(best, 0.95)
-                continue
-            if query in cand:
-                idx = cand.find(query)
-                best = max(best, 0.85 + (1 - idx / max(len(cand), 1)) * 0.1)
-                continue
 
             ratio = SequenceMatcher(None, query, cand).ratio()
-            best = max(best, ratio * 0.8)
+            best = max(best, ratio * 0.75)
+
+            normalized_cand = self._normalize_search_text(cand)
+            if normalized_query and normalized_cand:
+                normalized_ratio = SequenceMatcher(None, normalized_query, normalized_cand).ratio()
+                best = max(best, normalized_ratio * 0.78)
 
         return best
 
@@ -1388,41 +2820,32 @@ class SettingsWindow(QMainWindow):
         if not query:
             return
 
-        paged_view = self._should_use_paged_settings_view()
-        best_target = None
-        best_score = 0.0
+        direct_matches = []
+        fuzzy_matches = []
 
         for target in self.search_targets:
-            category_key = target.get("category_key")
-            item = self.category_items_by_key.get(category_key) if category_key else None
-            if item and item.isHidden():
-                continue
-
-            widget = self._resolve_search_target_widget(target, build=False)
-            if paged_view and widget is not None:
-                if widget.isHidden():
-                    continue
-            elif widget is not None and not widget.isVisible():
-                continue
-
             score = self._score_match(query, target)
-            if score > best_score:
-                best_score = score
-                best_target = target
+            if score >= 0.80:
+                direct_matches.append((score, target))
+            elif score >= 0.68:
+                fuzzy_matches.append((score, target))
 
-        if best_target and best_score >= 0.25:
-            category_key = best_target.get("category_key")
-            if category_key:
-                self.select_category_by_key(category_key)
-            widget = self._resolve_search_target_widget(best_target, build=True)
-            if widget is None or widget.isHidden():
-                return
-            duration_ms = 280
-            started = self._smooth_ensure_visible(widget, y_margin=80, duration_ms=duration_ms)
-            if started:
-                QTimer.singleShot(duration_ms, lambda w=widget: self._flash_widget(w))
-            else:
-                self._flash_widget(widget)
+        if direct_matches:
+            direct_matches.sort(key=lambda item: item[0], reverse=True)
+            chosen_matches = direct_matches[:24]
+        else:
+            fuzzy_matches.sort(key=lambda item: item[0], reverse=True)
+            chosen_matches = fuzzy_matches[:8]
+
+        self._search_matches = [target for _score, target in chosen_matches]
+        if not self._search_matches:
+            self._search_match_index = -1
+            self._update_search_nav_ui()
+            return
+
+        self._search_match_index = 0
+        self._update_search_nav_ui()
+        self._activate_search_target(self._search_matches[0])
 
     def _flash_widget(self, widget):
         overlay = getattr(self, "_highlight_overlay", None)
@@ -1435,84 +2858,35 @@ class SettingsWindow(QMainWindow):
             overlay.clear()
 
     def _on_category_clicked(self, item):
-        if self._should_use_paged_settings_view():
-            if item and item != self.category_list.currentItem():
-                self.category_list.setCurrentItem(item)
-            self._sync_paged_settings_view(scroll_to_top=True)
-            return
+        return
 
-        category_key = str(item.data(Qt.UserRole) or "").strip() if item else ""
-        if category_key:
-            self._ensure_category_built(category_key, refresh_profiles=(category_key == "system_settings"))
-        category_name = item.text() if item else ""
-        widget = self.category_widgets.get(category_name)
-        if widget:
-            self._smooth_ensure_visible(widget, y_margin=40, duration_ms=280)
-            # Random bullshit go!
-            # This line literally had just 1 change (double quotes instead of single) because
-            # I was trying to find some edge cases where we might need different timing
-            # but then figured out that this is pointless and just returned the same thing
-            # HOWEVER, the undo buffer was full and henceforth I just rewrote the line
-            # while I could copy it from the git diff
-            # stupid, right?
-            # but oh well, that's the story of this line of code
-            # why double quotes though? reflex, I guess? who knows
-            # anyway, let's call it "Harald's Great Scroll Flag Reset Adventure of 2026"
-            # with Harald being the name of the trigger flag
-            # also, if you read this, have a one (1) 🍪 cookie
     def _on_scroll(self, value):
         if self.is_auto_scrolling:
             return
-        if self._should_use_paged_settings_view():
+        section = self._section_defs_by_key.get(self._selected_section_key or "")
+        if section is None:
             return
 
-        # Check if we are at the very bottom
-        v_bar = self.scroll_area.verticalScrollBar()
-        if value >= v_bar.maximum() - 5: # Small buffer for float inaccuracies
-            # Select the last category
-            count = self.category_list.count()
-            if count > 0:
-                for idx in range(count - 1, -1, -1):
-                    last_item = self.category_list.item(idx)
-                    if not last_item or last_item.isHidden():
-                        continue
-                    if last_item != self.category_list.currentItem():
-                        self.category_list.setCurrentItem(last_item)
-                    break
+        visible_cards = self._visible_card_keys_for_section(section.key)
+        if not visible_cards:
             return
 
-        # Find which category is currently visible
-        # To do it, we'll check the vertical position of each category widget relative to the scroll area
-        
+        vbar = self.scroll_area.verticalScrollBar()
+        if value >= max(0, vbar.maximum() - 2):
+            self._set_active_card(visible_cards[-1])
+            return
+
         scroll_pos = value
-        closest_category = None
-        
-        # We want the category that is at the top of the view
-        # The scroll_content coordinates
-        
-        for name, widget in self.category_widgets.items():
-            if not widget.isVisible():
+        active_card = None
+        for card_key in visible_cards:
+            widget = self._card_widgets.get(card_key)
+            if widget is None or not widget.isVisible():
                 continue
-            # Get widget position relative to scroll content
-            widget_pos = widget.y()
-            
-            # If the widget is above the scroll position (or slightly below), it's a candidate.
-            # The last category whose Y position is <= scroll_pos + buffer is the active one.
-            
-            if widget_pos <= scroll_pos + 50: # 50px buffer
-                closest_category = name
-            else:
-                # Since they are ordered, once we find one that is further down, we can stop
-                pass
-        
-        # If we found a category, select it
-        if closest_category:
-            # Find the item in the list
-            items = self.category_list.findItems(closest_category, Qt.MatchExactly)
-            if items:
-                item = items[0]
-                if item != self.category_list.currentItem():
-                    self.category_list.setCurrentItem(item)
+            widget_y = widget.mapTo(self.scroll_content, QPoint(0, 0)).y()
+            if widget_y <= scroll_pos + 60:
+                active_card = card_key
+        if active_card:
+            self._set_active_card(active_card)
 
     def _sync_config_storage_from_active_dir(self):
         preset_widget = self.field_widgets.get("system_settings.config_storage_location")
@@ -1540,72 +2914,17 @@ class SettingsWindow(QMainWindow):
         return bool(category_key) and str(category_key).endswith("_behavior")
 
     def _get_selected_category_key(self) -> str | None:
-        item = self.category_list.currentItem() if hasattr(self, "category_list") else None
-        if not item:
-            return None
-        key = item.data(Qt.UserRole)
-        if key is None:
-            return None
-        return str(key)
+        return str(self._selected_section_key or "") or None
 
     def _should_use_paged_settings_view(self) -> bool:
-        widget = self.field_widgets.get("application_settings.paged_settings_view")
-        if isinstance(widget, Tumbler):
-            return widget.isChecked()
-        return bool(self.config_manager.get_setting("application_settings", "paged_settings_view"))
+        return True
 
     def _sync_paged_settings_view(self, *_args, scroll_to_top: bool = False) -> None:
-        enabled = self._should_use_paged_settings_view()
-        selected_key = self._get_selected_category_key()
-        if not selected_key:
-            return
-
-        self._ensure_category_built(selected_key, refresh_profiles=False)
-
-        prev_enabled = getattr(self, "_paged_settings_view_enabled", None)
-        initial_apply = prev_enabled is None
-        mode_changed = (not initial_apply) and (prev_enabled != enabled)
-        self._paged_settings_view_enabled = enabled
-
-        for key, card in (self.category_widgets_by_key or {}).items():
-            if not card:
-                continue
-
-            item = self.category_items_by_key.get(key)
-            base_visible = (item is None) or (not item.isHidden())
-
-            if enabled:
-                desired_visible = base_visible and (key == selected_key)
-            else:
-                desired_visible = base_visible
-
-            # was done for paged_settings_view
-            # because the show_only_active_provider_behavior setting
-            # showed the active provider behavior cat anyway
-            # even if it's not selected (overridden)
-            desired_hidden = not desired_visible
-            if card.isHidden() != desired_hidden:
-                card.setHidden(desired_hidden)
-
-        if enabled:
-            timer = getattr(self, "_category_build_timer", None)
-            if isinstance(timer, QTimer):
-                timer.stop()
-            self._pending_category_build_keys = []
-            if scroll_to_top or mode_changed or (initial_apply and enabled):
-                self._smooth_scroll_to(0, duration_ms=240)
-        else:
-            self._queue_visible_category_builds()
-            if mode_changed:
-                card = self.category_widgets_by_key.get(selected_key)
-                if card:
-                    self._smooth_ensure_visible(card, y_margin=40, duration_ms=280)
+        if scroll_to_top:
+            self._smooth_scroll_to(0, duration_ms=220)
 
     def _should_show_only_active_provider_behavior(self) -> bool:
-        widget = self.field_widgets.get("application_settings.show_only_active_provider_behavior")
-        if isinstance(widget, Tumbler):
-            return widget.isChecked()
-        return bool(self.config_manager.get_setting("application_settings", "show_only_active_provider_behavior"))
+        return False
 
     def _get_selected_provider(self) -> DriverProvider:
         widget = self.field_widgets.get("providers_credentials.provider")
@@ -1616,65 +2935,10 @@ class SettingsWindow(QMainWindow):
         return DriverProvider.from_setting(provider_setting)
 
     def _set_category_visible(self, category_key: str, visible: bool) -> None:
-        item = self.category_items_by_key.get(category_key)
-        if item:
-            item.setHidden(not visible)
-
-        card = self.category_widgets_by_key.get(category_key)
-        if card:
-            card.setVisible(visible)
+        return
 
     def _sync_behavior_category_visibility(self, *_args) -> None:
-        behavior_keys = [key for key in self._category_order if self._is_behavior_category(key)]
-        if not behavior_keys:
-            return
-
-        if not self._should_show_only_active_provider_behavior():
-            for key in behavior_keys:
-                self._set_category_visible(key, True)
-            self._sync_paged_settings_view()
-            self._queue_visible_category_builds()
-            return
-
-        active_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider())
-        if not active_key:
-            for key in behavior_keys:
-                self._set_category_visible(key, True)
-            self._sync_paged_settings_view()
-            self._queue_visible_category_builds()
-            return
-
-        for key in behavior_keys:
-            self._set_category_visible(key, key == active_key)
-
-        current_item = self.category_list.currentItem()
-        if current_item and current_item.isHidden():
-            preferred_item = self.category_items_by_key.get(active_key)
-            if preferred_item and not preferred_item.isHidden():
-                self.category_list.setCurrentItem(preferred_item)
-                preferred_card = self._ensure_category_built(active_key, refresh_profiles=(active_key == "system_settings"))
-                if preferred_card:
-                    self._smooth_ensure_visible(preferred_card, y_margin=40, duration_ms=280)
-                self._sync_paged_settings_view()
-                self._queue_visible_category_builds()
-                return
-
-            for i in range(self.category_list.count()):
-                item = self.category_list.item(i)
-                if item and not item.isHidden():
-                    self.category_list.setCurrentItem(item)
-                    fallback_key = str(item.data(Qt.UserRole) or "").strip()
-                    if fallback_key:
-                        self._ensure_category_built(fallback_key, refresh_profiles=(fallback_key == "system_settings"))
-                    card = self.category_widgets.get(item.text())
-                    if card:
-                        self._smooth_ensure_visible(card, y_margin=40, duration_ms=280)
-                    self._sync_paged_settings_view()
-                    self._queue_visible_category_builds()
-                    return
-
-        self._sync_paged_settings_view()
-        self._queue_visible_category_builds()
+        self._sync_provider_behavior_default_page()
 
     def _on_config_storage_location_changed(self, text: str):
         is_custom = text == "Custom"
@@ -1716,6 +2980,13 @@ class SettingsWindow(QMainWindow):
                     template_widget.setPlainText(template)
         finally:
             template_widget.blockSignals(previous_block)
+
+        row = self.setting_rows.get("formatting.formatting_template")
+        is_custom = text == "Custom"
+        if row is not None:
+            row.setEnabled(is_custom)
+        else:
+            template_widget.setEnabled(is_custom)
 
     def _sync_application_settings_info(self):
         version_widget = self.field_widgets.get("application_settings.current_version_info")

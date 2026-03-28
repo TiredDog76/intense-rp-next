@@ -25,7 +25,7 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](providers.md)
 
--   :material-layers-triple-outline: **Multi-Slot Cache**
+-   :material-layers-triple-outline: **Search Older Matching Chats**
 
     Reuse up to 7 older cached chats on supported providers instead of only the latest one.
 
@@ -92,9 +92,9 @@ If you are looking for DeepSeek / GLM / Moonshot / QwenLM / Google AI Studio tog
 
 ---
 
-### :material-layers-triple-outline: Multi-Slot Cache
+### :material-layers-triple-outline: Search Older Matching Chats
 
-On supported providers, Multi-Slot Cache lets Clean Regeneration remember more than one old chat.
+On supported providers, **Search Older Matching Chats** lets **Reuse Matching Chat** remember more than one old chat.
 
 It keeps up to 7 reusable prompt slots per provider/account, so IntenseRP can jump back to an older matching conversation and hit Regenerate there instead of only checking the very last chat.
 

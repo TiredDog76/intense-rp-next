@@ -87,7 +87,7 @@ class ConfigManager:
         for category in SCHEMA:
             if category.key not in self.settings:
                 self.settings[category.key] = {}
-            for field in category.fields:
+            for field in self._iter_default_fields(category.fields):
                 self.settings[category.key][field.key] = field.default
         self.save_settings()
 
@@ -97,12 +97,33 @@ class ConfigManager:
             if category.key not in self.settings:
                 self.settings[category.key] = {}
                 updated = True
-            for field in category.fields:
+            for field in self._iter_default_fields(category.fields):
                 if field.key not in self.settings[category.key]:
                     self.settings[category.key][field.key] = field.default
                     updated = True
         if updated:
             self.save_settings()
+
+    def _iter_default_fields(self, fields):
+        for field in fields:
+            if field.type == SettingType.ROW and field.sub_fields:
+                yield from self._iter_default_fields(field.sub_fields)
+                continue
+
+            if getattr(field, "transient", False):
+                continue
+
+            if field.type in {
+                SettingType.BUTTON,
+                SettingType.DESCRIPTION,
+                SettingType.DIVIDER,
+                SettingType.HINT,
+                SettingType.REDIRECT,
+                SettingType.ROW,
+            }:
+                continue
+
+            yield field
 
     def save_settings(self):
         try:

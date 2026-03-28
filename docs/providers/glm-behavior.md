@@ -117,10 +117,10 @@ This setting only appears when **Send As Text File** is enabled.
 
 Clean Regeneration tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks GLM's "Regenerate" instead of creating a brand new chat. This is done with the goal of reducing clutter in the chat history and generally just speeding up the workflow.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Clean Regeneration**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Reuse Matching Chat**
 
 !!! note "Pick one"
-    On GLM, you can use either **Clean Regeneration** (+ optional **Multi-Slot Cache**) or **Repetition Buster**.
+    On GLM, you can use either **Reuse Matching Chat** (+ optional **Search Older Matching Chats**) or **Repetition Buster**.
 
     They are opposite strategies, so IntenseRP only uses one of them at a time.
 
@@ -129,16 +129,16 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
 
     If you want to experiment with it anyway, try enabling **Refresh After Generation** under GLM Behavior -> Quirks. This reloads the page after each response and can sometimes restore the UI state so Regenerate becomes available again.
 
-!!! tip "Multi-Slot Cache"
-    GLM also supports **GLM Behavior** -> **Multi-Slot Cache**.
+!!! tip "Search Older Matching Chats"
+    GLM also supports **Provider Behavior** -> **GLM Chat** -> **Search Older Matching Chats**.
 
     That lets IntenseRP keep up to 7 older cached GLM chats per account and try reopening one of those when the current prompt matches.
 
-    Same point as above, though: if GLM's regenerate UI is being annoying that day, Multi-Slot Cache inherits the same annoyance because it still depends on the Regenerate button working.
+    Same point as above, though: if GLM's regenerate UI is being annoying that day, **Search Older Matching Chats** inherits the same annoyance because it still depends on the Regenerate button working.
 
 ### :material-shuffle-variant: Repetition Buster
 
-Repetition Buster is basically the opposite of Clean Regeneration.
+Repetition Buster is basically the opposite of **Reuse Matching Chat**.
 
 Instead of trying to reuse the same chat, IntenseRP checks whether the current prompt matches the **immediately previous** one for the active GLM account/profile. That last-prompt memory is kept across restarts, because GLM's own caching can survive them too. If it matches, IntenseRP opens a throwaway fresh chat, sends a random **128-character** string there, and then opens another fresh chat for your real prompt.
 
@@ -146,8 +146,8 @@ That random string is just a cache buster. The whole idea is to disturb GLM's co
 
 :material-arrow-right: **Settings** -> **GLM Behavior** -> **Repetition Buster**
 
-!!! note "No Multi-Slot Cache here"
-    Multi-Slot Cache only works with Clean Regeneration, because it reopens an older chat and presses **Regenerate** there.
+!!! note "No Search Older Matching Chats here"
+    **Search Older Matching Chats** only works with **Reuse Matching Chat**, because it reopens an older chat and presses **Regenerate** there.
 
     Repetition Buster does the opposite. It intentionally burns one throwaway chat and then starts another brand new one for the real request.
 
@@ -219,7 +219,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |
-| **Clean Regeneration** | Regenerates on duplicate prompts | Off (unstable for GLM) |
+| **Reuse Matching Chat** | Regenerates on duplicate prompts | Off (unstable for GLM) |
 | **Repetition Buster** | Sends a throwaway cache-buster prompt before duplicate prompts | Off |
 | **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
 | **Refresh After Generation** | Reloads the GLM page after each response | Off |

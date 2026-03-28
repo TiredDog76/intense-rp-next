@@ -129,7 +129,7 @@ When IntenseRP detects a `CONTENT_FILTER` status in the response stream:
 
 When you send the exact same prompt twice in a row, IntenseRP can regenerate the previous response instead of creating a brand new chat. This keeps things tidy and can sometimes give you a different (hopefully better) answer.
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → **Clean Regeneration**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Reuse Matching Chat**
 
 ### How It Works
 
@@ -147,8 +147,8 @@ When you send the exact same prompt twice in a row, IntenseRP can regenerate the
 !!! note "Censorship"
     DeepSeek automatically disables the regenerate button if the last response was censored. In that case, Clean Regeneration won't work, and IntenseRP will start a new chat instead.
 
-!!! tip "Multi-Slot Cache"
-    If you want Clean Regeneration to remember more than just the latest chat, enable **DeepSeek Behavior** -> **Multi-Slot Cache** as well.
+!!! tip "Search Older Matching Chats"
+    If you want **Reuse Matching Chat** to remember more than just the latest chat, enable **Provider Behavior** -> **DeepSeek** -> **Search Older Matching Chats** as well.
 
     It keeps up to 7 older cached DeepSeek chats per account, and if one of them matches the current prompt/settings, IntenseRP can reopen that chat and regenerate there instead.
 
@@ -187,7 +187,7 @@ All macros are stripped from the message before sending it to DeepSeek.
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
 | **Anti-Censorship** | Hides refusal messages | Off |
-| **Clean Regeneration** | Regenerates on duplicate prompts | Off |
+| **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 
 ---
 

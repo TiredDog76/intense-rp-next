@@ -85,6 +85,23 @@ class SettingCategory:
     key: str
     fields: List[SettingField] = field(default_factory=list)
 
+
+@dataclass(frozen=True)
+class SettingCard:
+    key: str
+    title: str
+    field_refs: List[tuple[str, str]] = field(default_factory=list)
+    description: Optional[str] = None
+    special: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class SettingSection:
+    key: str
+    label: str
+    icon: str
+    card_keys: List[str] = field(default_factory=list)
+
 # Define the schema
 SCHEMA = [
     SettingCategory(
@@ -93,50 +110,50 @@ SCHEMA = [
         fields=[
             SettingField(
                 key="provider",
-                label="Provider",
+                label="Current Provider",
                 type=SettingType.DROPDOWN,
                 default="DeepSeek",
                 options=provider_options(),
                 tooltip=(
-                    "Select the active provider driver. "
-                    "This applies on the next browser start (Stop -> Start)."
+                    "Choose which provider web app IntenseRP should drive. "
+                    "This takes effect the next time the browser is started."
                 ),
                 docs_path=DOCS_PROVIDER_SUPPORT,
                 docs_anchor="how-providers-work-in-v2",
             ),
             SettingField(
                 key="auto_login",
-                label="Auto Login",
+                label="Sign In Automatically",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Automatically log in using a saved account from Credential Manager.",
+                tooltip="Try to sign in with one of your saved accounts automatically.",
                 docs_path=DOCS_LOGIN,
                 docs_anchor="auto-login",
             ),
             SettingField(
                 key="select_least_used",
-                label="Select Least Used",
+                label="Prefer the Least Used Account",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Prefer the least recently used account. Otherwise, a random account is selected.",
+                tooltip="Spread usage across saved accounts instead of picking one at random.",
                 docs_path=DOCS_ACCOUNTS,
                 docs_anchor="how-account-selection-works",
             ),
             SettingField(
                 key="reload_on_failure",
-                label="Reload on Failure",
+                label="Retry With Another Account",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Restart and rotate to a different account/profile on empty or rate-limited responses.",
+                tooltip="If a response is empty or rate-limited, try again with another saved account or profile.",
                 docs_path=DOCS_ACCOUNTS,
                 docs_anchor="reload-on-failure-auto-retry",
             ),
             SettingField(
                 key="credential_manager",
-                label="Credential Manager",
+                label="Saved Accounts",
                 type=SettingType.REDIRECT,
-                default="Credential Manager",
-                tooltip="Manage provider accounts (email/password) used for Auto Login.",
+                default="Open Manager",
+                tooltip="Add, edit, or remove saved provider accounts for automatic sign-in.",
                 action="open_credential_manager",
                 docs_path=DOCS_ACCOUNTS,
                 docs_anchor="quick-setup",
@@ -155,11 +172,11 @@ SCHEMA = [
             ),
             SettingField(
                 key="formatting_preset",
-                label="Preset",
+                label="Message Style",
                 type=SettingType.DROPDOWN,
                 default="Classic - Name",
                 options=FORMATTING_PRESET_OPTIONS,
-                tooltip="Choose a formatting preset or create your own.",
+                tooltip="Start from a built-in style or switch to Custom and write your own.",
                 docs_path=DOCS_FORMATTING,
                 docs_anchor="presets",
             ),
@@ -174,7 +191,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="reset_formatting_btn",
-                label="Reset to Default",
+                label="Reset Message Style",
                 type=SettingType.BUTTON,
                 default="Reset",
                 action="reset_formatting",
@@ -184,7 +201,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="formatting_divider",
-                label="Divide messages with...",
+                label="Between Messages",
                 type=SettingType.TEXTAREA,
                 default="\\n",
                 tooltip="String to insert between messages. Default is a newline.",
@@ -193,7 +210,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="apply_formatting",
-                label="Apply Formatting",
+                label="Format Messages Before Sending",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Toggle whether to apply the formatting rules.",
@@ -215,7 +232,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="enable_msg_objects",
-                label="Message Objects",
+                label="Read Names from Message Objects",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Scan for 'name' parameter in message objects (or 'irp-next' for RossAscends's STMP patcher compat).",
@@ -224,7 +241,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="enable_ir2",
-                label="IR2 blocks",
+                label="Read Names from IR2 Blocks",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Parse [[IR2u]]username[[/IR2u]]-[[IR2a]]charname[[/IR2a]] blocks.",
@@ -233,7 +250,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="enable_classic_irp",
-                label="Classic IntenseRP",
+                label="Read Names from Classic IntenseRP Blocks",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Parse DATA1: \"{{char}}\" DATA2: \"{{user}}\" blocks.",
@@ -255,7 +272,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="injection_position",
-                label="Position",
+                label="Place Extra Instruction",
                 type=SettingType.DROPDOWN,
                 default="Before",
                 options=["Before", "After"],
@@ -265,7 +282,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="injection_content",
-                label="Content",
+                label="Extra Instruction",
                 type=SettingType.TEXTAREA,
                 default="",
                 tooltip="Content to inject. Supports {{user}} and {{char}} placeholders.",
@@ -274,7 +291,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="reset_injection_btn",
-                label="Reset to Default",
+                label="Reset Extra Instruction",
                 type=SettingType.BUTTON,
                 default="Reset",
                 action="reset_injection",
@@ -354,7 +371,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="clean_regeneration",
-                label="Clean Regeneration",
+                label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
@@ -363,7 +380,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="multi_slot_cache",
-                label="Multi-Slot Cache",
+                label="Search Older Matching Chats",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
@@ -471,7 +488,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="clean_regeneration",
-                label="Clean Regeneration",
+                label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
@@ -485,7 +502,7 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "The opposite of Clean Regeneration. "
+                    "The opposite of Reuse Matching Chat. "
                     "On duplicate prompts, send a throwaway random cache-buster prompt first, "
                     "then open another fresh chat for the real request."
                 ),
@@ -495,7 +512,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="multi_slot_cache",
-                label="Multi-Slot Cache",
+                label="Search Older Matching Chats",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
@@ -646,7 +663,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="clean_regeneration",
-                label="Clean Regeneration",
+                label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
@@ -655,7 +672,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="multi_slot_cache",
-                label="Multi-Slot Cache",
+                label="Search Older Matching Chats",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
@@ -780,7 +797,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="clean_regeneration",
-                label="Clean Regeneration",
+                label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
@@ -789,7 +806,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="multi_slot_cache",
-                label="Multi-Slot Cache",
+                label="Search Older Matching Chats",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
@@ -1026,7 +1043,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="clean_regeneration",
-                label="Clean Regeneration",
+                label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
@@ -1041,16 +1058,16 @@ SCHEMA = [
         fields=[
             SettingField(
                 key="enable_logfiles",
-                label="Enable Logfiles",
+                label="Log to Files",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Enable logging to files.",
+                tooltip="Save logs to rotating files on disk.",
                 docs_path=DOCS_CONSOLE,
                 docs_anchor="file-logging",
             ),
             SettingField(
                 key="log_dir",
-                label="Log Directory",
+                label="Folder",
                 type=SettingType.DIRECTORY,
                 default="logs",
                 tooltip="Directory to store log files.",
@@ -1061,7 +1078,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="max_files",
-                label="Max Log Files",
+                label="Files to Keep",
                 type=SettingType.INTEGER,
                 default=5,
                 tooltip="Maximum number of log files to keep (before rotation). 0 for unlimited.",
@@ -1102,7 +1119,7 @@ SCHEMA = [
         fields=[
             SettingField(
                 key="persistent_sessions",
-                label="Persistent Sessions",
+                label="Keep Provider Sessions Signed In",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Reuse a persistent Playwright browser profile so logins persist between restarts.",
@@ -1150,7 +1167,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="notify_on_driver_crash",
-                label="Notify on Driver Crash",
+                label="Warn if the Provider Window Closes",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Show a notification when the provider browser is closed or crashes unexpectedly.",
@@ -1192,7 +1209,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="show_request_queue_preview",
-                label="Request Queue Preview",
+                label="Show the Request Queue Panel",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Show an optional Request Queue panel in the main window.",
@@ -1207,7 +1224,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="stdout_log_level",
-                label="Stdout",
+                label="Terminal",
                 type=SettingType.DROPDOWN,
                 default="Debug",
                 options=["Debug", "Success", "Info", "Warning", "Error"],
@@ -1227,7 +1244,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="mini_console_log_level",
-                label="Mini-Console",
+                label="Activity Log",
                 type=SettingType.DROPDOWN,
                 default="Success",
                 options=["Debug", "Success", "Info", "Warning", "Error"],
@@ -1253,7 +1270,7 @@ SCHEMA = [
         fields=[
             SettingField(
                 key="providers_in_parallel",
-                label="Providers in Parallel",
+                label="Run Providers in Parallel",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
@@ -1332,7 +1349,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="better_model_names",
-                label="Better Model Names",
+                label="Friendlier Model Names",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Use friendlier model IDs in /v1/models. Legacy IDs are still accepted.",
@@ -1341,7 +1358,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="classic_title",
-                label="Classic Title Bar",
+                label="Use the Classic Title Bar",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Use the classic title layout instead of the new logo + styled title.",
@@ -1349,7 +1366,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="changelog_button",
-                label="Changelog Button",
+                label="Show the News Button",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip=(
@@ -1415,7 +1432,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="check_for_updates_on_startup",
-                label="Check for Updates on Startup",
+                label="Check for Updates on Launch",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Automatically check for updates when the app starts.",
@@ -1424,14 +1441,21 @@ SCHEMA = [
             ),
             SettingField(
                 key="collapse_to_tray_on_close",
-                label="Collapse to Tray (when closed)",
+                label="Keep Running in the Tray When Closed",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="When enabled, closing the main window hides it to the tray instead of exiting.",
             ),
             SettingField(
+                key="open_settings_full_screen",
+                label="Open Settings Full-Screen",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip="Open the Settings window maximized by default.",
+            ),
+            SettingField(
                 key="enable_animations",
-                label="Enable Animations",
+                label="Enable Interface Animations",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
@@ -1439,22 +1463,8 @@ SCHEMA = [
                 ),
             ),
             SettingField(
-                key="show_only_active_provider_behavior",
-                label="Show Only Active Provider Behavior",
-                type=SettingType.BOOLEAN,
-                default=True,
-                tooltip="Only show the Behavior category for the currently selected Provider.",
-            ),
-            SettingField(
-                key="paged_settings_view",
-                label="Paged Settings View",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Show one category at a time. Use the sidebar to switch between them.",
-            ),
-            SettingField(
                 key="hotswap_experience",
-                label="Hotswap Experience",
+                label="Hotswap Button Style",
                 type=SettingType.DROPDOWN,
                 default="Stop Menu",
                 options=["Stop Menu", "Discrete", "Persistent Discrete"],
@@ -1476,7 +1486,7 @@ SCHEMA = [
         fields=[
             SettingField(
                 key="enable_console",
-                label="Enable Console",
+                label="Open a Console Window",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Show a console window for viewing application logs.",
@@ -1485,7 +1495,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="log_to_main",
-                label="Log to Main",
+                label="Also Show Logs in the Main Window",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Also log to the Activity Log in the main window. Forced on if the console is disabled.",
@@ -1496,7 +1506,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="log_to_stdout",
-                label="Log to Stdout",
+                label="Also Print Logs to the Terminal",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Also log to stdout/terminal. Forced on if the console is disabled.",
@@ -1507,7 +1517,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="max_lines",
-                label="Max Line Limit",
+                label="Lines to Keep",
                 type=SettingType.INTEGER,
                 default=500,
                 tooltip="Maximum number of lines to keep in the console history.",
@@ -1516,7 +1526,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="font_size",
-                label="Font Size",
+                label="Text Size",
                 type=SettingType.INTEGER,
                 default=10,
                 tooltip="Font size for the console text.",
@@ -1525,7 +1535,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="wrap_lines",
-                label="Wrap Lines",
+                label="Wrap Long Lines",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Soft-wrap long lines in the console window.",
@@ -1534,7 +1544,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="auto_scroll_mode",
-                label="Auto-Scroll Mode",
+                label="Auto-Scroll",
                 type=SettingType.DROPDOWN,
                 default="Always",
                 options=["Always", "Bottom only", "Never"],
@@ -1544,7 +1554,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="color_palette",
-                label="Color Palette",
+                label="Color Theme",
                 type=SettingType.DROPDOWN,
                 default="Modern",
                 options=["Modern", "Classic", "Bright"],
@@ -1554,7 +1564,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="always_on_top",
-                label="Always On Top",
+                label="Keep the Console on Top",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Keep the console window on top of other windows.",
@@ -1569,7 +1579,7 @@ SCHEMA = [
         fields=[
             SettingField(
                 key="confirm_clear",
-                label="Confirm Clear",
+                label="Ask Before Clearing the Console",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Ask for confirmation before clearing the console output.",
@@ -1578,7 +1588,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="condump_directory",
-                label="Condump Directory",
+                label="Export Folder",
                 type=SettingType.DIRECTORY,
                 default=None,
                 tooltip="Directory to write console dumps to. Leave blank to ask each time.",
@@ -1595,7 +1605,7 @@ SCHEMA = [
         fields=[
             SettingField(
                 key="port",
-                label="Port",
+                label="Server Port",
                 type=SettingType.INTEGER,
                 default=7777,
                 tooltip="Port for the local API server.",
@@ -1605,7 +1615,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="available_on_lan",
-                label="Available on LAN",
+                label="Allow Local Network Access",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Make the API server accessible from other devices on the local network.",
@@ -1614,7 +1624,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="show_ip",
-                label="Show IP",
+                label="Show the Server Address in Logs",
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Print the server address(es) to the console when the API server starts.",
@@ -1623,7 +1633,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="use_api_keys",
-                label="Use API Keys",
+                label="Require API Keys",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Require an API key (Bearer) for incoming requests.",
@@ -1632,7 +1642,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="api_keys",
-                label="API Keys",
+                label="Allowed API Keys",
                 type=SettingType.INPUT_PAIR,
                 default=[],
                 tooltip="List of API key name/value pairs.",
@@ -1650,7 +1660,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="use_ip_whitelist",
-                label="Use IP Whitelist",
+                label="Restrict Access by IP Address",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Only allow API requests from the listed IP addresses.",
@@ -1659,7 +1669,7 @@ SCHEMA = [
             ),
             SettingField(
                 key="ip_whitelist",
-                label="Whitelisted IPs",
+                label="Allowed IP Addresses",
                 type=SettingType.INPUT_LIST,
                 default=[],
                 tooltip="List of IP addresses allowed to access the API.",
@@ -1672,3 +1682,267 @@ SCHEMA = [
         ]
     ),
 ]
+
+
+SETTINGS_SECTIONS = [
+    SettingSection(
+        key="provider_login",
+        label="Provider and Login",
+        icon="key.svg",
+        card_keys=["provider_choice", "sign_in_accounts", "saved_sessions"],
+    ),
+    SettingSection(
+        key="provider_behavior",
+        label="Provider Behavior",
+        icon="brain.svg",
+        card_keys=["provider_defaults"],
+    ),
+    SettingSection(
+        key="api_server",
+        label="API Server",
+        icon="share-2.svg",
+        card_keys=["server_access", "server_security"],
+    ),
+    SettingSection(
+        key="formatting",
+        label="Formatting",
+        icon="type.svg",
+        card_keys=["message_style", "name_detection", "extra_instruction"],
+    ),
+    SettingSection(
+        key="interface",
+        label="Interface",
+        icon="monitor.svg",
+        card_keys=["window_behavior", "main_window", "updates"],
+    ),
+    SettingSection(
+        key="logs_troubleshooting",
+        label="Logs and Troubleshooting",
+        icon="terminal.svg",
+        card_keys=["log_to_files", "console_window", "logging_levels", "export_cleanup"],
+    ),
+    SettingSection(
+        key="advanced",
+        label="Advanced",
+        icon="flask-conical.svg",
+        card_keys=["provider_stability", "config_storage", "experimental_features"],
+    ),
+]
+
+
+SETTINGS_CARDS = {
+    "provider_choice": SettingCard(
+        key="provider_choice",
+        title="Current Provider",
+        field_refs=[("providers_credentials", "provider")],
+    ),
+    "sign_in_accounts": SettingCard(
+        key="sign_in_accounts",
+        title="Sign-In and Accounts",
+        field_refs=[
+            ("providers_credentials", "auto_login"),
+            ("providers_credentials", "select_least_used"),
+            ("providers_credentials", "reload_on_failure"),
+            ("providers_credentials", "credential_manager"),
+        ],
+    ),
+    "saved_sessions": SettingCard(
+        key="saved_sessions",
+        title="Saved Sessions",
+        field_refs=[
+            ("system_settings", "persistent_sessions"),
+            ("system_settings", "delete_persistent_profile_row"),
+            ("system_settings", "clear_all_persistent_profiles"),
+        ],
+    ),
+    "provider_defaults": SettingCard(
+        key="provider_defaults",
+        title="Provider",
+        special="provider_behavior",
+    ),
+    "server_access": SettingCard(
+        key="server_access",
+        title="Access",
+        field_refs=[
+            ("network_settings", "port"),
+            ("network_settings", "available_on_lan"),
+            ("network_settings", "show_ip"),
+        ],
+    ),
+    "server_security": SettingCard(
+        key="server_security",
+        title="Security",
+        field_refs=[
+            ("network_settings", "use_api_keys"),
+            ("network_settings", "api_keys"),
+            ("network_settings", "use_ip_whitelist"),
+            ("network_settings", "ip_whitelist"),
+        ],
+    ),
+    "message_style": SettingCard(
+        key="message_style",
+        title="Message Style",
+        field_refs=[
+            ("formatting", "formatting_preset"),
+            ("formatting", "formatting_template"),
+            ("formatting", "reset_formatting_btn"),
+            ("formatting", "formatting_divider"),
+            ("formatting", "apply_formatting"),
+        ],
+    ),
+    "name_detection": SettingCard(
+        key="name_detection",
+        title="Name Detection",
+        description="These methods are checked in order. If none of them works, role names are used instead.",
+        field_refs=[
+            ("formatting", "enable_msg_objects"),
+            ("formatting", "enable_ir2"),
+            ("formatting", "enable_classic_irp"),
+        ],
+    ),
+    "extra_instruction": SettingCard(
+        key="extra_instruction",
+        title="Extra Instruction",
+        description="Add a small instruction before or after the formatted chat. Supports {{user}} and {{char}} placeholders.",
+        field_refs=[
+            ("formatting", "injection_position"),
+            ("formatting", "injection_content"),
+            ("formatting", "reset_injection_btn"),
+        ],
+    ),
+    "window_behavior": SettingCard(
+        key="window_behavior",
+        title="Window Behavior",
+        field_refs=[
+            ("application_settings", "open_settings_full_screen"),
+            ("application_settings", "collapse_to_tray_on_close"),
+            ("application_settings", "enable_animations"),
+            ("experimental", "classic_title"),
+        ],
+    ),
+    "main_window": SettingCard(
+        key="main_window",
+        title="Main Window",
+        field_refs=[
+            ("system_settings", "show_request_queue_preview"),
+            ("experimental", "changelog_button"),
+            ("application_settings", "hotswap_experience"),
+        ],
+    ),
+    "updates": SettingCard(
+        key="updates",
+        title="Updates",
+        field_refs=[
+            ("application_settings", "current_version_info"),
+            ("application_settings", "update_status_info"),
+            ("application_settings", "check_for_updates_btn"),
+            ("application_settings", "check_for_updates_on_startup"),
+        ],
+    ),
+    "log_to_files": SettingCard(
+        key="log_to_files",
+        title="Log to Files",
+        field_refs=[
+            ("logfiles", "enable_logfiles"),
+            ("logfiles", "log_dir"),
+            ("logfiles", "max_files"),
+            ("logfiles", "max_file_size"),
+        ],
+    ),
+    "console_window": SettingCard(
+        key="console_window",
+        title="Console Window",
+        field_refs=[
+            ("console_settings", "enable_console"),
+            ("console_settings", "log_to_main"),
+            ("console_settings", "log_to_stdout"),
+            ("console_settings", "max_lines"),
+            ("console_settings", "font_size"),
+            ("console_settings", "wrap_lines"),
+            ("console_settings", "auto_scroll_mode"),
+            ("console_settings", "color_palette"),
+            ("console_settings", "always_on_top"),
+        ],
+    ),
+    "logging_levels": SettingCard(
+        key="logging_levels",
+        title="Logging Levels",
+        field_refs=[
+            ("system_settings", "stdout_log_level"),
+            ("system_settings", "console_log_level"),
+            ("system_settings", "mini_console_log_level"),
+            ("system_settings", "logfile_log_level"),
+        ],
+    ),
+    "export_cleanup": SettingCard(
+        key="export_cleanup",
+        title="Export and Cleanup",
+        field_refs=[
+            ("console_dumping", "confirm_clear"),
+            ("console_dumping", "condump_directory"),
+        ],
+    ),
+    "provider_stability": SettingCard(
+        key="provider_stability",
+        title="Provider Stability",
+        field_refs=[("system_settings", "notify_on_driver_crash")],
+    ),
+    "config_storage": SettingCard(
+        key="config_storage",
+        title="Config Storage",
+        field_refs=[
+            ("system_settings", "config_storage_location"),
+            ("system_settings", "config_storage_custom_path"),
+        ],
+    ),
+    "experimental_features": SettingCard(
+        key="experimental_features",
+        title="Experimental Features",
+        field_refs=[
+            ("experimental", "providers_in_parallel"),
+            ("experimental", "providers_in_parallel_note"),
+            ("experimental", "parallel_enable_deepseek"),
+            ("experimental", "parallel_enable_glm"),
+            ("experimental", "parallel_enable_moonshot"),
+            ("experimental", "parallel_enable_qwen"),
+            ("experimental", "parallel_enable_aistudio"),
+            ("experimental", "better_model_names"),
+            ("experimental", "enable_remote_control"),
+            ("experimental", "remote_control_password"),
+        ],
+    ),
+}
+
+
+PROVIDER_BEHAVIOR_GROUPS = {
+    "deepseek_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "enable_search"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache", "first_chunk_timeout"]},
+        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
+    ],
+    "glm_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "repetition_buster", "multi_slot_cache"]},
+        {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "first_chunk_timeout", "refresh_after_generation"]},
+    ],
+    "moonshot_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "search_and_think_note", "enable_search"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache"]},
+        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
+    ],
+    "qwen_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache"]},
+    ],
+    "aistudio_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},
+        {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
+        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
+        {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
+        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "clean_regeneration"]},
+    ],
+}

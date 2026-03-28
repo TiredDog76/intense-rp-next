@@ -86,11 +86,11 @@ Pick your platform and let's go!
 Before hitting Start, pick your provider and decide how you want to log in.
 
 1. Click the :material-cog: **Settings** button
-2. Go to **Providers & Credentials**
-3. Choose your **Provider** (DeepSeek, GLM Chat, Moonshot, QwenLM, or Google AI Studio)
-4. (Optional) Turn on :material-toggle-switch: **Auto Login**
-5. Open **Credential Manager** and add your account(s)
-6. (Optional) Enable **Select Least Used** and/or **Reload on Failure**
+2. Go to **Provider and Login**
+3. In **Current Provider**, choose your provider (DeepSeek, GLM Chat, Moonshot, QwenLM, or Google AI Studio)
+4. In **Sign-In and Accounts**, (optional) turn on :material-toggle-switch: **Sign In Automatically**
+5. Open **Saved Accounts** and add your account(s)
+6. (Optional) Enable **Prefer the Least Used Account** and/or **Retry With Another Account**
 7. Hit :material-content-save: **Save**
 
 <!-- TODO: replace with an updated screenshot -->
@@ -205,7 +205,7 @@ The recommended way is to set **Character Names Behavior** to **Completion Objec
 
 By default IntenseRP listens on port `7777`. If that happens to be taken, you can change it:
 
-:material-arrow-right: **Settings** → **Network Settings** → **Port**
+:material-arrow-right: **Settings** → **API Server** → **Access** → **Server Port**
 
 Don't forget to update your SillyTavern endpoint too!
 
@@ -215,7 +215,7 @@ Don't forget to update your SillyTavern endpoint too!
 
 And just as before, we support provider reasoning features. In simple words, it makes the model "smarter" by letting it think through problems step-by-step before answering (but also makes it slower and can change the tone).
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** (or GLM / Moonshot / QwenLM / Google AI Studio Behavior, depending on your provider)
+:material-arrow-right: **Settings** → **Provider Behavior** → pick your provider in the selector
 
 | Option | What It Does |
 |--------|-------------|
@@ -228,7 +228,7 @@ And just as before, we support provider reasoning features. In simple words, it 
 
 Tired of logging in every time you restart?
 
-:material-arrow-right: **Settings** → **System Settings** → :material-toggle-switch: **Persistent Sessions**
+:material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → :material-toggle-switch: **Keep Provider Sessions Signed In**
 
 This saves your browser session so you stay logged in (unless you log out manually).
 
@@ -255,7 +255,7 @@ This saves your browser session so you stay logged in (unless you log out manual
 
 That's DeepSeek's content filter kicking in. To hide this message:
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → :material-toggle-switch: **Anti-Censorship**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → :material-toggle-switch: **Try to Recover From Blocks**
 
 !!! note
     This doesn't bypass the filter; we just "snatch" the message before it's censored.
@@ -266,7 +266,7 @@ That's AI Studio's harder backend-style censorship flow.
 
 If you want IntenseRP to try the edit + continue workaround:
 
-:material-arrow-right: **Settings** → **Google AI Studio Behavior** → :material-toggle-switch: **Anti-Censorship**
+:material-arrow-right: **Settings** → **Provider Behavior** → **Google AI Studio** → :material-toggle-switch: **Anti-Censorship**
 
 !!! note
     AI Studio's version is a bit weirder than DeepSeek's one.

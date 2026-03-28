@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QFrame, QPushButton, QSizePolicy, QFileDialog, QStyle, QStyleOptionComboBox, QToolButton
 from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent, QPropertyAnimation, QEasingCurve, QAbstractAnimation
+import html
 import os
 from pathlib import Path
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon, QTextCursor
@@ -1172,11 +1173,9 @@ class SettingRow(QWidget):
         self.setStyleSheet("background-color: transparent;")
 
         self._docs_url = str(docs_url or "").strip()
-        self._docs_handler = docs_handler
-        self._help_hovered = False
-        self._help_focus_visible = False
-        self.help_button = None
-        self._help_slot = None
+        self._label_text = str(label_text or "")
+        self._description_text = str(description or tooltip or "")
+        self._is_dirty = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 10, 0, 10)
@@ -1186,102 +1185,78 @@ class SettingRow(QWidget):
         header.setStyleSheet("background-color: transparent;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(6)
+        header_layout.setSpacing(0)
 
-        self.label = QLabel(label_text)
-        self.label.setStyleSheet(f"""
-            font-size: {BrandColors.FONT_SIZE_REGULAR};
-            color: {BrandColors.TEXT_SECONDARY};
-            background-color: transparent;
-            font-weight: 500;
-        """)
-        if tooltip:
-            self.label.setToolTip(tooltip)
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setStyleSheet("background-color: transparent;")
         header_layout.addWidget(self.label, 0, Qt.AlignVCenter)
-
-        if self._docs_url:
-            self._help_slot = QWidget(self)
-            self._help_slot.setStyleSheet("background-color: transparent;")
-            self._help_slot.setFixedSize(16, 16)
-            header_layout.addWidget(self._help_slot, 0, Qt.AlignVCenter)
-            self._tag_docs_widget(self)
-            self._tag_docs_widget(self.label)
-
         header_layout.addStretch(1)
         layout.addWidget(header)
 
+        self.desc_label = None
         if description:
-            desc_label = QLabel(description)
-            desc_label.setWordWrap(True)
-            desc_label.setStyleSheet(f"""
+            self.desc_label = QLabel(description)
+            self.desc_label.setWordWrap(True)
+            self.desc_label.setStyleSheet(f"""
                 font-size: {BrandColors.FONT_SIZE_SMALL};
-                color: {BrandColors.TEXT_DISABLED};
+                color: {BrandColors.TEXT_SOFT};
                 background-color: transparent;
                 padding-bottom: 4px;
             """)
-            layout.addWidget(desc_label)
+            layout.addWidget(self.desc_label)
 
         self.control = control_widget
-        if tooltip:
-            self.control.setToolTip(tooltip)
-
         self.control.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.control)
-        self._tag_docs_widget(self.control)
+        self._tag_info_widget(self)
+        self._tag_info_widget(self.label)
+        self._tag_info_widget(self.control)
+        self._update_label_style()
 
-    def _tag_docs_widget(self, widget: QWidget | None) -> None:
-        if widget is None or not self._docs_url:
+    def _tag_info_widget(self, widget: QWidget | None) -> None:
+        if widget is None:
             return
-        widget.setProperty("docsUrl", self._docs_url)
+        widget.setProperty("settingInfoTitle", self._label_text)
+        widget.setProperty("settingInfoBody", str(self._description_text or "").strip())
+        if self._docs_url:
+            widget.setProperty("docsUrl", self._docs_url)
 
-    def _ensure_help_button(self) -> None:
-        if self.help_button is not None or not self._docs_url or not self._help_slot:
+    def _update_label_style(self, enabled: bool = True) -> None:
+        label_color = BrandColors.TEXT_SECONDARY if enabled else BrandColors.TEXT_DISABLED
+        dirty_html = ""
+        if self._is_dirty:
+            dirty_html = f" <span style='color: {BrandColors.ACCENT};'>*</span>"
+        self.label.setText(
+            (
+                f"<span style='font-size: {BrandColors.FONT_SIZE_REGULAR}; "
+                f"font-weight: 500; color: {label_color};'>"
+                f"{html.escape(self._label_text)}</span>{dirty_html}"
+            )
+        )
+
+    def set_dirty(self, dirty: bool) -> None:
+        dirty = bool(dirty)
+        if self._is_dirty == dirty:
             return
+        self._is_dirty = dirty
+        self._update_label_style(self.isEnabled())
 
-        slot_layout = QHBoxLayout(self._help_slot)
-        slot_layout.setContentsMargins(0, 0, 0, 0)
-        slot_layout.setSpacing(0)
-
-        self.help_button = DocsHelpButton(self._docs_url, self._help_slot)
-        if self._docs_handler:
-            self.help_button.clicked.connect(self._docs_handler)
-        self.help_button.hide()
-        slot_layout.addWidget(self.help_button, 0, Qt.AlignCenter)
-        self._tag_docs_widget(self.help_button)
-
-    def _update_help_button_visibility(self) -> None:
-        should_show = self._help_hovered or self._help_focus_visible
-        if should_show:
-            self._ensure_help_button()
-        if self.help_button:
-            self.help_button.setVisible(should_show)
-
-    def set_help_focus_visible(self, visible: bool) -> None:
-        self._help_focus_visible = bool(visible)
-        self._update_help_button_visibility()
-
-    def enterEvent(self, event):
-        super().enterEvent(event)
-        self._help_hovered = True
-        self._update_help_button_visibility()
-
-    def leaveEvent(self, event):
-        super().leaveEvent(event)
-        self._help_hovered = False
-        self._update_help_button_visibility()
+    def set_help_focus_visible(self, _visible: bool) -> None:
+        return
 
     def setEnabled(self, enabled: bool):
         super().setEnabled(enabled)
         self.control.setEnabled(enabled)
-        if self.help_button:
-            self.help_button.setEnabled(enabled)
-        label_color = BrandColors.TEXT_SECONDARY if enabled else BrandColors.TEXT_DISABLED
-        self.label.setStyleSheet(f"""
-            font-size: {BrandColors.FONT_SIZE_REGULAR};
-            color: {label_color};
-            background-color: transparent;
-            font-weight: 500;
-        """)
+        self._update_label_style(enabled)
+        if self.desc_label:
+            desc_color = BrandColors.TEXT_SOFT if enabled else BrandColors.TEXT_DISABLED
+            self.desc_label.setStyleSheet(f"""
+                font-size: {BrandColors.FONT_SIZE_SMALL};
+                color: {desc_color};
+                background-color: transparent;
+                padding-bottom: 4px;
+            """)
 
 
 class ToggleRow(QWidget):
@@ -1301,11 +1276,9 @@ class ToggleRow(QWidget):
         self.setStyleSheet("background-color: transparent;")
 
         self._docs_url = str(docs_url or "").strip()
-        self._docs_handler = docs_handler
-        self._help_hovered = False
-        self._help_focus_visible = False
-        self.help_button = None
-        self._help_slot = None
+        self._label_text = str(label_text or "")
+        self._description_text = str(description or tooltip or "")
+        self._is_dirty = False
 
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 12, 0, 12)
@@ -1319,26 +1292,12 @@ class ToggleRow(QWidget):
         label_row.setStyleSheet("background-color: transparent;")
         label_row_layout = QHBoxLayout(label_row)
         label_row_layout.setContentsMargins(0, 0, 0, 0)
-        label_row_layout.setSpacing(6)
+        label_row_layout.setSpacing(0)
 
-        self.label = QLabel(label_text)
-        self.label.setStyleSheet(f"""
-            font-size: {BrandColors.FONT_SIZE_LARGE};
-            color: {BrandColors.TEXT_PRIMARY};
-            background-color: transparent;
-        """)
-        if tooltip:
-            self.label.setToolTip(tooltip)
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setStyleSheet("background-color: transparent;")
         label_row_layout.addWidget(self.label, 0, Qt.AlignVCenter)
-
-        if self._docs_url:
-            self._help_slot = QWidget(self)
-            self._help_slot.setStyleSheet("background-color: transparent;")
-            self._help_slot.setFixedSize(16, 16)
-            label_row_layout.addWidget(self._help_slot, 0, Qt.AlignVCenter)
-            self._tag_docs_widget(self)
-            self._tag_docs_widget(self.label)
-
         label_row_layout.addStretch(1)
         left_layout.addWidget(label_row)
 
@@ -1347,7 +1306,7 @@ class ToggleRow(QWidget):
             self.desc_label.setWordWrap(True)
             self.desc_label.setStyleSheet(f"""
                 font-size: {BrandColors.FONT_SIZE_SMALL};
-                color: {BrandColors.TEXT_DISABLED};
+                color: {BrandColors.TEXT_SOFT};
                 background-color: transparent;
             """)
             left_layout.addWidget(self.desc_label)
@@ -1357,65 +1316,48 @@ class ToggleRow(QWidget):
         main_layout.addLayout(left_layout, 1)
 
         self.control = toggle_widget
-        if tooltip:
-            self.control.setToolTip(tooltip)
         main_layout.addWidget(self.control, 0)
-        self._tag_docs_widget(self.control)
+        self._tag_info_widget(self)
+        self._tag_info_widget(self.label)
+        self._tag_info_widget(self.control)
+        self._update_label_style()
 
-    def _tag_docs_widget(self, widget: QWidget | None) -> None:
-        if widget is None or not self._docs_url:
+    def _tag_info_widget(self, widget: QWidget | None) -> None:
+        if widget is None:
             return
-        widget.setProperty("docsUrl", self._docs_url)
+        widget.setProperty("settingInfoTitle", self._label_text)
+        widget.setProperty("settingInfoBody", str(self._description_text or "").strip())
+        if self._docs_url:
+            widget.setProperty("docsUrl", self._docs_url)
 
-    def _ensure_help_button(self) -> None:
-        if self.help_button is not None or not self._docs_url or not self._help_slot:
+    def _update_label_style(self, enabled: bool = True) -> None:
+        label_color = BrandColors.TEXT_PRIMARY if enabled else BrandColors.TEXT_DISABLED
+        dirty_html = ""
+        if self._is_dirty:
+            dirty_html = f" <span style='color: {BrandColors.ACCENT};'>*</span>"
+        self.label.setText(
+            (
+                f"<span style='font-size: {BrandColors.FONT_SIZE_LARGE}; "
+                f"color: {label_color};'>{html.escape(self._label_text)}</span>{dirty_html}"
+            )
+        )
+
+    def set_dirty(self, dirty: bool) -> None:
+        dirty = bool(dirty)
+        if self._is_dirty == dirty:
             return
+        self._is_dirty = dirty
+        self._update_label_style(self.isEnabled())
 
-        slot_layout = QHBoxLayout(self._help_slot)
-        slot_layout.setContentsMargins(0, 0, 0, 0)
-        slot_layout.setSpacing(0)
-
-        self.help_button = DocsHelpButton(self._docs_url, self._help_slot)
-        if self._docs_handler:
-            self.help_button.clicked.connect(self._docs_handler)
-        self.help_button.hide()
-        slot_layout.addWidget(self.help_button, 0, Qt.AlignCenter)
-        self._tag_docs_widget(self.help_button)
-
-    def _update_help_button_visibility(self) -> None:
-        should_show = self._help_hovered or self._help_focus_visible
-        if should_show:
-            self._ensure_help_button()
-        if self.help_button:
-            self.help_button.setVisible(should_show)
-
-    def set_help_focus_visible(self, visible: bool) -> None:
-        self._help_focus_visible = bool(visible)
-        self._update_help_button_visibility()
-
-    def enterEvent(self, event):
-        super().enterEvent(event)
-        self._help_hovered = True
-        self._update_help_button_visibility()
-
-    def leaveEvent(self, event):
-        super().leaveEvent(event)
-        self._help_hovered = False
-        self._update_help_button_visibility()
+    def set_help_focus_visible(self, _visible: bool) -> None:
+        return
 
     def setEnabled(self, enabled: bool):
         super().setEnabled(enabled)
         self.control.setEnabled(enabled)
-        if self.help_button:
-            self.help_button.setEnabled(enabled)
-        label_color = BrandColors.TEXT_PRIMARY if enabled else BrandColors.TEXT_DISABLED
-        self.label.setStyleSheet(f"""
-            font-size: {BrandColors.FONT_SIZE_LARGE};
-            color: {label_color};
-            background-color: transparent;
-        """)
+        self._update_label_style(enabled)
         if self.desc_label:
-            desc_color = BrandColors.TEXT_DISABLED if enabled else BrandColors.TEXT_DISABLED
+            desc_color = BrandColors.TEXT_SOFT if enabled else BrandColors.TEXT_DISABLED
             self.desc_label.setStyleSheet(f"""
                 font-size: {BrandColors.FONT_SIZE_SMALL};
                 color: {desc_color};

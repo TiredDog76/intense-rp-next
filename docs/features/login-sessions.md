@@ -16,10 +16,10 @@ If you're tired of typing your password every time, Auto Login uses a saved acco
 
 ### Setting It Up
 
-1. Go to **Settings** → **Providers & Credentials**
-2. Select your **Provider**
-3. Toggle on **Auto Login**
-4. Open **Credential Manager** and add an account for your provider
+1. Go to **Settings** → **Provider and Login**
+2. In **Current Provider**, choose your provider
+3. In **Sign-In and Accounts**, toggle on **Sign In Automatically**
+4. Open **Saved Accounts** and add an account for your provider
 5. Click **Save**
 
 Next time you start IntenseRP, the driver can fill credentials and click login for you.
@@ -65,7 +65,7 @@ This one's even better. Instead of logging in every time (even automatically), P
 
 When enabled, IntenseRP uses a "persistent browser context" - basically saving cookies, local storage, and session data to a folder on your computer. Next time you start the app, it loads that profile and you're already logged in.
 
-:material-arrow-right: **Settings** → **System Settings** → **Persistent Sessions**
+:material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → **Keep Provider Sessions Signed In**
 
 ### Where's the Data Stored?
 
@@ -97,8 +97,8 @@ This folder contains your provider session cookies and browser data. It's automa
 
 If you want to start fresh or log out completely, you can delete a specific saved browser profile (or wipe them all):
 
-- **Delete Profile**: :material-arrow-right: **Settings** → **System Settings** → **Delete Profile** (pick one, click **Delete**)
-- **Clear All Profiles**: :material-arrow-right: **Settings** → **System Settings** → **Clear All Profiles**
+- **Delete Profile**: :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → **Delete Profile** (pick one, click **Delete**)
+- **Clear All Profiles**: :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → **Clear All Profiles**
 
 Deleting a profile folder:
 

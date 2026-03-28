@@ -132,10 +132,10 @@ When enabled, IntenseRP tries to click Kimi's regenerate action if:
 
 Otherwise it starts a fresh chat.
 
-:material-arrow-right: **Settings** -> **Moonshot Behavior** -> **Clean Regeneration**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Moonshot** -> **Reuse Matching Chat**
 
-!!! tip "Multi-Slot Cache"
-    If you enable **Moonshot Behavior** -> **Multi-Slot Cache**, IntenseRP keeps up to 7 older cached Kimi chats per account instead of only remembering the latest one.
+!!! tip "Search Older Matching Chats"
+    If you enable **Provider Behavior** -> **Moonshot** -> **Search Older Matching Chats**, IntenseRP keeps up to 7 older cached Kimi chats per account instead of only remembering the latest one.
 
     When one of those older chats matches the current prompt/settings, IntenseRP can reopen it and use Kimi's regenerate action there.
 
@@ -168,7 +168,7 @@ All macros are stripped before sending.
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Anti-Censorship** | Suppresses refusal-like outputs | Off |
-| **Clean Regeneration** | Regenerates on duplicate prompts | Off |
+| **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 
 ---
 

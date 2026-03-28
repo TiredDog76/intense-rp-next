@@ -12,7 +12,7 @@ IntenseRP Next v2 currently supports five providers, and each one has its own Be
 
 -   :providers-deepseek: **DeepSeek Behavior**
 
-    Configure DeepThink, Search, anti-censorship, file uploads, and clean regeneration.
+    Configure DeepThink, Search, anti-censorship, file uploads, and chat reuse.
 
     [:arrow_right: Learn More](providers/deepseek-behavior.md)
 
@@ -59,7 +59,7 @@ Fine-tune how DeepSeek processes your requests.
 | **Search** | Enable web search capabilities |
 | **File Upload Mode** | Send long prompts as a text file to bypass input limits |
 | **Anti-Censorship** | Suppress "Sorry, that's beyond my current scope" messages |
-| **Clean Regeneration** | Regenerate the last response instead of creating a new chat when the prompt is identical |
+| **Reuse Matching Chat** | Regenerate the last response instead of creating a new chat when the prompt is identical |
 
 ---
 
@@ -75,7 +75,7 @@ Fine-tune how GLM Chat processes your requests.
 | **Model** | Select GLM's real web UI model picker |
 | **Count Tokens** | Return token usage in API responses |
 | **File Upload Mode** | Send long prompts as a text file to bypass input limits |
-| **Clean Regeneration** | Regenerate on duplicate prompts (currently unreliable for GLM) |
+| **Reuse Matching Chat** | Regenerate on duplicate prompts (currently unreliable for GLM) |
 | **Repetition Buster** | Send a throwaway cache-buster prompt before duplicate prompts in a fresh chat |
 
 ---
@@ -91,7 +91,7 @@ Fine-tune how Moonshot processes your requests.
 | **Search** | Toggle Kimi search tooling |
 | **File Upload Mode** | Send long prompts as a text file |
 | **Anti-Censorship** | Suppress refusal-like stream outputs when detected |
-| **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
+| **Reuse Matching Chat** | Regenerate on duplicate prompts instead of opening a new chat |
 
 ---
 
@@ -107,7 +107,7 @@ Fine-tune how QwenLM processes your requests.
 | **Web Search** | Toggle QwenLM Web search (search results are not sent to the client) |
 | **Model Picker (UI)** | Select Qwen's real model dropdown |
 | **File Upload Mode** | Send long prompts as a text file |
-| **Clean Regeneration** | Regenerate on duplicate prompts instead of opening a new chat |
+| **Reuse Matching Chat** | Regenerate on duplicate prompts instead of opening a new chat |
 
 ---
 
@@ -127,7 +127,7 @@ Fine-tune how Google AI Studio processes your requests.
 | **Anti-Censorship** | Detects blocked turns and runs the edit + continue workaround |
 | **Temperature / Top P / Max Output Tokens** | Applies AI Studio sampling controls before sending |
 | **Safety Filters** | Lowers AI Studio's safety sliders automatically once per browser session |
-| **Clean Regeneration** | Regenerates on duplicate prompts instead of opening a new chat |
+| **Reuse Matching Chat** | Regenerates on duplicate prompts instead of opening a new chat |
 
 ---
 

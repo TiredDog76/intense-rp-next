@@ -1395,8 +1395,7 @@ class MainWindow(QMainWindow):
             self.settings_window.restart_requested.connect(self.on_restart_requested)
         elif not self.settings_window.isVisible():
             self.settings_window.refresh_from_config()
-        self.settings_window.show()
-        self.settings_window.activateWindow() # Bring to front
+        self.settings_window.present()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1841,7 +1840,7 @@ class MainWindow(QMainWindow):
     def _warn_port_in_use(self, port: int) -> None:
         title = "Port In Use"
         text = f"Port {port} is already in use."
-        details = "Free the port (close the other application) or change it in Settings -> Network Settings."
+        details = "Free the port (close the other application) or change it in Settings -> API Server."
 
         if not (self.isVisible() and self.isActiveWindow()):
             self._notify_user(title, f"{text}\n\n{details}", level="warning")
@@ -1898,7 +1897,7 @@ class MainWindow(QMainWindow):
                     self._update_status(f"Port {port} is not available", "error")
                     self._notify_user(
                         "Port Unavailable",
-                        f"Port {port} is not available.\n\n{reason}\n\nFree the port or change it in Settings -> Network Settings.",
+                        f"Port {port} is not available.\n\n{reason}\n\nFree the port or change it in Settings -> API Server.",
                         level="error",
                     )
 

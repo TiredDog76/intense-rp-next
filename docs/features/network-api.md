@@ -12,7 +12,7 @@ Configure how IntenseRP listens for incoming requests from SillyTavern and other
 
 The port number where IntenseRP's API server listens for requests. Default is `7777`.
 
-:material-arrow-right: **Settings** → **Network Settings** → **Port**
+:material-arrow-right: **Settings** → **API Server** → **Access** → **Server Port**
 
 ![Network settings](../pics/features/network_settings.png)
 
@@ -33,7 +33,7 @@ If port 7777 is already in use by another application, just pick a different one
 
 By default, IntenseRP only accepts connections from your own computer (`localhost` / `127.0.0.1`). Enable LAN availability to let other devices on your network connect.
 
-:material-arrow-right: **Settings** → **Network Settings** → **Available on LAN**
+:material-arrow-right: **Settings** → **API Server** → **Access** → **Allow Local Network Access**
 
 ### When to Use This
 
@@ -88,7 +88,7 @@ http://192.168.1.100:7777/v1
 
 When enabled, IntenseRP prints the server address(es) to the console each time the API server starts. This is on by default.
 
-:material-arrow-right: **Settings** → **Network Settings** → **Show IP**
+:material-arrow-right: **Settings** → **API Server** → **Access** → **Show the Server Address in Logs**
 
 With **Available on LAN** off, you'll see:
 
@@ -111,7 +111,7 @@ Disable this if you'd rather not have the address logged on every start.
 
 Add an extra layer of security by requiring an API key for all incoming requests. When enabled, clients must include a valid key in the `Authorization` header.
 
-:material-arrow-right: **Settings** → **Network Settings** → **Use API Keys**
+:material-arrow-right: **Settings** → **API Server** → **Security** → **Require API Keys**
 
 ### Setting Up API Keys
 
@@ -160,7 +160,7 @@ IntenseRP exposes an OpenAI-compatible API. Here are the available endpoints:
 
 ### Available Models
 
-When you query `/v1/models`, you'll get different model IDs depending on the active provider (**Settings -> Providers & Credentials -> Provider**).
+When you query `/v1/models`, you'll get different model IDs depending on the active provider (**Settings -> Provider and Login -> Current Provider**).
 
 These IDs are behavior presets (modes), not true model selection.
 

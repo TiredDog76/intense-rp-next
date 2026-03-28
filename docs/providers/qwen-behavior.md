@@ -135,10 +135,10 @@ If any of those get changed, you might see the Qwen tab reload once. That is nor
 
 Clean Regeneration tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks Qwen's "Regenerate" instead of creating a brand new chat. Especially useful if you swipe a lot in SillyTavern and want to hit ratelimits less.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Clean Regeneration**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Reuse Matching Chat**
 
-!!! tip "Multi-Slot Cache"
-    QwenLM also supports **QwenLM Behavior** -> **Multi-Slot Cache**.
+!!! tip "Search Older Matching Chats"
+    QwenLM also supports **Provider Behavior** -> **QwenLM** -> **Search Older Matching Chats**.
 
     That keeps up to 7 older cached Qwen chats per account, so IntenseRP can reopen a matching older conversation and regenerate there instead of only checking the most recent one.
 
@@ -197,7 +197,7 @@ All macros are stripped from the message before sending it to QwenLM.
 | **Text File Message** | Text pasted alongside uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait after upload | 20 |
 | **Message Send Timeout (s)** | Seconds to wait for send button | 8 |
-| **Clean Regeneration** | Regenerates on duplicate prompts | Off |
+| **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 
 ---
 

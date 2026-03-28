@@ -4,11 +4,11 @@ icon: material/layers-triple-outline
 
 # :material-layers-triple-outline: Multi-Slot Cache
 
-Multi-Slot Cache is basically **Clean Regeneration with a better memory**.
+Multi-Slot Cache is basically **Reuse Matching Chat with a better memory**.
 
-Normally, Clean Regeneration only remembers the very last prompt/chat it used. With Multi-Slot Cache enabled, IntenseRP can keep up to **7** older cached chats around and reuse one of those if the current request matches.
+Normally, **Reuse Matching Chat** only remembers the very last prompt/chat it used. With Multi-Slot Cache enabled, IntenseRP can keep up to **7** older cached chats around and reuse one of those if the current request matches.
 
-It is **off by default**, and it only works when **Clean Regeneration** is also enabled for that provider.
+It is **off by default**, and it only works when **Reuse Matching Chat** is also enabled for that provider.
 
 ---
 
@@ -27,7 +27,7 @@ It does **not** work on **Google AI Studio** right now.
 
 ## :material-cog-refresh: How it works
 
-1. IntenseRP still tries the normal Clean Regeneration flow first.
+1. IntenseRP still tries the normal **Reuse Matching Chat** flow first.
 2. If the current chat is already the right one, it just presses **Regenerate** there like usual.
 3. If not, IntenseRP checks the older cached slots for the same prompt + relevant provider state.
 4. If it finds a match, it opens that cached chat URL and tries to regenerate there instead.
@@ -79,12 +79,12 @@ If a DeepSeek chat gets content-filtered / censored, IntenseRP does **not** save
 
 You enable it in the provider Behavior pages:
 
-- **DeepSeek Behavior** -> **Multi-Slot Cache**
-- **GLM Behavior** -> **Multi-Slot Cache**
-- **Moonshot Behavior** -> **Multi-Slot Cache**
-- **QwenLM Behavior** -> **Multi-Slot Cache**
+- **Provider Behavior** -> **DeepSeek** -> **Search Older Matching Chats**
+- **Provider Behavior** -> **GLM Chat** -> **Search Older Matching Chats**
+- **Provider Behavior** -> **Moonshot** -> **Search Older Matching Chats**
+- **Provider Behavior** -> **QwenLM** -> **Search Older Matching Chats**
 
-And again, it only does anything if **Clean Regeneration** is already enabled for that provider.
+And again, it only does anything if **Reuse Matching Chat** is already enabled for that provider.
 
 ---
 
