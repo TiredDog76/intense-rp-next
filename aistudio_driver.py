@@ -1773,8 +1773,199 @@ class AIStudioDriver(BaseDriver):
 
         return await self._set_text_control_value(field, value_text, nested_selector="textarea")
 
+    @staticmethod
+    def _format_decimal_setting_value(value: float) -> str:
+        """Format decimal request controls the same way the UI setter does."""
+        return f"{float(value):.4f}".rstrip("0").rstrip(".")
+
+    @classmethod
+    def _decimal_setting_matches(cls, raw_value: Any, desired: float) -> bool:
+        """Compare a raw UI decimal value against the normalized desired value."""
+        text = str(raw_value or "").strip()
+        if not text:
+            return False
+        try:
+            current = cls._format_decimal_setting_value(float(text))
+        except Exception:
+            return False
+        return current == cls._format_decimal_setting_value(desired)
+
+    @staticmethod
+    def _integer_setting_matches(raw_value: Any, desired: int) -> bool:
+        """Compare a raw UI integer value against the desired integer."""
+        text = str(raw_value or "").strip()
+        if not text:
+            return False
+        try:
+            current = int(text)
+        except Exception:
+            try:
+                parsed = float(text)
+            except Exception:
+                return False
+            if not parsed.is_integer():
+                return False
+            current = int(parsed)
+        return current == int(desired)
+
+    async def _read_input_value(self, selector: str) -> Optional[str]:
+        """Read an input's current DOM value without requiring it to be visible."""
+        if not self.page:
+            return None
+
+        try:
+            value = await self.page.evaluate(
+                """(selector) => {
+                    const input = document.querySelector(selector);
+                    if (!input) return null;
+                    return (input.value ?? '').toString();
+                }""",
+                selector,
+            )
+        except Exception:
+            return None
+
+        text = str(value or "").strip()
+        return text or None
+
+    async def _read_nth_matching_input_value(self, selector: str, occurrence: int) -> Optional[str]:
+        """Read the current DOM value of the Nth input matching a selector."""
+        if not self.page:
+            return None
+
+        try:
+            value = await self.page.evaluate(
+                """(payload) => {
+                    const selector = (payload && payload.selector) ? payload.selector.toString() : '';
+                    const occurrence = (payload && Number.isInteger(payload.occurrence))
+                        ? payload.occurrence
+                        : 0;
+                    const inputs = Array.from(document.querySelectorAll(selector));
+                    const input = inputs[occurrence];
+                    if (!input) return null;
+                    return (input.value ?? '').toString();
+                }""",
+                {
+                    "selector": selector,
+                    "occurrence": int(occurrence),
+                },
+            )
+        except Exception:
+            return None
+
+        text = str(value or "").strip()
+        return text or None
+
+    async def _set_nth_matching_input_value(
+        self, selector: str, occurrence: int, value_text: str
+    ) -> bool:
+        """Set the Nth input matching a selector and dispatch the usual UI events."""
+        if not self.page:
+            return False
+
+        try:
+            applied = await self.page.evaluate(
+                """(payload) => {
+                    const selector = (payload && payload.selector) ? payload.selector.toString() : '';
+                    const occurrence = (payload && Number.isInteger(payload.occurrence))
+                        ? payload.occurrence
+                        : 0;
+                    const value = (payload && payload.value !== undefined)
+                        ? (payload.value ?? '').toString()
+                        : '';
+                    const inputs = Array.from(document.querySelectorAll(selector));
+                    const input = inputs[occurrence];
+                    if (!input) return false;
+
+                    let proto = input;
+                    let setter = null;
+                    while (proto && !setter) {
+                        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                        if (desc && typeof desc.set === 'function') {
+                            setter = desc.set;
+                            break;
+                        }
+                        proto = Object.getPrototypeOf(proto);
+                    }
+
+                    try { input.focus({ preventScroll: true }); } catch (e) {
+                        try { input.focus(); } catch (e2) {}
+                    }
+
+                    if (setter) {
+                        setter.call(input, value);
+                    } else {
+                        input.value = value;
+                    }
+
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    return (input.value ?? '').toString() === value;
+                }""",
+                {
+                    "selector": selector,
+                    "occurrence": int(occurrence),
+                    "value": str(value_text or ""),
+                },
+            )
+        except Exception:
+            applied = False
+
+        return bool(applied)
+
+    async def _read_top_p_value(self) -> Optional[str]:
+        """Best-effort read of the current top-p input value from the run settings panel."""
+        if not self.page:
+            return None
+
+        direct = await self._read_nth_matching_input_value("input.slider-number-input.small", 1)
+        if direct:
+            return direct
+
+        try:
+            value = await self.page.evaluate(
+                """() => {
+                    const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();
+                    const inputs = Array.from(document.querySelectorAll('input'));
+                    const candidates = [];
+                    for (const input of inputs) {
+                        const name = normalize(input.getAttribute('name'));
+                        if (name === 'maxoutputtokens') continue;
+                        if (input.closest("[data-test-id='temperatureSliderContainer']")) continue;
+
+                        const container = input.closest('mat-form-field, div, section, form') || input.parentElement;
+                        const contextText = normalize(container ? container.textContent : '');
+                        const rawValue = normalize(input.value);
+                        if (contextText.includes('top p') || contextText.includes('top-p') || contextText.includes('topp')) {
+                            candidates.unshift(input);
+                            continue;
+                        }
+                        if (rawValue && /^0(\\.\\d+)?$|^1(\\.0+)?$/.test(rawValue)) {
+                            candidates.push(input);
+                        }
+                    }
+
+                    if (!candidates.length) return null;
+                    return (candidates[0].value ?? '').toString();
+                }"""
+            )
+        except Exception:
+            return None
+
+        text = str(value or "").strip()
+        return text or None
+
     async def _set_temperature_value(self, value: float) -> None:
-        formatted = f"{float(value):.4f}".rstrip("0").rstrip(".")
+        formatted = self._format_decimal_setting_value(value)
+        current = await self._read_input_value(
+            "div[data-test-id='temperatureSliderContainer'] input.slider-number-input.small, "
+            "div[data-test-id='temperatureSliderContainer'] input"
+        )
+        if self._decimal_setting_matches(current, value):
+            Logger.debug(
+                f"Google AI Studio: temperature already matches {formatted}; skipping update."
+            )
+            return
         ok = await self._set_input_value(
             "div[data-test-id='temperatureSliderContainer'] input.slider-number-input.small, "
             "div[data-test-id='temperatureSliderContainer'] input",
@@ -1861,11 +2052,31 @@ class AIStudioDriver(BaseDriver):
         if not self.page:
             return
 
+        formatted = self._format_decimal_setting_value(value)
+        current = await self._read_top_p_value()
+        if self._decimal_setting_matches(current, value):
+            Logger.debug(f"Google AI Studio: top-p already matches {formatted}; skipping update.")
+            return
+
         expanded = await self._ensure_advanced_settings_expanded()
         if not expanded:
             Logger.warning("Google AI Studio: advanced settings could not be expanded for top-p.")
             return
-        formatted = f"{float(value):.4f}".rstrip("0").rstrip(".")
+
+        current = await self._read_top_p_value()
+        if self._decimal_setting_matches(current, value):
+            Logger.debug(
+                f"Google AI Studio: top-p already matches {formatted} after expanding settings; skipping update."
+            )
+            return
+
+        ok = await self._set_nth_matching_input_value(
+            "input.slider-number-input.small",
+            1,
+            formatted,
+        )
+        if ok:
+            return
 
         try:
             ok = await self.page.evaluate(
@@ -1924,6 +2135,13 @@ class AIStudioDriver(BaseDriver):
             Logger.warning("Google AI Studio: top-p input was not found.")
 
     async def _set_max_output_tokens(self, value: int) -> None:
+        current = await self._read_input_value("input[name='maxOutputTokens']")
+        if self._integer_setting_matches(current, value):
+            Logger.debug(
+                f"Google AI Studio: maxOutputTokens already matches {int(value)}; skipping update."
+            )
+            return
+
         expanded = await self._ensure_advanced_settings_expanded()
         if not expanded:
             Logger.warning("Google AI Studio: advanced settings could not be expanded for maxOutputTokens.")
