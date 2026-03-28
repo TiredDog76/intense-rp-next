@@ -420,13 +420,16 @@ class _FlowLayoutHost(QWidget):
         return self._flow_layout.heightForWidth(width)
 
     def sizeHint(self):
-        parent_width = self.parentWidget().width() if self.parentWidget() is not None else 520
-        width = max(260, int(parent_width))
+        parent_width = self.parentWidget().contentsRect().width() if self.parentWidget() is not None else 0
+        min_width = self._flow_layout.minimumSize().width()
+        width = max(min_width, int(parent_width or self.width() or 0))
         height = max(42, self._flow_layout.heightForWidth(width))
         return QSize(width, height)
 
     def minimumSizeHint(self):
-        return self.sizeHint()
+        min_width = self._flow_layout.minimumSize().width()
+        min_height = max(42, self._flow_layout.heightForWidth(max(1, min_width)))
+        return QSize(min_width, min_height)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -728,6 +731,12 @@ class SettingsWindow(QMainWindow):
     settings_saved = Signal(set)
     restart_requested = Signal()
     update_check_finished = Signal(object, str)
+    MIN_WINDOW_WIDTH = 780
+    MIN_WINDOW_HEIGHT = 560
+    SIDEBAR_WIDTH_MAXIMIZED = 320
+    SIDEBAR_WIDTH_WIDE = 296
+    SIDEBAR_WIDTH_DEFAULT = 280
+    SIDEBAR_WIDTH_COMPACT = 256
 
     SIDEBAR_ICON_MAP = {
         "providers_credentials": "key.svg",
@@ -760,6 +769,7 @@ class SettingsWindow(QMainWindow):
         self.config_manager = config_manager
         self.setWindowTitle("Settings")
         self.resize(900, 700)
+        self.setMinimumSize(self.MIN_WINDOW_WIDTH, self.MIN_WINDOW_HEIGHT)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG}; color: {BrandColors.TEXT_PRIMARY};")
         
         self.unsaved_changes = False
@@ -969,9 +979,40 @@ class SettingsWindow(QMainWindow):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self._update_responsive_layout()
         timer = getattr(self, "_provider_behavior_preload_timer", None)
         if self._pending_provider_behavior_preload_keys and isinstance(timer, QTimer):
             timer.start(40)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange:
+            self._update_responsive_layout()
+            QTimer.singleShot(0, self._update_responsive_layout)
+
+    def _sidebar_width_for_window(self) -> int:
+        if self.isFullScreen() or self.isMaximized():
+            return self.SIDEBAR_WIDTH_MAXIMIZED
+
+        width = max(0, int(self.width()))
+        if width >= 1180:
+            return self.SIDEBAR_WIDTH_WIDE
+        if width >= 940:
+            return self.SIDEBAR_WIDTH_DEFAULT
+        return self.SIDEBAR_WIDTH_COMPACT
+
+    def _update_responsive_layout(self) -> None:
+        sidebar = getattr(self, "_sidebar_panel", None)
+        if sidebar is None:
+            return
+
+        desired_width = self._sidebar_width_for_window()
+        if sidebar.width() != desired_width:
+            sidebar.setFixedWidth(desired_width)
 
     def _focus_search_input(self) -> None:
         self.search_input.setFocus(Qt.ShortcutFocusReason)
@@ -1489,11 +1530,12 @@ class SettingsWindow(QMainWindow):
         main_layout.setSpacing(0)
 
         left_widget = QWidget()
-        left_widget.setFixedWidth(320)
+        self._sidebar_panel = left_widget
         left_widget.setStyleSheet(f"background-color: {BrandColors.SIDEBAR_BG};")
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(12, 12, 12, 0)
         left_layout.setSpacing(0)
+        self._update_responsive_layout()
 
         self.sidebar_scroll = QScrollArea()
         self.sidebar_scroll.setWidgetResizable(True)
