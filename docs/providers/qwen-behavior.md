@@ -26,7 +26,7 @@ For QwenLM, these model IDs map to simple behavior presets:
 
 IntenseRP can also switch QwenLM's *real* model picker in the web UI:
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Model**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Model**
 
 The list is intentionally "what Qwen shows in the dropdown". If your selected model is missing (UI rollout / region / UI change), IntenseRP logs a warning and keeps going.
 
@@ -43,13 +43,13 @@ IntenseRP keeps it simple:
 
 ### Enable Thinking
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Enable Thinking**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Enable Thinking**
 
 ### Send Thinking
 
 When enabled, IntenseRP includes QwenLM's thinking *summaries* in the response, wrapped in `<think>` tags.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Send Thinking**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Send Thinking**
 
 !!! note "Thinking content"
     QwenLM sends a short thinking summary stream. This is what IntenseRP forwards (not hidden internal chain-of-thought).
@@ -62,7 +62,7 @@ QwenLM Web search can be toggled via IntenseRP.
 
 Qwen streams tool/search payloads into the same response stream. For stability, IntenseRP strips these tool payloads, so search results are **not sent** to the client.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Enable Search**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Enable Search**
 
 ---
 
@@ -70,7 +70,7 @@ Qwen streams tool/search payloads into the same response stream. For stability, 
 
 QwenLM reports token usage during the response stream. When enabled, IntenseRP captures those values and returns them in the OpenAI-style `usage` fields (`prompt_tokens`, `completion_tokens`, `total_tokens`). This is enabled by default.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Count Tokens**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Count Tokens**
 
 ---
 
@@ -78,7 +78,7 @@ QwenLM reports token usage during the response stream. When enabled, IntenseRP c
 
 Instead of typing your message into QwenLM's chat box, IntenseRP can upload it as a text file attachment. This is useful for very long prompts that might hit input limits.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Send As Text File**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Send As Text File**
 
 !!! warning "QwenLM file uploads are flaky"
     QwenLM does not handle files very reliably right now. If you are sending important context (system prompts, lore, character sheets), you will usually get better results by keeping File Upload Mode **off** and sending plain text instead.
@@ -89,7 +89,7 @@ Optional text that IntenseRP pastes into QwenLM *alongside* the uploaded file.
 
 Leave it empty to send a file-only message.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Text File Message**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Text File Message**
 
 !!! info "Helps a lot"
     QwenLM treats files as attachments rather than part of the message content, so it can be helpful to include a short message like "Context attached, please read it before answering" to make sure the model knows to look at the file.
@@ -98,13 +98,13 @@ Leave it empty to send a file-only message.
 
 After uploading, the send button can take a moment to become available. This setting controls how long IntenseRP waits (in seconds) before giving up.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **File Upload Timeout**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **File Upload Timeout**
 
 ### Message Send Timeout
 
 QwenLM doesn't render the send button until there's something to send (typed text or an uploaded file). This timeout controls how long IntenseRP waits for the send button to appear in normal (non-file) mode.
 
-:material-arrow-right: **Settings** -> **QwenLM Behavior** -> **Message Send Timeout (s)**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Message Send Timeout (s)**
 
 ---
 
@@ -123,9 +123,9 @@ If any of those get changed, you might see the Qwen tab reload once. That is nor
 
 ---
 
-## :material-refresh: Clean Regeneration
+## :material-refresh: Reuse Matching Chat
 
-Clean Regeneration tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks Qwen's "Regenerate" instead of creating a brand new chat. Especially useful if you swipe a lot in SillyTavern and want to hit ratelimits less.
+Reuse Matching Chat tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks Qwen's "Regenerate" instead of creating a brand new chat. Especially useful if you swipe a lot in SillyTavern and want to hit ratelimits less.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Reuse Matching Chat**
 

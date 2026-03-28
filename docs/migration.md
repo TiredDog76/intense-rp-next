@@ -71,8 +71,8 @@ The migrator is best-effort. It migrates the common stuff, but there are importa
 
 ### Migrated automatically (best-effort)
 
-- **Providers & Credentials**: Auto Login, DeepSeek email, DeepSeek password
-- **DeepSeek Behavior**: DeepThink, Send DeepThink, Search, Send As Text File, Clean Regeneration
+- **Provider and Login**: Sign In Automatically, legacy DeepSeek email/password, and saved account migration
+- **Provider Behavior (DeepSeek)**: DeepThink, Send DeepThink, Search, Send As Text File, Reuse Matching Chat
 - **Formatting**:
     - Preset mapping (v1 preset names -> v2 preset names)
     - v1 Wrapped/XML-like presets now map to **Multiline XML-Like** in v2
@@ -81,7 +81,7 @@ The migrator is best-effort. It migrates the common stuff, but there are importa
 - **Network**: Port and API keys (if configured)
 - **Logging**: logfile enabled, max files, max file size (bytes -> KB/MB/GB)
 - **Console**: font size, palette, condump directory
-- **System**: Persistent Sessions (mapped from v1 persistent cookies setting)
+- **Saved Sessions**: Keep Provider Sessions Signed In (mapped from v1 persistent cookies setting)
 
 ### Not migrated (or intentionally different)
 
@@ -145,7 +145,7 @@ It also accepts common v1 placeholders for compatibility:
 
 If you used API keys in v1, confirm:
 
-- :material-arrow-right: **Settings** → **Network Settings** → **Use API Keys** is set the way you expect
+- :material-arrow-right: **Settings** → **API Server** → **Security** → **Require API Keys** is set the way you expect
 - Your client (e.g. SillyTavern) is sending the key as a Bearer token
 
 ### 4) Persistent Sessions
@@ -161,8 +161,8 @@ IntenseRP uses the folder for the currently selected **Provider**.
 
 If your login behavior feels different after migration, review:
 
-- :material-arrow-right: **Settings** → **Providers & Credentials** → **Auto Login**
-- :material-arrow-right: **Settings** → **System Settings** → **Persistent Sessions**
+- :material-arrow-right: **Settings** → **Provider and Login** → **Sign-In and Accounts** → **Sign In Automatically**
+- :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → **Keep Provider Sessions Signed In**
 
 ---
 
@@ -240,4 +240,4 @@ Depends on your active provider:
 
     - `Authorization: Bearer <your-key>`
 
-    Re-check :material-arrow-right: **Settings** → **Network Settings** → **Use API Keys** and the SillyTavern API Key field.
+    Re-check :material-arrow-right: **Settings** → **API Server** → **Security** → **Require API Keys** and the SillyTavern API Key field.

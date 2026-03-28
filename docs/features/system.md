@@ -10,12 +10,12 @@ This page covers the "maintenance" side of IntenseRP Next v2: where settings liv
 
 ## :material-cog-outline: Where to Find These Settings
 
-Most of the system-related settings are in two places throughout the Settings window:
+These controls are spread across a few of the newer Settings sections:
 
-- :material-arrow-right: **Settings** → **System Settings** (profiles + config storage)
-- :material-arrow-right: **Settings** → **Application Settings** (version + updates)
-
-![System settings](../pics/features/system_settings.png)
+- :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** (profiles + session cleanup)
+- :material-arrow-right: **Settings** → **Advanced** → **Config Storage** (config directory location)
+- :material-arrow-right: **Settings** → **Interface** → **Main Window** / **Updates** (queue panel, hotswap button, version checks)
+- :material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Logging Levels** (per-target log severity)
 
 ---
 
@@ -23,7 +23,7 @@ Most of the system-related settings are in two places throughout the Settings wi
 
 Persistent Sessions keeps you logged in between restarts by storing a reusable Playwright browser profile (cookies, local storage, etc.).
 
-:material-arrow-right: **Settings** → **System Settings** → **Persistent Sessions**
+:material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → **Keep Provider Sessions Signed In**
 
 ### How It Works
 
@@ -45,7 +45,7 @@ Next time you start the app, it loads that same profile, so you usually won't se
 
 If the saved session gets weird (stuck login, expired cookies, endless redirects), Delete Profile lets you remove a specific saved browser profile so you can start fresh.
 
-:material-arrow-right: **Settings** → **System Settings** → **Delete Profile**
+:material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → **Delete Profile**
 
 What this does:
 
@@ -65,7 +65,7 @@ What this does:
 
 If you want a full reset, Clear All Profiles deletes **all** saved browser profiles (Legacy and Accounts).
 
-:material-arrow-right: **Settings** → **System Settings** → **Clear All Profiles**
+:material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → **Clear All Profiles**
 
 What this does:
 
@@ -107,7 +107,7 @@ That file contains the active config directory path.
 
 ## :material-database-cog: Config Storage Location Presets
 
-:material-arrow-right: **Settings** → **System Settings** → **Config Storage Location**
+:material-arrow-right: **Settings** → **Advanced** → **Config Storage** → **Config Storage Location**
 
 This dropdown controls where IntenseRP stores `config_data` (settings, keys, profiles).
 
@@ -129,7 +129,7 @@ Changing config storage is a little more involved, because IntenseRP needs to mo
 
 ### Steps
 
-1. Go to **Settings** → **System Settings**
+1. Go to **Settings** → **Advanced**
 2. Under **Config Storage**, choose a new **Config Storage Location**
 3. If you pick **Custom**, set **Custom Config Directory**
 4. Click **Save**
@@ -190,7 +190,7 @@ That backup includes your settings, API keys, and (if enabled) your persistent b
 
 If you have requests piling up or taking a while, this panel can help you see what's going on.
 
-:material-arrow-right: **Settings** → **System Settings** → **Main Window** → **Request Queue Preview**
+:material-arrow-right: **Settings** → **Interface** → **Main Window** → **Show the Request Queue Panel**
 
 For what it shows (and why requests queue in the first place), see [:material-api: API Behavior](../advanced/api-behavior.md#request-queue-preview).
 
@@ -203,9 +203,9 @@ It also includes 2 quick actions at the bottom:
 
 ## :material-filter: Logging Levels
 
-Also under System Settings, you can set a minimum severity threshold for each logging target (Stdout, Console Window, Mini-Console, Logfiles) independently.
+Also under **Logs and Troubleshooting**, you can set a minimum severity threshold for each logging target (**Terminal**, **Console Window**, **Activity Log**, **Logfiles**) independently.
 
-:material-arrow-right: **Settings** → **System Settings** → **Logging Levels**
+:material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Logging Levels**
 
 For full details and the severity order, see [:material-console: Console & Logging - Logging Levels](console-logging.md#logging-levels).
 
@@ -213,9 +213,9 @@ For full details and the severity order, see [:material-console: Console & Loggi
 
 ## :material-update: Updates
 
-:material-arrow-right: **Settings** → **Application Settings**
+:material-arrow-right: **Settings** → **Interface** → **Updates**
 
-![Application settings](../pics/features/application_settings_updates.png)
+![Application settings](../pics/features/updates.png)
 
 ### How the update check works
 
@@ -300,7 +300,7 @@ You can force-show the "Update Installed" dialog (without actually installing an
 ??? question "Persistent Sessions is enabled, but I still get logged out"
     Provider sessions can expire. If it happens frequently:
 
-    - Enable **Auto Login** as a fallback (Providers & Credentials)
+    - Enable **Sign In Automatically** as a fallback (:material-arrow-right: **Settings** → **Provider and Login** → **Sign-In and Accounts**)
     - Use **Delete Profile** (or **Clear All Profiles**) if the stored profile is corrupted or stuck
 
 ??? question "Config migration failed / was refused"

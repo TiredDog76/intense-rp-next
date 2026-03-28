@@ -23,7 +23,7 @@ When you turn this on, a console window pops up showing everything happening in 
 !!! tip "When to Use What"
 
     - **Running from binaries?** Use the console window or file logging as you run in GUI mode.
-    - **Running from source?** Log to Stdout works great since you already have a terminal open.
+    - **Running from source?** Terminal logging works great since you already have a terminal open.
 
 ### Log Levels
 
@@ -37,7 +37,7 @@ Messages are color-coded so you can spot problems at a glance:
 | :material-circle:{ style="color: #FFD43B" } **WARNING** | <span style="color: #FFD43B">Yellow</span> | Something might be off, but not critical |
 | :material-circle:{ style="color: #FF6B6B" } **ERROR** | <span style="color: #FF6B6B">Red</span> | Something broke |
 
-### Color Palettes
+### Color Themes
 
 Not a fan of the default colors? Sure then, pick your poison :upside_down:
 
@@ -55,13 +55,13 @@ Just a few more tweaks to make it your own:
 
 | Setting | What It Does |
 |---------|-------------|
-| **Max Line Limit** | How many lines to keep before old ones get trimmed (default: 500) |
-| **Font Size** | Text size in the console (default: 10 but I prefer 12) |
+| **Lines to Keep** | How many lines to keep before old ones get trimmed (default: 500) |
+| **Text Size** | Text size in the console (default: 10 but I prefer 12) |
 | **Wrap Lines** | Soft-wrap long lines to reduce horizontal scrolling |
-| **Auto-Scroll Mode** | When to follow new logs: Always / Bottom only / Never |
-| **Always On Top** | Keep the console above other windows |
+| **Auto-Scroll** | When to follow new logs: Always / Bottom only / Never |
+| **Keep the Console on Top** | Keep the console above other windows |
 
-!!! warning "Always On Top"
+!!! warning "Keep the Console on Top"
     This can sometimes cause issues on startup - the console might grab focus or get in the way. Only enable it if you really need it.
 
 ---
@@ -72,8 +72,8 @@ When the console is enabled, you get some control over where logs end up:
 
 | Setting | What It Does |
 |---------|-------------|
-| **Log to Main** | Shows logs in the Activity Log on the main window |
-| **Log to Stdout** | Prints logs to the terminal (useful if you're running from source) |
+| **Also Show Logs in the Main Window** | Shows logs in the Activity Log on the main window |
+| **Also Print Logs to the Terminal** | Prints logs to the terminal (useful if you're running from source) |
 
 !!! note
     If the console is disabled, both of these are forced on so you don't miss anything important.
@@ -88,9 +88,9 @@ Each output target has its own minimum severity threshold. Messages below the ch
 
 | Setting | Controls | Default |
 |---------|----------|---------|
-| **Stdout** | What gets printed to the terminal | Debug |
+| **Terminal** | What gets printed to the terminal | Debug |
 | **Console Window** | What appears in the console window | Debug |
-| **Mini-Console** | What shows up in the Activity Log (main window) | Success |
+| **Activity Log** | What shows up in the Activity Log (main window) | Success |
 | **Logfiles** | What gets written to log files | Debug |
 
 ### Severity Order
@@ -102,7 +102,7 @@ Levels are ordered from most verbose to least verbose:
 Setting a target to "Warning" means it only receives Warning and Error messages. Setting it to "Debug" means it gets everything.
 
 !!! tip "Practical Defaults"
-    The defaults are tuned so the Mini-Console stays clean (no debug noise) while everything else captures full detail. If you're hunting a specific issue, try setting the relevant target to Debug temporarily.
+    The defaults are tuned so the Activity Log stays clean (no debug noise) while everything else captures full detail. If you're hunting a specific issue, try setting the relevant target to Debug temporarily.
 
 ---
 
@@ -112,14 +112,14 @@ But what if you want to keep logs for later? Enter Logfiles - IntenseRP can save
 
 :material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Log to Files** → **Log to Files**
 
-![Logfiles settings](../pics/features/logfiles_settings.png)
+![Logfiles settings](../pics/features/logfiles.png)
 
 ### Configuration
 
 | Setting | What It Does | Default |
 |---------|-------------|---------|
-| **Log Directory** | Where log files get saved | `logs` |
-| **Max Log Files** | How many files to keep before deleting the oldest | 5 |
+| **Folder** | Where log files get saved | `logs` |
+| **Files to Keep** | How many files to keep before deleting the oldest | 5 |
 | **Max File Size** | Maximum size per file before it rotates | 10 MB |
 
 ### How Rotation Works
@@ -145,7 +145,7 @@ logs/
 
 ---
 
-## :material-download: Console Dumping
+## :material-download: Export and Cleanup
 
 Sometimes you need to save whatever's currently in the console - maybe to share with someone or just review later. That's what dumping is for.
 
@@ -158,12 +158,12 @@ Sometimes you need to save whatever's currently in the console - maybe to share 
 
 ### Dump Settings
 
-:material-arrow-right: **Settings** → **Console Dumping**
+:material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Export and Cleanup**
 
 | Setting | What It Does |
 |---------|-------------|
-| **Confirm Clear** | Ask before clearing the console (on by default) |
-| **Condump Directory** | Default folder for dumps (leave blank to ask each time) |
+| **Ask Before Clearing the Console** | Ask before clearing the console (on by default) |
+| **Export Folder** | Default folder for dumps (leave blank to ask each time) |
 
 ---
 
@@ -229,40 +229,40 @@ If you need to share logs with the developer or community:
 
 | Setting | Default | What It Does |
 |---------|---------|-------------|
-| Enable Console | Off | Shows the console window |
-| Log to Main | On | Shows logs in main window |
-| Log to Stdout | On | Prints to terminal |
-| Max Line Limit | 500 | Lines before trimming |
-| Font Size | 10 | Console text size |
+| Open a Console Window | Off | Shows the console window |
+| Also Show Logs in the Main Window | On | Shows logs in main window |
+| Also Print Logs to the Terminal | On | Prints to terminal |
+| Lines to Keep | 500 | Lines before trimming |
+| Text Size | 10 | Console text size |
 | Wrap Lines | Off | Soft-wrap long lines |
-| Auto-Scroll Mode | Always | Auto-scroll behavior |
-| Color Palette | Modern | Color scheme |
-| Always On Top | Off | Keeps console above other windows |
+| Auto-Scroll | Always | Auto-scroll behavior |
+| Color Theme | Modern | Color scheme |
+| Keep the Console on Top | Off | Keeps console above other windows |
 
 ### Logging Levels
 
 | Setting | Default | What It Does |
 |---------|---------|-------------|
-| Stdout | Debug | Minimum severity for terminal output |
+| Terminal | Debug | Minimum severity for terminal output |
 | Console Window | Debug | Minimum severity for the console window |
-| Mini-Console | Success | Minimum severity for the Activity Log |
+| Activity Log | Success | Minimum severity for the Activity Log |
 | Logfiles | Debug | Minimum severity for log files |
 
 ### Logfiles
 
 | Setting | Default | What It Does |
 |---------|---------|-------------|
-| Enable Logfiles | Off | Saves logs to files |
-| Log Directory | `logs` | Where files go |
-| Max Log Files | 5 | Files before rotation |
+| Log to Files | Off | Saves logs to files |
+| Folder | `logs` | Where files go |
+| Files to Keep | 5 | Files before rotation |
 | Max File Size | 10 MB | Size before rotation |
 
-### Console Dumping
+### Export and Cleanup
 
 | Setting | Default | What It Does |
 |---------|---------|-------------|
-| Confirm Clear | On | Ask before clearing |
-| Condump Directory | (blank) | Default dump location |
+| Ask Before Clearing the Console | On | Ask before clearing |
+| Export Folder | (blank) | Default dump location |
 
 ---
 

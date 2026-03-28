@@ -64,20 +64,20 @@ Quick answers to the questions that come up the most. If you need a step-by-step
 ## :material-lan: Networking & security
 
 ??? question "Can I connect from my phone or another PC?"
-    Yes - enable **Available on LAN**, then use your computer's LAN IP in the endpoint (example: `http://192.168.1.100:7777/v1`). See :material-lan: [Network & API](../features/network-api.md).
+    Yes - enable **Allow Local Network Access**, then use your computer's LAN IP in the endpoint (example: `http://192.168.1.100:7777/v1`). See :material-lan: [Network & API](../features/network-api.md).
 
 ??? question "Can I expose IntenseRP to the internet?"
     Not recommended. IntenseRP is designed for local/LAN use. If you need remote access, use a VPN and consider enabling API keys.
 
 ??? question "Why am I getting 401 Unauthorized?"
-    You most likely enabled **Use API Keys** in Settings. Either disable it, or put the same key into your client. See :material-key-variant: [API Keys](../features/network-api.md#api-keys).
+    You most likely enabled **Require API Keys** in Settings. Either disable it, or put the same key into your client. See :material-key-variant: [API Keys](../features/network-api.md#require-api-keys).
 
 ---
 
 ## :material-lock: Privacy & data
 
 ??? question "Does IntenseRP store my provider password?"
-    Only if you enable Auto Login. Your config directory contains sensitive data (credentials, API keys, cookies), so treat it like a password vault. If you prefer, keep Auto Login off and just log in manually.
+    Only if you enable **Sign In Automatically**. Your config directory contains sensitive data (credentials, API keys, cookies), so treat it like a password vault. If you prefer, leave it off and just log in manually.
 
 ??? question "Where are my settings and sessions saved?"
     In your config directory (`[config_dir]`). If you enabled Persistent Sessions, it can also contain saved browser profiles for your providers. See :material-cog: [System](../features/system.md).

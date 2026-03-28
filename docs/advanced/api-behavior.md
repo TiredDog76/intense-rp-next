@@ -33,7 +33,7 @@ Authorization: Bearer YOUR_KEY
 
 The API reports provider-specific "model" IDs, but they are best thought of as **behavior presets**.
 
-Which IDs you get from `GET /v1/models` depends on the currently selected provider in **Settings -> Providers & Credentials**.
+Which IDs you get from `GET /v1/models` depends on the currently selected provider in **Settings -> Provider and Login -> Current Provider**.
 
 ### DeepSeek
 
@@ -88,10 +88,10 @@ Google AI Studio model IDs are also behavior presets:
 !!! info "What these IDs are (and are not)"
     These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
-    For providers with a real web UI model picker (GLM Chat, QwenLM, Google AI Studio), that *real* model is selected via the provider-specific Behavior settings. The API `*-auto` / `*-chat` / `*-reasoner` IDs still remain behavior presets.
+    For providers with a real web UI model picker (GLM Chat, QwenLM, Google AI Studio), that *real* model is selected via **Provider Behavior**. The API `*-auto` / `*-chat` / `*-reasoner` IDs still remain behavior presets.
 
 !!! note "AI Studio anti-censorship retries"
-    When **Google AI Studio Behavior -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.
+    When **Settings -> Provider Behavior -> Google AI Studio -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.
 
 ---
 
@@ -144,7 +144,7 @@ What this means in practice:
 
 If you want to see the queue without guessing (or digging through logs), IntenseRP can show an optional panel in the main window.
 
-:material-arrow-right: **Settings** → **System Settings** → **Main Window** → **Request Queue Preview**
+:material-arrow-right: **Settings** → **Interface** → **Main Window** → **Show the Request Queue Panel**
 
 Once enabled, it shows the request currently being processed (if any), plus any waiting requests.
 

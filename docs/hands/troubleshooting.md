@@ -56,7 +56,7 @@ Checklist:
 - Confirm the port is correct (default `7777`).
 - Confirm you are using `http://`, not `https://`.
 - If connecting from another device:
-    - Enable **Available on LAN**
+    - Enable **Allow Local Network Access**
     - Use your PC's LAN IP (for example `http://192.168.1.100:7777/v1`)
 
 See: [:material-lan: Network & API](../features/network-api.md)
@@ -85,12 +85,12 @@ If nothing is listening, IntenseRP is not started, or it failed to start.
 
 ## :material-key-variant: 401 Unauthorized (API keys)
 
-If **Use API Keys** is enabled and your client does not send a key, IntenseRP will reject requests.
+If **Require API Keys** is enabled and your client does not send a key, IntenseRP will reject requests.
 
 Fix:
 
-1. Go to :material-arrow-right: **Settings** → **Network Settings**
-2. Either disable **Use API Keys**, or add a key and configure your client to use it
+1. Go to :material-arrow-right: **Settings** → **API Server** → **Security**
+2. Either disable **Require API Keys**, or add a key and configure your client to use it
 
 See: [:material-lan: Network & API](../features/network-api.md)
 
@@ -139,7 +139,7 @@ Checklist:
     2. Open `config_dir.txt`
     3. Confirm the folder exists and is writable
 - Try switching config storage:
-    - :material-arrow-right: **Settings** -> **System Settings** -> **Config Storage Location**
+    - :material-arrow-right: **Settings** -> **Advanced** -> **Config Storage** -> **Config Storage Location**
 
 See: [:material-cog: System](../features/system.md)
 
@@ -149,12 +149,11 @@ See: [:material-cog: System](../features/system.md)
 
 Fixes, in order:
 
-1. If you use Auto Login, double-check your provider selection + email/password in **Providers & Credentials**.
-   (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio)
+1. If you use **Sign In Automatically**, double-check **Current Provider** and the credentials saved under **Provider and Login** -> **Saved Accounts**.
 2. GLM Chat requires a CAPTCHA during login. Auto Login can fill credentials, but you still need to solve the CAPTCHA in the browser window.
-3. Try toggling **Persistent Sessions** off and back on (then Start again).
-4. If Persistent Sessions is enabled but things feel "stuck", use **Delete Profile** (or **Clear All Profiles**) to reset the saved browser profile.
-5. For DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio, try manual login once (disable Auto Login temporarily) to confirm the provider isn't blocking automated sign-in.
+3. Try toggling **Keep Provider Sessions Signed In** off and back on (then Start again).
+4. If **Keep Provider Sessions Signed In** is enabled but things feel "stuck", use **Delete Profile** (or **Clear All Profiles**) to reset the saved browser profile.
+5. For DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio, try manual login once (disable **Sign In Automatically** temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:
 

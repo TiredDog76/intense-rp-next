@@ -12,13 +12,11 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 DeepThink is DeepSeek's reasoning mode. When enabled, the model "thinks through" problems step-by-step before giving you an answer. This can make responses smarter and more thorough, but also slower and sometimes changes the tone. (for better or worse!)
 
-![DeepSeek Behavior settings](../pics/features/deepseek_behavior_settings.png)
-
 ### Enable DeepThink
 
 Toggles the DeepThink button in DeepSeek's interface.
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → **Enable DeepThink**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Enable DeepThink**
 
 ### Send DeepThink
 
@@ -36,7 +34,7 @@ Hey! What's up?
 
 If disabled, you only get the final response - the thinking happens behind the scenes but isn't sent to SillyTavern.
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → **Send DeepThink**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Send DeepThink**
 
 ### Model Override
 
@@ -56,7 +54,7 @@ This is handy if you want to quickly switch modes without digging into settings.
 
 Toggles DeepSeek's web search feature. When enabled, the model can look things up online to provide more accurate or up-to-date information.
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → **Enable Search**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Enable Search**
 
 !!! note
     Search results aren't directly included in the response - the model just uses them to inform its answer. You won't see citations or links unless the model decides to include them.
@@ -67,13 +65,13 @@ Toggles DeepSeek's web search feature. When enabled, the model can look things u
 
 Instead of typing your message into DeepSeek's chat box, IntenseRP can upload it as a text file attachment. This is useful for very long prompts that might hit DeepSeek's input limits.
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → **Send As Text File**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Send As Text File**
 
 ### File Upload Timeout
 
 When uploading files, DeepSeek takes a moment to process them before the send button becomes active. This setting controls how long IntenseRP waits (in seconds) before giving up.
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → **File Upload Timeout**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **File Upload Timeout**
 
 Default is 15 seconds, which should be plenty for most cases. Increase it if you're on a slow connection/PC or uploading very large prompts.
 
@@ -83,7 +81,7 @@ Default is 15 seconds, which should be plenty for most cases. Increase it if you
 
 This controls how long IntenseRP waits for DeepSeek's response stream to actually start after the request has been sent.
 
-:material-arrow-right: **Settings** -> **DeepSeek Behavior** -> **First Chunk Timeout (s)**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **DeepSeek** -> **First Chunk Timeout (s)**
 
 Default is 45 seconds.
 
@@ -98,7 +96,7 @@ If DeepSeek is being slow to wake up, or your machine/browser is not the fastest
 
 DeepSeek has a content filter that sometimes triggers with a "Sorry, that's beyond my current scope" message. When Anti-Censorship is enabled, IntenseRP catches this and terminates the response cleanly instead of letting the refusal message through.
 
-:material-arrow-right: **Settings** → **DeepSeek Behavior** → **Anti-Censorship**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Anti-Censorship**
 
 !!! warning "What It Doesn't Do"
     This doesn't bypass the filter or unblock content. It just hides the refusal message. In 99.9% of cases, it will only happen at the end of a response, meaning you'll get the entire answer anyway.
@@ -114,7 +112,7 @@ When IntenseRP detects a `CONTENT_FILTER` status in the response stream:
 
 ---
 
-## :material-refresh: Clean Regeneration
+## :material-refresh: Reuse Matching Chat
 
 When you send the exact same prompt twice in a row, IntenseRP can regenerate the previous response instead of creating a brand new chat. This keeps things tidy and can sometimes give you a different (hopefully better) answer.
 
@@ -131,10 +129,10 @@ When you send the exact same prompt twice in a row, IntenseRP can regenerate the
     If you change DeepThink, Search, or Send As Text File, IntenseRP will start a new chat even if the prompt is identical. This makes sure the new settings actually apply to the request.
 
 !!! tip "Swipe in SillyTavern"
-    This is especially useful with SillyTavern's "swipe" feature. Each swipe sends the same prompt again, and Clean Regeneration makes sure you're regenerating rather than cluttering up DeepSeek with duplicate chats.
+    This is especially useful with SillyTavern's "swipe" feature. Each swipe sends the same prompt again, and **Reuse Matching Chat** makes sure you're regenerating rather than cluttering up DeepSeek with duplicate chats.
 
 !!! note "Censorship"
-    DeepSeek automatically disables the regenerate button if the last response was censored. In that case, Clean Regeneration won't work, and IntenseRP will start a new chat instead.
+    DeepSeek automatically disables the regenerate button if the last response was censored. In that case, **Reuse Matching Chat** won't work, and IntenseRP will start a new chat instead.
 
 !!! tip "Search Older Matching Chats"
     If you want **Reuse Matching Chat** to remember more than just the latest chat, enable **Provider Behavior** -> **DeepSeek** -> **Search Older Matching Chats** as well.

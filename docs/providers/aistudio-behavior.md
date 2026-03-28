@@ -34,7 +34,7 @@ For Google AI Studio, these model IDs map to the following behavior:
 
 Google AI Studio has a real Gemini model picker in the web UI:
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Model**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Model**
 
 Currently supported:
 
@@ -70,7 +70,7 @@ Google AI Studio uses a Google login flow. IntenseRP supports both:
 
 If Auto Login fills your credentials but Google does not return to AI Studio quickly enough, IntenseRP falls back to manual completion.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Auto Login Redirect Timeout (s)**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Auto Login Redirect Timeout (s)**
 
 Default is 15 seconds.
 
@@ -86,7 +86,7 @@ When enabled, IntenseRP uses your configured **Thinking Level** on supported Gem
 
 When disabled, IntenseRP falls back to the lowest available level instead.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Enable Thinking**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Enable Thinking**
 
 ### Thinking Level
 
@@ -97,7 +97,7 @@ Controls the level IntenseRP selects on supported Gemini 3 / 3.1 models:
 - `Medium`
 - `High`
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Thinking Level**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Thinking Level**
 
 !!! note "Gemini 2.5 models"
     Gemini 2.5 models use a different internal budgeting system, so IntenseRP does not apply Thinking Level changes to them.
@@ -106,7 +106,7 @@ Controls the level IntenseRP selects on supported Gemini 3 / 3.1 models:
 
 When enabled, Gemini thinking summaries are included in the API response, wrapped in `<think>` tags.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Send Thinking**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Send Thinking**
 
 ---
 
@@ -118,13 +118,13 @@ Google AI Studio exposes two browsing-style tools in the web UI:
 
 Toggles **Grounding with Google Search**.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Enable Search**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Enable Search**
 
 ### Enable URL Context
 
 Toggles **URL Context** browsing.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Enable URL Context**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Enable URL Context**
 
 !!! note "Grounding payloads"
     AI Studio can emit extra grounding/search payloads into the same response stream. IntenseRP strips those provider-specific payloads and forwards only the assistant text.
@@ -135,7 +135,7 @@ Toggles **URL Context** browsing.
 
 AI Studio has its own **System Instructions** box, and IntenseRP can optionally use it for the leading `system` messages in your chat.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Use System Prompt Field**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Use System Prompt Field**
 
 When this is enabled, IntenseRP:
 
@@ -155,7 +155,7 @@ Anything after the first non-`system` message stays in the normal prompt on purp
 
 Google AI Studio can now upload the prompt as a text file through its native media picker flow.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Send As Text File**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Send As Text File**
 
 This is a best-effort implementation because AI Studio does not expose a clean direct file input - it opens a native picker from the media menu instead.
 
@@ -170,13 +170,13 @@ Optional text to send alongside the uploaded prompt file.
 
 Leave it empty to try file-only requests.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Text File Message**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Text File Message**
 
 ### File Upload Timeout
 
 Controls how long IntenseRP waits (in seconds) for the send button to become available after the file is selected.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **File Upload Timeout**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **File Upload Timeout**
 
 ---
 
@@ -192,19 +192,19 @@ You can set defaults in Settings, and request-level API values still win when pr
 
 ### Temperature
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Temperature**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Temperature**
 
 Default is `1.0`.
 
 ### Top P
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Top P**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Top P**
 
 Default is `0.95`.
 
 ### Max Output Tokens
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Max Output Tokens**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Max Output Tokens**
 
 Default is `65536`.
 
@@ -226,7 +226,7 @@ Google AI Studio can hard-block a reply on the backend. When that happens, you u
 - no usable assistant text in the stream, or
 - a turn in the UI that shows **Content blocked** in the **Safety Ratings** button area
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Anti-Censorship**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Anti-Censorship**
 
 When this is enabled, IntenseRP does an invasive recovery flow:
 
@@ -241,7 +241,7 @@ Blocked attempts stay hidden from the API stream. As soon as a recovery attempt 
 !!! note "Not the same as DeepSeek"
     DeepSeek anti-censorship is basically a frontend workaround. AI Studio's version is more of a backend recovery trick, because the censorship is enforced deeper in the request/response flow.
 
-!!! warning "Clean Regeneration gets disabled for that chat"
+!!! warning "Reuse Matching Chat gets disabled for that chat"
     If IntenseRP detects hard censorship in the current AI Studio chat, it clears that chat out of the clean-regeneration cache.
 
     In plain English: the next identical request will start fresh instead of trying to regenerate inside that now-cursed chat.
@@ -252,7 +252,7 @@ Text used to replace the blocked assistant turn before IntenseRP sends the conti
 
 Default is `.`.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Replacement Message**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Replacement Message**
 
 ### Continue Nudge
 
@@ -260,7 +260,7 @@ Text IntenseRP sends as the next user message after a blocked assistant turn is 
 
 Default is `Continue.`.
 
-:material-arrow-right: **Settings** -> **Google AI Studio Behavior** -> **Continue Nudge**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Continue Nudge**
 
 !!! tip "Sent as plain text"
     The continue nudge is always typed into the composer normally.
@@ -269,7 +269,7 @@ Default is `Continue.`.
 
 ---
 
-## :material-refresh: Clean Regeneration
+## :material-refresh: Reuse Matching Chat
 
 When enabled, IntenseRP tries to click AI Studio's regenerate action if:
 

@@ -2,11 +2,11 @@
 icon: material/layers-triple-outline
 ---
 
-# :material-layers-triple-outline: Multi-Slot Cache
+# :material-layers-triple-outline: Search Older Matching Chats
 
-Multi-Slot Cache is basically **Reuse Matching Chat with a better memory**.
+Search Older Matching Chats is basically **Reuse Matching Chat with a better memory**.
 
-Normally, **Reuse Matching Chat** only remembers the very last prompt/chat it used. With Multi-Slot Cache enabled, IntenseRP can keep up to **7** older cached chats around and reuse one of those if the current request matches.
+Normally, **Reuse Matching Chat** only remembers the very last prompt/chat it used. With **Search Older Matching Chats** enabled, IntenseRP can keep up to **7** older cached chats around and reuse one of those if the current request matches.
 
 It is **off by default**, and it only works when **Reuse Matching Chat** is also enabled for that provider.
 
@@ -56,7 +56,7 @@ That way it does not accidentally reopen an old chat and regenerate it under the
 
 ## :material-account-switch: Cache scope
 
-Multi-Slot Cache is scoped **per provider** and **per account**.
+Search Older Matching Chats is scoped **per provider** and **per account**.
 
 That matters because provider chat IDs are usually only valid for the account that created them. A DeepSeek chat from Account A is not something Account B can normally reopen and regenerate.
 
@@ -71,7 +71,7 @@ That matters because provider chat IDs are usually only valid for the account th
 
 DeepSeek has one extra rule here.
 
-If a DeepSeek chat gets content-filtered / censored, IntenseRP does **not** save that chat into the multi-slot cache. DeepSeek disables regeneration on censored chats anyway, so keeping those around would just create dead cache entries.
+If a DeepSeek chat gets content-filtered / censored, IntenseRP does **not** save that chat into the older-chat cache. DeepSeek disables regeneration on censored chats anyway, so keeping those around would just create dead cache entries.
 
 ---
 
@@ -90,10 +90,10 @@ And again, it only does anything if **Reuse Matching Chat** is already enabled f
 
 ## :material-link-variant: Related pages
 
-- [:material-refresh: DeepSeek Behavior](../providers/deepseek-behavior.md#clean-regeneration)
-- [:material-refresh: GLM Behavior](../providers/glm-behavior.md#clean-regeneration-known-issues)
-- [:material-refresh: Moonshot Behavior](../providers/moonshot-behavior.md#clean-regeneration)
-- [:material-refresh: QwenLM Behavior](../providers/qwen-behavior.md#clean-regeneration)
+- [:material-refresh: DeepSeek Behavior](../providers/deepseek-behavior.md#reuse-matching-chat)
+- [:material-refresh: GLM Behavior](../providers/glm-behavior.md#reuse-matching-chat)
+- [:material-refresh: Moonshot Behavior](../providers/moonshot-behavior.md#reuse-matching-chat)
+- [:material-refresh: QwenLM Behavior](../providers/qwen-behavior.md#reuse-matching-chat)
 - [:material-cloud: Provider Support](../advanced/provider-support.md)
 
 ---

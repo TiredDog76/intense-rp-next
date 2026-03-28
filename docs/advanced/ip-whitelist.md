@@ -10,13 +10,13 @@ To avoid that, IP Whitelist lets you limit API access to specific IP addresses.
 
 By default, it is off, and IntenseRP allows API access from any IP if that's the case.
 
-:material-arrow-right: **Settings** -> **Network Settings** -> **Use IP Whitelist**
+:material-arrow-right: **Settings** -> **API Server** -> **Security** -> **Restrict Access by IP Address**
 
 ---
 
 ## When It Helps
 
-- You enabled **Available on LAN**
+- You enabled **Allow Local Network Access**
 - You are running IntenseRP on a shared or open network
 - You are exposing IntenseRP through a tunnel and want a tighter allowlist
 

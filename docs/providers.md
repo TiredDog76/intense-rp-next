@@ -143,7 +143,7 @@ Fine-tune how Google AI Studio processes your requests.
 
 -   :material-account-switch: **Accounts & Credentials**
 
-    Manage saved accounts, rotation, retry-on-failure, and Credential Manager.
+    Manage saved accounts, rotation, retry-on-failure, and sign-in settings.
 
     [:arrow_right: Open Accounts & Credentials](features/accounts.md)
 

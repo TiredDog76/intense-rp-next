@@ -8,15 +8,15 @@ IntenseRP Next v2 is designed to support multiple providers by driving their web
 
 Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, and **Google AI Studio** are implemented and usable.
 
-Multi-Slot Cache is currently supported on **DeepSeek**, **GLM Chat**, **Moonshot**, and **QwenLM**. **Google AI Studio** still only has the regular single-slot Clean Regeneration flow for now.
+Search Older Matching Chats is currently supported on **DeepSeek**, **GLM Chat**, **Moonshot**, and **QwenLM**. **Google AI Studio** still only has the regular single-slot Reuse Matching Chat flow for now.
 
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
 
     - Search is supported (search results are not sent to the client)
     - Login requires solving a CAPTCHA (Persistent Sessions are strongly recommended)
-    - GLM model selection is supported (GLM-5 / GLM-4.7 / GLM-4.6) via **Settings -> GLM Behavior -> Model**
-    - Clean Regeneration is currently unreliable with GLM
+    - GLM model selection is supported (GLM-5 / GLM-4.7 / GLM-4.6) via **Settings -> Provider Behavior -> GLM Chat -> Model**
+    - Reuse Matching Chat is currently unreliable with GLM
 
 !!! warning "Web apps change"
     Provider drivers depend on the provider's web UI and internal API shapes. If a provider updates their frontend, a driver may break until it is updated.

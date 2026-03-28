@@ -8,13 +8,13 @@ Configure how IntenseRP listens for incoming requests from SillyTavern and other
 
 ---
 
-## :material-numeric: Port
+## :material-numeric: Server Port
 
 The port number where IntenseRP's API server listens for requests. Default is `7777`.
 
 :material-arrow-right: **Settings** → **API Server** → **Access** → **Server Port**
 
-![Network settings](../pics/features/network_settings.png)
+![Network settings](../pics/features/api_server.png)
 
 ### Changing the Port
 
@@ -29,7 +29,7 @@ If port 7777 is already in use by another application, just pick a different one
 
 ---
 
-## :material-lan-connect: LAN Availability
+## :material-lan-connect: Allow Local Network Access
 
 By default, IntenseRP only accepts connections from your own computer (`localhost` / `127.0.0.1`). Enable LAN availability to let other devices on your network connect.
 
@@ -52,8 +52,8 @@ By default, IntenseRP only accepts connections from your own computer (`localhos
 
 To connect from another device, you'll need your computer's local IP address. On most networks this looks like `192.168.x.x` or `10.x.x.x`.
 
-!!! tip "Show IP"
-    If **Show IP** is enabled (see below), IntenseRP automatically logs all server addresses to the console when it starts - including your LAN IP. No need to run `ipconfig` or `ip addr`.
+!!! tip "Show the Server Address in Logs"
+    If **Show the Server Address in Logs** is enabled (see below), IntenseRP automatically logs all server addresses to the console when it starts - including your LAN IP. No need to run `ipconfig` or `ip addr`.
 
 === ":material-microsoft-windows: Windows"
 
@@ -84,19 +84,19 @@ http://192.168.1.100:7777/v1
 
 ---
 
-## :material-monitor-eye: Show IP
+## :material-monitor-eye: Show the Server Address in Logs
 
 When enabled, IntenseRP prints the server address(es) to the console each time the API server starts. This is on by default.
 
 :material-arrow-right: **Settings** → **API Server** → **Access** → **Show the Server Address in Logs**
 
-With **Available on LAN** off, you'll see:
+With **Allow Local Network Access** off, you'll see:
 
 ```
 Server running at http://127.0.0.1:7777
 ```
 
-With **Available on LAN** on, all detected local IPv4 addresses are printed as well:
+With **Allow Local Network Access** on, all detected local IPv4 addresses are printed as well:
 
 ```
 Server running at http://127.0.0.1:7777
@@ -107,7 +107,7 @@ Disable this if you'd rather not have the address logged on every start.
 
 ---
 
-## :material-key-variant: API Keys
+## :material-key-variant: Require API Keys
 
 Add an extra layer of security by requiring an API key for all incoming requests. When enabled, clients must include a valid key in the `Authorization` header.
 
@@ -115,7 +115,7 @@ Add an extra layer of security by requiring an API key for all incoming requests
 
 ### Setting Up API Keys
 
-1. Toggle on **Use API Keys**
+1. Toggle on **Require API Keys**
 2. Add one or more key pairs:
 
     - **Name**: A label to identify this key (e.g., "SillyTavern", "Phone", "Laptop")
@@ -217,7 +217,7 @@ These IDs are behavior presets (modes), not true model selection.
 ??? question "My client can't connect on LAN?"
     Check that:
     
-    1. **Available on LAN** is enabled
+    1. **Allow Local Network Access** is enabled
     2. Your firewall allows connections on the port
     3. You're using the correct local IP (not `localhost`)
     4. Both devices are on the same network

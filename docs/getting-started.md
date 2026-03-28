@@ -94,23 +94,23 @@ Before hitting Start, pick your provider and decide how you want to log in.
 7. Hit :material-content-save: **Save**
 
 <!-- TODO: replace with an updated screenshot -->
-![Providers & Credentials (placeholder)](pics/getting-started/settings_credentials.png)
+![Provider and Login (placeholder)](pics/getting-started/signin_and_accounts.png)
 
 !!! info "Manual login"
-    If you prefer to log in manually each time, leave **Auto Login** off. The browser will wait for you to log in.
+    If you prefer to log in manually each time, leave **Sign In Automatically** off. The browser will wait for you to log in.
 
 !!! note "Upgrading?"
-    If you previously saved credentials in older versions, IntenseRP automatically imports them into **Credential Manager** on startup.
+    If you previously saved credentials in older versions, IntenseRP automatically imports them into **Saved Accounts** on startup.
 
 !!! warning "GLM CAPTCHA"
-    GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
-    Persistent Sessions are strongly recommended if you do not want to solve it every start.
+    GLM Chat requires a CAPTCHA during login. **Sign In Automatically** can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
+    **Keep Provider Sessions Signed In** is strongly recommended if you do not want to solve it every start.
 
 !!! note "Moonshot login"
-    Moonshot uses a Google popup login flow. If **Auto Login** is enabled, IntenseRP can try to fill the popup automatically, but Google may still ask for manual confirmation, 2FA, or leave the popup open until you close it yourself.
+    Moonshot uses a Google popup login flow. If **Sign In Automatically** is enabled, IntenseRP can try to fill the popup automatically, but Google may still ask for manual confirmation, 2FA, or leave the popup open until you close it yourself.
 
 !!! note "Google AI Studio login"
-    Google AI Studio also uses Google sign-in. IntenseRP can try to auto-fill the Google login flow if **Auto Login** is enabled, but Persistent Sessions are strongly recommended because Google may still ask for manual confirmation.
+    Google AI Studio also uses Google sign-in. IntenseRP can try to auto-fill the Google login flow if **Sign In Automatically** is enabled, but **Keep Provider Sessions Signed In** is strongly recommended because Google may still ask for manual confirmation.
 
 ---
 
@@ -255,7 +255,7 @@ This saves your browser session so you stay logged in (unless you log out manual
 
 That's DeepSeek's content filter kicking in. To hide this message:
 
-:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → :material-toggle-switch: **Try to Recover From Blocks**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → :material-toggle-switch: **Anti-Censorship**
 
 !!! note
     This doesn't bypass the filter; we just "snatch" the message before it's censored.

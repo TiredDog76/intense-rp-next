@@ -4,7 +4,7 @@ icon: material/account-switch
 
 # :material-account-switch: Accounts & Credentials
 
-IntenseRP manages provider logins using an account-based Credential Manager.
+IntenseRP manages provider logins using an account-based saved-accounts system.
 
 There's nothing to enable - this is the standard way IntenseRP manages credentials now.
 
@@ -15,11 +15,11 @@ You can store **multiple accounts per provider**, let IntenseRP pick one on star
 ## :material-information: Recommended setup
 
 1. Keep **Persistent Sessions** enabled (it's on by default) so you stay logged in between restarts.
-2. If you want Auto Login for your provider, enable **Auto Login** and add at least one account in **Credential Manager**.
-3. Keep a backup of your `[config_dir]` (Settings -> System -> Backup & Restore).
+2. If you want auto-login for your provider, enable **Sign In Automatically** and add at least one account in **Saved Accounts**.
+3. Keep a backup of your `[config_dir]` (see [Backup & Restore](system.md#backup--restore)).
 4. (Optional) Enable:
-    - **Select Least Used**: spreads usage across accounts
-    - **Reload on Failure**: retries early failures with a rotated identity
+    - **Prefer the Least Used Account**: spreads usage across accounts
+    - **Retry With Another Account**: retries early failures with a rotated identity
 
 ---
 
@@ -27,7 +27,7 @@ You can store **multiple accounts per provider**, let IntenseRP pick one on star
 
 ```mermaid
 flowchart TD
-    A[Add accounts in Credential Manager] --> B[Enable Auto Login]
+    A[Add accounts in Saved Accounts] --> B[Enable Sign In Automatically]
     B --> C[Start provider driver]
     C --> D["An identity is selected<br/>(account + profile)"]
     D --> E[Driver logs in]
@@ -35,7 +35,7 @@ flowchart TD
     F --> G[Generate response via provider UI]
     G --> H{Meaningful output?}
     H -->|Yes| I[Forward response to client]
-    H -->|No, early failure| J{Reload on Failure enabled?}
+    H -->|No, early failure| J{Retry With Another Account enabled?}
     J -->|No| K[Return error / empty output]
     J -->|Yes| L[Restart driver + rotate identity]
     L --> G
@@ -48,14 +48,14 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 ## :material-play-circle: Quick setup
 
 1. Open **Settings**.
-2. Go to **Providers & Credentials**.
-3. (Optional) Enable **Auto Login** (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio).
-4. Open **Credential Manager** and add one or more accounts for your provider.
-5. (Optional) Enable **Select Least Used** and/or **Reload on Failure**.
+2. Go to **Provider and Login**.
+3. In **Sign-In and Accounts**, (optional) enable **Sign In Automatically**.
+4. Open **Saved Accounts** and add one or more accounts for your provider.
+5. (Optional) Enable **Prefer the Least Used Account** and/or **Retry With Another Account**.
 6. Click **Save**, then **Stop -> Start** the provider driver (so changes take effect).
 
 !!! note "Migration from older versions"
-    If you previously used the old per-provider fields (single email/password), IntenseRP automatically imports them into Credential Manager on startup (before you open it).
+    If you previously used the old per-provider fields (single email/password), IntenseRP automatically imports them into **Saved Accounts** on startup (before you open it).
 
     If you already have accounts saved for a provider, IntenseRP will not overwrite them with legacy credentials.
 
@@ -63,10 +63,10 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 | Setting | Where | What it does |
 |---|---|---|
-| **Credential Manager** | Settings -> Providers & Credentials | Add and manage accounts per provider |
-| **Auto Login** | Settings -> Providers & Credentials | Uses a saved account for login |
-| **Select Least Used** | Settings -> Providers & Credentials | Chooses the least recently used account when starting the driver |
-| **Reload on Failure** | Settings -> Providers & Credentials | On early failures, restarts the driver and retries once with a rotated identity |
+| **Saved Accounts** | Settings -> Provider and Login -> Sign-In and Accounts | Add and manage accounts per provider |
+| **Sign In Automatically** | Settings -> Provider and Login -> Sign-In and Accounts | Uses a saved account for login |
+| **Prefer the Least Used Account** | Settings -> Provider and Login -> Sign-In and Accounts | Chooses the least recently used account when starting the driver |
+| **Retry With Another Account** | Settings -> Provider and Login -> Sign-In and Accounts | On early failures, restarts the driver and retries once with a rotated identity |
 
 ---
 
@@ -74,17 +74,17 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio).
 
-When **Auto Login** is enabled, IntenseRP selects an account on driver start and logs in automatically. If **Auto Login** is disabled, you can still log in manually and use **Persistent Sessions** to stay signed in between restarts.
+When **Sign In Automatically** is enabled, IntenseRP selects an account on driver start and logs in automatically. If it is disabled, you can still log in manually and use **Keep Provider Sessions Signed In** to stay signed in between restarts.
 
 There are two selection modes:
 
-- If **Select Least Used** is disabled, IntenseRP picks a random account from the list.
-- If **Select Least Used** is enabled, IntenseRP prefers the account that was used the longest time ago (accounts that have never been used are preferred first).
+- If **Prefer the Least Used Account** is disabled, IntenseRP picks a random account from the list.
+- If **Prefer the Least Used Account** is enabled, IntenseRP prefers the account that was used the longest time ago (accounts that have never been used are preferred first).
 
 This is tracked in an internal "last used" map stored alongside the encrypted credentials.
 
 !!! tip "Want to force a specific account?"
-    For now, you cannot pin a specific row. If you need a specific account, keep only that account in Credential Manager (remove others temporarily).
+    For now, you cannot pin a specific row. If you need a specific account, keep only that account in **Saved Accounts** (remove others temporarily).
 
 ---
 
@@ -117,7 +117,7 @@ If no account is selected (for example Auto Login is off / manual login), the pr
 
 ---
 
-## :material-refresh: Reload on Failure (auto retry)
+## :material-refresh: Retry With Another Account
 
 This option is meant to handle cases where a provider fails early and returns no meaningful output (for example, a rate limit / quota style error).
 
@@ -139,7 +139,7 @@ The second option is most useful when **Persistent Sessions** are enabled, becau
 
 ## :material-lock: Where account data is stored (and how secure it is)
 
-Credential Manager stores its data inside your config directory:
+The Saved Accounts manager stores its data inside your config directory:
 
 ```
 [config_dir]/accounts/credentials.json.enc
@@ -174,15 +174,15 @@ These files are encrypted using the same `settings.key` used for your main setti
 ## :material-frequently-asked-questions: Quick FAQ
 
 ??? question "Where did the provider email/password fields go?"
-    Use **Settings -> Providers & Credentials -> Credential Manager**.
+    Use **Settings -> Provider and Login -> Sign-In and Accounts -> Saved Accounts**.
 
-??? question "Do I need to open Credential Manager after updating?"
+??? question "Do I need to open Saved Accounts after updating?"
     Usually no. If you had legacy saved credentials, IntenseRP imports them automatically on startup.
 
 ??? question "How do I switch accounts?"
-    - Enable **Select Least Used** to spread usage across accounts, or
+    - Enable **Prefer the Least Used Account** to spread usage across accounts, or
     - Use **Switch Account** in the Stop menu, or
-    - Enable **Reload on Failure** so early failures can trigger an automatic rotation.
+    - Enable **Retry With Another Account** so early failures can trigger an automatic rotation.
 
 ??? question "Can I see which account is active?"
     Not in the UI yet. You can usually tell from the UI of the provider's frontend, as it often shows the logged-in email or profile name. In the future, I may add an indicator in IntenseRP's UI as well.

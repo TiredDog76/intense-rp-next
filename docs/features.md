@@ -98,7 +98,7 @@ On supported providers, **Search Older Matching Chats** lets **Reuse Matching Ch
 
 It keeps up to 7 reusable prompt slots per provider/account, so IntenseRP can jump back to an older matching conversation and hit Regenerate there instead of only checking the very last chat.
 
-:material-arrow-right: **Open** [:material-layers-triple-outline: Multi-Slot Cache](features/multi-slot-cache.md)
+:material-arrow-right: **Open** [:material-layers-triple-outline: Search Older Matching Chats](features/multi-slot-cache.md)
 
 ---
 
@@ -132,9 +132,9 @@ Keep track of what's happening under the hood.
 | Feature | What It Does |
 |---------|-------------|
 | **Console Window** | A separate window showing real-time application logs |
-| **Color Palettes** | Choose between Modern, Classic, or Bright color schemes |
+| **Color Theme** | Choose between Modern, Classic, or Bright color schemes |
 | **File Logging** | Save logs to files with automatic rotation |
-| **Console Dumping** | Export console contents to a file |
+| **Export and Cleanup** | Export console contents to a file |
 
 ---
 

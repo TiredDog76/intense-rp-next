@@ -10,9 +10,9 @@ Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot 
 
 ## :material-login: Auto Login
 
-If you're tired of typing your password every time, Auto Login uses a saved account from **Credential Manager** and enters it automatically when the browser opens.
+If you're tired of typing your password every time, auto-login uses a saved account from **Saved Accounts** and enters it automatically when the browser opens.
 
-![Login settings](../pics/features/login_settings.png)
+![Login settings](../pics/getting-started/signin_and_accounts.png)
 
 ### Setting It Up
 
@@ -127,7 +127,7 @@ Deleting a profile folder:
     Your credentials are stored locally and encrypted at rest inside your config directory. IntenseRP doesn't send them anywhere except to provider login flows that support credential autofill. If you're concerned, you can skip Auto Login and log in manually each time.
 
 ??? question "Can I use this with multiple accounts?"
-    Yes. Use **Credential Manager** to store multiple accounts per provider and rotate between them.
+    Yes. Use **Saved Accounts** to store multiple accounts per provider and rotate between them.
     See [:material-account-switch: Accounts & Credentials](accounts.md).
 
 ---

@@ -26,7 +26,7 @@ For GLM, these model IDs map to simple behavior presets:
 !!! note "About real GLM model selection"
     IntenseRP can also switch GLM's *real* model picker in the web UI.
 
-    :material-arrow-right: **Settings** -> **GLM Behavior** -> **Model**
+    :material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Model**
 
     Supported options:
 
@@ -50,13 +50,13 @@ Deep Think is GLM's reasoning mode. When enabled, GLM produces an internal reaso
 
 Toggles the Deep Think button in GLM's interface.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Enable Deep Think**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Enable Deep Think**
 
 ### Send Deep Think
 
 When enabled, IntenseRP includes GLM's reasoning in the response, wrapped in `<think>` tags.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Send Deep Think**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Send Deep Think**
 
 ---
 
@@ -66,7 +66,7 @@ GLM Chat Search can be toggled via IntenseRP.
 
 GLM streams internal tool/search payloads into the same response stream (wrapped in `<glm_block>...</glm_block>`). IntenseRP strips these blocks, so search results are **not sent** to the client.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Enable Search**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Enable Search**
 
 ---
 
@@ -74,7 +74,7 @@ GLM streams internal tool/search payloads into the same response stream (wrapped
 
 GLM's backend reports token usage near the end of a response stream. When enabled, IntenseRP captures these values and returns them in the OpenAI-style `usage` fields (`prompt_tokens`, `completion_tokens`, `total_tokens`). This is enabled by default.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Count Tokens**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Count Tokens**
 
 !!! note "Caching"
     Sometimes GLM reports cached prompt tokens as `usage.prompt_tokens_details.cached_tokens`.
@@ -85,13 +85,13 @@ GLM's backend reports token usage near the end of a response stream. When enable
 
 Instead of typing your message into GLM's chat box, IntenseRP can upload it as a text file attachment. This is useful for very long prompts that might hit input limits.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Send As Text File**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Send As Text File**
 
 ### File Upload Timeout
 
 When uploading files, GLM can take a moment before the send button becomes active. This setting controls how long IntenseRP waits (in seconds) before giving up.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **File Upload Timeout**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **File Upload Timeout**
 
 Default is 15 seconds. Increase it if you're on a slow connection/PC or uploading very large prompts.
 
@@ -99,15 +99,15 @@ Default is 15 seconds. Increase it if you're on a slow connection/PC or uploadin
 
 GLM won't let you send a file with an empty textbox as it needs *some* text alongside it. By default IntenseRP pastes a single `.` (dot) as filler, but you can change this to whatever you want.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Text File Filler**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Text File Filler**
 
 This setting only appears when **Send As Text File** is enabled.
 
 ---
 
-## :material-refresh: Clean Regeneration (known issues)
+## :material-refresh: Reuse Matching Chat
 
-Clean Regeneration tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks GLM's "Regenerate" instead of creating a brand new chat. This is done with the goal of reducing clutter in the chat history and generally just speeding up the workflow.
+Reuse Matching Chat tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks GLM's "Regenerate" instead of creating a brand new chat. This is done with the goal of reducing clutter in the chat history and generally just speeding up the workflow.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Reuse Matching Chat**
 
@@ -117,9 +117,9 @@ Clean Regeneration tries to keep chats tidy: when you send the exact same prompt
     They are opposite strategies, so IntenseRP only uses one of them at a time.
 
 !!! warning "Known issue (GLM)"
-    Clean Regeneration is currently unreliable with GLM Chat. The option may error out even though your request still completes normally.
+    Reuse Matching Chat is currently unreliable with GLM Chat. The option may error out even though your request still completes normally.
 
-    If you want to experiment with it anyway, try enabling **Refresh After Generation** under GLM Behavior -> Quirks. This reloads the page after each response and can sometimes restore the UI state so Regenerate becomes available again.
+    If you want to experiment with it anyway, try enabling **Refresh After Generation** under **Settings -> Provider Behavior -> GLM Chat -> Quirks**. This reloads the page after each response and can sometimes restore the UI state so Regenerate becomes available again.
 
 !!! tip "Search Older Matching Chats"
     GLM also supports **Provider Behavior** -> **GLM Chat** -> **Search Older Matching Chats**.
@@ -136,7 +136,7 @@ Instead of trying to reuse the same chat, IntenseRP checks whether the current p
 
 That random string is just a cache buster. The whole idea is to disturb GLM's context caching before the real request goes out, which can help if you're worried about suspiciously repetitive duplicate generations.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Repetition Buster**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Repetition Buster**
 
 !!! note "No Search Older Matching Chats here"
     **Search Older Matching Chats** only works with **Reuse Matching Chat**, because it reopens an older chat and presses **Regenerate** there.

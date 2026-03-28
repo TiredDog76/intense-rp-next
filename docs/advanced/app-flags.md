@@ -32,7 +32,7 @@ Right now, App Flags are used to track one-time credential migration behavior:
 
 - `accounts.legacy_credentials_imported`
 
-When this flag is set, IntenseRP already imported legacy per-provider credentials into Credential Manager.
+When this flag is set, IntenseRP already imported legacy per-provider credentials into Saved Accounts.
 
 ---
 

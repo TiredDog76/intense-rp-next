@@ -4,7 +4,7 @@ icon: material/swap-horizontal
 
 # :material-swap-horizontal: Hotswaps
 
-Hotswaps let you switch between AI providers without opening the Settings window. Instead of navigating to **Providers & Credentials**, picking a new provider, saving, stopping, and starting again, you can do it all in one or two clicks.
+Hotswaps let you switch between AI providers without opening the Settings window. Instead of navigating to **Provider and Login**, changing **Current Provider**, saving, stopping, and starting again, you can do it all in one or two clicks.
 
 ---
 
@@ -21,15 +21,15 @@ When you trigger a Hotswap, IntenseRP shows a small dialog with the providers yo
 That's it. Your other settings (credentials, behavior toggles, etc.) are untouched.
 
 !!! tip "No data loss"
-    Hotswapping is equivalent to changing the Provider dropdown in Settings and clicking Start again. Your browser profiles (Persistent Sessions), credentials, and behavior settings for each provider are preserved.
+    Hotswapping is equivalent to changing **Current Provider** in Settings and clicking Start again. Your browser profiles, saved accounts, and behavior settings for each provider are preserved.
 
 ---
 
-## :material-tune: Hotswap Experience
+## :material-tune: Hotswap Button Style
 
 You can choose **how** the Hotswap shortcut appears in the UI:
 
-:material-arrow-right: **Settings** -> **Application Settings** -> **Hotswap Experience**
+:material-arrow-right: **Settings** -> **Interface** -> **Main Window** -> **Hotswap Button Style**
 
 ### Stop Menu (default)
 
@@ -58,7 +58,7 @@ Uses the same small icon button as **Discrete**, but it stays visible even when 
 - If services are stopped: it just switches your Provider setting (no restart, and it will not start anything).
 
 !!! note "Switching modes"
-    Changing the Hotswap Experience setting takes effect immediately (you won't need to restart). If you switch from **Stop Menu** to **Discrete** (or vice versa) while services are running, the UI updates right away. Thanks to the magic of Qt6!
+    Changing **Hotswap Button Style** takes effect immediately (you won't need to restart). If you switch from **Stop Menu** to **Discrete** (or vice versa) while services are running, the UI updates right away. Thanks to the magic of Qt6!
 
 ---
 
@@ -70,7 +70,7 @@ Uses the same small icon button as **Discrete**, but it stays visible even when 
 ??? question "Can I Hotswap while the browser is stopped?"
     By default, no. The Hotswap option only appears when services are running.
 
-    If you set **Hotswap Experience** to **Persistent Discrete**, the Hotswap button stays visible while stopped and will switch your Provider setting without starting or restarting services.
+    If you set **Hotswap Button Style** to **Persistent Discrete**, the Hotswap button stays visible while stopped and will switch your Provider setting without starting or restarting services.
 
 ??? question "What about accounts?"
     Hotswap changes the provider but doesn't rotate accounts/identities.
@@ -84,7 +84,7 @@ Uses the same small icon button as **Discrete**, but it stays visible even when 
 
 | Setting | Where | Default |
 |---|---|---|
-| **Hotswap Experience** | Application Settings | Stop Menu |
+| **Hotswap Button Style** | Interface -> Main Window | Stop Menu |
 
 | Experience | Location | Visible when |
 |---|---|---|

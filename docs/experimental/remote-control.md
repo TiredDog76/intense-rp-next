@@ -16,17 +16,17 @@ The remote page is served by the same FastAPI server as the OpenAI-compatible AP
 !!! warning "Experimental"
     Remote Control is a beta feature and might not make it to later releases. Expect tweaks, UI changes, and occasional weird bugs. It is not yet considered stable, so use with caution.
 
-    If you enable it, keeping a backup of your `[config_dir]` (Settings -> System -> Backup & Restore) is a very good idea.
+    If you enable it, keeping a backup of your `[config_dir]` (see [Backup & Restore](../features/system.md#backup--restore)) is a very good idea.
 
 ---
 
 ## :material-toggle-switch: Enable It
 
-:material-arrow-right: **Settings** -> **Experimental** -> **Enable Remote Control**
+:material-arrow-right: **Settings** -> **Advanced** -> **Experimental Features** -> **Enable Remote Control**
 
 You can also set:
 
-:material-arrow-right: **Settings** -> **Experimental** -> **Remote Control Password**
+:material-arrow-right: **Settings** -> **Advanced** -> **Experimental Features** -> **Remote Control Password**
 
 When enabled, the remote UI lives at:
 
@@ -34,7 +34,7 @@ When enabled, the remote UI lives at:
 http://YOUR_HOST:YOUR_PORT/remote
 ```
 
-If **Show IP** is enabled in **Network Settings**, IntenseRP logs the remote URL when services start up (useful if you forgot the URL or are connecting from another device).
+If **Show the Server Address in Logs** is enabled in **Settings -> API Server -> Access**, IntenseRP logs the remote URL when services start up (useful if you forgot the URL or are connecting from another device).
 
 ---
 
@@ -79,7 +79,7 @@ To disable the password, just clear the field and save. This invalidates all exi
 
 Remote Control also respects the existing IP whitelist.
 
-If **Network Settings -> Use IP Whitelist** is enabled, only whitelisted IPs can open the remote page, fetch logs, or perform remote actions.
+If **Settings -> API Server -> Security -> Restrict Access by IP Address** is enabled, only whitelisted IPs can open the remote page, fetch logs, or perform remote actions.
 
 This is especially useful if you know your device's IP and want to keep the remote UI passwordless, or if you want an extra layer of security on top of the password.
 

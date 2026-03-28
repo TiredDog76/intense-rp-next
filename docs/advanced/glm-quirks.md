@@ -14,9 +14,9 @@ For the main GLM settings and behavior toggles, see [:material-chat-processing: 
 
 ![GLM Timing Settings](../pics/advanced/glm-quirks.png)
 
-GLM's web UI can be a bit sluggish sometimes, especially on slower machines or unstable connections. IntenseRP exposes a few timing knobs under **GLM Behavior** so you can tune things to your setup.
+GLM's web UI can be a bit sluggish sometimes, especially on slower machines or unstable connections. IntenseRP exposes a few timing knobs under **Provider Behavior** so you can tune things to your setup.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> (Quirks section)
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Quirks**
 
 ### UI Click Timeout
 
@@ -72,7 +72,7 @@ If you're seeing "timed out waiting for intercepted first chunk" errors, try bum
 
 If enabled, IntenseRP waits 2 seconds after GLM finishes a response, then refreshes (reloads) the GLM Chat page.
 
-This can sometimes restore GLM's front-end state and make Clean Regeneration less flaky.
+This can sometimes restore GLM's front-end state and make Reuse Matching Chat less flaky.
 
 | | |
 |---|---|
@@ -91,7 +91,7 @@ This is actually a separate setting from the quirks trio above, but it's worth m
 
 When **Send As Text File** is enabled, IntenseRP uploads your prompt as a `.txt` file. GLM needs a moment to process the upload before the send button is active.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **File Upload Timeout**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **File Upload Timeout**
 
 | | |
 |---|---|
@@ -116,7 +116,7 @@ GLM's login flow includes a CAPTCHA that IntenseRP **cannot** solve automaticall
 
 Enable **Persistent Sessions**. Once you've logged in and the session is saved, IntenseRP reuses that session on future starts so that there are no more logins and thus no more CAPTCHAs.
 
-:material-arrow-right: **Settings** -> **System Settings** -> **Persistent Sessions**
+:material-arrow-right: **Settings** -> **Provider and Login** -> **Saved Sessions** -> **Keep Provider Sessions Signed In**
 
 !!! tip "Strongly recommended for GLM"
     Persistent Sessions are the single best quality-of-life improvement for GLM users. The CAPTCHA is annoying, and skipping it entirely makes the experience much smoother.
@@ -125,11 +125,11 @@ See: [:material-key: Login & Sessions](../features/login-sessions.md)
 
 ---
 
-## :material-refresh: Clean Regeneration Instability
+## :material-refresh: Reuse Matching Chat Instability
 
-Clean Regeneration (reusing the same chat when you send an identical prompt) is **unreliable** with GLM Chat. The "Regenerate" action sometimes errors out even though GLM actually processes the request normally. In 99.9% of cases it will not even appear at all.
+Reuse Matching Chat (reusing the same chat when you send an identical prompt) is **unreliable** with GLM Chat. The "Regenerate" action sometimes errors out even though GLM actually processes the request normally. In 99.9% of cases it will not even appear at all.
 
-If you want to experiment with it anyway, try enabling **Refresh After Generation** under GLM Behavior -> Quirks. This reloads the page after every response and can sometimes restore the UI state so Regenerate becomes available again.
+If you want to experiment with it anyway, try enabling **Refresh After Generation** under **Settings -> Provider Behavior -> GLM Chat -> Quirks**. This reloads the page after every response and can sometimes restore the UI state so Regenerate becomes available again.
 
 If your main goal is not "reuse the same chat" but more like "please stop acting weird on duplicate prompts", GLM also has **Repetition Buster**. That is the opposite strategy: IntenseRP sends a random 128-character throwaway prompt in a fresh chat, then opens another fresh chat for the real request.
 
@@ -156,7 +156,7 @@ The GLM driver expects the web UI to be in **English (en-US)**. If GLM's interfa
 
 ## :material-format-list-bulleted: Model Fallback Behavior
 
-IntenseRP lets you pick which GLM model to use (GLM-5, GLM-4.7, GLM-4.6) via the **Model** dropdown in GLM Behavior settings.
+IntenseRP lets you pick which GLM model to use (GLM-5, GLM-4.7, GLM-4.6) via **Settings -> Provider Behavior -> GLM Chat -> Model**.
 
 But GLM's web UI doesn't always have every model available. Models come and go depending on rollouts, A/B testing, or maintenance. If IntenseRP can't find your selected model in the dropdown:
 
@@ -172,7 +172,7 @@ This is a silent fallback that will just log a message (warning). Keep an eye on
 
 GLM won't let you send a file attachment with a completely empty text box. It requires *some* text alongside the upload. By default, IntenseRP pastes a single `.` (dot) as filler, but you can change this to anything you want.
 
-:material-arrow-right: **Settings** -> **GLM Behavior** -> **Text File Filler**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Text File Filler**
 
 This is a minor quirk, but worth knowing about if you notice a stray dot in your GLM chat history when using File Upload mode.
 
@@ -189,7 +189,7 @@ This is a minor quirk, but worth knowing about if you notice a stray dot in your
 |---|---|---|
 | **CAPTCHA on login** | Must solve manually | Use Persistent Sessions |
 | **UI language must be English** | Buttons not found | Change GLM UI to en-US |
-| **Clean Regen unreliable** | Spurious errors | Use Repetition Buster, disable Clean Regeneration, or try Refresh After Generation |
+| **Reuse Matching Chat unreliable** | Spurious errors | Use Repetition Buster, disable Reuse Matching Chat, or try Refresh After Generation |
 | **Model not in dropdown** | Silent fallback | Check logs, update IntenseRP |
 | **Slow UI clicks** | Timeout errors | Increase UI Click Timeout |
 | **Send button delayed** | Send timeout | Increase Message Send Timeout |
