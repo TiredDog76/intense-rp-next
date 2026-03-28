@@ -15,7 +15,7 @@ Search Older Matching Chats is currently supported on **DeepSeek**, **GLM Chat**
 
     - Search is supported (search results are not sent to the client)
     - Login requires solving a CAPTCHA (Persistent Sessions are strongly recommended)
-    - GLM model selection is supported (GLM-5 / GLM-4.7 / GLM-4.6) via **Settings -> Provider Behavior -> GLM Chat -> Model**
+    - GLM model selection is supported (GLM-5 / GLM-5-Turbo / GLM-4.7 / GLM-4.6) via **Settings -> Provider Behavior -> GLM Chat -> Model**
     - Reuse Matching Chat is currently unreliable with GLM
 
 !!! warning "Web apps change"

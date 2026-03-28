@@ -32,6 +32,7 @@ _CLEAN_REGEN_STATE_KEYS = (
     "deepthink_enabled",
     "search_enabled",
     "send_as_text_file",
+    "ui_model",
 )
 _CLEAN_REGEN_MULTI_SLOT_VERSION = 1
 _CLEAN_REGEN_MULTI_SLOT_MAX_ITEMS = 7
@@ -344,7 +345,7 @@ def read_clean_regeneration_state(
     state_cache_key: str,
     *,
     log_label: str = "Clean Regeneration",
-) -> Optional[Dict[str, bool]]:
+) -> Optional[Dict[str, Any]]:
     """Load and validate cached clean-regeneration state from the cache manager.
 
     Args:
@@ -376,19 +377,21 @@ def read_clean_regeneration_state(
         "deepthink_enabled": bool(data.get("deepthink_enabled")),
         "search_enabled": bool(data.get("search_enabled")),
         "send_as_text_file": bool(data.get("send_as_text_file")),
+        "ui_model": str(data.get("ui_model") or "").strip(),
     }
 
 
 def write_clean_regeneration_state(
     cache_manager: Any,
     state_cache_key: str,
-    state: Dict[str, bool],
+    state: Dict[str, Any],
 ) -> None:
     """Persist the clean-regeneration state subset used for cache comparisons."""
     payload = {
         "deepthink_enabled": bool(state.get("deepthink_enabled")),
         "search_enabled": bool(state.get("search_enabled")),
         "send_as_text_file": bool(state.get("send_as_text_file")),
+        "ui_model": str(state.get("ui_model") or "").strip(),
     }
     cache_manager.write_cache(
         state_cache_key,

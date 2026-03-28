@@ -37,6 +37,7 @@ class GLMDriver(BaseDriver):
     REFRESH_AFTER_GENERATION_DELAY_S = 2.0
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
+    MODEL_SELECTOR_READY_TIMEOUT_MS = 20000
 
     SIDEBAR_NEW_CHAT_BUTTON_SELECTOR = "button#sidebar-new-chat-button"
     QUICK_NEW_CHAT_BUTTON_SELECTOR = "button[data-scene='chat']"
@@ -47,12 +48,13 @@ class GLMDriver(BaseDriver):
     MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
     MODEL_DATA_VALUE_BY_FRIENDLY: Dict[str, str] = {
         "GLM-5": "glm-5",
+        "GLM-5-Turbo": "GLM-5-Turbo",
         "GLM-4.7": "glm-4.7",
         "GLM-4.6": "GLM-4-6-API-V1",
     }
 
     # Models hidden behind a collapsible section in the dropdown
-    MODELS_IN_COLLAPSIBLE: set = {"GLM-4.6"}
+    MODELS_IN_COLLAPSIBLE: set = {"GLM-4.7", "GLM-4.6"}
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.GLM_CHAT)
@@ -215,13 +217,19 @@ class GLMDriver(BaseDriver):
         )
         self._refresh_after_generation_task = None
 
-    async def apply_configured_model(self) -> None:
+    async def apply_configured_model(self, wait_until_ready: bool = False) -> None:
         desired_friendly = self._get_configured_glm_model_friendly()
         if not desired_friendly:
             return
 
+        # GLM's model picker is unreliable outside the fresh-new-chat flow
+        # Keep the generic provider hook as a harmless no-op and only perform
+        # actual picker work when a caller explicitly opts into waiting
+        if not wait_until_ready:
+            return
+
         try:
-            await self._ensure_glm_model_selected(desired_friendly)
+            await self._ensure_glm_model_selected(desired_friendly, wait_until_ready=wait_until_ready)
         except Exception as e:
             Logger.warning(f"GLM Chat: Failed to apply model selection '{desired_friendly}': {e}")
 
@@ -235,6 +243,65 @@ class GLMDriver(BaseDriver):
     @staticmethod
     def _normalize_model_label(value: str) -> str:
         return re.sub(r"\\s+", " ", str(value or "")).strip().lower()
+
+    async def _is_glm_model_selector_ready(self) -> bool:
+        if not self.page:
+            return False
+
+        expression = (
+            "selector => {"
+            "  const btn = document.querySelector(selector);"
+            "  if (!btn) return false;"
+            "  const style = window.getComputedStyle(btn);"
+            "  if (!style || style.display === 'none' || style.visibility === 'hidden') return false;"
+            "  const rect = btn.getBoundingClientRect();"
+            "  if (!rect || rect.width <= 0 || rect.height <= 0) return false;"
+            "  if (btn.disabled) return false;"
+            "  return true;"
+            "}"
+        )
+        try:
+            ready = await self.page.evaluate(expression, self.MODEL_SELECTOR_BUTTON_SELECTOR)
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed to read model selector readiness: {e}")
+            return False
+        return bool(ready)
+
+    async def _wait_for_glm_model_selector_ready(self, timeout_ms: int = 10000) -> bool:
+        if not self.page:
+            return False
+
+        expression = (
+            "selector => {"
+            "  const btn = document.querySelector(selector);"
+            "  if (!btn) return false;"
+            "  const style = window.getComputedStyle(btn);"
+            "  if (!style || style.display === 'none' || style.visibility === 'hidden') return false;"
+            "  const rect = btn.getBoundingClientRect();"
+            "  if (!rect || rect.width <= 0 || rect.height <= 0) return false;"
+            "  if (btn.disabled) return false;"
+            "  return true;"
+            "}"
+        )
+        try:
+            await self.page.wait_for_function(expression, self.MODEL_SELECTOR_BUTTON_SELECTOR, timeout=int(timeout_ms))
+            return True
+        except Exception:
+            return False
+
+    async def _wait_and_open_glm_model_dropdown(self, timeout_ms: int = 10000) -> bool:
+        if not self.page:
+            return False
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            if await self._open_glm_model_dropdown(timeout_ms=min(self._ui_timeout, 1000)):
+                return True
+
+            if time.time() >= deadline:
+                return False
+
+            await asyncio.sleep(0.2)
 
     async def _read_current_glm_model_label(self) -> str:
         if not self.page:
@@ -311,11 +378,19 @@ class GLMDriver(BaseDriver):
             return
 
     async def _expand_collapsible_section(self) -> bool:
-        """Expand the collapsible section in the model dropdown (houses older models like GLM-4.6)."""
+        """Expand the model dropdown's More Models section when it is collapsed."""
         if not self.page:
             return False
 
         try:
+            content = self.page.locator("div[data-melt-collapsible-content]")
+            if await content.count() > 0:
+                try:
+                    if await content.first.is_visible():
+                        return True
+                except Exception:
+                    pass
+
             trigger = self.page.locator("button[data-melt-collapsible-trigger]")
             if await trigger.count() == 0:
                 return False
@@ -323,7 +398,6 @@ class GLMDriver(BaseDriver):
             await trigger.first.click(timeout=self._ui_timeout)
 
             # Wait for the content to appear
-            content = self.page.locator("div[data-melt-collapsible-content]")
             await content.first.wait_for(state="visible", timeout=self._ui_timeout)
             return True
         except Exception as e:
@@ -338,6 +412,9 @@ class GLMDriver(BaseDriver):
         if not safe_value:
             return False
 
+        if friendly_name in self.MODELS_IN_COLLAPSIBLE:
+            await self._expand_collapsible_section()
+
         option = self.page.locator(
             f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value='{safe_value}']"
         )
@@ -345,27 +422,16 @@ class GLMDriver(BaseDriver):
             option = self.page.locator(f"button[data-value='{safe_value}']")
 
         count = await option.count()
-
-        # If the option is not visible, it may be inside a collapsed section
-        if count == 0 and friendly_name in self.MODELS_IN_COLLAPSIBLE:
-            if await self._expand_collapsible_section():
-                # Re-query after expanding
-                option = self.page.locator(
-                    f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value='{safe_value}']"
-                )
-                if await option.count() == 0:
-                    option = self.page.locator(f"button[data-value='{safe_value}']")
-                count = await option.count()
-
         if count == 0:
             return False
 
         for idx in range(min(count, 10)):
             cand = option.nth(idx)
             try:
-                if await cand.is_visible():
-                    await cand.click(timeout=self._ui_timeout)
-                    return True
+                if not await cand.is_visible():
+                    continue
+                await cand.click(timeout=self._ui_timeout)
+                return True
             except Exception:
                 continue
 
@@ -409,7 +475,7 @@ class GLMDriver(BaseDriver):
 
         return None
 
-    async def _ensure_glm_model_selected(self, desired_friendly: str) -> None:
+    async def _ensure_glm_model_selected(self, desired_friendly: str, wait_until_ready: bool = False) -> None:
         if not self.page:
             return
 
@@ -422,18 +488,20 @@ class GLMDriver(BaseDriver):
             Logger.warning(f"GLM Chat: unknown configured model '{desired}'.")
             return
 
-        try:
-            await self.page.wait_for_selector(self.MODEL_SELECTOR_BUTTON_SELECTOR, timeout=10000, state="visible")
-        except Exception:
-            Logger.warning("GLM Chat: model selector is not available yet.")
-            return
-
         current_label = await self._read_current_glm_model_label()
         if self._normalize_model_label(current_label) == self._normalize_model_label(desired):
             return
 
-        if not await self._open_glm_model_dropdown(timeout_ms=5000):
-            return
+        if wait_until_ready:
+            if not await self._wait_and_open_glm_model_dropdown(timeout_ms=self.MODEL_SELECTOR_READY_TIMEOUT_MS):
+                Logger.warning("GLM Chat: model selector did not become openable in time.")
+                return
+        else:
+            if not await self._is_glm_model_selector_ready():
+                Logger.debug("GLM Chat: model selector is not ready for interaction.")
+                return
+            if not await self._open_glm_model_dropdown(timeout_ms=5000):
+                return
 
         try:
             clicked = await self._click_glm_model_option(desired_data_value, friendly_name=desired)
@@ -732,14 +800,14 @@ class GLMDriver(BaseDriver):
     def _strip_glm_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
         return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
-    def _read_clean_regeneration_state(self) -> Optional[Dict[str, bool]]:
+    def _read_clean_regeneration_state(self) -> Optional[Dict[str, Any]]:
         return read_clean_regeneration_state(
             self.cache_manager,
             self.clean_regen_state_cache_key,
             log_label="Clean Regeneration (GLM)",
         )
 
-    def _write_clean_regeneration_state(self, state: Dict[str, bool]) -> None:
+    def _write_clean_regeneration_state(self, state: Dict[str, Any]) -> None:
         write_clean_regeneration_state(
             self.cache_manager,
             self.clean_regen_state_cache_key,
@@ -771,7 +839,7 @@ class GLMDriver(BaseDriver):
         await self.click_new_chat(source="auto")
         await asyncio.sleep(self._post_delay_s)
 
-        await self.apply_configured_model()
+        await self.apply_configured_model(wait_until_ready=True)
         await self.set_deepthink_state(bool(effective_deepthink))
         await self.set_search_state(bool(enable_search))
         await asyncio.sleep(self._post_delay_s)
@@ -918,7 +986,6 @@ class GLMDriver(BaseDriver):
                 return False
 
         try:
-            await self.apply_configured_model()
             await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
             await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
             await asyncio.sleep(self._post_delay_s)
@@ -2110,6 +2177,7 @@ class GLMDriver(BaseDriver):
                     "deepthink_enabled": bool(effective_deepthink),
                     "search_enabled": bool(enable_search),
                     "send_as_text_file": bool(send_as_text_file),
+                    "ui_model": self._get_configured_glm_model_friendly(),
                 }
                 multi_slot_state = self._build_multi_slot_cache_state(
                     effective_deepthink=bool(effective_deepthink),
