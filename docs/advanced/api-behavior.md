@@ -33,7 +33,17 @@ Authorization: Bearer YOUR_KEY
 
 The API reports provider-specific "model" IDs, but they are best thought of as **behavior presets**.
 
-Which IDs you get from `GET /v1/models` depends on the currently selected provider in **Settings -> Provider and Login -> Current Provider**.
+In normal single-provider mode, `GET /v1/models` follows the currently selected provider by default.
+
+If **Settings -> API Server -> Model IDs -> Use Universal Model Names** is enabled, single-provider mode shows these instead:
+
+| Model ID | Behavior |
+|---|---|
+| `intenserp-auto` | Uses your current provider settings |
+| `intenserp-think` | Forces thinking/reasoning on |
+| `intenserp-chat` | Forces thinking/reasoning off |
+
+Provider-prefixed IDs still continue to work either way. **Providers in Parallel** always stays on the provider-prefixed IDs.
 
 ### DeepSeek
 

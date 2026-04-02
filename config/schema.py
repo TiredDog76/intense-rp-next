@@ -31,6 +31,7 @@ DOCS_QWEN = "providers/qwen-behavior/"
 DOCS_REMOTE_CONTROL = "experimental/remote-control/"
 DOCS_PROVIDERS_IN_PARALLEL = "experimental/providers-in-parallel/"
 DOCS_SYSTEM = "features/system/"
+DOCS_UNIVERSAL_MODEL_NAMES = "features/universal-model-names/"
 
 class SettingType(Enum):
     BOOLEAN = "boolean"
@@ -1649,6 +1650,19 @@ SCHEMA = [
                 docs_anchor="show-ip",
             ),
             SettingField(
+                key="enable_umm",
+                label="Use Universal Model Names",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Show `intenserp-auto`, `intenserp-think`, and `intenserp-chat` from the API "
+                    "in normal single-provider mode so you can switch providers without changing "
+                    "the model name in your client. Provider-prefixed IDs still work. Providers "
+                    "in Parallel keeps using provider-prefixed IDs."
+                ),
+                docs_path=DOCS_UNIVERSAL_MODEL_NAMES,
+            ),
+            SettingField(
                 key="use_api_keys",
                 label="Require API Keys",
                 type=SettingType.BOOLEAN,
@@ -1718,7 +1732,7 @@ SETTINGS_SECTIONS = [
         key="api_server",
         label="API Server",
         icon="share-2.svg",
-        card_keys=["server_access", "server_security"],
+        card_keys=["server_access", "server_model_ids", "server_security"],
     ),
     SettingSection(
         key="formatting",
@@ -1785,6 +1799,11 @@ SETTINGS_CARDS = {
             ("network_settings", "available_on_lan"),
             ("network_settings", "show_ip"),
         ],
+    ),
+    "server_model_ids": SettingCard(
+        key="server_model_ids",
+        title="Model IDs",
+        field_refs=[("network_settings", "enable_umm")],
     ),
     "server_security": SettingCard(
         key="server_security",

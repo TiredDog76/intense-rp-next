@@ -25,6 +25,7 @@ nav:
           - STMP Support: features/stmp-support.md
           - Login & Sessions: features/login-sessions.md
           - Network & API: features/network-api.md
+          - Universal Model Names: features/universal-model-names.md
           - Console & Logging: features/console-logging.md
           - Hotswaps: features/hotswaps.md
           - System: features/system.md

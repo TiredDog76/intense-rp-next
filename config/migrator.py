@@ -52,6 +52,7 @@ class SettingsMigrator:
         if isinstance(experimental, dict):
             select_least_used = experimental.get("ece_select_least_used")
             reload_on_failure = experimental.get("ece_reauth_on_no_content")
+            better_model_names = experimental.get("better_model_names")
 
             providers_credentials = settings.setdefault("providers_credentials", {})
             if isinstance(providers_credentials, dict):
@@ -59,6 +60,11 @@ class SettingsMigrator:
                     providers_credentials["select_least_used"] = bool(select_least_used)
                 if "reload_on_failure" not in providers_credentials and reload_on_failure is not None:
                     providers_credentials["reload_on_failure"] = bool(reload_on_failure)
+
+            network_settings = settings.setdefault("network_settings", {})
+            if isinstance(network_settings, dict):
+                if "enable_umm" not in network_settings and better_model_names is not None:
+                    network_settings["enable_umm"] = bool(better_model_names)
 
         # Migration: remove obsolete settings that no longer exist in the UI
         for category_key, field_key in REMOVED_FIELDS:

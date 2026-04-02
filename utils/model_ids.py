@@ -9,6 +9,18 @@ MODE_AUTO = "auto"
 MODE_CHAT = "chat"
 MODE_REASONER = "reasoner"
 
+UMM_MODEL_IDS: tuple[str, ...] = (
+    "intenserp-auto",
+    "intenserp-reasoner",
+    "intenserp-chat",
+)
+
+UMM_MODE_BY_MODEL_ID: Dict[str, str] = {
+    "intenserp-auto": MODE_AUTO,
+    "intenserp-reasoner": MODE_REASONER,
+    "intenserp-chat": MODE_CHAT,
+}
+
 
 LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
     DriverProvider.DEEPSEEK: {
@@ -75,8 +87,21 @@ def get_owned_by_for_provider(provider: DriverProvider) -> str:
     return OWNED_BY_PROVIDER.get(provider, "deepseek")
 
 
-def get_model_ids_for_provider(provider: DriverProvider, config_manager: Any) -> list[str]:
-    _ = config_manager
+def is_umm_enabled(config_manager: Any) -> bool:
+    try:
+        return bool(config_manager.get_setting("network_settings", "enable_umm"))
+    except Exception:
+        return False
+
+
+def get_model_ids_for_provider(
+    provider: DriverProvider,
+    config_manager: Any,
+    *,
+    force_legacy: bool = False,
+) -> list[str]:
+    if (not force_legacy) and is_umm_enabled(config_manager):
+        return list(UMM_MODEL_IDS)
     return get_legacy_model_ids(provider)
 
 
@@ -86,10 +111,13 @@ def get_model_ids_for_providers(
     *,
     force_legacy: bool = False,
 ) -> list[tuple[DriverProvider, str]]:
-    _ = force_legacy
     items: list[tuple[DriverProvider, str]] = []
     for provider in providers:
-        model_ids = get_model_ids_for_provider(provider, config_manager)
+        model_ids = get_model_ids_for_provider(
+            provider,
+            config_manager,
+            force_legacy=force_legacy,
+        )
         items.extend((provider, model_id) for model_id in model_ids)
     return items
 
@@ -99,10 +127,13 @@ def _strip_aistudio_override_suffix(model: str) -> str:
     return AISTUDIO_MODEL_OVERRIDE_SUFFIX_RE.sub("", normalized)
 
 
-def is_supported_model_id(provider: DriverProvider, model: Any) -> bool:
+def is_supported_model_id(provider: DriverProvider, model: Any, config_manager: Any = None) -> bool:
     normalized = str(model or "").strip().lower()
     if not normalized:
         return False
+
+    if is_umm_enabled(config_manager) and normalized in UMM_MODE_BY_MODEL_ID:
+        return True
 
     legacy_map = LEGACY_MODE_BY_PROVIDER.get(provider) or {}
     if normalized in legacy_map:
@@ -137,6 +168,10 @@ def resolve_behavior_mode(model: Any, provider: DriverProvider) -> str:
     normalized = str(model or "").strip().lower()
     if not normalized:
         return MODE_AUTO
+
+    universal_mode = UMM_MODE_BY_MODEL_ID.get(normalized)
+    if universal_mode:
+        return universal_mode
 
     if provider == DriverProvider.AI_STUDIO:
         normalized = _strip_aistudio_override_suffix(normalized)

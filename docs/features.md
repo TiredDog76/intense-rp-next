@@ -121,6 +121,7 @@ Configure how IntenseRP listens for requests.
 |---------|-------------|
 | **Port** | Change the default port (7777) if it's already in use |
 | **LAN Availability** | Make the server accessible from other devices on your local network |
+| **Universal Model Names** | Optionally expose provider-neutral model IDs like `intenserp-auto` |
 | **API Keys** | Require authentication for incoming requests |
 
 ---

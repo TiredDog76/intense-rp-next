@@ -52,6 +52,9 @@ While this mode is active, routing is done by the **provider-prefixed model IDs*
 
 `GET /v1/models` returns the variants for every enabled provider.
 
+!!! warning "Universal Model Names doesn't work here"
+    If you have **Use Universal Model Names** enabled, it is ignored while **Providers in Parallel** is active. You have to use the provider-prefixed model IDs above, and `intenserp-*` is not valid.
+
 If you send a model ID that belongs to a provider you did **not** enable, IntenseRP returns an error instead of guessing.
 
 ---

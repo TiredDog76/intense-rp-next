@@ -21,6 +21,7 @@ from utils.model_ids import (
     get_model_ids_for_provider,
     get_model_ids_for_providers,
     get_owned_by_for_provider,
+    is_umm_enabled,
     is_supported_model_id,
     resolve_provider_from_model_id,
 )
@@ -435,8 +436,9 @@ class API:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Providers in Parallel only accepts legacy provider-prefixed model IDs "
-                    "(for example `deepseek-auto` or `glm-chat`)."
+                    "Providers in Parallel only accepts provider-prefixed model IDs "
+                    "(for example `deepseek-auto` or `glm-chat`). "
+                    "Universal model names like `intenserp-auto` are not valid here."
                 ),
             )
 
@@ -450,17 +452,21 @@ class API:
 
     def _ensure_supported_model_id(self, model: Any, provider: DriverProvider) -> None:
         normalized = str(model or "").strip()
-        if is_supported_model_id(provider, normalized):
+        cfg = getattr(self.driver, "config_manager", None)
+        if is_supported_model_id(provider, normalized, cfg):
             return
 
         supported_ids = get_model_ids_for_provider(
             provider,
-            getattr(self.driver, "config_manager", None),
+            cfg,
+            force_legacy=self._is_multi_provider_runtime(),
         )
         detail = (
             f"Unsupported model `{normalized or '<empty>'}` for provider `{provider.value}`. "
             f"Supported IDs: {', '.join(f'`{model_id}`' for model_id in supported_ids)}."
         )
+        if (not self._is_multi_provider_runtime()) and is_umm_enabled(cfg):
+            detail += " Provider-prefixed IDs are also still accepted."
         if provider == DriverProvider.AI_STUDIO:
             detail += (
                 " Google AI Studio also accepts legacy IDs with Thinking Level suffixes like "

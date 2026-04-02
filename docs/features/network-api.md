@@ -160,9 +160,22 @@ IntenseRP exposes an OpenAI-compatible API. Here are the available endpoints:
 
 ### Available Models
 
-When you query `/v1/models`, you'll get different model IDs depending on the active provider (**Settings -> Provider and Login -> Current Provider**).
+In normal single-provider mode, `/v1/models` follows the active provider by default.
+
+If you enable **Use Universal Model Names** in **Settings** -> **API Server** -> **Model IDs**, `/v1/models` returns these instead:
+
+| Model ID | Behavior |
+|----------|----------|
+| `intenserp-auto` | Uses your current provider settings |
+| `intenserp-think` | Forces thinking/reasoning on |
+| `intenserp-chat` | Forces thinking/reasoning off |
+
+Provider-specific IDs still work either way, and they are still the only valid option in **Providers in Parallel**.
 
 These IDs are behavior presets (modes), not true model selection.
+
+!!! tip "Want the short version?"
+    There is a tiny dedicated page for this here: [:material-tag-text-outline: Universal Model Names](universal-model-names.md)
 
 === ":material-brain: DeepSeek"
 
