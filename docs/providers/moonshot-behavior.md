@@ -133,6 +133,22 @@ Otherwise it starts a fresh chat.
 
 ---
 
+## :material-delete-clock-outline: Delete Chat After Reply
+
+If you want Kimi's chat list to stay tidier, IntenseRP can delete the completed chat after a successful reply finishes.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Moonshot** -> **Delete Chat After Reply**
+
+!!! warning "Slower requests"
+    This adds extra cleanup work after each request, so it can slow requests down quite a bit.
+
+!!! note "No chat reuse here"
+    This does **not** work together with **Reuse Matching Chat** or **Search Older Matching Chats**.
+
+See also: [:material-delete-clock-outline: Chat Auto-Deletion](../features/chat-auto-deletion.md)
+
+---
+
 ## :material-code-tags: Per-Message Macros
 
 You can add `[[...]]` macros to the latest user message to override behavior for that request only.
@@ -161,6 +177,7 @@ All macros are stripped before sending.
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Anti-Censorship** | Suppresses refusal-like outputs | Off |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
+| **Delete Chat After Reply** | Deletes the completed Kimi chat after a successful reply | Off |
 
 ---
 

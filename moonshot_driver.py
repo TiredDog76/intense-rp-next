@@ -3,6 +3,7 @@ import json
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
+from urllib.parse import urlsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -84,8 +85,6 @@ class MoonshotDriver(BaseDriver):
         "[role='button']:has-text('Allow')",
     ]
     GOOGLE_BUTTON_FALLBACK_SELECTOR = "button.VfPpkd-LgbsSe, div[role='button'].VfPpkd-LgbsSe"
-    CONVERSATION_URL_RE = re.compile(r"^https://www\.kimi\.com/chat/([^/?#]+)", re.IGNORECASE)
-
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.MOONSHOT)
         self.cache_manager = CacheManager()
@@ -108,6 +107,7 @@ class MoonshotDriver(BaseDriver):
         self._degrade_notice_logged = False
         self._memory_settings_disable_lock = asyncio.Lock()
         self._memory_settings_last_attempt_ts: float = 0.0
+        self._last_followup_request_headers: Dict[str, str] = {}
 
     def get_start_url(self) -> str:
         return "https://www.kimi.com/"
@@ -173,6 +173,38 @@ class MoonshotDriver(BaseDriver):
             await self._remember_send_control_signature(self.page.locator("div.send-button-container"))
         except Exception:
             pass
+        try:
+            await self._dismiss_common_notice_dialog()
+        except Exception as e:
+            Logger.debug(f"Moonshot: common notice dialog check failed: {e}")
+
+    async def _dismiss_common_notice_dialog(self) -> bool:
+        if not self.page:
+            return False
+
+        # Kimi can throw a generic notice modal on startup that blocks all clicks
+        # until its plain-styled dismiss button is pressed.
+        await asyncio.sleep(0.4)
+
+        dialog = await self._find_first_visible(
+            ["div.content.common-notice-dialog"],
+            timeout_ms=1200,
+            poll_interval_s=0.1,
+        )
+        if dialog is None:
+            return False
+
+        try:
+            close_button = dialog.locator("button.kimi-button.plain").first
+            if await close_button.count() == 0:
+                Logger.warning("Moonshot: common notice dialog was visible, but no plain close button was found.")
+                return False
+            await close_button.click(timeout=2000)
+            Logger.info("Moonshot: dismissed startup common notice dialog.")
+            return True
+        except Exception as e:
+            Logger.warning(f"Moonshot: failed to dismiss startup common notice dialog: {e}")
+            return False
 
     def _ece_requires_auto_login(self) -> bool:
         return True
@@ -1169,11 +1201,20 @@ class MoonshotDriver(BaseDriver):
         if not normalized_url:
             return None
 
-        match = self.CONVERSATION_URL_RE.match(normalized_url)
-        if not match:
+        try:
+            parsed = urlsplit(normalized_url)
+        except Exception:
             return None
 
-        conversation_id = str(match.group(1) or "").strip()
+        hostname = str(parsed.netloc or "").strip().lower()
+        if hostname not in {"www.kimi.com", "kimi.com"}:
+            return None
+
+        path_parts = [part for part in str(parsed.path or "").split("/") if part]
+        if len(path_parts) < 2 or path_parts[0] != "chat":
+            return None
+
+        conversation_id = str(path_parts[1] or "").strip()
         if not conversation_id:
             return None
 
@@ -1191,7 +1232,15 @@ class MoonshotDriver(BaseDriver):
         except Exception:
             current_url = ""
 
-        return self._parse_conversation_info_from_url(current_url)
+        info = self._parse_conversation_info_from_url(current_url)
+        if info is not None:
+            return info
+
+        try:
+            live_url = await self.page.evaluate("() => window.location.href")
+        except Exception:
+            live_url = ""
+        return self._parse_conversation_info_from_url(str(live_url or ""))
 
     async def _wait_for_current_conversation_info(
         self,
@@ -1208,6 +1257,69 @@ class MoonshotDriver(BaseDriver):
                 return None
 
             await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
+    async def _delete_conversation_by_id(self, conversation_id: str) -> bool:
+        normalized_id = str(conversation_id or "").strip()
+        if not normalized_id:
+            return False
+
+        cookies = await self._get_context_cookie_dict()
+        headers = dict(getattr(self, "_last_followup_request_headers", {}) or {})
+        headers.setdefault("accept", "application/json, text/plain, */*")
+        headers.setdefault("content-type", "application/json")
+        headers.setdefault("origin", "https://www.kimi.com")
+        headers.setdefault("referer", "https://www.kimi.com/")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://www.kimi.com/apiv2/kimi.chat.v1.ChatService/DeleteChat",
+                    headers=headers,
+                    cookies=cookies,
+                    json={"chat_id": normalized_id},
+                    timeout=20.0,
+                )
+        except Exception as e:
+            Logger.warning(f"Moonshot: failed to auto-delete chat {normalized_id}: {e}")
+            return False
+
+        if 200 <= int(response.status_code) < 300:
+            return True
+
+        detail = str(response.text or "").strip()
+        suffix = f" ({detail[:180]})" if detail else ""
+        Logger.warning(
+            f"Moonshot: failed to auto-delete chat {normalized_id} "
+            f"(status={response.status_code}){suffix}"
+        )
+        return False
+
+    async def _auto_delete_current_chat(self) -> bool:
+        current_info = await self._wait_for_current_conversation_info(timeout_ms=3000)
+        if current_info is None:
+            Logger.debug("Moonshot: auto-delete skipped because the current chat ID was not available.")
+            return False
+
+        conversation_id = str(current_info.get("conversation_id") or "").strip()
+        if not conversation_id:
+            Logger.debug("Moonshot: auto-delete skipped because the current chat ID was empty.")
+            return False
+
+        try:
+            await self._click_new_chat()
+            await asyncio.sleep(0.4)
+            await self.set_sidebar_status(open=False)
+        except Exception as e:
+            Logger.warning(
+                f"Moonshot: auto-delete skipped because a replacement chat could not be prepared: {e}"
+            )
+            return False
+
+        if await self._delete_conversation_by_id(conversation_id):
+            Logger.info("Moonshot: auto-deleted the completed chat.")
+            return True
+
+        return False
 
     async def _open_cached_conversation(self, conversation_url: str) -> bool:
         if not self.page:
@@ -1386,6 +1498,9 @@ class MoonshotDriver(BaseDriver):
             Logger.debug(f"Intercepted request to: {request.url}")
 
             headers = await request.all_headers()
+            forwarded_followup_headers = self._build_settings_request_headers(headers)
+            if forwarded_followup_headers:
+                self._last_followup_request_headers = dict(forwarded_followup_headers)
             headers.pop("content-length", None)
             headers.pop("host", None)
 
@@ -1463,6 +1578,18 @@ class MoonshotDriver(BaseDriver):
                 clean_regeneration
                 and self.config_manager.get_setting("moonshot_behavior", "multi_slot_cache")
             )
+            try:
+                auto_delete_requested = bool(
+                    self.config_manager.get_setting("moonshot_behavior", "auto_delete_chats")
+                )
+            except Exception:
+                auto_delete_requested = False
+            auto_delete_enabled = bool(auto_delete_requested and (not clean_regeneration))
+            if auto_delete_requested and clean_regeneration:
+                Logger.warning(
+                    "Moonshot: Delete Chat After Reply is skipped for this request because "
+                    "Reuse Matching Chat is enabled."
+                )
             regenerated = False
             current_cache_matched = False
             should_record_multi_slot = False
@@ -1580,6 +1707,14 @@ class MoonshotDriver(BaseDriver):
                         },
                         log_label="Multi-Slot Cache (Moonshot)",
                     )
+
+            if (
+                auto_delete_enabled
+                and (not stream_had_error)
+                and (not self.abort_requested)
+                and not (abort_event and abort_event.is_set())
+            ):
+                await self._auto_delete_current_chat()
 
         finally:
             self.current_abort_event = None

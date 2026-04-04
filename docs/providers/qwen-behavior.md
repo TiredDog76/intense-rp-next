@@ -136,6 +136,22 @@ Reuse Matching Chat tries to keep chats tidy: when you send the exact same promp
 
 ---
 
+## :material-delete-clock-outline: Delete Chat After Reply
+
+If you want Qwen's chat list cleaned up automatically, IntenseRP can delete the completed Qwen chat after a successful reply finishes.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Delete Chat After Reply**
+
+!!! warning "Slower requests"
+    This adds extra cleanup work after each request, so it can slow requests down quite a bit.
+
+!!! note "No chat reuse here"
+    This does **not** work together with **Reuse Matching Chat** or **Search Older Matching Chats**.
+
+See also: [:material-delete-clock-outline: Chat Auto-Deletion](../features/chat-auto-deletion.md)
+
+---
+
 ## :material-key: Login notes
 
 QwenLM supports Auto Login (email + password). Persistent Sessions are still recommended, since they reduce how often you need to log in.
@@ -190,6 +206,7 @@ All macros are stripped from the message before sending it to QwenLM.
 | **File Upload Timeout** | Seconds to wait after upload | 20 |
 | **Message Send Timeout (s)** | Seconds to wait for send button | 8 |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
+| **Delete Chat After Reply** | Deletes the completed Qwen chat after a successful reply | Off |
 
 ---
 

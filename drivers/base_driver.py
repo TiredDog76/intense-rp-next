@@ -64,6 +64,158 @@ class BaseDriver(ABC):
         except Exception:
             return False
 
+    async def _get_context_cookie_dict(self) -> dict[str, str]:
+        """Return the current browser-context cookies as a simple name/value mapping."""
+        context = getattr(self, "context", None)
+        if context is None:
+            return {}
+
+        try:
+            cookies = await context.cookies()
+        except Exception:
+            return {}
+
+        cookie_dict: dict[str, str] = {}
+        for cookie in cookies or []:
+            try:
+                name = str(cookie.get("name") or "").strip()
+                value = str(cookie.get("value") or "")
+            except Exception:
+                continue
+            if name:
+                cookie_dict[name] = value
+        return cookie_dict
+
+    async def _run_browser_request(
+        self,
+        *,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        body: Any = None,
+        use_xhr: bool = False,
+        referrer: str | None = None,
+        timeout_ms: int = 15000,
+    ) -> dict[str, Any]:
+        """Run a same-session browser request from the active page.
+
+        This is handy for provider follow-up actions like chat cleanup, where the
+        provider expects the currently authenticated browser session and cookies.
+        """
+        if self.page is None:
+            return {"ok": False, "status": 0, "error": "Browser page is not available."}
+
+        payload = {
+            "method": str(method or "GET").strip().upper() or "GET",
+            "url": str(url or "").strip(),
+            "headers": dict(headers or {}),
+            "body": body,
+            "has_body": body is not None,
+            "use_xhr": bool(use_xhr),
+            "referrer": str(referrer or "").strip() or None,
+            "timeout_ms": max(int(timeout_ms or 0), 1000),
+        }
+        return await self.page.evaluate(
+            """async (args) => {
+                const normalizeText = async (resp) => {
+                    try {
+                        return await resp.text();
+                    } catch (e) {
+                        return "";
+                    }
+                };
+
+                const buildBodyText = () => {
+                    if (!args.has_body) {
+                        return undefined;
+                    }
+                    return (typeof args.body === "string") ? args.body : JSON.stringify(args.body);
+                };
+
+                const ensureContentType = (headers) => {
+                    if (!args.has_body) {
+                        return headers;
+                    }
+                    const hasContentType = Object.keys(headers).some(
+                        (key) => String(key || "").toLowerCase() === "content-type"
+                    );
+                    if (!hasContentType) {
+                        headers["content-type"] = "application/json";
+                    }
+                    return headers;
+                };
+
+                if (!args.url) {
+                    return { ok: false, status: 0, error: "Missing URL." };
+                }
+
+                const requestHeaders = ensureContentType({ ...(args.headers || {}) });
+                const bodyText = buildBodyText();
+
+                if (args.use_xhr) {
+                    return await new Promise((resolve) => {
+                        try {
+                            const xhr = new XMLHttpRequest();
+                            xhr.open(args.method || "GET", args.url, true);
+                            xhr.withCredentials = true;
+                            xhr.timeout = args.timeout_ms || 15000;
+
+                            Object.entries(requestHeaders).forEach(([key, value]) => {
+                                if (value === undefined || value === null || value === "") {
+                                    return;
+                                }
+                                xhr.setRequestHeader(key, String(value));
+                            });
+
+                            xhr.onreadystatechange = () => {
+                                if (xhr.readyState !== XMLHttpRequest.DONE) {
+                                    return;
+                                }
+                                resolve({
+                                    ok: xhr.status >= 200 && xhr.status < 300,
+                                    status: xhr.status || 0,
+                                    text: xhr.responseText || "",
+                                });
+                            };
+                            xhr.onerror = () => resolve({
+                                ok: false,
+                                status: xhr.status || 0,
+                                text: xhr.responseText || "",
+                                error: "XMLHttpRequest failed.",
+                            });
+                            xhr.ontimeout = () => resolve({
+                                ok: false,
+                                status: xhr.status || 0,
+                                text: xhr.responseText || "",
+                                error: "XMLHttpRequest timed out.",
+                            });
+                            xhr.send(bodyText ?? null);
+                        } catch (error) {
+                            resolve({ ok: false, status: 0, error: String(error) });
+                        }
+                    });
+                }
+
+                try {
+                    const response = await fetch(args.url, {
+                        method: args.method || "GET",
+                        credentials: "include",
+                        headers: requestHeaders,
+                        referrer: args.referrer || undefined,
+                        body: bodyText,
+                    });
+                    return {
+                        ok: !!response.ok,
+                        status: response.status || 0,
+                        text: await normalizeText(response),
+                    };
+                } catch (error) {
+                    return { ok: false, status: 0, error: String(error) };
+                }
+            }""",
+            payload,
+        )
+
     def _ece_requires_auto_login(self) -> bool:
         """
         Whether this provider requires Auto Login to enable account/profile selection.

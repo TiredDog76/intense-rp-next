@@ -31,6 +31,12 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
     [:arrow_right: Learn More](features/multi-slot-cache.md)
 
+-   :material-delete-clock-outline: **Chat Auto-Deletion**
+
+    Automatically delete the provider chat after a reply finishes on supported providers.
+
+    [:arrow_right: Learn More](features/chat-auto-deletion.md)
+
 -   :material-key: **Login & Sessions**
 
     Auto-login and persistent browser sessions.
@@ -99,6 +105,16 @@ On supported providers, **Search Older Matching Chats** lets **Reuse Matching Ch
 It keeps up to 7 reusable prompt slots per provider/account, so IntenseRP can jump back to an older matching conversation and hit Regenerate there instead of only checking the very last chat.
 
 :material-arrow-right: **Open** [:material-layers-triple-outline: Search Older Matching Chats](features/multi-slot-cache.md)
+
+---
+
+### :material-delete-clock-outline: Chat Auto-Deletion
+
+On supported providers, **Delete Chat After Reply** cleans up the provider-side chat after a successful reply finishes.
+
+It is handy if you want less provider chat clutter, but it's also slower because IntenseRP has to do extra cleanup work after each request.
+
+:material-arrow-right: **Open** [:material-delete-clock-outline: Chat Auto-Deletion](features/chat-auto-deletion.md)
 
 ---
 

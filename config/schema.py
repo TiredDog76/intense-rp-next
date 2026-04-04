@@ -14,6 +14,7 @@ from drivers.providers import provider_options
 DOCS_ACCOUNTS = "features/accounts/"
 DOCS_AISTUDIO = "providers/aistudio-behavior/"
 DOCS_API_BEHAVIOR = "advanced/api-behavior/"
+DOCS_CHAT_AUTO_DELETE = "features/chat-auto-deletion/"
 DOCS_CONSOLE = "features/console-logging/"
 DOCS_DEEPSEEK = "providers/deepseek-behavior/"
 DOCS_FORMATTING = "features/formatting/"
@@ -377,8 +378,35 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                depends="deepseek_behavior.auto_delete_chats!=true",
                 docs_path=DOCS_DEEPSEEK,
                 docs_anchor="clean-regeneration",
+            ),
+            SettingField(
+                key="auto_delete_chats",
+                label="Delete Chat After Reply",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Delete the provider chat after a successful reply finishes. "
+                    "This cannot be used together with Reuse Matching Chat."
+                ),
+                depends="deepseek_behavior.clean_regeneration!=true",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
+            ),
+            SettingField(
+                key="auto_delete_chats_warning",
+                label="Delete Chat After Reply",
+                type=SettingType.HINT,
+                default=(
+                    "This adds extra cleanup work after each request, so it can slow requests down quite a bit."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="deepseek_behavior.auto_delete_chats",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
             ),
             SettingField(
                 key="multi_slot_cache",
@@ -494,9 +522,35 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
-                depends="glm_behavior.repetition_buster!=true",
+                depends="glm_behavior.repetition_buster!=true&&glm_behavior.auto_delete_chats!=true",
                 docs_path=DOCS_GLM,
                 docs_anchor="clean-regeneration-known-issues",
+            ),
+            SettingField(
+                key="auto_delete_chats",
+                label="Delete Chat After Reply",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Delete the provider chat after a successful reply finishes. "
+                    "This cannot be used together with Reuse Matching Chat."
+                ),
+                depends="glm_behavior.clean_regeneration!=true",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
+            ),
+            SettingField(
+                key="auto_delete_chats_warning",
+                label="Delete Chat After Reply",
+                type=SettingType.HINT,
+                default=(
+                    "This adds extra cleanup work after each request, so it can slow requests down quite a bit."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="glm_behavior.auto_delete_chats",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
             ),
             SettingField(
                 key="repetition_buster",
@@ -669,8 +723,35 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                depends="moonshot_behavior.auto_delete_chats!=true",
                 docs_path=DOCS_MOONSHOT,
                 docs_anchor="clean-regeneration",
+            ),
+            SettingField(
+                key="auto_delete_chats",
+                label="Delete Chat After Reply",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Delete the provider chat after a successful reply finishes. "
+                    "This cannot be used together with Reuse Matching Chat."
+                ),
+                depends="moonshot_behavior.clean_regeneration!=true",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
+            ),
+            SettingField(
+                key="auto_delete_chats_warning",
+                label="Delete Chat After Reply",
+                type=SettingType.HINT,
+                default=(
+                    "This adds extra cleanup work after each request, so it can slow requests down quite a bit."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="moonshot_behavior.auto_delete_chats",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
             ),
             SettingField(
                 key="multi_slot_cache",
@@ -803,8 +884,35 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                depends="qwen_behavior.auto_delete_chats!=true",
                 docs_path=DOCS_QWEN,
                 docs_anchor="clean-regeneration",
+            ),
+            SettingField(
+                key="auto_delete_chats",
+                label="Delete Chat After Reply",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Delete the provider chat after a successful reply finishes. "
+                    "This cannot be used together with Reuse Matching Chat."
+                ),
+                depends="qwen_behavior.clean_regeneration!=true",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
+            ),
+            SettingField(
+                key="auto_delete_chats_warning",
+                label="Delete Chat After Reply",
+                type=SettingType.HINT,
+                default=(
+                    "This adds extra cleanup work after each request, so it can slow requests down quite a bit."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="qwen_behavior.auto_delete_chats",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
             ),
             SettingField(
                 key="multi_slot_cache",
@@ -1955,25 +2063,25 @@ PROVIDER_BEHAVIOR_GROUPS = {
     "deepseek_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout"]},
-        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache", "first_chunk_timeout"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache", "first_chunk_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "glm_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
-        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "repetition_buster", "multi_slot_cache"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "repetition_buster", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "first_chunk_timeout", "refresh_after_generation"]},
     ],
     "moonshot_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "search_and_think_note", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
-        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "qwen_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
-        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
     ],
     "aistudio_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},

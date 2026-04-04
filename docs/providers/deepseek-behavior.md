@@ -143,6 +143,24 @@ When you send the exact same prompt twice in a row, IntenseRP can regenerate the
 
 ---
 
+## :material-delete-clock-outline: Delete Chat After Reply
+
+If you want DeepSeek's own chat list to stay cleaner, IntenseRP can delete the completed DeepSeek chat after a successful reply finishes.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **DeepSeek** -> **Delete Chat After Reply**
+
+!!! warning "Slower requests"
+    This adds extra cleanup work after each request, so it can slow requests down quite a bit.
+
+!!! note "No chat reuse here"
+    This does **not** work together with **Reuse Matching Chat** or **Search Older Matching Chats**.
+
+    If you enable auto-deletion, IntenseRP has to throw the chat away on purpose, so there is nothing left to regenerate later.
+
+See also: [:material-delete-clock-outline: Chat Auto-Deletion](../features/chat-auto-deletion.md)
+
+---
+
 ## :material-code-tags: Per-Message Macros
 
 You can add simple `[[...]]` macros to the *latest* user message in SillyTavern to override certain DeepSeek Behavior settings for that request only.
@@ -175,6 +193,7 @@ All macros are stripped from the message before sending it to DeepSeek.
 | **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
 | **Anti-Censorship** | Hides refusal messages | Off |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
+| **Delete Chat After Reply** | Deletes the completed DeepSeek chat after a successful reply | Off |
 
 ---
 

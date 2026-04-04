@@ -604,6 +604,54 @@ class QwenLMDriver(BaseDriver):
 
             await asyncio.sleep(max(0.05, float(poll_interval_s)))
 
+    async def _delete_conversation_by_id(self, conversation_id: str) -> bool:
+        normalized_id = str(conversation_id or "").strip()
+        if not normalized_id:
+            return False
+
+        result = await self._run_browser_request(
+            method="DELETE",
+            url=f"https://chat.qwen.ai/api/v2/chats/{normalized_id}",
+            use_xhr=True,
+            referrer="https://chat.qwen.ai/",
+        )
+        if bool(result.get("ok")):
+            return True
+
+        detail = str(result.get("error") or result.get("text") or "").strip()
+        status = int(result.get("status") or 0)
+        suffix = f" ({detail[:180]})" if detail else ""
+        Logger.warning(
+            f"QwenLM: failed to auto-delete chat {normalized_id} (status={status}){suffix}"
+        )
+        return False
+
+    async def _auto_delete_current_chat(self) -> bool:
+        current_info = await self._get_current_conversation_info()
+        if current_info is None:
+            Logger.debug("QwenLM: auto-delete skipped because the current chat ID was not available.")
+            return False
+
+        conversation_id = str(current_info.get("conversation_id") or "").strip()
+        if not conversation_id:
+            Logger.debug("QwenLM: auto-delete skipped because the current chat ID was empty.")
+            return False
+
+        try:
+            await self.click_new_chat(source="auto")
+            await asyncio.sleep(0.35)
+        except Exception as e:
+            Logger.warning(
+                f"QwenLM: auto-delete skipped because a replacement chat could not be prepared: {e}"
+            )
+            return False
+
+        if await self._delete_conversation_by_id(conversation_id):
+            Logger.info("QwenLM: auto-deleted the completed chat.")
+            return True
+
+        return False
+
     async def _open_cached_conversation(self, conversation_url: str) -> bool:
         if not self.page:
             return False
@@ -2695,6 +2743,18 @@ class QwenLMDriver(BaseDriver):
                 clean_regeneration
                 and self.config_manager.get_setting("qwen_behavior", "multi_slot_cache")
             )
+            try:
+                auto_delete_requested = bool(
+                    self.config_manager.get_setting("qwen_behavior", "auto_delete_chats")
+                )
+            except Exception:
+                auto_delete_requested = False
+            auto_delete_enabled = bool(auto_delete_requested and (not clean_regeneration))
+            if auto_delete_requested and clean_regeneration:
+                Logger.warning(
+                    "QwenLM: Delete Chat After Reply is skipped for this request because "
+                    "Reuse Matching Chat is enabled."
+                )
             regenerated = False
             clean_regen_state: Dict[str, bool] | None = None
             multi_slot_state: Dict[str, Any] | None = None
@@ -2858,6 +2918,14 @@ class QwenLMDriver(BaseDriver):
                         },
                         log_label="Multi-Slot Cache (QwenLM)",
                     )
+
+            if (
+                auto_delete_enabled
+                and (not stream_had_error)
+                and (not self.abort_requested)
+                and not (abort_event and abort_event.is_set())
+            ):
+                await self._auto_delete_current_chat()
         finally:
             self.current_abort_event = None
             self.abort_requested = False

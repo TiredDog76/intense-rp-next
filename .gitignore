@@ -5,6 +5,7 @@ linuxvenv/
 .env
 .agent/ 
 AGENTS.md
+.codex
 GEMINI.md
 CLAUDE.md
 config_data/
@@ -58,3 +59,4 @@ aistudioanticensorshipresearch.md
 triggered.txt
 settings-redesign-notes.md
 loadouts.json
+autodeletion.md

@@ -862,6 +862,7 @@ class GLMDriver(BaseDriver):
         *,
         effective_deepthink: bool,
         enable_search: bool,
+        auto_delete_after_send: bool = False,
     ) -> None:
         Logger.info(
             "Repetition Buster (GLM): duplicate prompt detected. Sending a 128-character "
@@ -878,6 +879,8 @@ class GLMDriver(BaseDriver):
             log_label="Repetition Buster (GLM): sending cache-buster prompt...",
         )
         await asyncio.sleep(self._post_delay_s)
+        if auto_delete_after_send:
+            await self._auto_delete_current_chat(log_context="Repetition Buster (GLM)")
 
     def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
         normalized_url = str(url or "").strip()
@@ -923,6 +926,53 @@ class GLMDriver(BaseDriver):
                 return None
 
             await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
+    async def _delete_conversation_by_id(self, conversation_id: str) -> bool:
+        normalized_id = str(conversation_id or "").strip()
+        if not normalized_id:
+            return False
+
+        result = await self._run_browser_request(
+            method="DELETE",
+            url=f"https://chat.z.ai/api/v1/chats/{normalized_id}",
+            referrer="https://chat.z.ai/",
+        )
+        if bool(result.get("ok")):
+            return True
+
+        detail = str(result.get("error") or result.get("text") or "").strip()
+        status = int(result.get("status") or 0)
+        suffix = f" ({detail[:180]})" if detail else ""
+        Logger.warning(
+            f"GLM Chat: failed to auto-delete chat {normalized_id} (status={status}){suffix}"
+        )
+        return False
+
+    async def _auto_delete_current_chat(self, *, log_context: str = "GLM Chat") -> bool:
+        current_info = await self._get_current_conversation_info()
+        if current_info is None:
+            Logger.debug(f"{log_context}: auto-delete skipped because the current chat ID was not available.")
+            return False
+
+        conversation_id = str(current_info.get("conversation_id") or "").strip()
+        if not conversation_id:
+            Logger.debug(f"{log_context}: auto-delete skipped because the current chat ID was empty.")
+            return False
+
+        try:
+            await self.click_new_chat(source="auto")
+            await asyncio.sleep(self._post_delay_s)
+        except Exception as e:
+            Logger.warning(
+                f"{log_context}: auto-delete skipped because a replacement chat could not be prepared: {e}"
+            )
+            return False
+
+        if await self._delete_conversation_by_id(conversation_id):
+            Logger.info(f"{log_context}: auto-deleted the completed chat.")
+            return True
+
+        return False
 
     async def _open_cached_conversation(self, conversation_url: str) -> bool:
         if not self.page:
@@ -1739,6 +1789,12 @@ class GLMDriver(BaseDriver):
             )
         except Exception:
             multi_slot_cache_requested = False
+        try:
+            auto_delete_requested = bool(
+                self.config_manager.get_setting("glm_behavior", "auto_delete_chats")
+            )
+        except Exception:
+            auto_delete_requested = False
 
         if repetition_buster_enabled and clean_regeneration_requested:
             Logger.debug(
@@ -1748,6 +1804,12 @@ class GLMDriver(BaseDriver):
 
         clean_regeneration = bool((not repetition_buster_enabled) and clean_regeneration_requested)
         multi_slot_cache_enabled = bool(clean_regeneration and multi_slot_cache_requested)
+        auto_delete_enabled = bool(auto_delete_requested and (not clean_regeneration))
+        if auto_delete_requested and clean_regeneration:
+            Logger.warning(
+                "GLM Chat: Delete Chat After Reply is skipped for this request because "
+                "Reuse Matching Chat is enabled."
+            )
         prompt_matches_last = False
         if repetition_buster_enabled:
             prompt_matches_last = self._account_scoped_cached_prompt_matches(
@@ -1766,6 +1828,7 @@ class GLMDriver(BaseDriver):
             await self._run_repetition_buster(
                 effective_deepthink=bool(effective_deepthink),
                 enable_search=bool(enable_search),
+                auto_delete_after_send=auto_delete_enabled,
             )
 
         async def handle_route(route):
@@ -2348,6 +2411,14 @@ class GLMDriver(BaseDriver):
 
             if stream_completed and not self.abort_requested and not (abort_event and abort_event.is_set()):
                 self._schedule_refresh_after_generation()
+
+            if (
+                auto_delete_enabled
+                and stream_completed
+                and not self.abort_requested
+                and not (abort_event and abort_event.is_set())
+            ):
+                await self._auto_delete_current_chat()
 
         finally:
             if completion_started.is_set() and not intercepted_request_finished.is_set():

@@ -22,6 +22,7 @@ nav:
           - Accounts & Credentials: features/accounts.md
           - Formatting: features/formatting.md
           - Multi-Slot Cache: features/multi-slot-cache.md
+          - Chat Auto-Deletion: features/chat-auto-deletion.md
           - STMP Support: features/stmp-support.md
           - Login & Sessions: features/login-sessions.md
           - Network & API: features/network-api.md

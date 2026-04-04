@@ -146,6 +146,27 @@ That random string is just a cache buster. The whole idea is to disturb GLM's co
 
 ---
 
+## :material-delete-clock-outline: Delete Chat After Reply
+
+If you want GLM's chat history cleaned up automatically, IntenseRP can delete the completed GLM chat after a successful reply finishes.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Delete Chat After Reply**
+
+!!! warning "Slower requests"
+    This adds extra cleanup work after each request, so it can slow requests down quite a bit.
+
+!!! note "No Reuse Matching Chat here"
+    This does **not** work together with **Reuse Matching Chat** or **Search Older Matching Chats**.
+
+!!! tip "Repetition Buster still works"
+    GLM's **Repetition Buster** is still compatible with this.
+
+    IntenseRP deletes the temporary cache-buster chat too before it sends the real request.
+
+See also: [:material-delete-clock-outline: Chat Auto-Deletion](../features/chat-auto-deletion.md)
+
+---
+
 ## :material-key: Login notes (CAPTCHA)
 
 GLM requires a CAPTCHA during login. Even with Auto Login enabled, you must complete the CAPTCHA in the browser window, since it's not really possible to reliably automate that step.
@@ -213,6 +234,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off (unstable for GLM) |
+| **Delete Chat After Reply** | Deletes the completed GLM chat after a successful reply | Off |
 | **Repetition Buster** | Sends a throwaway cache-buster prompt before duplicate prompts | Off |
 | **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
 | **Refresh After Generation** | Reloads the GLM page after each response | Off |
