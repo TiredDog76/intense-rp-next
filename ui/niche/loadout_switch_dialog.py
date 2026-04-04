@@ -13,12 +13,6 @@ from ui.niche.hotswap_dialog import PROVIDER_ICON_MAP
 from ui.widgets.components import HintCard
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 
-
-LOADOUT_CONTROLLED_MESSAGE = (
-    "Controlled by Loadouts. Disable Loadouts to edit settings visually here."
-)
-
-
 class _ElidedTitleLabel(QLabel):
     def __init__(self, text: str = "", parent=None):
         super().__init__(parent)

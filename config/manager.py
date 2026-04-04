@@ -4,11 +4,16 @@ from typing import Any, Dict
 from cryptography.fernet import Fernet
 from drivers.providers import DriverProvider
 from .loadouts import (
+    LOADOUTS_DEFINITIONS_KEY,
+    LOADOUTS_LEGACY_MIGRATION_FLAG,
+    LOADOUTS_SETTINGS_KEY,
     LoadoutDefinition,
+    deserialize_settings_loadouts,
     get_behavior_category_for_provider,
     get_loadouts_path,
     group_by_provider,
-    load_and_validate_file,
+    load_legacy_loadouts_from_file,
+    serialize_settings_loadouts,
 )
 from .schema import SCHEMA, SettingType
 from .migrator import SettingsMigrator
@@ -83,6 +88,7 @@ class ConfigManager:
             
             # Validate/Merge with schema to ensure all fields exist
             self._merge_defaults()
+            loadouts_store_updated = self._ensure_loadouts_store()
 
             # Best-effort one-time migration helpers
             try:
@@ -91,6 +97,15 @@ class ConfigManager:
                 migrate_legacy_credentials_to_accounts(self)
             except Exception as exc:
                 Logger.debug(f"Legacy credential import: skipped due to error: {exc}")
+
+            try:
+                migrated = self._migrate_legacy_loadouts_from_disk_if_needed()
+                loadouts_store_updated = loadouts_store_updated or migrated
+            except Exception as exc:
+                Logger.warning(f"Legacy loadouts migration: skipped due to error: {exc}")
+
+            if loadouts_store_updated:
+                self.save_settings()
             
         except Exception as e:
             Logger.error(f"Error loading settings: {e}")
@@ -105,6 +120,7 @@ class ConfigManager:
                 self.settings[category.key] = {}
             for field in self._iter_default_fields(category.fields):
                 self.settings[category.key][field.key] = field.default
+        self._ensure_loadouts_store()
         self.save_settings()
 
     def _merge_defaults(self):
@@ -242,6 +258,55 @@ class ConfigManager:
             self.settings[category_key] = {}
         self.settings[category_key][field_key] = value
 
+    def _ensure_loadouts_store(self) -> bool:
+        updated = False
+
+        loadouts_root = self.settings.get(LOADOUTS_SETTINGS_KEY)
+        if not isinstance(loadouts_root, dict):
+            loadouts_root = {}
+            self.settings[LOADOUTS_SETTINGS_KEY] = loadouts_root
+            updated = True
+
+        if not isinstance(loadouts_root.get(LOADOUTS_DEFINITIONS_KEY), list):
+            loadouts_root[LOADOUTS_DEFINITIONS_KEY] = []
+            updated = True
+
+        return updated
+
+    def _migrate_legacy_loadouts_from_disk_if_needed(self) -> bool:
+        flag_key = LOADOUTS_LEGACY_MIGRATION_FLAG
+        if self.app_flags.get_bool(flag_key, default=False):
+            return False
+
+        legacy_path = self.get_loadouts_path()
+        if not legacy_path.exists():
+            return False
+
+        if self.get_loadouts():
+            Logger.info(
+                "Loadouts migration: GUI-backed loadouts already exist; "
+                "marking legacy loadouts.json migration as complete."
+            )
+            self.app_flags.set(flag_key, True)
+            return False
+
+        legacy_loadouts = load_legacy_loadouts_from_file(legacy_path)
+        self.set_loadouts(legacy_loadouts)
+        self.app_flags.set(flag_key, True)
+
+        try:
+            legacy_path.unlink()
+            Logger.success(
+                "Loadouts migration: imported legacy loadouts.json into Settings "
+                "and deleted the old file."
+            )
+        except Exception as exc:
+            Logger.warning(
+                f"Loadouts migration: imported legacy loadouts.json but could not delete it: {exc}"
+            )
+
+        return True
+
     # ------------------------------------------------------------------
     # Loadouts
     # ------------------------------------------------------------------
@@ -259,22 +324,36 @@ class ConfigManager:
     def get_loadouts_path(self) -> Path:
         return get_loadouts_path()
 
+    def get_loadouts(
+        self,
+        provider: DriverProvider | str | None = None,
+    ) -> list[LoadoutDefinition]:
+        loadouts_root = self.settings.get(LOADOUTS_SETTINGS_KEY, {})
+        raw_definitions = (
+            loadouts_root.get(LOADOUTS_DEFINITIONS_KEY, [])
+            if isinstance(loadouts_root, dict)
+            else []
+        )
+        loadouts = deserialize_settings_loadouts(raw_definitions)
+        normalized_provider = self._normalize_provider(provider)
+        if normalized_provider is None:
+            return loadouts
+        return [loadout for loadout in loadouts if loadout.provider == normalized_provider]
+
+    def set_loadouts(self, loadouts: list[LoadoutDefinition]) -> None:
+        self._ensure_loadouts_store()
+        loadouts_root = self.settings.setdefault(LOADOUTS_SETTINGS_KEY, {})
+        if not isinstance(loadouts_root, dict):
+            loadouts_root = {}
+            self.settings[LOADOUTS_SETTINGS_KEY] = loadouts_root
+        loadouts_root[LOADOUTS_DEFINITIONS_KEY] = serialize_settings_loadouts(loadouts)
+
     def _normalize_provider(self, provider: DriverProvider | str | None) -> DriverProvider | None:
         if isinstance(provider, DriverProvider):
             return provider
         if provider is None:
             return None
         return DriverProvider.from_setting(provider)
-
-    def load_loadouts_from_disk(
-        self,
-        provider: DriverProvider | str | None = None,
-    ) -> list[LoadoutDefinition]:
-        loadouts = load_and_validate_file(self.get_loadouts_path())
-        normalized_provider = self._normalize_provider(provider)
-        if normalized_provider is None:
-            return loadouts
-        return [loadout for loadout in loadouts if loadout.provider == normalized_provider]
 
     def _loadout_flag_key(self) -> str:
         return "loadouts_active_by_provider"
@@ -312,7 +391,7 @@ class ConfigManager:
         candidates = available_loadouts
         if candidates is None:
             try:
-                candidates = self.load_loadouts_from_disk(normalized_provider)
+                candidates = self.get_loadouts(normalized_provider)
             except Exception:
                 candidates = []
 
@@ -332,7 +411,7 @@ class ConfigManager:
         if normalized_provider is None or not normalized_name:
             raise ValueError("A valid provider and loadout name are required.")
 
-        available = self.load_loadouts_from_disk(normalized_provider)
+        available = self.get_loadouts(normalized_provider)
         if not any(loadout.name == normalized_name for loadout in available):
             raise ValueError(
                 f"Loadout '{normalized_name}' is not available for provider '{normalized_provider.value}'."
@@ -356,7 +435,7 @@ class ConfigManager:
         if not self.is_loadouts_feature_enabled():
             return
 
-        loadouts_by_provider = group_by_provider(load_and_validate_file(self.get_loadouts_path()))
+        loadouts_by_provider = group_by_provider(self.get_loadouts())
 
         active_names: dict[DriverProvider, str] = {}
         persisted = self._get_persisted_active_loadout_names()

@@ -28,11 +28,17 @@ This file is encrypted using the same key as regular settings:
 
 ## :material-list-box-outline: Current usage
 
-Right now, App Flags are used to track one-time credential migration behavior:
+Right now, App Flags are used to track a couple of 1-time migration helpers:
 
 - `accounts.legacy_credentials_imported`
+- `loadouts.legacy_json_migrated`
 
-When this flag is set, IntenseRP already imported legacy per-provider credentials into Saved Accounts.
+What they mean:
+
+- `accounts.legacy_credentials_imported`
+  IntenseRP already imported legacy per-provider credentials into Saved Accounts.
+- `loadouts.legacy_json_migrated`
+  IntenseRP already attempted the old `loadouts.json` -> GUI loadouts migration.
 
 ---
 
@@ -71,7 +77,9 @@ You can clear all App Flags by launching IntenseRP with:
     ```
 
 !!! warning "This resets one-time guards"
-    Clearing flags can re-enable one-time actions (such as migration helpers) on next launch.
+    Clearing flags can re-enable one-time actions on next launch.
+
+    That includes the old `loadouts.json` import guard, so `--clearFlags` can make IntenseRP try the legacy loadouts migration again.
 
 ---
 

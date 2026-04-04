@@ -4,14 +4,7 @@ icon: material/file-code-outline
 
 # :material-file-code-outline: Loadouts (Experimental)
 
-Loadouts are a file-based override system for people who would rather edit a JSON file than click through the Settings UI every time.
-
-When enabled, IntenseRP stops using the visual **Formatting** and **Provider Behavior** controls at runtime and reads those values from `loadouts.json` instead.
-
-!!! warning "Experimental and intentionally technical"
-    This feature is meant for power users.
-
-    IntenseRP validates the file before startup. If the file is missing, malformed, or contains unsupported fields or values, startup is blocked until you fix it.
+When Loadouts are enabled, IntenseRP lets you edit provider-specific **Formatting** + **Provider Behavior** presets directly inside Settings, then switch the active one per provider. In simple terms, it's like having multiple named profiles per provider that you can jump between on the fly.
 
 ---
 
@@ -19,104 +12,56 @@ When enabled, IntenseRP stops using the visual **Formatting** and **Provider Beh
 
 :material-arrow-right: **Settings** -> **Advanced** -> **Experimental Features** -> **Enable Loadouts**
 
-When that toggle is on, a new **Create Template** button appears right below it.
+That toggle does 2 things:
 
-That button writes `loadouts.json` into the **app root**:
+- it turns on the loadout editor inside **Provider Behavior**
+- it adds a matching loadout card inside **Formatting**
 
-- source checkout: next to `main.py`
-- packaged build: next to the app executable
-
-It is **not** stored under `config_data/`, and packaged updates keep that file in place.
-
-![Loadouts Toggle](../pics/experimental/loadouts.png)
+Both editor cards stay synced while the Settings window is open, so changing the provider or the loadout in 1 place updates the other one immediately.
 
 ---
 
-## :material-file-document-edit-outline: Template file
+## :material-view-dashboard-outline: How editing works
 
-The template is a JSON list. Each item is 1 loadout.
+With Loadouts enabled, **Provider Behavior** keeps the provider switch at the top, and adds a new loadout dropdown under it.
 
-Every loadout contains:
+**Formatting** gets its own blue loadout card with the same provider switch and the same dropdown, so you can jump between providers/loadouts without bouncing back and forth between sections.
 
-- `Meta.Name`: the loadout name you will see in the switcher
-- `Meta.Provider`: which provider the loadout belongs to
-- `Meta._Comment`: optional helper text, ignored by IntenseRP
-- formatting fields
-- that provider's behavior fields
+DO NOTE that the provider switch selects which provider's loadouts you are editing, so you can't edit Moonshot loadouts while the provider switch is on DeepSeek, and so on.
 
-The generated template includes 1 example named `Template` for each provider, all filled with the normal app-default values.
-
-```json
-[
-  {
-    "Meta": {
-      "Name": "Template",
-      "Provider": "DeepSeek",
-      "_Comment": "Valid providers: DeepSeek, GLM Chat, Moonshot, QwenLM, Google AI Studio"
-    },
-    "formatting_preset": "Classic - Name",
-    "formatting_template": "{{name}}: {{content}}",
-    "formatting_divider": "\n",
-    "apply_formatting": true
-  }
-]
-```
-
-Do keep this in mind, though:
-
-- `Meta.Name` must be unique per provider.
-- extra unknown fields are rejected
-- missing required fields are rejected
-- invalid JSON is rejected
-- invalid dropdown values / wrong value types are rejected
-
-If you click **Create Template** while `loadouts.json` already exists, IntenseRP asks whether you want to overwrite it.
+If a provider has no loadouts yet, the dropdown stays empty except for the add control.
 
 ---
 
-## :material-view-dashboard-outline: What happens in Settings
+## :material-plus-circle-outline: Creating and deleting loadouts
 
-While Loadouts are enabled, the contents of **Formatting** and **Provider Behavior** are replaced with a warning card:
+Open the dropdown and hit the `+` row at the bottom. That turns the dropdown into an input field for the new loadout name. You can confirm with **Enter** or the check button.
 
-> Controlled by Loadouts. Disable Loadouts to edit settings visually here.
+New loadouts are provider-scoped, so if you are looking at **Moonshot**, the new entry belongs to Moonshot and only shows up under Moonshot later.
 
-The saved visual settings underneath are left alone. If you disable Loadouts later, those normal controls come back as-is.
+### Deleting
 
-![Loadouts Warning Card](../pics/experimental/cbl.png)
+After you create at least 1 loadout for a provider, a trash icon appears next to the item when you hover over it. Click that to delete the loadout. Pretty simple.
 
----
-
-## :material-play-circle-outline: Validation and startup behavior
-
-IntenseRP validates `loadouts.json` when the runtime is about to start using it.
-
-That means:
-
-- normal **Start**
-- **Restart**
-- **Hotswap**
-- **Switch Account**
-
-all re-check the file before proceeding.
-
-IntenseRP does **not** keep re-reading the file on every request while the server is already running. If you edit `loadouts.json`, you need one of the restart-style actions above before the new values are used.
-
-If Loadouts are enabled but the file does not contain at least 1 valid loadout for the provider that is about to run, startup fails with a validation error.
+The list refreshes immediately inside Settings. Unlike the old version of this system in v2.6.3, the list is updated immediately after creating or deleting loadouts, so you don't have to close and reopen anything.
 
 ---
 
-## :material-swap-horizontal: Switching loadouts
+## :material-swap-horizontal: Switching the active runtime loadout
 
-When Loadouts are enabled, the **Stop** button menu gets a new **Switch Loadout** action.
+The **Stop** button menu has **Switch Loadout** while Loadouts are enabled.
 
-!!! note "Only the current provider"
-    That window only shows loadouts for your **currently selected provider**.
+That menu action changes the active runtime loadout for the currently selected provider.
 
-    So if your active provider is **Google AI Studio**, you only see AI Studio loadouts there. Moonshot loadouts stay out of the way until Moonshot becomes the selected provider.
+If the runtime is already running and you switch from the Stop menu, IntenseRP restarts the services so the newly selected loadout really takes effect.
 
-If you switch while the runtime is already running, IntenseRP restarts the runtime so the newly selected loadout actually takes effect.
+---
 
-![Switch Loadout](../pics/experimental/chevronm.png)
+## :material-play-circle-outline: Runtime behavior
+
+Loadouts are provider-specific, and the active loadout for each provider is independent from the others. You can have a "Creative" and "Analysis" loadout for DeepSeek, and a "Balanced" loadout for GLM, and a "Fast" loadout for Moonshot, and switch between them whenever you want.
+
+If Loadouts are enabled but the provider you are about to run has no loadouts yet, startup is blocked until you create at least 1 for that provider (otherwise IntenseRP wouldn't know which one to use).
 
 ---
 
@@ -124,19 +69,36 @@ If you switch while the runtime is already running, IntenseRP restarts the runti
 
 Loadouts also work with **Providers in Parallel**.
 
-Internally, IntenseRP keeps the active loadout selection per provider, so parallel runtimes do not accidentally mix DeepSeek settings into GLM, AI Studio settings into Moonshot, and so on.
-
-That means:
-
-- each running provider uses its own matching loadout
-- the **Switch Loadout** dialog still only edits the currently selected provider
-- startup validation checks every provider that is about to be launched in the parallel pool
+Internally, IntenseRP keeps the active loadout name per provider, so parallel runtimes do not cross the streams and accidentally send AI Studio settings into Moonshot or anything equally cursed.
 
 ---
 
-## :material-text-box-search-outline: Logging
+## :material-file-replace-outline: Legacy `loadouts.json` migration
 
-When a request comes in, IntenseRP logs which loadout is being used for that provider. But really you can check with the switch dialog, so... you do you, I guess. :)
+Old `loadouts.json` files are no longer used for normal runtime behavior.
+
+If IntenseRP finds a legacy `loadouts.json` from the older v2.6.3-style system, it will try a 1-time migration, during which it will import the legacy loadouts into the encrypted GUI-backed settings store. If it succeeds, it also deletes the legacy file to avoid confusion.
+
+If the migration fails, the file is left alone so you can fix it and try again later.
+
+---
+
+## :material-flag-outline: Re-running the legacy migration
+
+The 1-time migration is guarded by an app flag. If you want to re-run it, clear app flags with:
+
+```bash
+--clearFlags
+```
+
+That resets the migration guard, so the next launch can try importing the legacy file again.
+
+!!! danger "Don't mess with app flags unless you know what you're doing"
+    App flags are used for various one-time guards and migrations. This clears **all** of them, which can have unintended consequences if you are not careful.
+
+See also:
+
+[:material-arrow-right: App Flags](../advanced/app-flags.md)
 
 ---
 

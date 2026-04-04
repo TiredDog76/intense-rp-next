@@ -1387,23 +1387,10 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "Experimental. Power-user JSON loadouts that override Formatting and "
-                    "Provider Behavior at runtime. Takes effect on the next browser start."
+                    "Experimental. Edit provider-specific Formatting and Provider Behavior "
+                    "loadouts directly in Settings and switch them per provider."
                 ),
                 affects=["chevron_dropdown"],
-                docs_path=DOCS_LOADOUTS,
-            ),
-            SettingField(
-                key="create_loadouts_template",
-                label="Create Loadouts Template",
-                type=SettingType.BUTTON,
-                default="Create Template",
-                action="create_loadouts_template",
-                tooltip=(
-                    "Create or overwrite loadouts.json in the app root with one example "
-                    "loadout per provider."
-                ),
-                visible_depends="experimental.enable_loadouts",
                 docs_path=DOCS_LOADOUTS,
             ),
             SettingField(
@@ -1849,7 +1836,7 @@ SETTINGS_SECTIONS = [
         key="formatting",
         label="Formatting",
         icon="type.svg",
-        card_keys=["message_style", "name_detection", "extra_instruction"],
+        card_keys=["loadout_editor", "message_style", "name_detection", "extra_instruction"],
     ),
     SettingSection(
         key="interface",
@@ -1936,6 +1923,11 @@ SETTINGS_CARDS = {
             ("formatting", "formatting_divider"),
             ("formatting", "apply_formatting"),
         ],
+    ),
+    "loadout_editor": SettingCard(
+        key="loadout_editor",
+        title="Loadouts",
+        special="loadout_editor",
     ),
     "name_detection": SettingCard(
         key="name_detection",
@@ -2047,7 +2039,6 @@ SETTINGS_CARDS = {
         title="Experimental Features",
         field_refs=[
             ("experimental", "enable_loadouts"),
-            ("experimental", "create_loadouts_template"),
             ("experimental", "providers_in_parallel"),
             ("experimental", "providers_in_parallel_note"),
             ("experimental", "parallel_enable_deepseek"),

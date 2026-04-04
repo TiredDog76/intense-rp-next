@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
     QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon, QMenu
 )
-from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize, QUrl, QEvent
+from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize, QUrl, QEvent, QObject
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QPixmap, QDesktopServices, QIcon
 import qasync
@@ -18,7 +18,6 @@ import qasync
 from drivers.factory import create_driver
 from drivers.providers import DriverProvider, provider_options
 from api import API
-from config.loadouts import LoadoutValidationError
 from config.manager import ConfigManager
 from remote_control import RemoteControlActions
 from ui.windows.settings_window import SettingsWindow
@@ -51,9 +50,10 @@ from utils.docs_links import DOCS_BASE_URL
 import shutil
 import socket
 import time
+import traceback
 
 
-def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool]:
+def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool, bool]:
     """
     Parse and remove internal startup args from argv.
 
@@ -63,12 +63,14 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
       --updaterpath=<path>
       --clearFlags
       --fakeUpdate
+      --debugWidgetShows
     """
     remaining: list[str] = []
     delete_updater = False
     updater_path: str | None = None
     clear_flags = False
     fake_update = False
+    debug_widget_shows = False
 
     i = 0
     while i < len(argv):
@@ -101,10 +103,15 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
             i += 1
             continue
 
+        if arg.lower() == "--debugwidgetshows":
+            debug_widget_shows = True
+            i += 1
+            continue
+
         remaining.append(arg)
         i += 1
 
-    return remaining, delete_updater, updater_path, clear_flags, fake_update
+    return remaining, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows
 
 
 def _delete_updater_best_effort(cleanup_path: Path) -> None:
@@ -154,6 +161,107 @@ def _clear_app_flags() -> bool:
     except Exception as exc:
         print(f"Failed to clear app flags: {exc}")
         return False
+
+
+def _install_widget_debug_logging(app: QApplication) -> Path | None:
+    try:
+        log_dir = Path(resolve_resource_path("logs"))
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = (log_dir / "widget_show_debug.log").resolve()
+        log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+    except Exception as exc:
+        print(f"Failed to open widget debug log: {exc}")
+        return None
+
+    def _log_line(text: str) -> None:
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            log_file.write(f"[{stamp}] {text}\n")
+        except Exception:
+            pass
+
+    class _WidgetDebugFilter(QObject):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+
+        def eventFilter(self, obj, event):
+            try:
+                if isinstance(obj, QWidget):
+                    is_popup = bool(obj.windowFlags() & Qt.Popup)
+                    if obj.isWindow() or is_popup:
+                        if event.type() == QEvent.Show:
+                            _log_line(
+                                "EVENT Show "
+                                f"{type(obj).__module__}.{type(obj).__name__} "
+                                f"title={obj.windowTitle()!r} "
+                                f"visible={obj.isVisible()} "
+                                f"size={obj.size().width()}x{obj.size().height()} "
+                                f"parent={(type(obj.parent()).__name__ if obj.parent() else None)!r} "
+                                f"flags={int(obj.windowFlags())}"
+                            )
+                        elif event.type() == QEvent.Hide:
+                            _log_line(
+                                "EVENT Hide "
+                                f"{type(obj).__module__}.{type(obj).__name__} "
+                                f"title={obj.windowTitle()!r} "
+                                f"size={obj.size().width()}x{obj.size().height()}"
+                            )
+            except Exception as exc:
+                _log_line(f"FILTER ERROR {exc}")
+            return False
+
+    debug_filter = _WidgetDebugFilter(app)
+    app.installEventFilter(debug_filter)
+    app.setProperty("_widget_debug_filter", debug_filter)
+
+    orig_show = QWidget.show
+
+    def traced_show(widget):
+        try:
+            is_popup = bool(widget.windowFlags() & Qt.Popup)
+            if widget.isWindow() or is_popup:
+                stack = " | ".join(
+                    f"{frame.name}@{Path(frame.filename).name}:{frame.lineno}"
+                    for frame in traceback.extract_stack(limit=10)[:-1]
+                )
+                _log_line(
+                    "CALL show "
+                    f"{type(widget).__module__}.{type(widget).__name__} "
+                    f"title={widget.windowTitle()!r} "
+                    f"visible={widget.isVisible()} "
+                    f"size={widget.size().width()}x{widget.size().height()} "
+                    f"parent={(type(widget.parent()).__name__ if widget.parent() else None)!r} "
+                    f"flags={int(widget.windowFlags())} "
+                    f"stack={stack}"
+                )
+        except Exception as exc:
+            _log_line(f"SHOW TRACE ERROR {exc}")
+        return orig_show(widget)
+
+    QWidget.show = traced_show
+
+    from PySide6.QtWidgets import QComboBox
+
+    orig_show_popup = QComboBox.showPopup
+
+    def traced_show_popup(combo):
+        try:
+            _log_line(
+                "CALL showPopup "
+                f"{type(combo).__module__}.{type(combo).__name__} "
+                f"objectName={combo.objectName()!r} "
+                f"currentText={combo.currentText()!r} "
+                f"size={combo.size().width()}x{combo.size().height()}"
+            )
+        except Exception as exc:
+            _log_line(f"SHOWPOPUP TRACE ERROR {exc}")
+        return orig_show_popup(combo)
+
+    QComboBox.showPopup = traced_show_popup
+    app.setProperty("_widget_debug_log_path", str(log_path))
+    _log_line("Widget debug logging enabled")
+    print(f"Widget debug logging enabled: {log_path}")
+    return log_path
 
 
 def get_version():
@@ -707,12 +815,10 @@ class MainWindow(QMainWindow):
         try:
             self.config_manager.prepare_runtime_loadouts(required_providers=list(providers or []))
             return True
-        except LoadoutValidationError as exc:
-            message = str(exc)
         except ValueError as exc:
             message = str(exc)
         except Exception as exc:
-            message = f"Failed to validate loadouts: {exc}"
+            message = f"Failed to refresh loadouts: {exc}"
 
         Logger.error(f"Loadouts validation failed: {message}")
         if show_dialog:
@@ -1544,6 +1650,8 @@ class MainWindow(QMainWindow):
         # Refresh affected UI components
         if "chevron_dropdown" in affected and self.start_button.text() == "Stop":
             self._refresh_chevron_menu()
+        elif self._loadouts_feature_enabled() and self.start_button.text() == "Stop":
+            self._refresh_chevron_menu()
 
         if "hotswap_button" in affected:
             self._sync_hotswap_button()
@@ -1553,6 +1661,15 @@ class MainWindow(QMainWindow):
 
         if "title_bar" in affected:
             self._build_title_area()
+
+        runtime_providers = [provider for provider, _driver in self._iter_runtime_drivers()]
+        if self._loadouts_feature_enabled():
+            try:
+                self.config_manager.prepare_runtime_loadouts(required_providers=runtime_providers)
+            except Exception as exc:
+                Logger.warning(f"Loadouts refresh after settings save failed: {exc}")
+        else:
+            self.config_manager.clear_runtime_loadouts()
 
         # If driver is running, it will pick up changes on next generation
         # All thanks to the config manager being dynamic
@@ -1611,13 +1728,13 @@ class MainWindow(QMainWindow):
 
     def _on_switch_loadout(self):
         provider = get_current_provider(self.config_manager)
-        try:
-            available = self.config_manager.load_loadouts_from_disk(provider)
-        except (LoadoutValidationError, ValueError) as exc:
-            QMessageBox.warning(self, "Loadouts", str(exc))
-            return
-        except Exception as exc:
-            QMessageBox.warning(self, "Loadouts", f"Failed to read loadouts.json.\n\n{exc}")
+        available = self.config_manager.get_loadouts(provider)
+        if not available:
+            QMessageBox.information(
+                self,
+                "Loadouts",
+                f"No loadouts are available for {provider.value} yet.",
+            )
             return
 
         if self._are_services_running():
@@ -2544,13 +2661,15 @@ def main():
             print(f"Failed to run module {module_name}: {e}")
             sys.exit(1)
 
-    remaining_args, delete_updater, updater_path, clear_flags, fake_update = _parse_update_cleanup_args(sys.argv[1:])
+    remaining_args, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows = _parse_update_cleanup_args(sys.argv[1:])
     sys.argv = [sys.argv[0]] + remaining_args
 
     if clear_flags:
         sys.exit(0 if _clear_app_flags() else 1)
 
     app = QApplication(sys.argv)
+    if debug_widget_shows:
+        _install_widget_debug_logging(app)
 
     from ui.core.app_icon import get_app_icon
     from PySide6.QtWidgets import QStyleFactory

@@ -21,7 +21,7 @@ Experimental features currently include:
 
 -   :material-file-code-outline: **Loadouts**
 
-    Lets you override Formatting and Provider Behavior through a validated `loadouts.json` file, with per-provider switching from the Stop menu.
+    Lets you build and edit provider-specific Formatting + Provider Behavior presets directly in Settings, then switch the active one per provider.
 
     [:arrow_right: Read Loadouts docs](experimental/loadouts.md)
 

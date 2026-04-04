@@ -2,29 +2,36 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
     QScrollArea, QLabel, QPushButton, QFrame, QMessageBox, QDialog, QListWidgetItem,
     QLineEdit, QTextEdit, QComboBox, QSizePolicy, QLayout, QLayoutItem,
-    QGraphicsOpacityEffect, QButtonGroup
+    QGraphicsOpacityEffect
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QSize, QRect, Property, QPoint, QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup, QParallelAnimationGroup, QEvent, QUrl
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QBrush, QDesktopServices, QKeySequence, QShortcut, QPolygon, QCursor
 from difflib import SequenceMatcher
+import copy
+from typing import Any
 import threading
 import os
 import shutil
 import re
 from pathlib import Path
 from config.formatting_presets import FORMATTING_PRESET_TEMPLATES
-from config.loadouts import write_template_file
+from config.loadouts import (
+    LoadoutDefinition,
+    build_visual_loadout_settings,
+    get_loadout_field_bindings,
+    serialize_settings_loadouts,
+)
 from config.manager import ConfigManager
 from config.location import infer_preset_from_config_dir, migrate_config_dir, resolve_config_dir, write_pointer_file
 from config.schema import SCHEMA, SettingType, SETTINGS_SECTIONS, SETTINGS_CARDS, PROVIDER_BEHAVIOR_GROUPS
 from drivers.providers import DriverProvider
 from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, HintCard, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
+from ui.widgets.marshmallow_dropdown import MarshmallowDropdown, MarshmallowOption
 from ui.widgets.redirect_card import RedirectCard
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
 from ui.core.icons import IconUtils, IconType
-from ui.niche.loadout_switch_dialog import LOADOUT_CONTROLLED_MESSAGE
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
 from utils.api_key_generator import generate_api_key
@@ -764,6 +771,10 @@ class SettingsWindow(QMainWindow):
         DriverProvider.QWEN_LM: "qwen_behavior",
         DriverProvider.AI_STUDIO: "aistudio_behavior",
     }
+    PROVIDER_BY_BEHAVIOR_CATEGORY = {
+        behavior_key: provider
+        for provider, behavior_key in BEHAVIOR_CATEGORY_BY_PROVIDER.items()
+    }
 
 
     def __init__(self, config_manager: ConfigManager, parent=None):
@@ -792,13 +803,18 @@ class SettingsWindow(QMainWindow):
         self._field_display_key = {}
         self._display_rows = {}
         self._dynamic_card_titles = {}
-        self._provider_behavior_buttons = {}
+        self._provider_behavior_buttons = []
         self._provider_behavior_selected_key = None
         self._provider_behavior_user_selected = False
         self._provider_behavior_selector_card_key = "provider_defaults"
         self._provider_behavior_group_card_keys = {}
+        self._provider_behavior_selector_instances = []
         self._pending_provider_behavior_preload_keys = []
-        self._loadout_controlled_cards = []
+        self._loadout_dropdown_instances = []
+        self._loadout_base_values_cache = {}
+        self._loadout_editor_selected_names = {}
+        self._loadout_editor_draft_by_provider = {}
+        self._loadout_editor_formatting_card_key = "loadout_editor"
         self._persistent_profile_entries = {}
         self._persistent_profile_options_loaded = False
         self._active_docs_focus_container = None
@@ -1140,11 +1156,11 @@ class SettingsWindow(QMainWindow):
                 widget.clicked.connect(self._clear_all_persistent_profiles)
             elif field.action == "check_for_updates":
                 widget.clicked.connect(self._check_for_updates)
-            elif field.action == "create_loadouts_template":
-                widget.clicked.connect(self._create_loadouts_template)
         
         if widget:
-            self.field_widgets[f"{category_key}.{field.key}"] = widget
+            full_key = f"{category_key}.{field.key}"
+            self.field_widgets[full_key] = widget
+            widget.setProperty("fullKey", full_key)
             self._tag_docs_widget(widget, docs_url)
             
         return widget
@@ -1270,7 +1286,6 @@ class SettingsWindow(QMainWindow):
 
     def _refresh_loaded_state(self, *, refresh_profiles: bool = False) -> None:
         self._update_dependencies()
-        self._sync_loadout_controlled_sections()
 
         preset_widget = self.field_widgets.get("formatting.formatting_preset")
         if preset_widget:
@@ -1278,6 +1293,7 @@ class SettingsWindow(QMainWindow):
 
         self._sync_config_storage_from_active_dir()
         self._sync_provider_behavior_default_page(force=True)
+        self._refresh_loadout_editor_widgets()
         self._sync_application_settings_info()
         if refresh_profiles:
             self._maybe_refresh_persistent_profile_options(force=True)
@@ -1872,6 +1888,17 @@ class SettingsWindow(QMainWindow):
         if section is None:
             return []
 
+        if section_key == "formatting":
+            cards: list[tuple[str, str]] = []
+            for card_key in section.card_keys:
+                if card_key not in self._card_defs_by_key:
+                    continue
+                widget = self._card_widgets.get(card_key)
+                if widget is not None and widget.isHidden():
+                    continue
+                cards.append((card_key, self._card_defs_by_key[card_key].title))
+            return cards
+
         if section_key != "provider_behavior":
             return [
                 (card_key, self._card_defs_by_key[card_key].title)
@@ -1891,9 +1918,491 @@ class SettingsWindow(QMainWindow):
         return cards
 
     def _build_card_widget(self, section_key: str, card_def):
+        if getattr(card_def, "special", None) == "loadout_editor":
+            return self._build_loadout_editor_card(section_key, card_def)
         if getattr(card_def, "special", None) == "provider_behavior":
             return self._build_provider_behavior_card(section_key, card_def)
         return self._build_standard_card(section_key, card_def)
+
+    def _provider_icon_file(self, provider: DriverProvider | None) -> str | None:
+        return {
+            DriverProvider.DEEPSEEK: "providers/deepseek.svg",
+            DriverProvider.GLM_CHAT: "providers/zai.svg",
+            DriverProvider.MOONSHOT: "providers/moonshot.svg",
+            DriverProvider.QWEN_LM: "providers/qwen.svg",
+            DriverProvider.AI_STUDIO: "providers/aistudio.svg",
+        }.get(provider)
+
+    def _clone_loadout(self, loadout: LoadoutDefinition) -> LoadoutDefinition:
+        return LoadoutDefinition(
+            name=loadout.name,
+            provider=loadout.provider,
+            settings=copy.deepcopy(loadout.settings),
+            meta_comment=loadout.meta_comment,
+        )
+
+    def _flatten_loadout_editor_draft(self) -> list[LoadoutDefinition]:
+        ordered: list[LoadoutDefinition] = []
+        for provider in (
+            DriverProvider.DEEPSEEK,
+            DriverProvider.GLM_CHAT,
+            DriverProvider.MOONSHOT,
+            DriverProvider.QWEN_LM,
+            DriverProvider.AI_STUDIO,
+        ):
+            behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
+            if not behavior_key:
+                continue
+            for loadout in self._loadout_editor_draft_by_provider.get(behavior_key, []):
+                ordered.append(self._clone_loadout(loadout))
+        return ordered
+
+    def _normalize_loadout_sequence(self, loadouts: list[LoadoutDefinition]) -> list[LoadoutDefinition]:
+        grouped: dict[str, list[LoadoutDefinition]] = {}
+        for loadout in loadouts or []:
+            behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(loadout.provider)
+            if not behavior_key:
+                continue
+            grouped.setdefault(behavior_key, []).append(self._clone_loadout(loadout))
+
+        ordered: list[LoadoutDefinition] = []
+        for provider in (
+            DriverProvider.DEEPSEEK,
+            DriverProvider.GLM_CHAT,
+            DriverProvider.MOONSHOT,
+            DriverProvider.QWEN_LM,
+            DriverProvider.AI_STUDIO,
+        ):
+            behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
+            if not behavior_key:
+                continue
+            ordered.extend(grouped.get(behavior_key, []))
+        return ordered
+
+    def _iter_saved_loadout_controlled_fields(self):
+        for full_key, field_def in (self.field_defs or {}).items():
+            if getattr(field_def, "transient", False):
+                continue
+            if not self._is_loadout_controlled_full_key(full_key):
+                continue
+            if field_def.type in {
+                SettingType.BUTTON,
+                SettingType.DESCRIPTION,
+                SettingType.DIVIDER,
+                SettingType.HINT,
+                SettingType.REDIRECT,
+                SettingType.ROW,
+            }:
+                continue
+            yield full_key, field_def
+
+    def _build_base_controlled_state_from_config(self) -> dict[str, Any]:
+        state: dict[str, Any] = {}
+        for full_key, _field_def in self._iter_saved_loadout_controlled_fields():
+            category_key, field_key = full_key.split(".", 1)
+            state[full_key] = copy.deepcopy(self.config_manager.get_setting(category_key, field_key))
+        return state
+
+    def _load_loadout_editor_state_from_config(self) -> None:
+        draft_by_provider: dict[str, list[LoadoutDefinition]] = {}
+        for loadout in self.config_manager.get_loadouts():
+            behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(loadout.provider)
+            if not behavior_key:
+                continue
+            draft_by_provider.setdefault(behavior_key, []).append(self._clone_loadout(loadout))
+
+        self._loadout_editor_draft_by_provider = draft_by_provider
+        self._loadout_base_values_cache = self._build_base_controlled_state_from_config()
+        self._loadout_editor_selected_names = {}
+
+        for behavior_key, provider in self.PROVIDER_BY_BEHAVIOR_CATEGORY.items():
+            available = draft_by_provider.get(behavior_key, [])
+            preferred = self.config_manager.get_preferred_loadout_name(provider, available)
+            if preferred and any(loadout.name == preferred for loadout in available):
+                self._loadout_editor_selected_names[behavior_key] = preferred
+            elif available:
+                self._loadout_editor_selected_names[behavior_key] = available[0].name
+            else:
+                self._loadout_editor_selected_names[behavior_key] = None
+
+    def _provider_for_behavior_key(self, behavior_key: str | None) -> DriverProvider | None:
+        return self.PROVIDER_BY_BEHAVIOR_CATEGORY.get(str(behavior_key or "").strip())
+
+    def _current_editor_behavior_key(self) -> str:
+        return (
+            self._provider_behavior_selected_key
+            or self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider())
+            or "deepseek_behavior"
+        )
+
+    def _draft_loadouts_for_behavior(self, behavior_key: str | None) -> list[LoadoutDefinition]:
+        return list(self._loadout_editor_draft_by_provider.get(str(behavior_key or "").strip(), []))
+
+    def _selected_loadout_name_for_behavior(self, behavior_key: str | None) -> str | None:
+        key = str(behavior_key or "").strip()
+        available = self._draft_loadouts_for_behavior(key)
+        selected = str(self._loadout_editor_selected_names.get(key) or "").strip() or None
+        if selected and any(loadout.name == selected for loadout in available):
+            return selected
+        fallback = available[0].name if available else None
+        self._loadout_editor_selected_names[key] = fallback
+        return fallback
+
+    def _selected_loadout_for_behavior(self, behavior_key: str | None) -> LoadoutDefinition | None:
+        selected_name = self._selected_loadout_name_for_behavior(behavior_key)
+        if not selected_name:
+            return None
+        for loadout in self._draft_loadouts_for_behavior(behavior_key):
+            if loadout.name == selected_name:
+                return loadout
+        return None
+
+    def _build_loadout_dropdown_options(self, behavior_key: str | None) -> list[MarshmallowOption]:
+        provider = self._provider_for_behavior_key(behavior_key)
+        icon_file = self._provider_icon_file(provider)
+        return [
+            MarshmallowOption(
+                key=loadout.name,
+                label=loadout.name,
+                icon_file=icon_file,
+            )
+            for loadout in self._draft_loadouts_for_behavior(behavior_key)
+        ]
+
+    def _build_reusable_provider_switch(self) -> QWidget:
+        selector_wrap = _FlowLayoutHost(spacing=8)
+        instance_buttons: dict[str, QPushButton] = {}
+
+        for provider in (
+            DriverProvider.DEEPSEEK,
+            DriverProvider.GLM_CHAT,
+            DriverProvider.MOONSHOT,
+            DriverProvider.QWEN_LM,
+            DriverProvider.AI_STUDIO,
+        ):
+            behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
+            if not behavior_key:
+                continue
+
+            button = QPushButton(f"   {provider.value}")
+            button.setCheckable(True)
+            button.setCursor(Qt.PointingHandCursor)
+            icon_file = self._provider_icon_file(provider)
+            if icon_file:
+                icon = IconUtils.get_icon(
+                    icon_file,
+                    color=BrandColors.TEXT_PRIMARY,
+                    size=16,
+                    widget=button,
+                )
+                if not icon.isNull():
+                    button.setIcon(icon)
+                    button.setIconSize(QSize(16, 16))
+            button.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background-color: #1d1f23;
+                    color: {BrandColors.TEXT_SECONDARY};
+                    border: 1px solid {BrandColors.INPUT_BORDER};
+                    border-radius: 8px;
+                    padding: 8px 14px;
+                    font-size: {BrandColors.FONT_SIZE_REGULAR};
+                    font-family: {BrandColors.FONT_FAMILY};
+                    font-weight: 600;
+                }}
+                QPushButton:hover {{
+                    color: {BrandColors.TEXT_PRIMARY};
+                    border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
+                }}
+                QPushButton:checked {{
+                    background-color: {BrandColors.CATEGORY_ACTIVE_BG};
+                    color: {BrandColors.TEXT_PRIMARY};
+                    border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
+                }}
+                """
+            )
+            button.clicked.connect(
+                lambda _checked=False, key=behavior_key: self._on_loadout_provider_requested(key)
+            )
+            selector_wrap.flow_layout.addWidget(button)
+            instance_buttons[behavior_key] = button
+
+        self._provider_behavior_buttons.append(instance_buttons)
+        return selector_wrap
+
+    def _build_loadout_selector_block(self, *, section_key: str) -> QWidget:
+        block = QWidget()
+        block.setStyleSheet("background-color: transparent;")
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        layout.addWidget(self._build_reusable_provider_switch())
+
+        dropdown = MarshmallowDropdown(placeholder="No loadouts yet")
+        dropdown.currentKeyChanged.connect(self._on_loadout_selected_from_dropdown)
+        dropdown.addRequested.connect(self._on_loadout_add_requested)
+        dropdown.deleteRequested.connect(self._on_loadout_delete_requested)
+        dropdown.setProperty("settingInfoTitle", "Current Loadout")
+        dropdown.setProperty(
+            "settingInfoBody",
+            "Pick which loadout you are editing for the selected provider. This list only shows loadouts for that provider.",
+        )
+        dropdown.setProperty(
+            "docsUrl",
+            build_docs_url("experimental/loadouts/", "how-editing-works-now"),
+        )
+        dropdown_row = QWidget(block)
+        dropdown_row.setStyleSheet("background-color: transparent;")
+        row_layout = QVBoxLayout(dropdown_row)
+        row_layout.setContentsMargins(0, 10, 0, 10)
+        row_layout.setSpacing(6)
+
+        dropdown_label = QLabel(
+            f"<span style='font-size: {BrandColors.FONT_SIZE_REGULAR}; "
+            f"font-weight: 500; color: {BrandColors.TEXT_SECONDARY};'>Current Loadout</span>",
+            dropdown_row,
+        )
+        dropdown_label.setTextFormat(Qt.RichText)
+        dropdown_label.setStyleSheet("background-color: transparent;")
+        dropdown_label.setAttribute(Qt.WA_Hover, True)
+        dropdown_label.setProperty("settingInfoTitle", "Current Loadout")
+        dropdown_label.setProperty(
+            "settingInfoBody",
+            "Pick which loadout you are editing for the selected provider. This list only shows loadouts for that provider.",
+        )
+        dropdown_label.setProperty(
+            "docsUrl",
+            build_docs_url("experimental/loadouts/", "how-editing-works-now"),
+        )
+        row_layout.addWidget(dropdown_label)
+        row_layout.addWidget(dropdown)
+        if section_key == "provider_behavior":
+            dropdown_row.setVisible(self._is_loadouts_enabled_in_ui())
+        layout.addWidget(dropdown_row)
+
+        self._loadout_dropdown_instances.append(
+            {
+                "section_key": section_key,
+                "widget": dropdown,
+                "row": dropdown_row,
+                "label": dropdown_label,
+            }
+        )
+        self._install_info_filters(dropdown_label)
+        self._install_info_filters(dropdown)
+        return block
+
+    def _sync_loadout_selector_instances(self) -> None:
+        current_behavior_key = self._current_editor_behavior_key()
+        loadouts_enabled = self._is_loadouts_enabled_in_ui()
+        current_name = self._selected_loadout_name_for_behavior(current_behavior_key) if loadouts_enabled else None
+        options = self._build_loadout_dropdown_options(current_behavior_key) if loadouts_enabled else []
+
+        for instance in list(self._provider_behavior_buttons):
+            if not isinstance(instance, dict):
+                continue
+            for behavior_key, button in instance.items():
+                button.setChecked(behavior_key == current_behavior_key)
+
+        for entry in list(self._loadout_dropdown_instances):
+            widget = entry.get("widget")
+            row = entry.get("row")
+            section_key = str(entry.get("section_key") or "").strip()
+            if not isinstance(widget, MarshmallowDropdown):
+                continue
+            if section_key == "provider_behavior" and isinstance(row, QWidget):
+                row.setVisible(loadouts_enabled)
+            widget.set_options(options, current_name)
+            widget.setEnabled(loadouts_enabled)
+
+        formatting_card = self._card_widgets.get(self._loadout_editor_formatting_card_key)
+        if formatting_card is not None:
+            formatting_card.setVisible(loadouts_enabled)
+
+        if self._selected_section_key in {"formatting", "provider_behavior"}:
+            sidebar = self._sidebar_sections.get(self._selected_section_key)
+            if sidebar is not None:
+                sidebar.set_cards(self._sidebar_cards_for_section(self._selected_section_key))
+            visible_cards = self._visible_card_keys_for_section(self._selected_section_key)
+            if self._selected_card_key not in visible_cards:
+                self._set_active_card(visible_cards[0] if visible_cards else None)
+
+    def _restore_base_controlled_values(self) -> None:
+        for full_key, field_def in self._iter_saved_loadout_controlled_fields():
+            widget = self.field_widgets.get(full_key)
+            if widget is None:
+                continue
+            self._set_widget_value(
+                widget,
+                copy.deepcopy(self._loadout_base_values_cache.get(full_key)),
+            )
+
+    def _apply_selected_loadout_to_widgets(self) -> None:
+        behavior_key = self._current_editor_behavior_key()
+        current_loadout = self._selected_loadout_for_behavior(behavior_key)
+        if current_loadout is None:
+            self._restore_base_controlled_values()
+            return
+
+        provider = self._provider_for_behavior_key(behavior_key)
+        if provider is None:
+            self._restore_base_controlled_values()
+            return
+
+        for field_key, (category_key, _field_def) in get_loadout_field_bindings(provider).items():
+            full_key = f"{category_key}.{field_key}"
+            widget = self.field_widgets.get(full_key)
+            if widget is None:
+                continue
+            value = copy.deepcopy(current_loadout.settings.get(field_key))
+            self._set_widget_value(widget, value)
+
+    def _sync_loadout_controlled_editability(self) -> None:
+        loadouts_enabled = self._is_loadouts_enabled_in_ui()
+        current_behavior_key = self._current_editor_behavior_key()
+        has_selected_loadout = self._selected_loadout_for_behavior(current_behavior_key) is not None
+
+        if not loadouts_enabled:
+            return
+        if has_selected_loadout:
+            return
+
+        for full_key, _field_def in self._iter_saved_loadout_controlled_fields():
+            row = self.setting_rows.get(full_key)
+            widget = self.field_widgets.get(full_key)
+            target = row or widget
+            if target is None:
+                continue
+
+            category_key, _field_key = full_key.split(".", 1)
+            if category_key == "formatting":
+                target.setEnabled(False)
+            elif category_key == current_behavior_key:
+                target.setEnabled(False)
+
+    def _refresh_loadout_editor_widgets(self) -> None:
+        previous_suppress = self._suppress_dirty_tracking
+        self._suppress_dirty_tracking = True
+        try:
+            self._sync_loadout_selector_instances()
+            if self._is_loadouts_enabled_in_ui():
+                self._apply_selected_loadout_to_widgets()
+            else:
+                self._restore_base_controlled_values()
+            self._update_dependencies()
+            self._sync_loadout_controlled_editability()
+        finally:
+            self._suppress_dirty_tracking = previous_suppress
+        if not self._suppress_dirty_tracking:
+            self._update_dirty_markers()
+
+    def _capture_current_loadout_from_widgets(self, behavior_key: str | None = None) -> None:
+        if not self._is_loadouts_enabled_in_ui():
+            return
+
+        resolved_key = str(behavior_key or self._current_editor_behavior_key()).strip()
+        current_loadout = self._selected_loadout_for_behavior(resolved_key)
+        provider = self._provider_for_behavior_key(resolved_key)
+        if current_loadout is None or provider is None:
+            return
+
+        updated_settings = copy.deepcopy(current_loadout.settings)
+        for field_key, (category_key, field_def) in get_loadout_field_bindings(provider).items():
+            full_key = f"{category_key}.{field_key}"
+            if full_key not in self.field_widgets:
+                continue
+            updated_settings[field_key] = copy.deepcopy(self._current_field_value(full_key, field_def))
+
+        updated_loadout = LoadoutDefinition(
+            name=current_loadout.name,
+            provider=current_loadout.provider,
+            settings=updated_settings,
+            meta_comment=current_loadout.meta_comment,
+        )
+
+        provider_loadouts = list(self._loadout_editor_draft_by_provider.get(resolved_key, []))
+        for index, loadout in enumerate(provider_loadouts):
+            if loadout.name == current_loadout.name:
+                provider_loadouts[index] = updated_loadout
+                break
+        self._loadout_editor_draft_by_provider[resolved_key] = provider_loadouts
+
+    def _on_loadout_provider_requested(self, behavior_key: str) -> None:
+        previous_key = self._current_editor_behavior_key()
+        self._capture_current_loadout_from_widgets(previous_key)
+        self._set_provider_behavior_page(behavior_key, user_selected=True)
+
+    def _on_loadout_selected_from_dropdown(self, loadout_name: str) -> None:
+        behavior_key = self._current_editor_behavior_key()
+        self._capture_current_loadout_from_widgets(behavior_key)
+        self._loadout_editor_selected_names[behavior_key] = str(loadout_name or "").strip() or None
+        self._refresh_loadout_editor_widgets()
+
+    def _on_loadout_add_requested(self, loadout_name: str) -> None:
+        behavior_key = self._current_editor_behavior_key()
+        provider = self._provider_for_behavior_key(behavior_key)
+        normalized_name = str(loadout_name or "").strip()
+        if provider is None or not normalized_name:
+            return
+
+        existing = self._draft_loadouts_for_behavior(behavior_key)
+        if any(loadout.name.casefold() == normalized_name.casefold() for loadout in existing):
+            QMessageBox.warning(
+                self,
+                "Loadouts",
+                f"A loadout named '{normalized_name}' already exists for {provider.value}.",
+            )
+            return
+
+        self._capture_current_loadout_from_widgets(behavior_key)
+        selected_loadout = self._selected_loadout_for_behavior(behavior_key)
+        if selected_loadout is not None:
+            new_settings = copy.deepcopy(selected_loadout.settings)
+        else:
+            new_settings = build_visual_loadout_settings(self.config_manager, provider)
+            for field_key, (category_key, _field_def) in get_loadout_field_bindings(provider).items():
+                full_key = f"{category_key}.{field_key}"
+                if full_key in self._loadout_base_values_cache:
+                    new_settings[field_key] = copy.deepcopy(self._loadout_base_values_cache[full_key])
+
+        updated = existing + [
+            LoadoutDefinition(
+                name=normalized_name,
+                provider=provider,
+                settings=new_settings,
+            )
+        ]
+        self._loadout_editor_draft_by_provider[behavior_key] = updated
+        self._loadout_editor_selected_names[behavior_key] = normalized_name
+        self._refresh_loadout_editor_widgets()
+
+    def _on_loadout_delete_requested(self, loadout_name: str) -> None:
+        behavior_key = self._current_editor_behavior_key()
+        self._capture_current_loadout_from_widgets(behavior_key)
+
+        updated = [
+            loadout
+            for loadout in self._draft_loadouts_for_behavior(behavior_key)
+            if loadout.name != loadout_name
+        ]
+        self._loadout_editor_draft_by_provider[behavior_key] = updated
+        selected_name = self._selected_loadout_name_for_behavior(behavior_key)
+        if selected_name == loadout_name:
+            self._loadout_editor_selected_names[behavior_key] = updated[0].name if updated else None
+        self._refresh_loadout_editor_widgets()
+
+    def _loadout_editor_has_structural_changes(self) -> bool:
+        return serialize_settings_loadouts(self._flatten_loadout_editor_draft()) != serialize_settings_loadouts(
+            self._normalize_loadout_sequence(self.config_manager.get_loadouts())
+        )
+
+    def _loadout_base_values_dirty(self) -> bool:
+        for full_key, _field_def in self._iter_saved_loadout_controlled_fields():
+            category_key, field_key = full_key.split(".", 1)
+            if self._loadout_base_values_cache.get(full_key) != self.config_manager.get_setting(category_key, field_key):
+                return True
+        return False
 
     def _build_standard_card(self, section_key: str, card_def):
         card = QWidget()
@@ -1955,19 +2464,6 @@ class SettingsWindow(QMainWindow):
 
         layout.addWidget(content_widget)
 
-        if section_key == "formatting":
-            warning_widget = HintCard(
-                "Controlled by Loadouts",
-                LOADOUT_CONTROLLED_MESSAGE,
-                variant="warn",
-            )
-            layout.addWidget(warning_widget)
-            self._register_loadout_controlled_widgets(
-                section_key=section_key,
-                content_widget=content_widget,
-                warning_widget=warning_widget,
-            )
-
         return card
 
     def _build_provider_behavior_card(self, section_key: str, card_def):
@@ -2006,88 +2502,62 @@ class SettingsWindow(QMainWindow):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(10)
 
-        selector_wrap = _FlowLayoutHost(spacing=8)
-        self._provider_behavior_group = QButtonGroup(self)
-        self._provider_behavior_group.setExclusive(True)
-
-        provider_sequence = [
-            DriverProvider.DEEPSEEK,
-            DriverProvider.GLM_CHAT,
-            DriverProvider.MOONSHOT,
-            DriverProvider.QWEN_LM,
-            DriverProvider.AI_STUDIO,
-        ]
-
-        for provider in provider_sequence:
-            behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
-            if not behavior_key:
-                continue
-
-            button = QPushButton(provider.value)
-            button.setCheckable(True)
-            button.setCursor(Qt.PointingHandCursor)
-            provider_icon = {
-                DriverProvider.DEEPSEEK: "providers/deepseek.svg",
-                DriverProvider.GLM_CHAT: "providers/zai.svg",
-                DriverProvider.MOONSHOT: "providers/moonshot.svg",
-                DriverProvider.QWEN_LM: "providers/qwen.svg",
-                DriverProvider.AI_STUDIO: "providers/aistudio.svg",
-            }.get(provider)
-            if provider_icon:
-                icon = IconUtils.get_icon(
-                    provider_icon,
-                    color=BrandColors.TEXT_PRIMARY,
-                    size=16,
-                    widget=button,
-                )
-                if not icon.isNull():
-                    button.setIcon(icon)
-                    button.setIconSize(QSize(16, 16))
-            button.setStyleSheet(
-                f"""
-                QPushButton {{
-                    background-color: #1d1f23;
-                    color: {BrandColors.TEXT_SECONDARY};
-                    border: 1px solid {BrandColors.INPUT_BORDER};
-                    border-radius: 8px;
-                    padding: 8px 14px;
-                    font-size: {BrandColors.FONT_SIZE_REGULAR};
-                    font-family: {BrandColors.FONT_FAMILY};
-                    font-weight: 600;
-                }}
-                QPushButton:hover {{
-                    color: {BrandColors.TEXT_PRIMARY};
-                    border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
-                }}
-                QPushButton:checked {{
-                    background-color: {BrandColors.CATEGORY_ACTIVE_BG};
-                    color: {BrandColors.TEXT_PRIMARY};
-                    border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
-                }}
-                """
-            )
-            button.clicked.connect(
-                lambda checked=False, key=behavior_key: self._set_provider_behavior_page(key, user_selected=True)
-            )
-            self._provider_behavior_group.addButton(button)
-            selector_wrap.flow_layout.addWidget(button)
-            self._provider_behavior_buttons[behavior_key] = button
-
-        content_layout.addWidget(selector_wrap)
+        content_layout.addWidget(self._build_loadout_selector_block(section_key=section_key))
         layout.addWidget(content_widget)
-
-        warning_widget = HintCard(
-            "Controlled by Loadouts",
-            LOADOUT_CONTROLLED_MESSAGE,
-            variant="warn",
-        )
-        layout.addWidget(warning_widget)
-        self._register_loadout_controlled_widgets(
-            section_key=section_key,
-            content_widget=content_widget,
-            warning_widget=warning_widget,
-        )
         self._sync_provider_behavior_default_page(force=True)
+        return card
+
+    def _build_loadout_editor_card(self, section_key: str, card_def):
+        card = QWidget()
+        card.setStyleSheet(
+            f"""
+            QWidget {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border-radius: 8px;
+            }}
+            """
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(BrandColors.CARD_PADDING + 4, 18, BrandColors.CARD_PADDING + 4, BrandColors.CARD_PADDING)
+        layout.setSpacing(10)
+
+        header = QWidget()
+        header.setStyleSheet("background-color: transparent;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(10)
+
+        icon_label = QLabel()
+        icon_label.setStyleSheet("background-color: transparent;")
+        icon_label.setFixedSize(18, 18)
+        pixmap = IconUtils.get_pixmap(
+            "backpack.svg",
+            color=BrandColors.ACCENT,
+            size=18,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not pixmap.isNull():
+            icon_label.setPixmap(pixmap)
+        header_layout.addWidget(icon_label, 0, Qt.AlignVCenter)
+
+        title = QLabel(card_def.title)
+        title.setStyleSheet(
+            f"""
+            color: {BrandColors.TEXT_PRIMARY};
+            font-size: {BrandColors.FONT_SIZE_TITLE};
+            font-weight: 700;
+            background-color: transparent;
+            """
+        )
+        header_layout.addWidget(title, 1, Qt.AlignVCenter)
+        layout.addWidget(header)
+
+        divider = QFrame()
+        divider.setFixedHeight(1)
+        divider.setStyleSheet(f"background-color: {BrandColors.INPUT_BORDER}; border: none;")
+        layout.addWidget(divider)
+
+        layout.addWidget(self._build_loadout_selector_block(section_key=section_key))
         return card
 
     def _ensure_provider_behavior_group_cards_built(self, behavior_key: str, *, refresh_dirty: bool = True) -> None:
@@ -2123,6 +2593,7 @@ class SettingsWindow(QMainWindow):
             self._update_dependencies()
         finally:
             self._suppress_dirty_tracking = previous_suppress
+        self._refresh_loadout_editor_widgets()
         if refresh_dirty:
             self._update_dirty_markers()
 
@@ -2226,18 +2697,6 @@ class SettingsWindow(QMainWindow):
                 content_layout.addWidget(entry)
 
         layout.addWidget(content_widget)
-
-        warning_widget = HintCard(
-            "Controlled by Loadouts",
-            LOADOUT_CONTROLLED_MESSAGE,
-            variant="warn",
-        )
-        layout.addWidget(warning_widget)
-        self._register_loadout_controlled_widgets(
-            section_key=section_key,
-            content_widget=content_widget,
-            warning_widget=warning_widget,
-        )
 
         return group_card
 
@@ -2453,7 +2912,11 @@ class SettingsWindow(QMainWindow):
         if section is None:
             return []
         if section_key != "provider_behavior":
-            return [card_key for card_key in section.card_keys if card_key in self._card_widgets]
+            return [
+                card_key
+                for card_key in section.card_keys
+                if card_key in self._card_widgets and not self._card_widgets[card_key].isHidden()
+            ]
         behavior_key = self._provider_behavior_selected_key or self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider()) or "deepseek_behavior"
         return [self._provider_behavior_selector_card_key] + list(self._provider_behavior_group_card_keys.get(behavior_key, []))
 
@@ -2467,14 +2930,22 @@ class SettingsWindow(QMainWindow):
 
     def _set_provider_behavior_page(self, behavior_key: str, *, user_selected: bool) -> None:
         key = str(behavior_key or "").strip()
+        previous_key = self._provider_behavior_selected_key or self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(self._get_selected_provider()) or "deepseek_behavior"
+        if previous_key != key:
+            self._capture_current_loadout_from_widgets(previous_key)
         self._provider_behavior_selected_key = key
         if user_selected:
             self._provider_behavior_user_selected = True
-        for provider_key, button in self._provider_behavior_buttons.items():
-            button.setChecked(provider_key == key)
+        for instance in list(self._provider_behavior_buttons):
+            if not isinstance(instance, dict):
+                continue
+            for provider_key, button in instance.items():
+                button.setChecked(provider_key == key)
         if self._selected_section_key == "provider_behavior":
             self._ensure_provider_behavior_group_cards_built(key)
+        self._sync_loadout_selector_instances()
         if key not in self._provider_behavior_group_card_keys:
+            self._refresh_loadout_editor_widgets()
             return
 
         for provider_key, card_keys in self._provider_behavior_group_card_keys.items():
@@ -2496,6 +2967,7 @@ class SettingsWindow(QMainWindow):
             else:
                 self._set_active_card(current_card)
         self._queue_provider_behavior_preload(exclude=key)
+        self._refresh_loadout_editor_widgets()
 
     def _sync_provider_behavior_default_page(self, *, force: bool = False) -> None:
         if self._provider_behavior_user_selected and not force:
@@ -2650,6 +3122,7 @@ class SettingsWindow(QMainWindow):
 
     def _update_dirty_markers(self) -> None:
         dirty_display_keys = set()
+        loadouts_enabled = self._is_loadouts_enabled_in_ui()
 
         for full_key, field_def in (self.field_defs or {}).items():
             if getattr(field_def, "transient", False):
@@ -2664,6 +3137,8 @@ class SettingsWindow(QMainWindow):
             }:
                 continue
             if full_key not in self.field_widgets:
+                continue
+            if loadouts_enabled and self._is_loadout_controlled_full_key(full_key):
                 continue
 
             category_key, field_key = full_key.split(".", 1)
@@ -2682,6 +3157,9 @@ class SettingsWindow(QMainWindow):
             if hasattr(row, "set_dirty"):
                 row.set_dirty(is_dirty)
             any_dirty = any_dirty or is_dirty
+
+        if loadouts_enabled:
+            any_dirty = any_dirty or self._loadout_base_values_dirty() or self._loadout_editor_has_structural_changes()
 
         self.unsaved_changes = any_dirty
 
@@ -2718,6 +3196,7 @@ class SettingsWindow(QMainWindow):
         self._persistent_profile_entries = {}
         self._persistent_profile_options_loaded = False
         self._provider_behavior_user_selected = False
+        self._load_loadout_editor_state_from_config()
         previous_suppress = self._suppress_dirty_tracking
         self._suppress_dirty_tracking = True
         try:
@@ -2803,6 +3282,20 @@ class SettingsWindow(QMainWindow):
     def _on_setting_changed(self):
         if self._suppress_dirty_tracking:
             return
+        sender = self.sender()
+        full_key = str(sender.property("fullKey") or "").strip() if sender is not None else ""
+        if full_key and self._is_loadout_controlled_full_key(full_key):
+            field_def = self.field_defs.get(full_key)
+            if field_def is not None:
+                if self._is_loadouts_enabled_in_ui():
+                    behavior_key = self._current_editor_behavior_key()
+                    if full_key.split(".", 1)[0] in PROVIDER_BEHAVIOR_GROUPS:
+                        behavior_key = full_key.split(".", 1)[0]
+                    self._capture_current_loadout_from_widgets(behavior_key)
+                else:
+                    self._loadout_base_values_cache[full_key] = copy.deepcopy(
+                        self._current_field_value(full_key, field_def)
+                    )
         QTimer.singleShot(0, self._update_dirty_markers)
         self.update_timer.start()
 
@@ -3026,75 +3519,14 @@ class SettingsWindow(QMainWindow):
         category_key, _field_key = normalized.split(".", 1)
         return (category_key == "formatting") or (category_key in PROVIDER_BEHAVIOR_GROUPS)
 
-    def _register_loadout_controlled_widgets(
-        self,
-        *,
-        section_key: str,
-        content_widget: QWidget,
-        warning_widget: QWidget,
-    ) -> None:
-        entry = {
-            "section_key": str(section_key or "").strip(),
-            "content_widget": content_widget,
-            "warning_widget": warning_widget,
-        }
-        self._loadout_controlled_cards.append(entry)
-        self._sync_loadout_controlled_sections()
-
-    def _sync_loadout_controlled_sections(self) -> None:
-        loadouts_enabled = self._is_loadouts_enabled_in_ui()
-        for entry in list(getattr(self, "_loadout_controlled_cards", []) or []):
-            section_key = str(entry.get("section_key") or "").strip()
-            content_widget = entry.get("content_widget")
-            warning_widget = entry.get("warning_widget")
-            if not isinstance(content_widget, QWidget) or not isinstance(warning_widget, QWidget):
-                continue
-            controlled = loadouts_enabled and section_key in {"formatting", "provider_behavior"}
-            content_widget.setVisible(not controlled)
-            warning_widget.setVisible(controlled)
-
     def _on_loadouts_toggle_changed(self) -> None:
-        self._sync_loadout_controlled_sections()
+        if self._is_loadouts_enabled_in_ui():
+            for full_key, field_def in self._iter_saved_loadout_controlled_fields():
+                self._loadout_base_values_cache[full_key] = copy.deepcopy(
+                    self._current_field_value(full_key, field_def)
+                )
+        self._refresh_loadout_editor_widgets()
         self._clear_search_results()
-
-    def _create_loadouts_template(self) -> None:
-        target = self.config_manager.get_loadouts_path()
-        overwrite = False
-
-        if target.exists():
-            dialog = QMessageBox(self)
-            dialog.setIcon(QMessageBox.Warning)
-            dialog.setWindowTitle("Overwrite Loadouts Template")
-            dialog.setText("loadouts.json already exists.")
-            dialog.setInformativeText(
-                "Creating a new template now will overwrite the existing file.\n\n"
-                f"Path:\n{target}"
-            )
-            overwrite_btn = dialog.addButton("Overwrite", QMessageBox.AcceptRole)
-            dialog.addButton("Cancel", QMessageBox.RejectRole)
-            dialog.exec()
-            if dialog.clickedButton() is not overwrite_btn:
-                return
-            overwrite = True
-
-        try:
-            write_template_file(target, overwrite=overwrite)
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Loadouts Template",
-                "Failed to write loadouts.json.\n\n"
-                f"{exc}",
-            )
-            return
-
-        QMessageBox.information(
-            self,
-            "Loadouts Template",
-            "loadouts.json is ready.\n\n"
-            f"Path:\n{target}\n\n"
-            "Edit it, save it, then restart or switch accounts/loadouts to apply changes.",
-        )
 
     def _on_search_text_changed(self, text):
         self.search_timer.stop()
@@ -3257,8 +3689,6 @@ class SettingsWindow(QMainWindow):
         fuzzy_matches = []
 
         for target in self.search_targets:
-            if self._is_loadouts_enabled_in_ui() and self._is_loadout_controlled_full_key(target.get("full_key", "")):
-                continue
             score = self._score_match(query, target)
             if score >= 0.80:
                 direct_matches.append((score, target))
@@ -3776,6 +4206,12 @@ class SettingsWindow(QMainWindow):
 
     def save_settings(self):
         validation_errors = []
+        loadouts_enabled = self._is_loadouts_enabled_in_ui()
+        loadout_data_changed = self._loadout_editor_has_structural_changes()
+
+        if loadouts_enabled:
+            self._capture_current_loadout_from_widgets(self._current_editor_behavior_key())
+            loadout_data_changed = self._loadout_editor_has_structural_changes()
 
         # Snapshot old values for fields with "affects" so we can detect changes later
         _affects_snapshot = {}
@@ -3814,6 +4250,18 @@ class SettingsWindow(QMainWindow):
                 if getattr(field, "transient", False):
                     continue
                 key = f"{category.key}.{field.key}"
+                if loadouts_enabled and self._is_loadout_controlled_full_key(key):
+                    self.config_manager.set_setting(
+                        category.key,
+                        field.key,
+                        copy.deepcopy(
+                            self._loadout_base_values_cache.get(
+                                key,
+                                self.config_manager.get_setting(category.key, field.key),
+                            )
+                        ),
+                    )
+                    continue
                 widget = self.field_widgets.get(key)
                 
                 if widget:
@@ -3878,6 +4326,8 @@ class SettingsWindow(QMainWindow):
             QMessageBox.warning(self, "Validation Error", f"Please fix the following errors:\n\n{error_msg}")
             return
 
+        self.config_manager.set_loadouts(self._flatten_loadout_editor_draft())
+
         perform_migration = False
         if target_config_dir and target_config_dir != active_config_dir:
             reply = QMessageBox.question(
@@ -3922,6 +4372,8 @@ class SettingsWindow(QMainWindow):
             _new_val = self.config_manager.get_setting(_cat, _fld)
             if _new_val != _old_val:
                 _affected.update(_affects_list)
+        if loadout_data_changed:
+            _affected.add("chevron_dropdown")
 
         self.settings_saved.emit(_affected)
 

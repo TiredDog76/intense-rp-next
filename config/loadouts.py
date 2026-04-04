@@ -13,6 +13,10 @@ from utils.ip_utils import normalize_ip_list
 
 
 LOADOUTS_FILENAME = "loadouts.json"
+LOADOUTS_SETTINGS_KEY = "loadouts"
+LOADOUTS_DEFINITIONS_KEY = "definitions"
+LOADOUTS_LEGACY_MIGRATION_FLAG = "loadouts.legacy_json_migrated"
+
 LOADOUT_META_KEY = "Meta"
 LOADOUT_META_COMMENT_KEY = "_Comment"
 
@@ -34,7 +38,7 @@ class LoadoutDefinition:
 
 
 class LoadoutValidationError(ValueError):
-    """Raised when loadouts.json is missing or contains invalid data."""
+    """Raised when a legacy loadouts.json file is missing or invalid."""
 
 
 def get_loadouts_path() -> Path:
@@ -76,51 +80,122 @@ def get_behavior_category_for_provider(provider: DriverProvider) -> str | None:
 
 
 def get_loadout_field_defs(provider: DriverProvider) -> dict[str, SettingField]:
-    fields: dict[str, SettingField] = {}
-    fields.update(_get_category_fields("formatting"))
+    return {
+        field_key: field_def
+        for field_key, (_category_key, field_def) in get_loadout_field_bindings(provider).items()
+    }
+
+
+def get_loadout_field_bindings(provider: DriverProvider) -> dict[str, tuple[str, SettingField]]:
+    bindings: dict[str, tuple[str, SettingField]] = {}
+
+    for field_key, field_def in _get_category_fields("formatting").items():
+        bindings[field_key] = ("formatting", field_def)
 
     behavior_category = get_behavior_category_for_provider(provider)
     if behavior_category:
-        fields.update(_get_category_fields(behavior_category))
-    return fields
+        for field_key, field_def in _get_category_fields(behavior_category).items():
+            bindings[field_key] = (behavior_category, field_def)
+
+    return bindings
 
 
 def _normalize_provider(value: Any) -> DriverProvider | None:
-    return DriverProvider.from_setting(str(value or "").strip())
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    return DriverProvider.from_setting(raw)
 
 
-def _clone_default(value: Any) -> Any:
+def _clone_value(value: Any) -> Any:
     return copy.deepcopy(value)
 
 
-def build_template_payload() -> list[dict[str, Any]]:
-    provider_names = ", ".join(provider_options())
+def build_default_loadout_settings(provider: DriverProvider) -> dict[str, Any]:
+    settings: dict[str, Any] = {}
+    for field_key, (_category_key, field_def) in get_loadout_field_bindings(provider).items():
+        settings[field_key] = _clone_value(field_def.default)
+    return settings
+
+
+def build_visual_loadout_settings(config_manager: Any, provider: DriverProvider) -> dict[str, Any]:
+    settings: dict[str, Any] = {}
+    for field_key, (category_key, field_def) in get_loadout_field_bindings(provider).items():
+        value = None
+        try:
+            value = config_manager.get_setting(category_key, field_key)
+        except Exception:
+            value = None
+        if value is None and not getattr(field_def, "nullable", False):
+            value = field_def.default
+        settings[field_key] = _clone_value(value)
+    return settings
+
+
+def deserialize_settings_loadouts(raw_value: Any) -> list[LoadoutDefinition]:
+    if not isinstance(raw_value, list):
+        return []
+
+    loadouts: list[LoadoutDefinition] = []
+    seen_names: set[tuple[DriverProvider, str]] = set()
+
+    for item in raw_value:
+        if not isinstance(item, dict):
+            continue
+
+        provider = _normalize_provider(item.get("provider"))
+        name = str(item.get("name") or "").strip()
+        settings_payload = item.get("settings")
+        meta_comment = item.get("meta_comment")
+
+        if provider is None or not name or not isinstance(settings_payload, dict):
+            continue
+        if (meta_comment is not None) and (not isinstance(meta_comment, str)):
+            meta_comment = None
+
+        dedupe_key = (provider, name.casefold())
+        if dedupe_key in seen_names:
+            continue
+        seen_names.add(dedupe_key)
+
+        normalized_settings = build_default_loadout_settings(provider)
+        for field_key in normalized_settings:
+            if field_key in settings_payload:
+                normalized_settings[field_key] = _clone_value(settings_payload.get(field_key))
+
+        loadouts.append(
+            LoadoutDefinition(
+                name=name,
+                provider=provider,
+                settings=normalized_settings,
+                meta_comment=meta_comment,
+            )
+        )
+
+    return loadouts
+
+
+def serialize_settings_loadouts(loadouts: Iterable[LoadoutDefinition]) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
-
-    for provider in LOADOUT_BEHAVIOR_CATEGORY_BY_PROVIDER:
-        item: dict[str, Any] = {
-            LOADOUT_META_KEY: {
-                "Name": "Template",
-                "Provider": provider.value,
-                LOADOUT_META_COMMENT_KEY: f"Valid providers: {provider_names}",
+    for loadout in loadouts:
+        if not isinstance(loadout, LoadoutDefinition):
+            continue
+        payload.append(
+            {
+                "name": loadout.name,
+                "provider": loadout.provider.value,
+                "settings": _clone_value(loadout.settings),
+                "meta_comment": loadout.meta_comment,
             }
-        }
-        for field_key, field in get_loadout_field_defs(provider).items():
-            item[field_key] = _clone_default(field.default)
-        payload.append(item)
-
+        )
     return payload
 
 
-def render_template_json() -> str:
-    return json.dumps(build_template_payload(), indent=2, ensure_ascii=True) + "\n"
-
-
-def write_template_file(path: Path, *, overwrite: bool = False) -> None:
-    target = Path(path).resolve()
-    if target.exists() and not overwrite:
-        raise FileExistsError(f"File already exists: {target}")
-    target.write_text(render_template_json(), encoding="utf-8")
+def group_by_provider(loadouts: Iterable[LoadoutDefinition]) -> dict[DriverProvider, list[LoadoutDefinition]]:
+    grouped: dict[DriverProvider, list[LoadoutDefinition]] = {}
+    for loadout in loadouts:
+        grouped.setdefault(loadout.provider, []).append(loadout)
+    return grouped
 
 
 def _validation_prefix(index: int, provider: DriverProvider | None = None, name: str | None = None) -> str:
@@ -149,8 +224,7 @@ def _validate_meta(index: int, item: dict[str, Any]) -> tuple[DriverProvider, st
         raise LoadoutValidationError(f"Loadout #{index}: Meta.Name must be a non-empty string.")
     name = raw_name.strip()
 
-    raw_provider = meta.get("Provider")
-    provider = _normalize_provider(raw_provider)
+    provider = _normalize_provider(meta.get("Provider"))
     if provider is None:
         valid_names = ", ".join(provider_options())
         raise LoadoutValidationError(
@@ -245,12 +319,10 @@ def _validate_field_value(prefix: str, field: SettingField, value: Any) -> Any:
     return normalized
 
 
-def load_and_validate_file(path: Path) -> list[LoadoutDefinition]:
+def load_legacy_loadouts_from_file(path: Path) -> list[LoadoutDefinition]:
     target = Path(path).resolve()
     if not target.exists():
-        raise LoadoutValidationError(
-            f"Loadouts are enabled, but '{target}' does not exist. Create the template from Settings first."
-        )
+        raise LoadoutValidationError(f"Legacy loadouts file does not exist: {target}")
 
     try:
         raw_text = target.read_text(encoding="utf-8")
@@ -309,10 +381,3 @@ def load_and_validate_file(path: Path) -> list[LoadoutDefinition]:
         )
 
     return loadouts
-
-
-def group_by_provider(loadouts: Iterable[LoadoutDefinition]) -> dict[DriverProvider, list[LoadoutDefinition]]:
-    grouped: dict[DriverProvider, list[LoadoutDefinition]] = {}
-    for loadout in loadouts:
-        grouped.setdefault(loadout.provider, []).append(loadout)
-    return grouped
