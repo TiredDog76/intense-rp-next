@@ -49,6 +49,7 @@ class GLMDriver(BaseDriver):
     MODEL_DATA_VALUE_BY_FRIENDLY: Dict[str, str] = {
         "GLM-5": "glm-5",
         "GLM-5-Turbo": "GLM-5-Turbo",
+        "GLM-5V-Turbo": "GLM-5v-Turbo",
         "GLM-4.7": "glm-4.7",
         "GLM-4.6": "GLM-4-6-API-V1",
     }
@@ -420,6 +421,13 @@ class GLMDriver(BaseDriver):
         )
         if await option.count() == 0:
             option = self.page.locator(f"button[data-value='{safe_value}']")
+        if await option.count() == 0 and friendly_name not in self.MODELS_IN_COLLAPSIBLE:
+            await self._expand_collapsible_section()
+            option = self.page.locator(
+                f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value='{safe_value}']"
+            )
+            if await option.count() == 0:
+                option = self.page.locator(f"button[data-value='{safe_value}']")
 
         count = await option.count()
         if count == 0:
