@@ -76,8 +76,11 @@ class QwenLMDriver(BaseDriver):
     MODEL_SELECTOR_POPUP_SELECTOR = "div[class*='model-selector-popup']"
 
     MODEL_LABELS: List[str] = [
+        "Qwen3.6-Plus",
         "Qwen3.5-Plus",
+        "Qwen3.5-Omni-Plus",
         "Qwen3.5-Flash",
+        "Qwen3.5-Max-Preview",
         "Qwen3.5-397B-A17B",
         "Qwen3.5-122B-A10B",
         "Qwen3.5-27B",
