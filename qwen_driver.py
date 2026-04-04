@@ -52,6 +52,8 @@ class QwenLMDriver(BaseDriver):
     SIDEBAR_OPEN_BUTTON_SELECTOR = "div.sidebar-side-fold-container-open"
     SIDEBAR_CLOSE_BUTTON_SELECTOR = "button.sidebar-toggle-button"
     NEW_CHAT_BUTTON_SELECTOR = "div.sidebar-entry-fixed-list-content"
+    NEW_CHAT_LOOKUP_TIMEOUT_MS = 5000
+    NEW_CHAT_LOOKUP_POLL_INTERVAL_S = 0.15
 
     THINKING_TRIGGER_SELECTOR = "span.ant-select-selection-item:has(div.qwen-select-thinking-label)"
     THINKING_LABEL_SELECTOR = "span.qwen-select-thinking-label-text"
@@ -678,6 +680,25 @@ class QwenLMDriver(BaseDriver):
                 return False
         except Exception:
             pass
+
+        return True
+
+    async def _open_new_chat_route(self) -> bool:
+        if not self.page:
+            return False
+
+        target_url = f"{self.CHAT_URL}c/new-chat"
+        try:
+            await self.page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as e:
+            Logger.warning(f"QwenLM: failed to navigate to the new-chat route: {e}")
+            return False
+
+        try:
+            await self._wait_for_chat_ready(timeout_ms=60000)
+        except Exception as e:
+            Logger.warning(f"QwenLM: new-chat route loaded, but chat UI was not ready: {e}")
+            return False
 
         return True
 
@@ -1472,9 +1493,66 @@ class QwenLMDriver(BaseDriver):
                 Logger.warning(f"QwenLM: failed to close sidebar: {e}")
                 return
 
+    async def _is_sidebar_open(self) -> bool:
+        if not self.page:
+            return False
+
+        sidebar = self.page.locator(self.SIDEBAR_SELECTOR)
+        if await sidebar.count() == 0:
+            return False
+
+        try:
+            state_attr = str(await sidebar.first.get_attribute("data-state") or "").strip().lower()
+        except Exception:
+            return False
+
+        return state_attr == "true"
+
     async def _click_new_chat_entry(self) -> bool:
         if not self.page:
             return False
+
+        exact_label_matches = self.page.locator(self.NEW_CHAT_BUTTON_SELECTOR, has_text="New Chat")
+        try:
+            exact_count = await exact_label_matches.count()
+        except Exception:
+            exact_count = 0
+
+        for idx in range(min(exact_count, 6)):
+            label = exact_label_matches.nth(idx)
+            try:
+                if not await label.is_visible():
+                    continue
+            except Exception:
+                continue
+
+            targets = [
+                label.locator("xpath=.."),
+                label,
+            ]
+
+            for target in targets:
+                try:
+                    if await target.count() == 0:
+                        continue
+                except Exception:
+                    continue
+
+                candidate = target.first
+                try:
+                    await candidate.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+
+                try:
+                    await candidate.click(timeout=3000)
+                    return True
+                except Exception:
+                    try:
+                        await candidate.click(timeout=3000, force=True)
+                        return True
+                    except Exception:
+                        continue
 
         try:
             clicked = await self.page.evaluate(
@@ -1507,7 +1585,7 @@ class QwenLMDriver(BaseDriver):
                 "  };"
                 "  const clickCandidate = (el) => {"
                 "    const targets = ["
-                "      el.closest('button'),"
+                "      el.parentElement,"
                 "      el.closest('[role=\"button\"]'),"
                 "      el.closest('a'),"
                 "      el,"
@@ -1558,8 +1636,39 @@ class QwenLMDriver(BaseDriver):
         if source not in {"auto", "sidebar", "simple"}:
             Logger.warning(f"QwenLM: unknown new chat source '{source}'.")
 
-        if not await self._click_new_chat_entry():
-            Logger.warning("QwenLM: New Chat button not found.")
+        allow_sidebar_open = source in {"auto", "sidebar"}
+        sidebar_open_attempted = False
+
+        if source == "sidebar":
+            await self.set_sidebar_status(open=True)
+            sidebar_open_attempted = True
+
+        deadline = time.monotonic() + (self.NEW_CHAT_LOOKUP_TIMEOUT_MS / 1000.0)
+        while True:
+            if await self._click_new_chat_entry():
+                return
+
+            # Qwen can render the fixed sidebar entries a moment after the rest of the chat UI
+            if allow_sidebar_open and not sidebar_open_attempted:
+                if not await self._is_sidebar_open():
+                    await self.set_sidebar_status(open=True)
+                sidebar_open_attempted = True
+                continue
+
+            if time.monotonic() >= deadline:
+                break
+
+            await asyncio.sleep(self.NEW_CHAT_LOOKUP_POLL_INTERVAL_S)
+
+        Logger.warning(
+            "QwenLM: New Chat button not found before timeout "
+            f"({self.NEW_CHAT_LOOKUP_TIMEOUT_MS} ms). Trying route fallback..."
+        )
+        if await self._open_new_chat_route():
+            Logger.info("QwenLM: opened a new chat via /c/new-chat route fallback.")
+            return
+
+        Logger.warning("QwenLM: route fallback for New Chat also failed.")
 
     async def _read_thinking_mode(self) -> str:
         if not self.page:
