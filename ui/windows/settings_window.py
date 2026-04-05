@@ -873,6 +873,7 @@ class SettingsWindow(QMainWindow):
         self._info_bubble_widget_ids = set()
         self._navigation_anchor_by_object_id = {}
         self._active_navigation_anchor = None
+        self._last_focus_reason = None
 
         self._init_ui()
         self._load_values()
@@ -1051,6 +1052,9 @@ class SettingsWindow(QMainWindow):
         return None
 
     def _should_auto_scroll_for_focus_reason(self, reason) -> bool:
+        return self._should_show_navigation_highlight_for_focus_reason(reason)
+
+    def _should_show_navigation_highlight_for_focus_reason(self, reason) -> bool:
         return reason in {
             Qt.TabFocusReason,
             Qt.BacktabFocusReason,
@@ -1110,7 +1114,10 @@ class SettingsWindow(QMainWindow):
 
         anchor = self._resolve_navigation_anchor(widget)
         if anchor is not None:
-            self._set_active_navigation_highlight(anchor)
+            if self._should_show_navigation_highlight_for_focus_reason(self._last_focus_reason):
+                self._set_active_navigation_highlight(anchor)
+            else:
+                self._set_active_navigation_highlight(None)
             return
 
         if widget is self or self.isAncestorOf(widget):
@@ -3195,14 +3202,24 @@ class SettingsWindow(QMainWindow):
         if obj is self.scroll_area.viewport() and event_type == QEvent.Resize:
             self._hide_info_bubble()
 
-        if event_type == QEvent.FocusIn and isinstance(obj, QWidget):
+        is_settings_widget = isinstance(obj, QWidget) and (obj is self or self.isAncestorOf(obj))
+
+        if event_type == QEvent.MouseButtonPress and is_settings_widget:
+            self._last_focus_reason = Qt.MouseFocusReason
+            self._set_active_navigation_highlight(None)
+
+        if event_type == QEvent.FocusIn and is_settings_widget:
+            reason = event.reason() if hasattr(event, "reason") else None
+            self._last_focus_reason = reason
             anchor = self._resolve_navigation_anchor(obj)
             if anchor is not None:
-                reason = event.reason() if hasattr(event, "reason") else None
-                self._set_active_navigation_highlight(
-                    anchor,
-                    auto_scroll=self._should_auto_scroll_for_focus_reason(reason),
-                )
+                if self._should_show_navigation_highlight_for_focus_reason(reason):
+                    self._set_active_navigation_highlight(
+                        anchor,
+                        auto_scroll=self._should_auto_scroll_for_focus_reason(reason),
+                    )
+                else:
+                    self._set_active_navigation_highlight(None)
 
         if not isinstance(obj, QWidget) or event_type not in INFO_BUBBLE_TRIGGER_EVENTS:
             return super().eventFilter(obj, event)
