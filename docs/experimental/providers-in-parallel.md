@@ -35,6 +35,8 @@ When the feature is active, IntenseRP launches 1 browser window per selected pro
 
 Each provider keeps using its own normal stuff (accounts, sessions, cookies, etc.) but they all run at the same time instead of just 1.
 
+At startup, each provider also logs which profile/account it selected. If one of those startup picks came from a pinned Saved Accounts row, the log line includes `[PINNED]`.
+
 !!! warn "Might not be worth it"
     Most of those browser windows are idle until you send a request that belongs to them. Do keep that in mind if you don't jump between providers often, as the extra windows will just consume resources without much benefit.
 

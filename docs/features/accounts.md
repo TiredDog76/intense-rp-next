@@ -8,7 +8,7 @@ IntenseRP manages provider logins using an account-based saved-accounts system.
 
 There's nothing to enable - this is the standard way IntenseRP manages credentials now.
 
-You can store **multiple accounts per provider**, let IntenseRP pick one on start, and (optionally) **retry a failed request by restarting the browser and rotating to a different identity**.
+You can store **multiple accounts per provider**, let IntenseRP pick one on start, **pin a specific one when you want a predictable startup profile**, and (optionally) **retry a failed request by restarting the browser and rotating to a different identity**.
 
 ---
 
@@ -20,6 +20,7 @@ You can store **multiple accounts per provider**, let IntenseRP pick one on star
 4. (Optional) Enable:
     - **Prefer the Least Used Account**: spreads usage across accounts
     - **Retry With Another Account**: retries early failures with a rotated identity
+    - **Pin** in **Saved Accounts**: forces a specific row to be used on normal startup
 
 ---
 
@@ -63,9 +64,9 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 | Setting | Where | What it does |
 |---|---|---|
-| **Saved Accounts** | Settings -> Provider and Login -> Sign-In and Accounts | Add and manage accounts per provider |
+| **Saved Accounts** | Settings -> Provider and Login -> Sign-In and Accounts | Add and manage accounts per provider, including pinning 1 row per provider |
 | **Sign In Automatically** | Settings -> Provider and Login -> Sign-In and Accounts | Uses a saved account for login |
-| **Prefer the Least Used Account** | Settings -> Provider and Login -> Sign-In and Accounts | Chooses the least recently used account when starting the driver |
+| **Prefer the Least Used Account** | Settings -> Provider and Login -> Sign-In and Accounts | Chooses the least recently used account when starting the driver, unless a row is pinned |
 | **Retry With Another Account** | Settings -> Provider and Login -> Sign-In and Accounts | On early failures, restarts the driver and retries once with a rotated identity |
 
 ---
@@ -76,15 +77,24 @@ Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Goog
 
 When **Sign In Automatically** is enabled, IntenseRP selects an account on driver start and logs in automatically. If it is disabled, you can still log in manually and use **Keep Provider Sessions Signed In** to stay signed in between restarts.
 
-There are two selection modes:
+There are basically 3 startup cases:
 
-- If **Prefer the Least Used Account** is disabled, IntenseRP picks a random account from the list.
-- If **Prefer the Least Used Account** is enabled, IntenseRP prefers the account that was used the longest time ago (accounts that have never been used are preferred first).
+- If a row is **pinned**, that row wins on normal startup.
+- If nothing is pinned and **Prefer the Least Used Account** is disabled, IntenseRP picks a random account from the list.
+- If nothing is pinned and **Prefer the Least Used Account** is enabled, IntenseRP prefers the account that was used the longest time ago (accounts that have never been used are preferred first).
 
 This is tracked in an internal "last used" map stored alongside the encrypted credentials.
 
-!!! tip "Want to force a specific account?"
-    For now, you cannot pin a specific row. If you need a specific account, keep only that account in **Saved Accounts** (remove others temporarily).
+### Pinning a row
+
+Open the little `...` button on any Saved Accounts row and click **Pin**.
+
+This feature is meant to force a specific account/profile to be used on normal startup. It does not affect the retry logic, so if **Retry With Another Account** is enabled, an early failure can still trigger a rotation away from the pinned row.
+
+The current pinned row (if any) is also indicated in the startup logs with `[PINNED]` next to the profile name, and with a green pin icon in the Saved Accounts list.
+
+!!! note "1 pinned row per provider"
+    You can only pin 1 row per provider. Pinning another row automatically unpins the previous one.
 
 ---
 
@@ -135,6 +145,8 @@ IntenseRP tries two strategies, in this order:
 
 The second option is most useful when **Persistent Sessions** are enabled, because it forces a clean session/profile for the same login.
 
+If a row is pinned, that only affects the normal startup pick. The retry path can still rotate away from it if recovery is needed.
+
 ---
 
 ## :material-lock: Where account data is stored (and how secure it is)
@@ -181,11 +193,14 @@ These files are encrypted using the same `settings.key` used for your main setti
 
 ??? question "How do I switch accounts?"
     - Enable **Prefer the Least Used Account** to spread usage across accounts, or
+    - Pin a specific Saved Accounts row if you want startup to always land on that one, or
     - Use **Switch Account** in the Stop menu, or
     - Enable **Retry With Another Account** so early failures can trigger an automatic rotation.
 
 ??? question "Can I see which account is active?"
-    Not in the UI yet. You can usually tell from the UI of the provider's frontend, as it often shows the logged-in email or profile name. In the future, I may add an indicator in IntenseRP's UI as well.
+    There is still no always-visible indicator in the main UI, but startup logs now show the selected profile/email when services launch.
+
+    If the startup choice came from a pinned row, the log line also includes `[PINNED]`.
 
 ---
 

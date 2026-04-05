@@ -48,6 +48,7 @@ class BaseDriver(ABC):
         # Account selection state (set during start(), used by login() and re-auth rotation)
         self._ece_manager: EceManager | None = None
         self._ece_active_pair: CredentialPair | None = None
+        self._ece_active_pair_is_pinned: bool = False
         self._ece_active_profile_slot: int = 0
         self._ece_pending_pair: CredentialPair | None = None
         self._ece_pending_profile_slot: int | None = None
@@ -246,6 +247,26 @@ class BaseDriver(ABC):
         self._ece_manager = mgr
         return mgr
 
+    def _ece_is_pair_pinned(self, pair: CredentialPair | None) -> bool:
+        email = str(getattr(pair, "email", "") or "").strip()
+        if not email:
+            return False
+
+        try:
+            return self._get_ece_manager().is_email_pinned(self.provider, email)
+        except Exception:
+            return False
+
+    def _log_selected_startup_profile(self) -> None:
+        pair = self.ece_active_pair()
+        profile_label = str(getattr(pair, "email", "") or "").strip() or "manual"
+        slot = int(getattr(self, "_ece_active_profile_slot", 0))
+        if slot > 0:
+            profile_label = f"{profile_label} (slot {slot})"
+        if getattr(self, "_ece_active_pair_is_pinned", False):
+            profile_label = f"{profile_label} [PINNED]"
+        Logger.info(f"{self.provider_label}: startup profile -> {profile_label}")
+
     def _ece_prepare_for_start(self) -> None:
         """
         Prepare account selection state before launching the browser.
@@ -263,6 +284,7 @@ class BaseDriver(ABC):
         pending_slot = getattr(self, "_ece_pending_profile_slot", None)
         if pending_pair is not None:
             self._ece_active_pair = pending_pair
+            self._ece_active_pair_is_pinned = self._ece_is_pair_pinned(pending_pair)
             self._ece_active_profile_slot = int(pending_slot or 0)
             self._ece_pending_pair = None
             self._ece_pending_profile_slot = None
@@ -272,6 +294,7 @@ class BaseDriver(ABC):
         # flows, so we allow bypassing this requirement for them when needed
         if self._ece_requires_auto_login() and (not auto_login):
             self._ece_active_pair = None
+            self._ece_active_pair_is_pinned = False
             self._ece_active_profile_slot = 0
             return
 
@@ -279,12 +302,14 @@ class BaseDriver(ABC):
             pair = self._get_ece_manager().select_pair(
                 self.provider,
                 least_used=self._ece_select_least_used(),
+                prefer_pinned=True,
             )
         except Exception as exc:
             Logger.warning(f"Account selection: failed to select account: {exc}")
             pair = None
 
         self._ece_active_pair = pair
+        self._ece_active_pair_is_pinned = self._ece_is_pair_pinned(pair)
         self._ece_active_profile_slot = 0
 
     def ece_active_pair(self) -> CredentialPair | None:
@@ -884,6 +909,7 @@ class BaseDriver(ABC):
         Logger.info(f"Starting {self.provider_label} Driver...")
 
         self._ece_prepare_for_start()
+        self._log_selected_startup_profile()
 
         await self.ensure_browser_installed(status_callback)
 

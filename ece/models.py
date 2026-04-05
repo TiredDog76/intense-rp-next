@@ -7,4 +7,4 @@ from dataclasses import dataclass
 class CredentialPair:
     email: str
     password: str
-
+    pinned: bool = False

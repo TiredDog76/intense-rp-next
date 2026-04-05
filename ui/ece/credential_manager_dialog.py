@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import QEvent, Qt, Signal, QSize
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedLayout,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -27,6 +29,7 @@ from ece.models import CredentialPair
 from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
 from ui.widgets.components import StyledLineEdit
+from ui.widgets.icon_option_menu import IconOptionMenu, IconOptionMenuItem
 from utils.logger import Logger
 
 
@@ -39,22 +42,58 @@ class _ProviderEntry:
 class _CredentialRow(QWidget):
     changed = Signal()
     deleteRequested = Signal()
+    pinRequested = Signal()
+    unpinRequested = Signal()
 
     def __init__(self, number: int, pair: Optional[CredentialPair] = None, parent=None) -> None:
         super().__init__(parent)
+        self._pinned = bool(getattr(pair, "pinned", False))
+        self._menu_toggle_suppressed = False
         self.setStyleSheet("background-color: transparent;")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self._opacity_effect.setOpacity(1.0)
+        self.setGraphicsEffect(self._opacity_effect)
+
+        number_host = QWidget()
+        number_host.setFixedWidth(22)
+        number_stack = QStackedLayout(number_host)
+        number_stack.setContentsMargins(0, 0, 0, 0)
+        number_stack.setStackingMode(QStackedLayout.StackOne)
+
         self.number_label = QLabel(str(number))
-        self.number_label.setFixedWidth(22)
-        self.number_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.number_label.setFixedSize(22, 22)
+        self.number_label.setAlignment(Qt.AlignCenter)
         self.number_label.setStyleSheet(
             f"color: {BrandColors.TEXT_DISABLED}; font-size: {BrandColors.FONT_SIZE_SMALL};"
         )
-        layout.addWidget(self.number_label, 0)
+        number_stack.addWidget(self.number_label)
+
+        self.pin_badge = QLabel()
+        self.pin_badge.setFixedSize(22, 22)
+        self.pin_badge.setAlignment(Qt.AlignCenter)
+        self.pin_badge.setStyleSheet(
+            f"""
+            background-color: {BrandColors.SUCCESS};
+            border-radius: 6px;
+            """
+        )
+        pin_pixmap = IconUtils.get_pixmap(
+            "pin.svg",
+            color="#1d5a17",
+            size=12,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not pin_pixmap.isNull():
+            self.pin_badge.setPixmap(pin_pixmap)
+        number_stack.addWidget(self.pin_badge)
+
+        self._number_stack = number_stack
+        layout.addWidget(number_host, 0, Qt.AlignVCenter)
 
         self.email_input = StyledLineEdit()
         self.email_input.setPlaceholderText("Email")
@@ -69,11 +108,11 @@ class _CredentialRow(QWidget):
         self.password_input.textChanged.connect(lambda *_: self.changed.emit())
         layout.addWidget(self.password_input, 1)
 
-        self.delete_button = QPushButton()
-        self.delete_button.setCursor(Qt.PointingHandCursor)
-        self.delete_button.setFixedSize(30, 30)
-        self.delete_button.setIconSize(QSize(12, 12))
-        self.delete_button.setStyleSheet(
+        self.more_button = QPushButton()
+        self.more_button.setCursor(Qt.PointingHandCursor)
+        self.more_button.setFixedSize(30, 30)
+        self.more_button.setIconSize(QSize(14, 14))
+        self.more_button.setStyleSheet(
             f"""
             QPushButton {{
                 background-color: transparent;
@@ -83,22 +122,101 @@ class _CredentialRow(QWidget):
             }}
             QPushButton:hover {{
                 background-color: {BrandColors.ITEM_HOVER};
-                border: 1px solid {BrandColors.DANGER};
+                border: 1px solid {BrandColors.CATEGORY_ACTIVE_BORDER};
             }}
             """
         )
-        IconUtils.apply_icon(self.delete_button, IconType.CANCEL, BrandColors.TEXT_PRIMARY, size=12)
-        self.delete_button.clicked.connect(self.deleteRequested.emit)
-        layout.addWidget(self.delete_button, 0)
+        self.more_button.installEventFilter(self)
+        self._refresh_more_button_icon(hovered=False)
+        self.more_button.pressed.connect(self._handle_more_button_pressed)
+        self.more_button.clicked.connect(self._toggle_action_menu)
+        layout.addWidget(self.more_button, 0)
+
+        self._action_menu = IconOptionMenu(self.more_button)
+        self._action_menu.actionTriggered.connect(self._handle_action_triggered)
+
+        self._sync_index_display()
 
     def set_number(self, number: int) -> None:
         self.number_label.setText(str(int(number)))
+        self._sync_index_display()
+
+    def is_pinned(self) -> bool:
+        return self._pinned
+
+    def set_pinned(self, pinned: bool) -> None:
+        self._pinned = bool(pinned)
+        self._sync_index_display()
+
+    def set_dimmed(self, dimmed: bool) -> None:
+        self._opacity_effect.setOpacity(0.58 if dimmed else 1.0)
 
     def get_pair(self) -> CredentialPair:
         return CredentialPair(
             email=str(self.email_input.text() or ""),
             password=str(self.password_input.text() or ""),
+            pinned=self._pinned,
         )
+
+    def close_action_menu(self) -> None:
+        if self._action_menu.isVisible():
+            self._action_menu.animate_hide()
+
+    def eventFilter(self, obj, event):
+        if obj is self.more_button:
+            if event.type() in {QEvent.Enter, QEvent.HoverEnter, QEvent.FocusIn}:
+                self._refresh_more_button_icon(hovered=True)
+            elif event.type() in {QEvent.Leave, QEvent.HoverLeave, QEvent.FocusOut}:
+                self._refresh_more_button_icon(hovered=False)
+        return super().eventFilter(obj, event)
+
+    def _refresh_more_button_icon(self, *, hovered: bool) -> None:
+        IconUtils.apply_icon(
+            self.more_button,
+            "ellipsis.svg",
+            BrandColors.ACCENT if hovered else BrandColors.TEXT_PRIMARY,
+            size=14,
+            include_disabled=True,
+        )
+
+    def _sync_index_display(self) -> None:
+        self._number_stack.setCurrentWidget(self.pin_badge if self._pinned else self.number_label)
+
+    def _handle_more_button_pressed(self) -> None:
+        self._menu_toggle_suppressed = False
+        if self._action_menu.isVisible():
+            self._menu_toggle_suppressed = True
+            self._action_menu.animate_hide()
+
+    def _toggle_action_menu(self) -> None:
+        if self._menu_toggle_suppressed:
+            self._menu_toggle_suppressed = False
+            return
+        self._action_menu.set_items(
+            [
+                IconOptionMenuItem(
+                    key="pin",
+                    label="Unpin" if self._pinned else "Pin",
+                    icon_file="pin-off.svg" if self._pinned else "pin.svg",
+                ),
+                IconOptionMenuItem(
+                    key="delete",
+                    label="Delete",
+                    icon_file="x.svg",
+                    danger=True,
+                ),
+            ]
+        )
+        self._action_menu.popup_for(self.more_button)
+
+    def _handle_action_triggered(self, action_key: str) -> None:
+        if action_key == "delete":
+            self.deleteRequested.emit()
+            return
+        if self._pinned:
+            self.unpinRequested.emit()
+            return
+        self.pinRequested.emit()
 
 
 class _ProviderPage(QWidget):
@@ -107,6 +225,7 @@ class _ProviderPage(QWidget):
     def __init__(self, provider_label: str, parent=None) -> None:
         super().__init__(parent)
         self._rows: List[_CredentialRow] = []
+        self._pinned_row: _CredentialRow | None = None
 
         self.setStyleSheet("background-color: transparent;")
         layout = QVBoxLayout(self)
@@ -209,22 +328,33 @@ class _ProviderPage(QWidget):
             row.setParent(None)
             row.deleteLater()
         self._rows = []
+        self._pinned_row = None
 
         for idx, pair in enumerate(pairs, start=1):
             self._insert_row(idx, pair)
 
+        self._sync_pinned_state()
         self._sync_placeholder()
 
     def _insert_row(self, number: int, pair: Optional[CredentialPair] = None) -> None:
         row = _CredentialRow(number=number, pair=pair, parent=self)
         row.changed.connect(self.changed.emit)
         row.deleteRequested.connect(lambda r=row: self._delete_row(r))
+        row.pinRequested.connect(lambda r=row: self._pin_row(r))
+        row.unpinRequested.connect(lambda r=row: self._unpin_row(r))
+
+        if row.is_pinned():
+            if self._pinned_row is None:
+                self._pinned_row = row
+            else:
+                row.set_pinned(False)
 
         # Insert above the Add New button (which is always last in the content layout).
         insert_at = max(0, self._content_layout.indexOf(self.add_button))
         self._content_layout.insertWidget(insert_at, row)
         self._rows.append(row)
         self.changed.emit()
+        self._sync_pinned_state()
         self._sync_placeholder()
 
     def add_row(self) -> None:
@@ -233,17 +363,49 @@ class _ProviderPage(QWidget):
     def _delete_row(self, row: _CredentialRow) -> None:
         if row not in self._rows:
             return
+        row.close_action_menu()
         self._content_layout.removeWidget(row)
         self._rows.remove(row)
+        if self._pinned_row is row:
+            self._pinned_row = None
         row.setParent(None)
         row.deleteLater()
         self._renumber()
         self.changed.emit()
+        self._sync_pinned_state()
         self._sync_placeholder()
+
+    def _pin_row(self, row: _CredentialRow) -> None:
+        if row not in self._rows:
+            return
+        if self._pinned_row is row and row.is_pinned():
+            return
+
+        if self._pinned_row is not None:
+            self._pinned_row.set_pinned(False)
+
+        row.set_pinned(True)
+        self._pinned_row = row
+        self.changed.emit()
+        self._sync_pinned_state()
+
+    def _unpin_row(self, row: _CredentialRow) -> None:
+        if row not in self._rows or (not row.is_pinned()):
+            return
+        row.set_pinned(False)
+        if self._pinned_row is row:
+            self._pinned_row = None
+        self.changed.emit()
+        self._sync_pinned_state()
 
     def _renumber(self) -> None:
         for idx, row in enumerate(self._rows, start=1):
             row.set_number(idx)
+
+    def _sync_pinned_state(self) -> None:
+        has_pinned_row = self._pinned_row is not None and self._pinned_row in self._rows
+        for row in self._rows:
+            row.set_dimmed(has_pinned_row and row is not self._pinned_row)
 
     def _sync_placeholder(self) -> None:
         self.placeholder.setVisible(len(self._rows) == 0)
@@ -261,7 +423,7 @@ class CredentialManagerDialog(QDialog):
         self._ece = EceManager(getattr(config_manager, "config_dir", "config_data"))
 
         self._unsaved_changes = False
-        self._loaded_snapshot: Dict[str, List[Tuple[str, str]]] = {}
+        self._loaded_snapshot: Dict[str, List[Tuple[str, str, bool]]] = {}
 
         self.setWindowTitle("Credential Manager")
         self.setModal(True)
@@ -483,13 +645,13 @@ class CredentialManagerDialog(QDialog):
         self._apply_sidebar_item_icon(previous, active=False)
         self._apply_sidebar_item_icon(current, active=True)
 
-    def _snapshot_from_pages(self) -> Dict[str, List[Tuple[str, str]]]:
-        snap: Dict[str, List[Tuple[str, str]]] = {}
+    def _snapshot_from_pages(self) -> Dict[str, List[Tuple[str, str, bool]]]:
+        snap: Dict[str, List[Tuple[str, str, bool]]] = {}
         for entry in self._provider_entries:
             page = self._page_by_provider_key.get(entry.provider.key)
             if not page:
                 continue
-            snap[entry.provider.key] = [(p.email, p.password) for p in page.get_pairs()]
+            snap[entry.provider.key] = [(p.email, p.password, bool(p.pinned)) for p in page.get_pairs()]
         return snap
 
     def _load(self) -> None:

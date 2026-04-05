@@ -192,6 +192,7 @@ If you need to share logs with the developer or community:
     Log files and console dumps can contain sensitive stuff:
     
     - **Your provider email address** (shows up during auto-login)
+    - **Your selected startup profile/account** (logged when services launch, with `[PINNED]` if that startup pick was pinned)
     - **File paths** that might reveal your username or folder structure
     - **Message content** in debug logs
     - **API keys** if you're debugging auth issues

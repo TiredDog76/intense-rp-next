@@ -173,7 +173,7 @@ class EceManager:
             return {"version": self.CREDENTIALS_VERSION, "providers": {}}
         return payload
 
-    def _write_credentials_payload(self, providers: Dict[str, List[Dict[str, str]]]) -> bool:
+    def _write_credentials_payload(self, providers: Dict[str, List[Dict[str, Any]]]) -> bool:
         payload: Dict[str, Any] = {
             "version": self.CREDENTIALS_VERSION,
             "providers": providers,
@@ -213,7 +213,8 @@ class EceManager:
                 continue
             email = str(item.get("email", "") or "")
             password = str(item.get("password", "") or "")
-            pairs.append(CredentialPair(email=email, password=password))
+            pinned = bool(item.get("pinned"))
+            pairs.append(CredentialPair(email=email, password=password, pinned=pinned))
         return pairs
 
     def set_provider_pairs(self, provider: DriverProvider | str, pairs: List[CredentialPair]) -> Tuple[bool, List[str]]:
@@ -225,12 +226,14 @@ class EceManager:
         key = _provider_key(provider)
         errors: List[str] = []
 
-        cleaned: List[Dict[str, str]] = []
+        cleaned: List[Dict[str, Any]] = []
+        pinned_rows = 0
         for idx, pair in enumerate(pairs, start=1):
             email_raw = str(pair.email or "")
             password_raw = str(pair.password or "")
             email = email_raw.strip()
             password = password_raw
+            pinned = bool(getattr(pair, "pinned", False))
 
             # no point in empty entries
             if not email and not password.strip():
@@ -250,7 +253,16 @@ class EceManager:
                 errors.append(f"Row {idx}: password is empty.")
                 continue
 
-            cleaned.append({"email": email, "password": password})
+            if pinned:
+                pinned_rows += 1
+                if pinned_rows > 1:
+                    errors.append("Only one row can be pinned at a time.")
+                    continue
+
+            item: Dict[str, Any] = {"email": email, "password": password}
+            if pinned:
+                item["pinned"] = True
+            cleaned.append(item)
 
         if errors:
             return False, errors
@@ -311,7 +323,13 @@ class EceManager:
         *,
         least_used: bool,
         exclude_email: Optional[str] = None,
+        prefer_pinned: bool = False,
     ) -> Optional[CredentialPair]:
+        if prefer_pinned:
+            pinned_pair = self.get_pinned_pair(provider, exclude_email=exclude_email)
+            if pinned_pair is not None:
+                return pinned_pair
+
         pairs = self.get_provider_pairs(provider)
         if not pairs:
             return None
@@ -325,7 +343,13 @@ class EceManager:
                 continue
             if exclude_norm and _normalize_email(email) == exclude_norm:
                 continue
-            candidates.append(CredentialPair(email=email, password=password))
+            candidates.append(
+                CredentialPair(
+                    email=email,
+                    password=password,
+                    pinned=bool(getattr(pair, "pinned", False)),
+                )
+            )
 
         if not candidates:
             return None
@@ -343,6 +367,36 @@ class EceManager:
 
         candidates_sorted = sorted(candidates, key=sort_key)
         return candidates_sorted[0] if candidates_sorted else None
+
+    def get_pinned_pair(
+        self,
+        provider: DriverProvider | str,
+        *,
+        exclude_email: Optional[str] = None,
+    ) -> Optional[CredentialPair]:
+        exclude_norm = _normalize_email(exclude_email or "")
+        for pair in self.get_provider_pairs(provider):
+            if not bool(getattr(pair, "pinned", False)):
+                continue
+
+            email = str(pair.email or "").strip()
+            password = str(pair.password or "")
+            if not email or not password:
+                continue
+            if exclude_norm and _normalize_email(email) == exclude_norm:
+                continue
+            return CredentialPair(email=email, password=password, pinned=True)
+        return None
+
+    def is_email_pinned(self, provider: DriverProvider | str, email: Optional[str]) -> bool:
+        email_norm = _normalize_email(email or "")
+        if not email_norm:
+            return False
+
+        pinned_pair = self.get_pinned_pair(provider)
+        if pinned_pair is None:
+            return False
+        return _normalize_email(pinned_pair.email) == email_norm
 
     def get_profile_dir(
         self,

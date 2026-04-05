@@ -27,6 +27,11 @@ Next time you start IntenseRP, the driver can fill credentials and click login f
 !!! tip "Multiple accounts / rotation"
     See [:material-account-switch: Accounts & Credentials](accounts.md) for how selection, rotation, and retry-on-failure work.
 
+!!! tip "Want the same startup profile every time?"
+    In **Saved Accounts**, use the `...` menu on a row and click **Pin**.
+
+    That tells IntenseRP to start that specific account/profile on the next normal browser launch instead of picking randomly or by least-used.
+
 !!! warning "GLM CAPTCHA"
     GLM Chat requires a CAPTCHA during login. Auto Login can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
     If you don't want to do that every time, enable Persistent Sessions (below).
@@ -90,6 +95,9 @@ This folder contains your provider session cookies and browser data. It's automa
 
 !!! tip "Best of Both Worlds"
     You can use both features together! Enable Persistent Sessions so you're usually already logged in, and keep Auto Login as a backup for when the session expires.
+
+!!! tip "Pin + Persistent Sessions"
+    Pinning works nicely with Persistent Sessions: it makes IntenseRP reopen that account's saved browser profile on startup, which is handy if you want one specific identity to be the default.
 
 ---
 
