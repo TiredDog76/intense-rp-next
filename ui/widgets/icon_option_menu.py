@@ -92,22 +92,33 @@ class IconOptionMenu(QFrame):
     actionTriggered = Signal(str)
 
     def __init__(self, parent=None) -> None:
-        super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
+        super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self._items: list[IconOptionMenuItem] = []
         self._pending_hide = False
 
-        self.setObjectName("iconOptionMenu")
         self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setStyleSheet("background-color: transparent; border: none;")
         self.hide()
-        self.setStyleSheet(
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        self._panel = QFrame(self)
+        self._panel.setObjectName("iconOptionMenuPanel")
+        self._panel.setAttribute(Qt.WA_StyledBackground, True)
+        self._panel.setStyleSheet(
             f"""
-            QFrame#iconOptionMenu {{
+            QFrame#iconOptionMenuPanel {{
                 background-color: {BrandColors.WINDOW_BG};
                 border: 1px solid {BrandColors.INPUT_BORDER};
                 border-radius: 10px;
             }}
             """
         )
+        outer_layout.addWidget(self._panel)
 
         self._pos_anim = QPropertyAnimation(self, b"pos")
         self._pos_anim.setDuration(140)
@@ -122,7 +133,7 @@ class IconOptionMenu(QFrame):
         self._anim_group.addAnimation(self._opacity_anim)
         self._anim_group.finished.connect(self._on_animation_finished)
 
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self._panel)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
