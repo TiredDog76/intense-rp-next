@@ -61,7 +61,8 @@ INFO_BUBBLE_TRIGGER_EVENTS = INFO_BUBBLE_HOVER_EVENTS | INFO_BUBBLE_HIDE_EVENTS 
 class _SearchHighlightOverlay(QWidget):
     def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self._target_widget = None
+        self._flash_target_widget = None
+        self._persistent_widget = None
         self._pulse = 0.0
         self._padding = 4
         self._radius = 8
@@ -103,24 +104,34 @@ class _SearchHighlightOverlay(QWidget):
     pulse = Property(float, _get_pulse, _set_pulse)
 
     def _on_anim_finished(self) -> None:
-        self.hide()
+        self._flash_target_widget = None
+        self._sync_visibility()
 
     def clear(self) -> None:
+        self.clear_flash()
+        self.set_persistent_widget(None)
+
+    def clear_flash(self) -> None:
         self._anim_group.stop()
-        self._target_widget = None
-        self.hide()
+        self._flash_target_widget = None
+        self._pulse = 0.0
+        self._sync_visibility()
+        self.update()
+
+    def set_persistent_widget(self, widget: QWidget | None) -> None:
+        self._persistent_widget = widget
+        self._sync_visibility()
         self.update()
 
     def pulse_widget(self, widget: QWidget) -> None:
         if widget is None:
             return
 
-        self._target_widget = widget
+        self._flash_target_widget = widget
         parent = self.parent()
         if isinstance(parent, QWidget):
             self.setGeometry(parent.rect())
-        self.show()
-        self.raise_()
+        self._sync_visibility()
 
         self._anim_group.stop()
         self._pulse = 0.0
@@ -128,8 +139,9 @@ class _SearchHighlightOverlay(QWidget):
         self._anim_group.start()
 
     def update_target_geometry(self, *_args) -> None:
-        if not self.isVisible():
+        if not (self._has_visible_target(self._flash_target_widget) or self._has_visible_target(self._persistent_widget)):
             return
+        self._sync_visibility()
         self.update()
 
     def eventFilter(self, obj, event):
@@ -139,46 +151,82 @@ class _SearchHighlightOverlay(QWidget):
                 self.setGeometry(parent.rect())
         return super().eventFilter(obj, event)
 
-    def paintEvent(self, event):
-        if not self._target_widget or self._pulse <= 0.001:
-            return
+    def _has_visible_target(self, widget: QWidget | None) -> bool:
+        if widget is None:
+            return False
+        try:
+            return bool(widget.isVisible())
+        except RuntimeError:
+            return False
 
-        if not self._target_widget.isVisible():
-            return
+    def _sync_visibility(self) -> None:
+        parent = self.parent()
+        if isinstance(parent, QWidget):
+            self.setGeometry(parent.rect())
 
-        top_left = self.mapFromGlobal(self._target_widget.mapToGlobal(QPoint(0, 0)))
-        rect = self._target_widget.rect().translated(top_left).adjusted(
-            -self._padding, -self._padding, self._padding, self._padding
-        )
+        has_target = self._has_visible_target(self._flash_target_widget) or self._has_visible_target(self._persistent_widget)
+        if has_target:
+            self.show()
+            self.raise_()
+        else:
+            self.hide()
+
+    def _target_rect_for_widget(self, widget: QWidget | None) -> QRect | None:
+        if not self._has_visible_target(widget):
+            return None
+
+        try:
+            top_left = self.mapFromGlobal(widget.mapToGlobal(QPoint(0, 0)))
+            rect = widget.rect().translated(top_left).adjusted(
+                -self._padding, -self._padding, self._padding, self._padding
+            )
+        except RuntimeError:
+            return None
+
         if not rect.intersects(self.rect()):
+            return None
+        return rect
+
+    def paintEvent(self, event):
+        persistent_rect = self._target_rect_for_widget(self._persistent_widget)
+        flash_rect = self._target_rect_for_widget(self._flash_target_widget)
+        if persistent_rect is None and (flash_rect is None or self._pulse <= 0.001):
             return
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-
         accent = QColor(BrandColors.ACCENT)
-        pulse = float(self._pulse)
 
-        fill = QColor(accent)
-        fill.setAlpha(int(round(26 * pulse)))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(fill))
-        painter.drawRoundedRect(rect, self._radius, self._radius)
+        if flash_rect is not None and self._pulse > 0.001:
+            pulse = float(self._pulse)
 
-        outer = QColor(accent)
-        outer.setAlpha(int(round(80 * pulse)))
-        outer_pen = QPen(outer, 6)
-        outer_pen.setJoinStyle(Qt.RoundJoin)
-        painter.setPen(outer_pen)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(rect, self._radius, self._radius)
+            fill = QColor(accent)
+            fill.setAlpha(int(round(26 * pulse)))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(fill))
+            painter.drawRoundedRect(flash_rect, self._radius, self._radius)
 
-        inner = QColor(accent)
-        inner.setAlpha(int(round(180 * pulse)))
-        inner_pen = QPen(inner, 2)
-        inner_pen.setJoinStyle(Qt.RoundJoin)
-        painter.setPen(inner_pen)
-        painter.drawRoundedRect(rect, self._radius, self._radius)
+            outer = QColor(accent)
+            outer.setAlpha(int(round(80 * pulse)))
+            outer_pen = QPen(outer, 6)
+            outer_pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(outer_pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(flash_rect, self._radius, self._radius)
+
+            inner = QColor(accent)
+            inner.setAlpha(int(round(180 * pulse)))
+            inner_pen = QPen(inner, 2)
+            inner_pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(inner_pen)
+            painter.drawRoundedRect(flash_rect, self._radius, self._radius)
+
+        if persistent_rect is not None:
+            border_pen = QPen(accent, 2)
+            border_pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(border_pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(persistent_rect, self._radius, self._radius)
 
         painter.end()
 
@@ -822,6 +870,8 @@ class SettingsWindow(QMainWindow):
         self._sidebar_icon_subdir_cache = {}
         self._info_anchor_by_object_id = {}
         self._info_bubble_widget_ids = set()
+        self._navigation_anchor_by_object_id = {}
+        self._active_navigation_anchor = None
 
         self._init_ui()
         self._load_values()
@@ -832,6 +882,7 @@ class SettingsWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.focusChanged.connect(self._on_app_focus_changed)
+            app.installEventFilter(self)
 
     def _get_sidebar_icon(self, icon_file: str, color: str, size: int = 18) -> QIcon:
         use_sidebar_subdir = ("/" not in icon_file) and ("\\" not in icon_file)
@@ -965,6 +1016,7 @@ class SettingsWindow(QMainWindow):
         next_container = self._docs_container_for_widget(new)
         previous_container = getattr(self, "_active_docs_focus_container", None)
         if previous_container is next_container:
+            self._sync_active_navigation_highlight(new)
             return
 
         if previous_container is not None and hasattr(previous_container, "set_help_focus_visible"):
@@ -973,6 +1025,98 @@ class SettingsWindow(QMainWindow):
         self._active_docs_focus_container = next_container
         if next_container is not None and hasattr(next_container, "set_help_focus_visible"):
             next_container.set_help_focus_visible(True)
+        self._sync_active_navigation_highlight(new)
+
+    def _register_navigation_anchor(self, widget: QWidget | None) -> None:
+        if widget is None:
+            return
+
+        widget_id = id(widget)
+        self._navigation_anchor_by_object_id[widget_id] = widget
+        widget.destroyed.connect(lambda *_args, wid=widget_id: self._on_navigation_anchor_destroyed(wid))
+
+    def _on_navigation_anchor_destroyed(self, widget_id: int) -> None:
+        anchor = self._navigation_anchor_by_object_id.pop(widget_id, None)
+        if anchor is not None and anchor is self._active_navigation_anchor:
+            self._set_active_navigation_highlight(None)
+
+    def _resolve_navigation_anchor(self, widget: QWidget | None):
+        current = widget
+        while current is not None:
+            anchor = self._navigation_anchor_by_object_id.get(id(current))
+            if anchor is not None:
+                return anchor
+            current = current.parentWidget()
+        return None
+
+    def _should_auto_scroll_for_focus_reason(self, reason) -> bool:
+        return reason in {
+            Qt.TabFocusReason,
+            Qt.BacktabFocusReason,
+            Qt.ShortcutFocusReason,
+            Qt.OtherFocusReason,
+        }
+
+    def _pulse_highlight_if_current(self, widget: QWidget) -> None:
+        if widget is None or widget is not self._active_navigation_anchor:
+            return
+        self._flash_widget(widget)
+
+    def _set_active_navigation_highlight(
+        self,
+        widget: QWidget | None,
+        *,
+        auto_scroll: bool = False,
+        pulse: bool = False,
+    ) -> None:
+        overlay = getattr(self, "_highlight_overlay", None)
+        if not overlay or not isinstance(overlay, _SearchHighlightOverlay):
+            return
+
+        if widget is None:
+            self._active_navigation_anchor = None
+            overlay.set_persistent_widget(None)
+            return
+
+        try:
+            if widget.isHidden():
+                return
+        except RuntimeError:
+            return
+
+        same_target = widget is self._active_navigation_anchor
+        self._active_navigation_anchor = widget
+        overlay.set_persistent_widget(widget)
+
+        duration_ms = 280
+        started = False
+        if auto_scroll and not same_target:
+            started = self._smooth_ensure_visible(widget, y_margin=80, duration_ms=duration_ms)
+
+        if pulse:
+            if started:
+                QTimer.singleShot(duration_ms, lambda w=widget: self._pulse_highlight_if_current(w))
+            else:
+                self._pulse_highlight_if_current(widget)
+
+    def _sync_active_navigation_highlight(self, widget: QWidget | None) -> None:
+        if widget is None:
+            self._set_active_navigation_highlight(None)
+            return
+
+        if bool(widget.windowFlags() & Qt.Popup):
+            return
+
+        anchor = self._resolve_navigation_anchor(widget)
+        if anchor is not None:
+            self._set_active_navigation_highlight(anchor)
+            return
+
+        if widget is self or self.isAncestorOf(widget):
+            self._set_active_navigation_highlight(None)
+            return
+
+        self._set_active_navigation_highlight(None)
 
     def _open_docs_for_focused_widget(self) -> bool:
         focus_widget = self.focusWidget()
@@ -1363,6 +1507,7 @@ class SettingsWindow(QMainWindow):
                 widget = self._create_field_widget(field, category.key)
                 if widget:
                     self.setting_rows[f"{category.key}.{field.key}"] = widget
+                    self._register_navigation_anchor(widget)
                     card_layout.addWidget(widget)
                 continue
 
@@ -1385,6 +1530,7 @@ class SettingsWindow(QMainWindow):
                     docs_handler=self._open_docs_from_sender,
                 )
                 self.setting_rows[f"{category.key}.{field.key}"] = row
+                self._register_navigation_anchor(row)
                 card_layout.addWidget(row)
                 continue
 
@@ -1408,6 +1554,7 @@ class SettingsWindow(QMainWindow):
                         docs_handler=self._open_docs_from_sender,
                     )
                 self.setting_rows[f"{category.key}.{field.key}"] = row
+                self._register_navigation_anchor(row)
                 card_layout.addWidget(row)
 
         item = self.category_items_by_key.get(category.key)
@@ -2189,6 +2336,7 @@ class SettingsWindow(QMainWindow):
                 "label": dropdown_label,
             }
         )
+        self._register_navigation_anchor(dropdown_row)
         self._install_info_filters(dropdown_label)
         self._install_info_filters(dropdown)
         return block
@@ -2742,6 +2890,7 @@ class SettingsWindow(QMainWindow):
                 "card_key": card_key,
                 "provider_key": provider_key,
             }
+            self._register_navigation_anchor(widget)
             self._install_info_filters(widget)
             self._register_search_target_for_field(section_key, card_key, category_key, field, provider_key=provider_key)
             return widget
@@ -2775,6 +2924,7 @@ class SettingsWindow(QMainWindow):
                 "card_key": card_key,
                 "provider_key": provider_key,
             }
+            self._register_navigation_anchor(row)
             self._install_info_filters(row)
             self._register_search_target_for_field(section_key, card_key, category_key, field, provider_key=provider_key)
             return row
@@ -2809,6 +2959,7 @@ class SettingsWindow(QMainWindow):
             "card_key": card_key,
             "provider_key": provider_key,
         }
+        self._register_navigation_anchor(row)
         self._install_info_filters(row)
         self._register_search_target_for_field(section_key, card_key, category_key, field, provider_key=provider_key)
         return row
@@ -3043,6 +3194,15 @@ class SettingsWindow(QMainWindow):
         if obj is self.scroll_area.viewport() and event_type == QEvent.Resize:
             self._hide_info_bubble()
 
+        if event_type == QEvent.FocusIn and isinstance(obj, QWidget):
+            anchor = self._resolve_navigation_anchor(obj)
+            if anchor is not None:
+                reason = event.reason() if hasattr(event, "reason") else None
+                self._set_active_navigation_highlight(
+                    anchor,
+                    auto_scroll=self._should_auto_scroll_for_focus_reason(reason),
+                )
+
         if not isinstance(obj, QWidget) or event_type not in INFO_BUBBLE_TRIGGER_EVENTS:
             return super().eventFilter(obj, event)
 
@@ -3271,12 +3431,7 @@ class SettingsWindow(QMainWindow):
         target = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
         if not target:
             return False
-        duration_ms = 280
-        started = self._smooth_ensure_visible(target, y_margin=80, duration_ms=duration_ms)
-        if started:
-            QTimer.singleShot(duration_ms, lambda w=target: self._flash_widget(w))
-        else:
-            self._flash_widget(target)
+        self._set_active_navigation_highlight(target, auto_scroll=True, pulse=True)
         return True
 
     def _on_setting_changed(self):
@@ -3548,6 +3703,7 @@ class SettingsWindow(QMainWindow):
         self.search_prev_btn.setEnabled(False)
         self.search_next_btn.setEnabled(False)
         self._clear_flash()
+        self._sync_active_navigation_highlight(self.focusWidget())
 
     def _update_search_nav_ui(self) -> None:
         total = len(self._search_matches)
@@ -3571,12 +3727,7 @@ class SettingsWindow(QMainWindow):
         widget = self.setting_rows.get(full_key) or self.field_widgets.get(full_key)
         if widget is None or widget.isHidden():
             return
-        duration_ms = 280
-        started = self._smooth_ensure_visible(widget, y_margin=80, duration_ms=duration_ms)
-        if started:
-            QTimer.singleShot(duration_ms, lambda w=widget: self._flash_widget(w))
-        else:
-            self._flash_widget(widget)
+        self._set_active_navigation_highlight(widget, auto_scroll=True, pulse=True)
 
     def _goto_search_match(self, index: int) -> None:
         if not self._search_matches:
@@ -3706,6 +3857,7 @@ class SettingsWindow(QMainWindow):
         if not self._search_matches:
             self._search_match_index = -1
             self._update_search_nav_ui()
+            self._sync_active_navigation_highlight(self.focusWidget())
             return
 
         self._search_match_index = 0
@@ -3720,7 +3872,7 @@ class SettingsWindow(QMainWindow):
     def _clear_flash(self):
         overlay = getattr(self, "_highlight_overlay", None)
         if overlay and isinstance(overlay, _SearchHighlightOverlay):
-            overlay.clear()
+            overlay.clear_flash()
 
     def _on_category_clicked(self, item):
         return
