@@ -18,7 +18,7 @@ GLM also gets **GLM-5-Turbo** as a selectable real model option under **Provider
 
 [Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.6.3-patch){ .md-button .md-button--primary }
 [Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
-[Suggest New Features](https://forms.gle/VGJua1w5sMwuo2tNA){ .md-button }
+[Suggest New Features](./vote-for-new-stuff.md){ .md-button }
 [Support the Project](hands/support.md){ .md-button }
 
 ---
