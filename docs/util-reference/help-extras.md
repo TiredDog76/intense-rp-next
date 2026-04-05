@@ -21,6 +21,14 @@ From the main window:
 
 ## :material-view-grid: What's inside
 
+### :material-bug: Bug Report
+
+Creates a troubleshooting `.zip` from the private internal diagnostics log and the latest saved prompt snapshots.
+
+You need to enable the Bug Report settings first, otherwise the tool just tells you to collect things manually instead.
+
+:material-arrow-right: [Bug Report](bug-report.md)
+
 ### :material-backup-restore: Backup / Import Settings
 
 Back up your active config directory to a `.zip`, or restore one.

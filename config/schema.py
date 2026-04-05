@@ -1166,6 +1166,47 @@ SCHEMA = [
         ],
     ),
     SettingCategory(
+        name="Diagnostics",
+        key="diagnostics",
+        fields=[
+            SettingField(
+                key="bug_reports_warning",
+                label="Bug Reports",
+                type=SettingType.HINT,
+                default=(
+                    "These diagnostics can include sensitive data, including prompt text and redacted "
+                    "account/session details. Only share a bug-report bundle if you are comfortable with that."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+            ),
+            SettingField(
+                key="keep_internal_log",
+                label="Keep an Internal Log",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Write a private diagnostics log in the config directory, even if the console and public "
+                    "log files are disabled."
+                ),
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="file-logging",
+            ),
+            SettingField(
+                key="save_last_prompt",
+                label="Also Save the Last Prompt",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Keep the latest provider-ready prompt per provider for bug-report bundles. "
+                    "Google AI Studio also stores the separate system prompt field when used."
+                ),
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="file-logging",
+            ),
+        ],
+    ),
+    SettingCategory(
         name="Logfiles",
         key="logfiles",
         fields=[
@@ -1848,7 +1889,7 @@ SETTINGS_SECTIONS = [
         key="logs_troubleshooting",
         label="Logs and Troubleshooting",
         icon="terminal.svg",
-        card_keys=["log_to_files", "console_window", "logging_levels", "export_cleanup"],
+        card_keys=["log_to_files", "console_window", "logging_levels", "export_cleanup", "bug_reports"],
     ),
     SettingSection(
         key="advanced",
@@ -1986,6 +2027,15 @@ SETTINGS_CARDS = {
             ("logfiles", "log_dir"),
             ("logfiles", "max_files"),
             ("logfiles", "max_file_size"),
+        ],
+    ),
+    "bug_reports": SettingCard(
+        key="bug_reports",
+        title="Bug Reports",
+        field_refs=[
+            ("diagnostics", "bug_reports_warning"),
+            ("diagnostics", "keep_internal_log"),
+            ("diagnostics", "save_last_prompt"),
         ],
     ),
     "console_window": SettingCard(

@@ -790,6 +790,15 @@ class DeepSeekDriver(BaseDriver):
         try:
             # Apply formatting
             formatted_message = self._format_messages(message_for_formatting)
+            self._capture_diagnostics_prompt_snapshot(
+                formatted_message,
+                metadata={
+                    "model": resolved_model,
+                    "deepthink_enabled": bool(effective_deepthink),
+                    "search_enabled": bool(enable_search),
+                    "send_as_text_file": bool(send_as_text_file),
+                },
+            )
             
             # Check for Clean Regeneration
             clean_regeneration = bool(

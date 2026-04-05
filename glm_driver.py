@@ -1778,6 +1778,28 @@ class GLMDriver(BaseDriver):
         self.current_send_deepthink = effective_send_deepthink
 
         formatted_message = self._format_messages(message_for_formatting)
+        glm_extra_prompt_texts: Dict[str, str] = {}
+        if send_as_text_file:
+            try:
+                glm_text_file_filler = str(
+                    self.config_manager.get_setting("glm_behavior", "text_file_filler") or "."
+                )
+            except Exception:
+                glm_text_file_filler = "."
+            if glm_text_file_filler.strip():
+                glm_extra_prompt_texts["text_file_filler"] = glm_text_file_filler
+        self._capture_diagnostics_prompt_snapshot(
+            formatted_message,
+            extra_prompt_texts=glm_extra_prompt_texts or None,
+            metadata={
+                "model": resolved_model,
+                "ui_model": self._get_configured_glm_model_friendly(),
+                "deepthink_enabled": bool(effective_deepthink),
+                "send_deepthink": bool(effective_send_deepthink),
+                "search_enabled": bool(enable_search),
+                "send_as_text_file": bool(send_as_text_file),
+            },
+        )
 
         try:
             repetition_buster_enabled = bool(

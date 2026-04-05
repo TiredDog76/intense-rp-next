@@ -167,6 +167,51 @@ Sometimes you need to save whatever's currently in the console - maybe to share 
 
 ---
 
+## :material-bug: Bug Report Bundles
+
+!!! warning "This is off by default and requires opt-in"
+    The Bug Report feature is disabled by default. You have to enable it in settings to start generating bug report bundles. The internal log and prompt snapshots are NEVER saved with these disabled, and are automatically deleted when you turn the feature off.
+
+If you want something a little more structured than manually collecting logs, there is now a dedicated **Bug Report** tool in **Help & Extras**.
+
+It can bundle together:
+
+- a private internal diagnostics log
+- the latest saved prompt snapshots
+- a `latest-prompt.txt` shortcut for the newest saved prompt
+- metadata files with timestamps
+
+:material-arrow-right: **Settings** -> **Logs and Troubleshooting** -> **Bug Reports**
+
+The Bug Report settings are off by default. You have to opt in to:
+
+- **Keep an Internal Log**
+- **Also Save the Last Prompt**
+
+!!! note "Separate from normal logfile settings"
+    The private internal diagnostics log is its own thing. It does not depend on the console window or normal **Log to Files** being enabled.
+
+### Privacy and redaction
+
+The bug-report log tries to redact a few common sensitive details automatically before it gets written to disk:
+
+- full URLs are reduced to the scheme + domain
+- email addresses become labels like `[email 1]`
+- API key names become `[API key name]`
+- IPv4 addresses become `XXX.XXX.XXX.XXX` while keeping ports
+
+That helps, but it does **not** make the bundle safe by default. Prompt snapshots are still prompt snapshots, and system paths can still reveal usernames or folder structures. Always review the contents of a bug report bundle before sharing it, and redact anything you don't want to share.
+
+### Where to find it
+
+1. Click **Tools**
+2. Click **Bug Report**
+3. Pick where to save the `.zip`
+
+:material-arrow-right: [Bug Report tool reference](../util-reference/bug-report.md)
+
+---
+
 ## :material-bug: Troubleshooting with Logs
 
 When things go sideways, logs are your best friend. Usually that's where you'll be going to figure out what went wrong.
@@ -184,17 +229,17 @@ When things go sideways, logs are your best friend. Usually that's where you'll 
 
 If you need to share logs with the developer or community:
 
-1. **Dump the console** or grab the log file
+1. **Create a Bug Report zip**, dump the console, or grab the log file
 2. **Review the contents** before sharing (see the big scary warning below)
 3. Upload to a paste service or attach to your bug report on GitHub (pretty sure it can handle 15kb of text)
 
 !!! danger "Review Before Sharing!"
-    Log files and console dumps can contain sensitive stuff:
+    Log files, console dumps, and bug-report bundles can contain sensitive stuff:
     
     - **Your provider email address** (shows up during auto-login)
     - **Your selected startup profile/account** (logged when services launch, with `[PINNED]` if that startup pick was pinned)
     - **File paths** that might reveal your username or folder structure
-    - **Message content** in debug logs
+    - **Message content** in debug logs or saved prompt snapshots
     - **API keys** if you're debugging auth issues
     
     :material-alert::material-alert::material-alert::material-alert: **Always check and redact any personal info before sharing logs publicly!** :material-alert::material-alert::material-alert::material-alert:

@@ -803,6 +803,7 @@ class SettingsWindow(QMainWindow):
         "moonshot_behavior": "providers/moonshot.svg",
         "qwen_behavior": "providers/qwen.svg",
         "aistudio_behavior": "providers/aistudio.svg",
+        "diagnostics": "bug.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
         "system_settings": "monitor.svg",

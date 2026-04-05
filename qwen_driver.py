@@ -2567,6 +2567,28 @@ class QwenLMDriver(BaseDriver):
         self.current_send_deepthink = effective_send_deepthink
 
         formatted_message = self._format_messages(message_for_formatting)
+        qwen_extra_prompt_texts: Dict[str, str] = {}
+        if send_as_text_file:
+            try:
+                qwen_text_file_message = str(
+                    self.config_manager.get_setting("qwen_behavior", "text_file_message") or ""
+                )
+            except Exception:
+                qwen_text_file_message = ""
+            if qwen_text_file_message.strip():
+                qwen_extra_prompt_texts["text_file_message"] = qwen_text_file_message
+        self._capture_diagnostics_prompt_snapshot(
+            formatted_message,
+            extra_prompt_texts=qwen_extra_prompt_texts or None,
+            metadata={
+                "model": resolved_model,
+                "ui_model": self._get_configured_qwen_model_label(),
+                "deepthink_enabled": bool(effective_deepthink),
+                "send_deepthink": bool(effective_send_deepthink),
+                "search_enabled": bool(enable_search),
+                "send_as_text_file": bool(send_as_text_file),
+            },
+        )
 
         async def handle_route(route):
             nonlocal completion_claimed

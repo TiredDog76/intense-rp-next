@@ -1570,6 +1570,27 @@ class MoonshotDriver(BaseDriver):
 
         try:
             formatted_message = self._format_messages(message_for_formatting)
+            moonshot_extra_prompt_texts: Dict[str, str] = {}
+            if send_as_text_file:
+                try:
+                    moonshot_text_file_filler = str(
+                        self.config_manager.get_setting("moonshot_behavior", "text_file_filler") or "."
+                    )
+                except Exception:
+                    moonshot_text_file_filler = "."
+                if moonshot_text_file_filler.strip():
+                    moonshot_extra_prompt_texts["text_file_filler"] = moonshot_text_file_filler
+            self._capture_diagnostics_prompt_snapshot(
+                formatted_message,
+                extra_prompt_texts=moonshot_extra_prompt_texts or None,
+                metadata={
+                    "model": resolved_model,
+                    "deepthink_enabled": bool(effective_deepthink),
+                    "send_deepthink": bool(effective_send_deepthink),
+                    "search_enabled": bool(enable_search),
+                    "send_as_text_file": bool(send_as_text_file),
+                },
+            )
             # Kimi's composer controls are flaky while the sidebar is open.
             await self.set_sidebar_status(open=False)
 

@@ -226,6 +226,7 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 
 - [ ] Reproduce once (so you can describe exact steps).
 - [ ] If possible, reproduce with logs enabled (console and/or logfiles).
+- [ ] If you want the easy route, enable **Bug Reports** in **Settings** -> **Logs and Troubleshooting** before reproducing.
 - [ ] Note whether it happens on `deepseek-*`, `glm-*`, `moonshot-*`, or `qwen-*` (depending on your provider).
 - [ ] If you are using LAN, try locally too (to rule out firewall/network issues).
 
@@ -240,10 +241,24 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto` / `qwen-auto` / `aistudio-auto`)
 - **Streaming** (`stream: true` or `stream: false`)
 - **Expected vs actual**
-- **Logs** (console dump or `logs/log_*.txt`)
+- **Logs** (`Bug Report` zip from **Tools**, console dump, or `logs/log_*.txt`)
+
+### :material-archive: Easiest way to collect useful data
+
+If you have already enabled the Bug Report settings, use the built-in helper instead of manually hunting for files:
+
+1. Go to **Settings** → **Logs and Troubleshooting** -> **Diagnostics**
+    - Enable **Keep an Internal Log** to capture detailed logs
+    - Optionally enable **Also Save the Last Prompt** to include the latest prompt snapshot in the bundle
+2. Reproduce the issue once with that enabled
+3. Click **Tools**
+4. Click **Bug Report**
+5. Save the generated `.zip`
+
+That bundle can include a private redacted diagnostics log, the latest saved prompt snapshots, timestamps, and a `latest-prompt.txt` file for the newest captured prompt.
 
 !!! danger "Redact secrets"
-    Logs can contain provider emails, file paths, message content, and API keys. Always redact personal data before posting publicly.
+    Logs and prompt bundles can contain provider emails, file paths, message content, and API keys. Always redact personal data before posting publicly.
 
 ### :material-text-box-outline: Copy/paste template
 

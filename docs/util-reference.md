@@ -13,6 +13,7 @@ Most of these are "quality of life" tools: backing up settings, fixing browser i
 ## :material-open-in-new: Windows in this section
 
 - :material-help-box: **Help & Extras** (the launcher window): [Open the reference](util-reference/help-extras.md)
+- :material-bug: **Bug Report**: [Open the reference](util-reference/bug-report.md)
 - :material-backup-restore: **Backup & Import Settings**: [Open the reference](util-reference/backup-import-settings.md)
 - :material-web: **Browser Manager**: [Open the reference](util-reference/browser-manager.md)
 - :material-puzzle-edit-outline: **STMP Patcher**: [Open the reference](util-reference/stmp-patcher.md)

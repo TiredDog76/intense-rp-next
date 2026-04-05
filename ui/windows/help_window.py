@@ -9,6 +9,7 @@ from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.backup_import_window import BackupImportWindow
 from ui.niche.browser_manager_window import BrowserManagerWindow
+from ui.niche.diagnostics_bundle_window import DiagnosticsBundleWindow
 from ui.windows.contributors_window import ContributorsWindow
 from ui.niche.stmp_patcher_window import STMPPatcherWindow
 from utils.v1_migrator import V1Migrator
@@ -86,7 +87,7 @@ class HelpWindow(QMainWindow):
         self.config_manager = config_manager
         self.main_window = main_window
         self.setWindowTitle("Help & Extras")
-        self.resize(440, 460)
+        self.resize(440, 520)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG};")
 
         central_widget = QWidget()
@@ -129,6 +130,7 @@ class HelpWindow(QMainWindow):
             ("STMP Patcher", IconType.PATCHER, "Patches RossAscends's STMP to include per-message names.", self.show_stmp_patcher),
             ("Migrate from v1", IconType.MIGRATE, "", self.start_migration),
             ("Contributors", IconType.CONTRIBUTORS, "", self.show_contributors),
+            ("Bug Report", IconType.BUG_REPORT, "Create a diagnostics .zip bundle from the private internal log and latest saved prompts.", self.show_bug_report_bundle),
             ("Discord Server", IconType.DISCORD, "Join the IntenseRP Next Discord server for community help and quick questions.", self.open_discord),
             ("GitHub", IconType.GITHUB, "Open the IntenseRP Next GitHub repository.", self.open_github),
             ("Donate", IconType.DONATE, "Support the project financially.", self.open_donate),
@@ -149,6 +151,7 @@ class HelpWindow(QMainWindow):
         self.stmp_patcher_window = None
         self.backup_import_window = None
         self.browser_manager_window = None
+        self.diagnostics_bundle_window = None
 
     def start_migration(self):
         msg = QMessageBox(self)
@@ -193,6 +196,12 @@ class HelpWindow(QMainWindow):
             self.backup_import_window.settings_reloaded.connect(self.settings_reloaded.emit)
         self.backup_import_window.show()
         self.backup_import_window.activateWindow()
+
+    def show_bug_report_bundle(self):
+        if not self.diagnostics_bundle_window:
+            self.diagnostics_bundle_window = DiagnosticsBundleWindow(self.config_manager, None)  # Top level
+        self.diagnostics_bundle_window.show()
+        self.diagnostics_bundle_window.activateWindow()
 
     def show_browser_manager(self):
         if not self.browser_manager_window:

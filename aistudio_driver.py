@@ -3802,6 +3802,27 @@ class AIStudioDriver(BaseDriver):
 
         try:
             formatted_message, system_prompt_text = self._prepare_prompt_payload(message_for_formatting)
+            aistudio_extra_prompt_texts: Dict[str, str] = {}
+            text_file_message = str(effective_settings.get("text_file_message") or "")
+            if text_file_message.strip():
+                aistudio_extra_prompt_texts["text_file_message"] = text_file_message
+            self._capture_diagnostics_prompt_snapshot(
+                formatted_message,
+                system_prompt_text=system_prompt_text,
+                extra_prompt_texts=aistudio_extra_prompt_texts or None,
+                metadata={
+                    "model": self.current_model or "aistudio-auto",
+                    "ui_model": self._get_configured_model_label(),
+                    "deepthink_enabled": bool(effective_settings.get("deepthink_enabled")),
+                    "thinking_level": str(effective_settings.get("thinking_level") or ""),
+                    "send_deepthink": bool(effective_settings.get("send_deepthink")),
+                    "search_enabled": bool(effective_settings.get("search_enabled")),
+                    "url_context_enabled": bool(effective_settings.get("url_context_enabled")),
+                    "use_system_prompt_field": bool(effective_settings.get("use_system_prompt_field")),
+                    "send_as_text_file": bool(effective_settings.get("send_as_text_file")),
+                    "anti_censorship": bool(effective_settings.get("anti_censorship")),
+                },
+            )
             await self._ensure_safety_filters_initialized()
             clean_regeneration = bool(
                 self.config_manager.get_setting("aistudio_behavior", "clean_regeneration")

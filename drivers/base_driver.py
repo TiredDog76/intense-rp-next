@@ -14,6 +14,7 @@ from drivers.providers import DriverProvider, get_playwright_profile_dir
 from ece.manager import EceManager
 from ece.models import CredentialPair
 from utils.browser_manager import install_chromium_browser, probe_browser_executable_path
+from utils.diagnostics import capture_prompt_snapshot
 from utils.logger import Logger
 
 
@@ -459,6 +460,27 @@ class BaseDriver(ABC):
             cache_key,
             account_key=account_key,
         ) == str(prompt)
+
+    def _capture_diagnostics_prompt_snapshot(
+        self,
+        prompt: str,
+        *,
+        system_prompt_text: str = "",
+        extra_prompt_texts: dict[str, str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist the latest provider-ready prompt for bug-report bundles."""
+        try:
+            capture_prompt_snapshot(
+                self.config_manager,
+                self.provider,
+                str(prompt or ""),
+                system_prompt_text=str(system_prompt_text or ""),
+                extra_prompt_texts=extra_prompt_texts,
+                metadata=metadata,
+            )
+        except Exception:
+            return
 
     @staticmethod
     def _generate_repetition_buster_text(length: int = 128) -> str:

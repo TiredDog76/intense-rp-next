@@ -106,6 +106,10 @@ def create_config_backup_zip(config_dir: str | Path, output_zip: str | Path) -> 
                 except Exception:
                     arcname = file_path.name
 
+                arc_parts = Path(arcname).parts
+                if arc_parts and arc_parts[0] == "bug_reports":
+                    continue
+
                 try:
                     zf.write(file_path, arcname=arcname)
                 except Exception as e:
@@ -284,4 +288,3 @@ def import_config_backup_zip(zip_file: str | Path, target_config_dir: str | Path
             Logger.warning(f"Imported settings, but failed to delete old config dir '{old_dir}': {e}")
 
     return True, f"Import complete. Settings restored into: {target_dir}"
-

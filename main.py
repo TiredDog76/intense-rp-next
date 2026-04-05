@@ -47,6 +47,10 @@ from utils.update_checker import check_for_updates
 from utils.version_file import parse_version_file
 from utils.resource_path import resolve_resource_path
 from utils.docs_links import DOCS_BASE_URL
+from utils.diagnostics import (
+    clear_prompt_snapshots,
+    configure_internal_diagnostics_logging,
+)
 import shutil
 import socket
 import time
@@ -1130,6 +1134,9 @@ class MainWindow(QMainWindow):
         if size_unit is None: size_unit = "MB"
         
         Logger.configure_file_logging(bool(enable_files), str(log_dir), int(max_files) if max_files is not None else 5, int(max_size_val) if max_size_val is not None else 10, str(size_unit))
+        configure_internal_diagnostics_logging(self.config_manager)
+        if not bool(self.config_manager.get_setting("diagnostics", "save_last_prompt")):
+            clear_prompt_snapshots(self.config_manager.config_dir)
 
         # Logging levels
         stdout_lvl = self.config_manager.get_setting("system_settings", "stdout_log_level") or "Debug"
