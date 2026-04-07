@@ -45,6 +45,9 @@ class DeepSeekDriver(BaseDriver):
         "button:has-text('Log in')",
         "button:has-text('Sign in')",
     ]
+    SEND_CONTROL_SELECTORS = [
+        "div.ds-icon-button._52c986b",
+    ]
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.DEEPSEEK)
@@ -82,9 +85,13 @@ class DeepSeekDriver(BaseDriver):
             self.clean_regen_state_cache_key,
         )
         try:
-            await self._remember_send_control_signature(self.page.locator("div.ds-icon-button._7436101"))
+            await self._remember_send_control_signature(self._locate_send_control())
         except Exception:
             pass
+
+    def _locate_send_control(self):
+        selector = ", ".join(self.SEND_CONTROL_SELECTORS)
+        return self.page.locator(selector)
 
     async def _has_visible_selector(
         self,
@@ -1033,7 +1040,7 @@ class DeepSeekDriver(BaseDriver):
         The Stop button appears in place of the Send button during generation.
         """
         try:
-            stop_button = self.page.locator("div.ds-icon-button._7436101")
+            stop_button = self._locate_send_control()
             if await stop_button.count() == 0:
                 Logger.debug("Stop button not found.")
 
@@ -1531,9 +1538,8 @@ class DeepSeekDriver(BaseDriver):
         Clicks the send button if it is enabled.
         Waits up to timeout seconds for the button to become enabled.
         """
-        # The send button is a div with role="button" and class "ds-icon-button"
-        # The send button has a specific hashed class "_7436101"
-        send_button = self.page.locator("div.ds-icon-button._7436101")
+        # The send button hash in current DeepSeek UI.
+        send_button = self._locate_send_control()
         
         if await send_button.count() > 0:
             await self._remember_send_control_signature(send_button)
