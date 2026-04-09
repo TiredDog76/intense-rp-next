@@ -1266,7 +1266,14 @@ class WelcomeWindow(QDialog):
         elif provider == DriverProvider.AI_STUDIO:
             model_text = "aistudio-auto\naistudio-chat\naistudio-reasoner"
         else:
-            model_text = "deepseek-auto\ndeepseek-chat\ndeepseek-reasoner"
+            model_text = (
+                "deepseek-auto\n"
+                "deepseek-chat\n"
+                "deepseek-reasoner\n"
+                "deepseek-expert-auto\n"
+                "deepseek-expert-chat\n"
+                "deepseek-expert-reasoner"
+            )
 
         key_text = "(leave blank)"
         if self._use_api_keys.isChecked():

@@ -23,7 +23,14 @@ from drivers.shared_utils import (
 )
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
-from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
+from utils.model_ids import (
+    DEEPSEEK_MODEL_TYPE_DEFAULT,
+    DEEPSEEK_MODEL_TYPE_EXPERT,
+    MODE_CHAT,
+    MODE_REASONER,
+    resolve_behavior_mode,
+    resolve_deepseek_model_type,
+)
 
 load_dotenv()
 
@@ -70,6 +77,8 @@ class DeepSeekDriver(BaseDriver):
     def _reset_stream_parser(self) -> None:
         self._stream_text_decoder = codecs.getincrementaldecoder("utf-8")()
         self._stream_text_buffer = ""
+        self._stream_active_fragment_type: Optional[str] = None
+        self._stream_active_fragment_base_path: Optional[str] = None
 
     def get_start_url(self) -> str:
         return "https://chat.deepseek.com/"
@@ -356,17 +365,19 @@ class DeepSeekDriver(BaseDriver):
 
         return enable_deepthink, send_deepthink
 
-    def _resolve_deepseek_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
+    def _resolve_deepseek_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
         resolved_model = (model or "").strip() or "deepseek-auto"
         deepthink_enabled, send_deepthink = self._resolve_deepthink_flags(resolved_model)
         search_enabled = bool(self.config_manager.get_setting("deepseek_behavior", "enable_search"))
         send_as_text_file = bool(self.config_manager.get_setting("deepseek_behavior", "send_as_text_file"))
+        model_type = resolve_deepseek_model_type(resolved_model, self.provider)
 
         settings = {
             "deepthink_enabled": bool(deepthink_enabled),
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(search_enabled),
             "send_as_text_file": bool(send_as_text_file),
+            "model_type": model_type,
         }
 
         if overrides:
@@ -392,14 +403,14 @@ class DeepSeekDriver(BaseDriver):
     def _strip_deepseek_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
         return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
-    def _read_clean_regeneration_state(self) -> Optional[Dict[str, bool]]:
+    def _read_clean_regeneration_state(self) -> Optional[Dict[str, Any]]:
         return read_clean_regeneration_state(
             self.cache_manager,
             self.clean_regen_state_cache_key,
             log_label="Clean Regeneration",
         )
 
-    def _write_clean_regeneration_state(self, state: Dict[str, bool]) -> None:
+    def _write_clean_regeneration_state(self, state: Dict[str, Any]) -> None:
         write_clean_regeneration_state(
             self.cache_manager,
             self.clean_regen_state_cache_key,
@@ -412,11 +423,17 @@ class DeepSeekDriver(BaseDriver):
         effective_deepthink: bool,
         enable_search: bool,
         send_as_text_file: bool,
-    ) -> Dict[str, bool]:
+        model_type: str,
+    ) -> Dict[str, Any]:
         return {
             "deepthink_enabled": bool(effective_deepthink),
             "search_enabled": bool(enable_search),
             "send_as_text_file": bool(send_as_text_file),
+            "model_type": (
+                DEEPSEEK_MODEL_TYPE_EXPERT
+                if str(model_type or "").strip().lower() == DEEPSEEK_MODEL_TYPE_EXPERT
+                else DEEPSEEK_MODEL_TYPE_DEFAULT
+            ),
         }
 
     def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
@@ -669,6 +686,7 @@ class DeepSeekDriver(BaseDriver):
         effective_send_deepthink = effective_settings["send_deepthink"]
         enable_search = effective_settings["search_enabled"]
         send_as_text_file = effective_settings["send_as_text_file"]
+        effective_model_type = effective_settings["model_type"]
         self.current_send_deepthink = effective_send_deepthink
         
         async def handle_route(route):
@@ -801,6 +819,7 @@ class DeepSeekDriver(BaseDriver):
                 formatted_message,
                 metadata={
                     "model": resolved_model,
+                    "model_type": effective_model_type,
                     "deepthink_enabled": bool(effective_deepthink),
                     "search_enabled": bool(enable_search),
                     "send_as_text_file": bool(send_as_text_file),
@@ -838,6 +857,7 @@ class DeepSeekDriver(BaseDriver):
                     effective_deepthink=bool(effective_deepthink),
                     enable_search=bool(enable_search),
                     send_as_text_file=bool(send_as_text_file),
+                    model_type=effective_model_type,
                 )
                 multi_slot_state = dict(clean_regen_state)
 
@@ -894,8 +914,9 @@ class DeepSeekDriver(BaseDriver):
                 await self._click_new_chat()
                 # Small wait for the UI to update
                 await asyncio.sleep(0.5)
-                
+
                 # Apply settings before sending
+                await self.set_model_type_state(effective_model_type)
                 await self.set_deepthink_state(effective_deepthink)
                 await self.set_search_state(enable_search)
                 
@@ -1071,6 +1092,112 @@ class DeepSeekDriver(BaseDriver):
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         return format_request_messages(self.config_manager, messages)
 
+    @staticmethod
+    def _get_stream_fragment_base_path(path: str | None) -> Optional[str]:
+        normalized = str(path or "").strip()
+        if not normalized:
+            return None
+
+        if normalized.startswith("response/fragments/"):
+            parts = normalized.split("/")
+            if len(parts) >= 3:
+                return "/".join(parts[:3])
+            return None
+
+        if normalized.startswith("fragments/"):
+            parts = normalized.split("/")
+            if len(parts) >= 2:
+                return "/".join(parts[:2])
+
+        return None
+
+    def _resolve_fragment_type_for_path(self, path: str | None) -> Optional[str]:
+        normalized = str(path or "").strip()
+        if not normalized or not hasattr(self, "fragment_types_list"):
+            return None
+
+        parts = normalized.split("/")
+        try:
+            if normalized.startswith("response/fragments/") and len(parts) >= 3:
+                index = int(parts[2])
+            elif normalized.startswith("fragments/") and len(parts) >= 2:
+                index = int(parts[1])
+            else:
+                return None
+        except ValueError:
+            return None
+
+        if not self.fragment_types_list:
+            return None
+
+        try:
+            return str(self.fragment_types_list[index] or "").upper() or None
+        except (IndexError, TypeError):
+            return None
+
+    def _remember_active_fragment(self, path: str | None) -> Optional[str]:
+        base_path = self._get_stream_fragment_base_path(path)
+        if base_path is None:
+            return None
+
+        self._stream_active_fragment_base_path = base_path
+        fragment_type = self._resolve_fragment_type_for_path(base_path)
+        if fragment_type:
+            self._stream_active_fragment_type = fragment_type
+        return fragment_type
+
+    @staticmethod
+    def _is_stream_text_fragment(fragment_type: str | None) -> bool:
+        normalized = str(fragment_type or "").strip().upper()
+        return normalized not in {"", "SEARCH", "TOOL_SEARCH"}
+
+    def _append_stream_text(self, value: Any, *, send_deepthink: bool) -> str:
+        text = str(value or "")
+        fragment_type = str(self._stream_active_fragment_type or "").strip().upper()
+        if not fragment_type:
+            if getattr(self, "thinking_active", False):
+                return text if send_deepthink else ""
+            return text
+
+        if fragment_type == "THINK":
+            return text if send_deepthink else ""
+        if not self._is_stream_text_fragment(fragment_type):
+            return ""
+        return text
+
+    def _expand_relative_stream_ops(
+        self,
+        value: Any,
+        *,
+        base_path: str | None,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+
+        out: list[dict[str, Any]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+
+            normalized_item = dict(item)
+            item_path = str(normalized_item.get("p") or "").strip()
+            if (
+                base_path
+                and item_path
+                and not item_path.startswith("response/")
+                and not item_path.startswith("fragments/")
+            ):
+                normalized_item["p"] = f"{base_path}/{item_path}"
+            out.append(normalized_item)
+
+        return out
+
+    @staticmethod
+    def _looks_like_stream_op_list(value: Any) -> bool:
+        if not isinstance(value, list) or not value:
+            return False
+        return any(isinstance(item, dict) and ("p" in item) for item in value)
+
     async def _process_sse_line(self, line: str, queue: asyncio.Queue) -> None:
         if not line.startswith("data:"):
             return
@@ -1098,7 +1225,8 @@ class DeepSeekDriver(BaseDriver):
                 v = data["v"]
                 p = data.get("p")
                 o = data.get("o")
-                
+                relative_base_path = p or self._stream_active_fragment_base_path
+
                 # Case 1: Batch update (v is list of ops)
 
                 # ---------------- RYAN!! ----------------
@@ -1108,15 +1236,11 @@ class DeepSeekDriver(BaseDriver):
                 # ---------------- RYAN!! ----------------
 
                 if p is None or (p == "response" and o == "BATCH"):
-                    if isinstance(v, list):
-                        ops = v
+                    if self._looks_like_stream_op_list(v):
+                        ops = self._expand_relative_stream_ops(v, base_path=relative_base_path)
                     elif isinstance(v, str):
                         # Direct content update (inconsistent here - once I caught this happening but it seems like a bug on their side)
-                        if getattr(self, "thinking_active", False):
-                            if send_deepthink:
-                                content = v
-                        else:
-                            content = v
+                        content = self._append_stream_text(v, send_deepthink=bool(send_deepthink))
                     elif isinstance(v, dict):
                         # Initial response payload: {"response": {"fragments": [...]}}
                         # DeepSeek now sends the first fragment inline in the
@@ -1129,7 +1253,11 @@ class DeepSeekDriver(BaseDriver):
             
                 # Case 2: Single Path-based update
                 else:
-                    ops = [{"p": p, "o": o, "v": v}]
+                    if self._looks_like_stream_op_list(v):
+                        expanded_ops = self._expand_relative_stream_ops(v, base_path=p)
+                        ops = expanded_ops or [{"p": p, "o": o, "v": v}]
+                    else:
+                        ops = [{"p": p, "o": o, "v": v}]
 
             # Process all operations
             should_stop_processing = False
@@ -1176,11 +1304,17 @@ class DeepSeekDriver(BaseDriver):
                     if isinstance(fragments, list):
                         for frag in fragments:
                             if isinstance(frag, dict):
-                                frag_type = frag.get("type")
+                                frag_type = str(frag.get("type") or "").upper()
                                 # Store type by index (len of list before append)
                                 if not hasattr(self, "fragment_types_list"):
                                     self.fragment_types_list = []
                                 self.fragment_types_list.append(frag_type)
+                                self._stream_active_fragment_type = frag_type
+                                self._stream_active_fragment_base_path = (
+                                    "response/fragments/-1"
+                                    if str(item_p).startswith("response/")
+                                    else "fragments/-1"
+                                )
                                 
 
                                 
@@ -1198,41 +1332,22 @@ class DeepSeekDriver(BaseDriver):
                                 
                                 # Initial content
                                 if "content" in frag:
-                                    if frag_type == "THINK":
-                                        if send_deepthink:
-                                            content += frag["content"]
-                                    elif frag_type == "SEARCH":
-                                        pass
-                                    else:
-                                        content += frag["content"]
+                                    content += self._append_stream_text(
+                                        frag["content"],
+                                        send_deepthink=bool(send_deepthink),
+                                    )
 
                 # Content update: response/fragments/0/content OR fragments/0/content
                 elif item_p and (item_p.startswith("response/fragments/") or item_p.startswith("fragments/")) and item_p.endswith("/content"):
-                    try:
-                        parts = item_p.split("/")
-                        # Index is 2 if response/fragments/0/content, or 1 if fragments/0/content
-                        if parts[0] == "response":
-                            index = int(parts[2])
-                        else:
-                            index = int(parts[1])
-                        
-                        if hasattr(self, "fragment_types_list") and index < len(self.fragment_types_list):
-                            frag_type = self.fragment_types_list[index]
-                            
-                            if frag_type == "THINK":
-                                if send_deepthink:
-                                    content += str(item_v)
-                            elif frag_type == "SEARCH":
-                                pass
-                            else:
-                                content += str(item_v)
-                        else:
-                            pass
-                    except (ValueError, IndexError):
-                        pass
+                    self._remember_active_fragment(item_p)
+                    content += self._append_stream_text(
+                        item_v,
+                        send_deepthink=bool(send_deepthink),
+                    )
                         
                 # Status update: response/fragments/0/status
                 elif item_p and (item_p.startswith("response/fragments/") or item_p.startswith("fragments/")) and item_p.endswith("/status"):
+                    self._remember_active_fragment(item_p)
                     if item_v == "FINISHED":
                         pass
 
@@ -1324,6 +1439,48 @@ class DeepSeekDriver(BaseDriver):
             await button.first.click()
         else:
             Logger.debug(f"Search is already {state}.")
+
+    async def set_model_type_state(self, model_type: str) -> None:
+        desired_type = (
+            DEEPSEEK_MODEL_TYPE_EXPERT
+            if str(model_type or "").strip().lower() == DEEPSEEK_MODEL_TYPE_EXPERT
+            else DEEPSEEK_MODEL_TYPE_DEFAULT
+        )
+        option = self.page.locator(
+            f"div._9f2341b._7ac2123[data-model-type='{desired_type}']"
+        )
+        try:
+            await option.first.wait_for(state="visible", timeout=4000)
+        except Exception:
+            Logger.warning(f"DeepSeek model type option '{desired_type}' not found.")
+            return
+
+        selected_class = "_31a22b0"
+        class_attr = await option.first.get_attribute("class") or ""
+        if selected_class in class_attr:
+            Logger.debug(f"DeepSeek model type is already '{desired_type}'.")
+            return
+
+        Logger.debug(f"Switching DeepSeek model type to '{desired_type}'...")
+        await option.first.click(timeout=2000)
+
+        try:
+            await self.page.wait_for_function(
+                """
+                ([targetType, selectedClass]) => {
+                    const option = document.querySelector(
+                        `div._9f2341b._7ac2123[data-model-type="${targetType}"]`
+                    );
+                    return Boolean(option && option.classList.contains(selectedClass));
+                }
+                """,
+                arg=[desired_type, selected_class],
+                timeout=3000,
+            )
+        except Exception:
+            Logger.debug(
+                f"DeepSeek model type '{desired_type}' click completed, but selection confirmation timed out."
+            )
 
     async def set_sidebar_status(self, open: bool):
         """

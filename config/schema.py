@@ -1794,9 +1794,10 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "Show `intenserp-auto`, `intenserp-think`, and `intenserp-chat` from the API "
-                    "in normal single-provider mode so you can switch providers without changing "
-                    "the model name in your client. Provider-prefixed IDs still work. Providers "
+                    "Show `intenserp-auto`, `intenserp-reasoner`, and `intenserp-chat` from the "
+                    "API in normal single-provider mode so you can switch providers without "
+                    "changing the model name in your client. DeepSeek also exposes matching "
+                    "`intenserp-expert-*` variants. Provider-prefixed IDs still work. Providers "
                     "in Parallel keeps using provider-prefixed IDs."
                 ),
                 docs_path=DOCS_UNIVERSAL_MODEL_NAMES,

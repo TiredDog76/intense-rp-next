@@ -8,6 +8,8 @@ from drivers.providers import DriverProvider
 MODE_AUTO = "auto"
 MODE_CHAT = "chat"
 MODE_REASONER = "reasoner"
+DEEPSEEK_MODEL_TYPE_DEFAULT = "default"
+DEEPSEEK_MODEL_TYPE_EXPERT = "expert"
 
 UMM_MODEL_IDS: tuple[str, ...] = (
     "intenserp-auto",
@@ -21,12 +23,23 @@ UMM_MODE_BY_MODEL_ID: Dict[str, str] = {
     "intenserp-chat": MODE_CHAT,
 }
 
+DEEPSEEK_UMM_EXPERT_MODE_BY_MODEL_ID: Dict[str, str] = {
+    "intenserp-expert-auto": MODE_AUTO,
+    "intenserp-expert-reasoner": MODE_REASONER,
+    "intenserp-expert-chat": MODE_CHAT,
+}
+
+DEEPSEEK_UMM_EXPERT_MODEL_IDS: tuple[str, ...] = tuple(DEEPSEEK_UMM_EXPERT_MODE_BY_MODEL_ID.keys())
+
 
 LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
     DriverProvider.DEEPSEEK: {
         "deepseek-auto": MODE_AUTO,
         "deepseek-chat": MODE_CHAT,
         "deepseek-reasoner": MODE_REASONER,
+        "deepseek-expert-auto": MODE_AUTO,
+        "deepseek-expert-chat": MODE_CHAT,
+        "deepseek-expert-reasoner": MODE_REASONER,
     },
     DriverProvider.GLM_CHAT: {
         "glm-auto": MODE_AUTO,
@@ -94,6 +107,15 @@ def is_umm_enabled(config_manager: Any) -> bool:
         return False
 
 
+def _get_universal_mode_map(provider: DriverProvider) -> Dict[str, str]:
+    if provider == DriverProvider.DEEPSEEK:
+        return {
+            **UMM_MODE_BY_MODEL_ID,
+            **DEEPSEEK_UMM_EXPERT_MODE_BY_MODEL_ID,
+        }
+    return UMM_MODE_BY_MODEL_ID
+
+
 def get_model_ids_for_provider(
     provider: DriverProvider,
     config_manager: Any,
@@ -101,7 +123,10 @@ def get_model_ids_for_provider(
     force_legacy: bool = False,
 ) -> list[str]:
     if (not force_legacy) and is_umm_enabled(config_manager):
-        return list(UMM_MODEL_IDS)
+        model_ids = list(UMM_MODEL_IDS)
+        if provider == DriverProvider.DEEPSEEK:
+            model_ids.extend(DEEPSEEK_UMM_EXPERT_MODEL_IDS)
+        return model_ids
     return get_legacy_model_ids(provider)
 
 
@@ -132,7 +157,7 @@ def is_supported_model_id(provider: DriverProvider, model: Any, config_manager: 
     if not normalized:
         return False
 
-    if is_umm_enabled(config_manager) and normalized in UMM_MODE_BY_MODEL_ID:
+    if is_umm_enabled(config_manager) and normalized in _get_universal_mode_map(provider):
         return True
 
     legacy_map = LEGACY_MODE_BY_PROVIDER.get(provider) or {}
@@ -169,7 +194,7 @@ def resolve_behavior_mode(model: Any, provider: DriverProvider) -> str:
     if not normalized:
         return MODE_AUTO
 
-    universal_mode = UMM_MODE_BY_MODEL_ID.get(normalized)
+    universal_mode = _get_universal_mode_map(provider).get(normalized)
     if universal_mode:
         return universal_mode
 
@@ -182,6 +207,20 @@ def resolve_behavior_mode(model: Any, provider: DriverProvider) -> str:
         return legacy_mode
 
     return MODE_AUTO
+
+
+def resolve_deepseek_model_type(model: Any, provider: DriverProvider) -> str:
+    normalized = str(model or "").strip().lower()
+    if provider != DriverProvider.DEEPSEEK or not normalized:
+        return DEEPSEEK_MODEL_TYPE_DEFAULT
+
+    if (
+        normalized in DEEPSEEK_UMM_EXPERT_MODE_BY_MODEL_ID
+        or normalized.startswith("deepseek-expert-")
+    ):
+        return DEEPSEEK_MODEL_TYPE_EXPERT
+
+    return DEEPSEEK_MODEL_TYPE_DEFAULT
 
 
 def build_openai_model_list(ids: Iterable[str], owned_by: str) -> List[Dict[str, Any]]:
