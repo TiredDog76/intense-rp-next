@@ -1082,6 +1082,8 @@ class BaseDriver(ABC):
         Closes the browser and playwright.
         """
         Logger.info(f"Closing {self.provider_label} Driver...")
+        # Tell any in-flight generation to unwind before we tear down the browser/session
+        self.request_abort()
         self.monitoring_active = False
         monitor_task = getattr(self, "_monitor_task", None)
         try:

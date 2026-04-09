@@ -1541,6 +1541,25 @@ class MainWindow(QMainWindow):
 
         self._schedule_queue_preview_refresh()
 
+    async def _wait_for_provider_queue_head_to_clear(
+        self,
+        provider: DriverProvider,
+        timeout_s: float = 5.0,
+    ) -> bool:
+        api = getattr(self, "api", None)
+        if api is None:
+            return True
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(float(timeout_s), 0.0)
+        while True:
+            current_entries = getattr(api, "current_entries_by_provider", None) or {}
+            if current_entries.get(provider) is None:
+                return True
+            if loop.time() >= deadline:
+                return False
+            await asyncio.sleep(0.1)
+
     def _set_settings_button_loading(self, loading: bool) -> None:
         loading = bool(loading)
         if self._settings_button_loading == loading:
@@ -1783,6 +1802,21 @@ class MainWindow(QMainWindow):
             self._update_status("Loadouts validation failed", "error")
             return
         try:
+            api = getattr(self, "api", None)
+            if api is not None and isinstance(provider, DriverProvider):
+                aborted = await api.abort_current_request_for_provider(
+                    provider,
+                    reason="Request aborted due to manual account switch.",
+                )
+                if aborted:
+                    Logger.warning(
+                        f"Queue: Aborted current {provider.value} request before account switch."
+                    )
+                    cleared = await self._wait_for_provider_queue_head_to_clear(provider, timeout_s=5.0)
+                    if not cleared:
+                        Logger.warning(
+                            f"Queue: Timed out waiting for {provider.value} request to clear before account switch."
+                        )
             success = await driver.ece_restart_with_rotation(
                 reason="manual account switch",
                 status_callback=lambda msg: self._update_status(msg, "info"),

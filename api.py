@@ -30,6 +30,10 @@ _RATE_LIMIT_LIKE_RE = re.compile(
     r"(rate\s*limit|too\s*many\s*requests|\b429\b|quota|limit\s*reached)",
     flags=re.IGNORECASE,
 )
+_NON_RETRYABLE_PROVIDER_ERROR_RE = re.compile(
+    r"(peak\s*hours)",
+    flags=re.IGNORECASE,
+)
 
 DEFAULT_MAX_REQUEST_QUEUE_SIZE = 128
 QueueStateListener = Callable[[], None]
@@ -94,6 +98,10 @@ def _payload_has_meaningful_content(payload: dict) -> bool:
 
 def _is_rate_limit_like_error(message: str) -> bool:
     return bool(_RATE_LIMIT_LIKE_RE.search(str(message or "")))
+
+
+def _is_non_retryable_provider_error(message: str) -> bool:
+    return bool(_NON_RETRYABLE_PROVIDER_ERROR_RE.search(str(message or "")))
 
 
 def _make_openai_error_sse_chunk(message: str) -> str:
@@ -558,32 +566,45 @@ class API:
         aborted_any = False
 
         for provider, entry in current_entries:
-            abort_event = getattr(entry, "abort_event", None)
-            if abort_event is not None:
-                try:
-                    abort_event.set()
-                except Exception:
-                    pass
+            aborted = await self.abort_current_request_for_provider(provider, reason=message)
+            aborted_any = aborted_any or aborted
 
+        return aborted_any
+
+    async def abort_current_request_for_provider(
+        self,
+        provider: DriverProvider,
+        reason: str | None = None,
+    ) -> bool:
+        entry = self.current_entries_by_provider.get(provider)
+        if entry is None:
+            return False
+
+        message = (reason or "Request aborted.").strip() or "Request aborted."
+        abort_event = getattr(entry, "abort_event", None)
+        if abort_event is not None:
             try:
-                self._get_driver_for_provider(provider).request_abort()
+                abort_event.set()
             except Exception:
                 pass
 
-            try:
-                await entry.response_queue.put(_make_openai_error_sse_chunk(message))
-            except Exception:
-                pass
+        try:
+            self._get_driver_for_provider(provider).request_abort()
+        except Exception:
+            pass
 
-            try:
-                await entry.response_queue.put(None)
-            except Exception:
-                pass
+        try:
+            await entry.response_queue.put(_make_openai_error_sse_chunk(message))
+        except Exception:
+            pass
 
-            aborted_any = True
+        try:
+            await entry.response_queue.put(None)
+        except Exception:
+            pass
 
         self._notify_queue_state_changed()
-        return aborted_any
+        return True
 
     async def cancel_queued_requests(self, reason: str | None = None) -> int:
         message = (reason or "Request cancelled.").strip() or "Request cancelled."
@@ -1180,7 +1201,11 @@ class API:
 
                         # No meaningful chunks were produced
                         is_final_attempt = attempt >= max_attempts
-                        if (not is_final_attempt) and (not forwarded_any):
+                        if (
+                            (not is_final_attempt)
+                            and (not forwarded_any)
+                            and (not _is_non_retryable_provider_error(early_error_message))
+                        ):
                             reason = early_error_message or "no meaningful output"
                             if early_error_message and _is_rate_limit_like_error(early_error_message):
                                 reason = f"rate-limit-like failure: {early_error_message}"

@@ -33,6 +33,12 @@ class GLMDriver(BaseDriver):
     CHAT_URL = "https://chat.z.ai/"
     AUTH_URL = "https://chat.z.ai/auth"
     CONVERSATION_URL_RE = re.compile(r"^https://chat\.z\.ai/c/([^/?#]+)", re.IGNORECASE)
+    PEAK_HOURS_TEXT = "currently in peak hours"
+    PEAK_HOURS_BODY_MARKERS = (
+        "currently in peak hours",
+        "switch to",
+        "intensifying the coordination of resources",
+    )
 
     REFRESH_AFTER_GENERATION_DELAY_S = 2.0
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
@@ -245,49 +251,102 @@ class GLMDriver(BaseDriver):
     def _normalize_model_label(value: str) -> str:
         return re.sub(r"\\s+", " ", str(value or "")).strip().lower()
 
-    async def _is_glm_model_selector_ready(self) -> bool:
+    async def _read_glm_model_selector_state(self) -> dict[str, Any]:
         if not self.page:
-            return False
+            return {"exists": False, "ready": False}
 
         expression = (
             "selector => {"
             "  const btn = document.querySelector(selector);"
-            "  if (!btn) return false;"
+            "  if (!btn) return { exists: false, ready: false };"
             "  const style = window.getComputedStyle(btn);"
-            "  if (!style || style.display === 'none' || style.visibility === 'hidden') return false;"
+            "  const className = (btn.className || '').toString();"
+            "  const classTokens = className.split(/\\s+/).filter(Boolean);"
             "  const rect = btn.getBoundingClientRect();"
-            "  if (!rect || rect.width <= 0 || rect.height <= 0) return false;"
-            "  if (btn.disabled) return false;"
-            "  return true;"
+            "  const visible = !!style && style.display !== 'none' && style.visibility !== 'hidden';"
+            "  const hasSize = !!rect && rect.width > 0 && rect.height > 0;"
+            "  const cursorDefault = classTokens.includes('cursor-default');"
+            "  const pointerEvents = ((style && style.pointerEvents) || '').toLowerCase();"
+            "  const disabled = !!btn.disabled;"
+            "  return {"
+            "    exists: true,"
+            "    visible,"
+            "    hasSize,"
+            "    disabled,"
+            "    cursorDefault,"
+            "    className,"
+            "    ariaDisabled: (btn.getAttribute('aria-disabled') || '').trim().toLowerCase(),"
+            "    hasDataDisabled: btn.hasAttribute('data-disabled'),"
+            "    pointerEvents,"
+            "    ready: visible && hasSize && !disabled && !cursorDefault && pointerEvents !== 'none'"
+            "  };"
             "}"
         )
         try:
-            ready = await self.page.evaluate(expression, self.MODEL_SELECTOR_BUTTON_SELECTOR)
+            state = await self.page.evaluate(expression, self.MODEL_SELECTOR_BUTTON_SELECTOR)
         except Exception as e:
             Logger.debug(f"GLM Chat: failed to read model selector readiness: {e}")
-            return False
-        return bool(ready)
+            return {"exists": False, "ready": False}
+
+        return state if isinstance(state, dict) else {"exists": False, "ready": False}
+
+    async def _is_glm_model_selector_ready(self) -> bool:
+        state = await self._read_glm_model_selector_state()
+        return bool(state.get("ready"))
 
     async def _wait_for_glm_model_selector_ready(self, timeout_ms: int = 10000) -> bool:
         if not self.page:
             return False
 
-        expression = (
-            "selector => {"
-            "  const btn = document.querySelector(selector);"
-            "  if (!btn) return false;"
-            "  const style = window.getComputedStyle(btn);"
-            "  if (!style || style.display === 'none' || style.visibility === 'hidden') return false;"
-            "  const rect = btn.getBoundingClientRect();"
-            "  if (!rect || rect.width <= 0 || rect.height <= 0) return false;"
-            "  if (btn.disabled) return false;"
-            "  return true;"
-            "}"
-        )
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            state = await self._read_glm_model_selector_state()
+            if state.get("ready"):
+                return True
+            if time.time() >= deadline:
+                Logger.debug(
+                    "GLM Chat: model selector stayed disabled "
+                    f"(class='{state.get('className', '')}', "
+                    f"aria-disabled='{state.get('ariaDisabled', '')}', "
+                    f"data-disabled={bool(state.get('hasDataDisabled'))})."
+                )
+                return False
+            await asyncio.sleep(0.2)
+ 
+    async def _click_glm_model_selector_button(self) -> bool:
+        if not self.page:
+            return False
+
+        button = self.page.locator(self.MODEL_SELECTOR_BUTTON_SELECTOR)
+        if await button.count() == 0:
+            Logger.warning("GLM Chat: model selector button not found.")
+            return False
+
+        # GLM sometimes leaves aria-disabled/data-disabled on this button a bit longer
+        # than the real UI lock. The cursor-default class tracks the clickable state more reliably.
+        state = await self._read_glm_model_selector_state()
+        if not state.get("ready"):
+            return False
+
         try:
-            await self.page.wait_for_function(expression, self.MODEL_SELECTOR_BUTTON_SELECTOR, timeout=int(timeout_ms))
+            await button.first.click(timeout=self._ui_timeout, force=True)
             return True
-        except Exception:
+        except Exception as e:
+            Logger.warning(f"GLM Chat: failed to click model selector button: {e}")
+
+        try:
+            clicked = await self.page.evaluate(
+                """(selector) => {
+                    const btn = document.querySelector(selector);
+                    if (!btn) return false;
+                    btn.click();
+                    return true;
+                }""",
+                self.MODEL_SELECTOR_BUTTON_SELECTOR,
+            )
+            return bool(clicked)
+        except Exception as e:
+            Logger.warning(f"GLM Chat: JS model selector click failed: {e}")
             return False
 
     async def _wait_and_open_glm_model_dropdown(self, timeout_ms: int = 10000) -> bool:
@@ -296,6 +355,12 @@ class GLMDriver(BaseDriver):
 
         deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
         while True:
+            if not await self._wait_for_glm_model_selector_ready(timeout_ms=min(self._ui_timeout, 1000)):
+                if time.time() >= deadline:
+                    return False
+                await asyncio.sleep(0.2)
+                continue
+
             if await self._open_glm_model_dropdown(timeout_ms=min(self._ui_timeout, 1000)):
                 return True
 
@@ -330,15 +395,7 @@ class GLMDriver(BaseDriver):
         if not self.page:
             return False
 
-        button = self.page.locator(self.MODEL_SELECTOR_BUTTON_SELECTOR)
-        if await button.count() == 0:
-            Logger.warning("GLM Chat: model selector button not found.")
-            return False
-
-        try:
-            await button.first.click(timeout=self._ui_timeout)
-        except Exception as e:
-            Logger.warning(f"GLM Chat: failed to click model selector button: {e}")
+        if not await self._click_glm_model_selector_button():
             return False
 
         # Wait for the dropdown content to appear.
@@ -369,9 +426,18 @@ class GLMDriver(BaseDriver):
             return
 
         try:
-            await button.first.click(timeout=self._ui_timeout)
+            await button.first.click(timeout=self._ui_timeout, force=True)
         except Exception:
-            return
+            try:
+                await self.page.evaluate(
+                    """(selector) => {
+                        const btn = document.querySelector(selector);
+                        if (btn) btn.click();
+                    }""",
+                    self.MODEL_SELECTOR_BUTTON_SELECTOR,
+                )
+            except Exception:
+                return
 
         try:
             await self.page.wait_for_selector(self.MODEL_DROPDOWN_SELECTOR, timeout=self._ui_timeout, state="hidden")
@@ -1407,6 +1473,99 @@ class GLMDriver(BaseDriver):
         Logger.debug("GLM Chat: Stop button not found.")
         return False
 
+    async def _detect_peak_hours_dialog(self, dismiss: bool = True) -> str | None:
+        if not self.page:
+            return None
+
+        try:
+            result = await self.page.evaluate(
+                """(args) => {
+                    const normalize = (value) => (value || "").toString().replace(/\\s+/g, " ").trim().toLowerCase();
+                    const dismissRequested = !!(args && args.dismissRequested);
+                    const targetText = normalize(args && args.peakHoursText);
+                    const modals = Array.from(document.querySelectorAll("div.modal"));
+                    const modal = modals.find((node) => {
+                        const titleNodes = Array.from(node.querySelectorAll("div"));
+                        return titleNodes.some((titleNode) => normalize(titleNode.textContent) === targetText);
+                    });
+                    if (!modal) {
+                        return { found: false, dismissed: false };
+                    }
+
+                    let dismissed = false;
+                    if (dismissRequested) {
+                        const buttons = Array.from(modal.querySelectorAll("button"));
+                        const cancelButton = buttons.find((button) => {
+                            const childDiv = button.querySelector("div");
+                            if (!childDiv) {
+                                return false;
+                            }
+                            const childSpan = childDiv.querySelector("span");
+                            return normalize(childSpan ? childSpan.textContent : "") === "cancel";
+                        });
+                        if (cancelButton) {
+                            cancelButton.click();
+                            dismissed = true;
+                        }
+                    }
+
+                    return {
+                        found: true,
+                        dismissed,
+                    };
+                }""",
+                {
+                    "dismissRequested": bool(dismiss),
+                    "peakHoursText": self.PEAK_HOURS_TEXT,
+                },
+            )
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed to inspect peak-hours dialog: {e}")
+            return None
+
+        if not isinstance(result, dict) or not result.get("found"):
+            return None
+
+        if result.get("dismissed"):
+            Logger.warning("GLM Chat: peak-hours dialog detected and dismissed with Cancel.")
+        else:
+            Logger.warning("GLM Chat: peak-hours dialog detected.")
+
+        return (
+            "GLM Chat is currently in peak hours. "
+            "The service looks overloaded right now, so please try again shortly."
+        )
+
+    @classmethod
+    def _extract_peak_hours_error_from_text(cls, text: str | None) -> str | None:
+        normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+        if not normalized:
+            return None
+
+        if any(marker in normalized for marker in cls.PEAK_HOURS_BODY_MARKERS):
+            return (
+                "GLM Chat is currently in peak hours. "
+                "The service looks overloaded right now, so please try again shortly."
+            )
+
+        return None
+
+    async def _wait_for_peak_hours_dialog(
+        self,
+        timeout_s: float = 2.0,
+        poll_interval_s: float = 0.2,
+    ) -> str | None:
+        deadline = time.time() + max(float(timeout_s), 0.0)
+        while True:
+            message = await self._detect_peak_hours_dialog(dismiss=True)
+            if message:
+                return message
+
+            if time.time() >= deadline:
+                return None
+
+            await asyncio.sleep(max(0.05, float(poll_interval_s)))
+
     async def _send_message(
         self, timeout: int | None = None, arm_event: asyncio.Event | None = None
     ) -> None:
@@ -2221,27 +2380,43 @@ class GLMDriver(BaseDriver):
             if aborted or intercepted_request_abort.is_set() or self.abort_requested:
                 Logger.warning("GLM Chat generation was aborted before completion.")
 
-            if (
+            should_report_empty_stream_error = bool(
                 (not aborted)
                 and (not intercepted_request_abort.is_set())
                 and (not self.abort_requested)
                 and (not emitted_openai_chunk)
+            )
+
+            if (
+                aborted or intercepted_request_abort.is_set() or self.abort_requested
             ):
-                # Surface a helpful error instead of silently returning an empty stream.
-                msg = (
-                    "GLM Chat: intercepted completion produced no streamable output. "
-                    "This may indicate a GLM API / frontend change."
+                try:
+                    await route.abort()
+                except Exception as e:
+                    Logger.error(f"GLM Chat: error finalizing route: {e}")
+            else:
+                try:
+                    await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
+                except Exception as e:
+                    Logger.error(f"GLM Chat: error finalizing route: {e}")
+
+            if should_report_empty_stream_error:
+                msg = self._extract_peak_hours_error_from_text(
+                    full_response_body.decode("utf-8", errors="ignore")
                 )
+                if msg:
+                    await asyncio.sleep(0.2)
+                    await self._wait_for_peak_hours_dialog(timeout_s=1.8)
+                else:
+                    msg = await self._wait_for_peak_hours_dialog(timeout_s=2.0)
+                if not msg:
+                    # Surface a helpful error instead of silently returning an empty stream.
+                    msg = (
+                        "GLM Chat: intercepted completion produced no streamable output. "
+                        "This may indicate a GLM API / frontend change."
+                    )
                 Logger.warning(msg)
                 response_queue.put_nowait(f"data: {json.dumps({'error': msg})}\n\n")
-
-            try:
-                if aborted or intercepted_request_abort.is_set() or self.abort_requested:
-                    await route.abort()
-                else:
-                    await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
-            except Exception as e:
-                Logger.error(f"GLM Chat: error finalizing route: {e}")
 
             await response_queue.put(None)
             intercepted_request_finished.set()
@@ -2396,6 +2571,11 @@ class GLMDriver(BaseDriver):
                 try:
                     await asyncio.wait_for(completion_started.wait(), timeout=20.0)
                 except asyncio.TimeoutError:
+                    peak_hours_message = await self._wait_for_peak_hours_dialog(timeout_s=2.0)
+                    if peak_hours_message:
+                        Logger.warning(peak_hours_message)
+                        yield f"data: {json.dumps({'error': peak_hours_message})}\n\n"
+                        return
                     Logger.error(
                         "GLM Chat: completion request was not observed. "
                         "The UI may have swallowed the click or the endpoint changed."
