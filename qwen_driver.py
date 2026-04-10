@@ -927,7 +927,7 @@ class QwenLMDriver(BaseDriver):
         return re.sub(r"\s+", " ", str(value or "")).strip().lower()
 
     @staticmethod
-    def _canonicalize_model_label(value: str) -> str:
+    def _canonicalize_label_text(value: str) -> str:
         normalized = QwenLMDriver._normalize_text(value)
         try:
             normalized = unicodedata.normalize("NFKC", normalized)
@@ -940,6 +940,10 @@ class QwenLMDriver(BaseDriver):
         except Exception:
             pass
         return re.sub(r"[^a-z0-9]+", "", normalized)
+
+    @staticmethod
+    def _canonicalize_model_label(value: str) -> str:
+        return QwenLMDriver._canonicalize_label_text(value)
 
     async def _read_current_qwen_model_label(self) -> str:
         if not self.page:
@@ -1688,6 +1692,198 @@ class QwenLMDriver(BaseDriver):
 
         return text
 
+    async def _wait_for_thinking_mode_label(self, desired_canon: str, timeout_s: float = 2.0) -> bool:
+        if not self.page:
+            return False
+
+        safe = str(desired_canon or "").strip()
+        if not safe:
+            return False
+
+        deadline = time.monotonic() + float(timeout_s or 0.0)
+        while time.monotonic() < deadline:
+            current = await self._read_thinking_mode()
+            if self._canonicalize_label_text(current) == safe:
+                return True
+            await asyncio.sleep(0.1)
+
+        return False
+
+    async def _read_visible_thinking_mode_candidates(self) -> List[str]:
+        if not self.page:
+            return []
+
+        seen: set[str] = set()
+        out: List[str] = []
+        labels = self.page.locator(self.THINKING_LABEL_SELECTOR)
+
+        count = 0
+        try:
+            count = await labels.count()
+        except Exception:
+            count = 0
+
+        for idx in range(min(count, 20)):
+            cand = labels.nth(idx)
+            try:
+                if not await cand.is_visible():
+                    continue
+            except Exception:
+                continue
+
+            try:
+                in_trigger = await cand.evaluate("el => !!el.closest('span.ant-select-selection-item')")
+            except Exception:
+                in_trigger = False
+            if in_trigger:
+                continue
+
+            try:
+                text = str(await cand.text_content() or "").strip()
+            except Exception:
+                continue
+            if not text or text in seen:
+                continue
+
+            seen.add(text)
+            out.append(text)
+
+        return out
+
+    async def _click_thinking_mode_option(self, target_label: str) -> bool:
+        if not self.page:
+            return False
+
+        wanted = str(target_label or "").strip()
+        wanted_canon = self._canonicalize_label_text(wanted)
+        if not wanted_canon:
+            return False
+
+        async def _try_dom_click() -> bool:
+            try:
+                clicked = await self.page.evaluate(
+                    "(labelSel, wantedCanon) => {"
+                    "  const canon = (value) => {"
+                    "    try {"
+                    "      return (value || '').toString().normalize('NFKC')"
+                    "        .replace(/[\\u200b\\u200c\\u200d\\ufeff]/g, '')"
+                    "        .replace(/[^a-z0-9]+/gi, '')"
+                    "        .toLowerCase();"
+                    "    } catch (e) {"
+                    "      return (value || '').toString().replace(/[^a-z0-9]+/gi, '').toLowerCase();"
+                    "    }"
+                    "  };"
+                    "  const isVisible = (el) => {"
+                    "    try {"
+                    "      if (!el) return false;"
+                    "      const rect = el.getBoundingClientRect();"
+                    "      if (!rect || rect.width <= 0 || rect.height <= 0) return false;"
+                    "      const style = window.getComputedStyle(el);"
+                    "      if (!style) return false;"
+                    "      if (style.display === 'none' || style.visibility === 'hidden') return false;"
+                    "      return true;"
+                    "    } catch (e) {"
+                    "      return false;"
+                    "    }"
+                    "  };"
+                    "  const labels = Array.from(document.querySelectorAll(labelSel)).filter(isVisible);"
+                    "  for (const label of labels) {"
+                    "    if (label.closest('span.ant-select-selection-item')) continue;"
+                    "    const raw = (label.textContent || '').toString().trim();"
+                    "    if (canon(raw) !== wantedCanon) continue;"
+                    "    const target = "
+                    "      label.closest('[role=\"option\"]') || "
+                    "      label.closest('div.ant-select-item-option') || "
+                    "      label.closest('div.qwen-select-thinking-label') || "
+                    "      label.parentElement || "
+                    "      label;"
+                    "    try { target.scrollIntoView({ block: 'center' }); } catch (e) {}"
+                    "    try { target.click(); return true; } catch (e) {}"
+                    "    try { label.click(); return true; } catch (e) {}"
+                    "  }"
+                    "  return false;"
+                    "}",
+                    self.THINKING_LABEL_SELECTOR,
+                    wanted_canon,
+                )
+            except Exception:
+                clicked = False
+            return bool(clicked)
+
+        async def _try_locator_click() -> bool:
+            labels = self.page.locator(self.THINKING_LABEL_SELECTOR)
+
+            count = 0
+            try:
+                count = await labels.count()
+            except Exception:
+                count = 0
+
+            for idx in range(min(count, 20)):
+                cand = labels.nth(idx)
+                try:
+                    if not await cand.is_visible():
+                        continue
+                except Exception:
+                    continue
+
+                try:
+                    in_trigger = await cand.evaluate("el => !!el.closest('span.ant-select-selection-item')")
+                except Exception:
+                    in_trigger = False
+                if in_trigger:
+                    continue
+
+                try:
+                    text = str(await cand.text_content() or "").strip()
+                except Exception:
+                    continue
+                if self._canonicalize_label_text(text) != wanted_canon:
+                    continue
+
+                option = cand.locator("xpath=ancestor::*[@role='option'][1]")
+                if await option.count() == 0:
+                    option = cand.locator("xpath=ancestor::div[contains(@class,'ant-select-item-option')][1]")
+                if await option.count() == 0:
+                    option = cand.locator("xpath=ancestor::div[contains(@class,'qwen-select-thinking-label')][1]")
+
+                target = option.first if await option.count() > 0 else cand
+
+                try:
+                    await target.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+
+                try:
+                    await target.click(timeout=2000)
+                    return True
+                except Exception:
+                    pass
+
+                try:
+                    await target.click(timeout=2000, force=True)
+                    return True
+                except Exception:
+                    pass
+
+                try:
+                    await target.evaluate("el => el.click()")
+                    return True
+                except Exception:
+                    continue
+
+            return False
+
+        deadline = time.monotonic() + 2.5
+        while time.monotonic() < deadline:
+            if await _try_dom_click():
+                return True
+            if await _try_locator_click():
+                return True
+            await asyncio.sleep(0.1)
+
+        return False
+
     async def _set_thinking_mode(self, mode: str) -> bool:
         if not self.page:
             return False
@@ -1696,8 +1892,9 @@ class QwenLMDriver(BaseDriver):
         if not wanted:
             return False
 
+        wanted_canon = self._canonicalize_label_text(wanted)
         current = await self._read_thinking_mode()
-        if self._normalize_text(current) == self._normalize_text(wanted):
+        if self._canonicalize_label_text(current) == wanted_canon:
             return True
 
         trigger = self.page.locator(self.THINKING_TRIGGER_SELECTOR)
@@ -1711,14 +1908,19 @@ class QwenLMDriver(BaseDriver):
             Logger.warning(f"QwenLM: failed to open thinking dropdown: {e}")
             return False
 
-        option = self.page.locator(self.THINKING_OPTIONS_SELECTOR).locator("div", has_text=wanted)
-        try:
-            await option.first.click(timeout=3000)
-            await asyncio.sleep(0.1)
+        clicked = await self._click_thinking_mode_option(wanted)
+        if clicked and await self._wait_for_thinking_mode_label(wanted_canon, timeout_s=2.0):
             return True
-        except Exception as e:
-            Logger.warning(f"QwenLM: failed to select thinking mode '{wanted}': {e}")
-            return False
+
+        visible = await self._read_visible_thinking_mode_candidates()
+        visible_suffix = f" Visible options: {visible}" if visible else ""
+        if clicked:
+            Logger.warning(
+                f"QwenLM: clicked thinking mode '{wanted}' but the selected label did not update.{visible_suffix}"
+            )
+        else:
+            Logger.warning(f"QwenLM: failed to find thinking mode '{wanted}' in the dropdown.{visible_suffix}")
+        return False
 
     async def set_deepthink_state(self, state: bool) -> None:
         # Qwen exposes Auto / Thinking / Fast. IntenseRP uses a boolean switch, so we map:
