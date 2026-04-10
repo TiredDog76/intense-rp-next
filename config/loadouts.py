@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from config.location import get_local_anchor_dir
+from config.migrator import migrate_glm_model_value
 from config.schema import SCHEMA, SettingField, SettingType
 from drivers.providers import DriverProvider, provider_options
 from utils.ip_utils import normalize_ip_list
@@ -369,7 +370,10 @@ def load_legacy_loadouts_from_file(path: Path) -> list[LoadoutDefinition]:
 
         settings: dict[str, Any] = {}
         for field_key, field in field_defs.items():
-            settings[field_key] = _validate_field_value(prefix, field, item.get(field_key))
+            value = item.get(field_key)
+            if provider is DriverProvider.GLM_CHAT and field_key == "model":
+                value = migrate_glm_model_value(value)
+            settings[field_key] = _validate_field_value(prefix, field, value)
 
         loadouts.append(
             LoadoutDefinition(

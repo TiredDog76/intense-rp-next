@@ -9,6 +9,29 @@ REMOVED_FIELDS = {
     ("experimental", "better_model_names"),
 }
 
+GLM_MODEL_RENAMES = {
+    "GLM-4.6": "GLM-5.1",
+}
+
+
+def migrate_glm_model_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    return GLM_MODEL_RENAMES.get(value, value)
+
+
+def migrate_glm_behavior_settings(raw_settings: Any) -> bool:
+    if not isinstance(raw_settings, dict):
+        return False
+
+    raw_model = raw_settings.get("model")
+    migrated_model = migrate_glm_model_value(raw_model)
+    if migrated_model == raw_model:
+        return False
+
+    raw_settings["model"] = migrated_model
+    return True
+
 
 class SettingsMigrator:
     @staticmethod
@@ -46,6 +69,23 @@ class SettingsMigrator:
         if isinstance(providers_credentials, dict):
             raw_provider = providers_credentials.get("provider")
             providers_credentials["provider"] = DriverProvider.from_setting(raw_provider).value
+
+        # Migration: removed GLM model labels -> current supported labels
+        migrate_glm_behavior_settings(settings.get("glm_behavior"))
+
+        loadouts_root = settings.get("loadouts")
+        if isinstance(loadouts_root, dict):
+            raw_definitions = loadouts_root.get("definitions")
+            if isinstance(raw_definitions, list):
+                for definition in raw_definitions:
+                    if not isinstance(definition, dict):
+                        continue
+                    raw_provider = definition.get("provider")
+                    if raw_provider is None:
+                        continue
+                    provider = DriverProvider.from_setting(str(raw_provider))
+                    if provider is DriverProvider.GLM_CHAT:
+                        migrate_glm_behavior_settings(definition.get("settings"))
 
         # Migration: account engine toggles moved from Experimental -> Providers & Credentials
         experimental = settings.get("experimental")

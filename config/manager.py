@@ -82,9 +82,11 @@ class ConfigManager:
             
             decrypted_data = self.cipher.decrypt(encrypted_data)
             self.settings = json.loads(decrypted_data.decode("utf-8"))
+            original_settings_json = json.dumps(self.settings, sort_keys=True)
             
             # Migrate settings
             self.settings = SettingsMigrator.migrate(self.settings)
+            settings_migrated = json.dumps(self.settings, sort_keys=True) != original_settings_json
             
             # Validate/Merge with schema to ensure all fields exist
             self._merge_defaults()
@@ -104,7 +106,7 @@ class ConfigManager:
             except Exception as exc:
                 Logger.warning(f"Legacy loadouts migration: skipped due to error: {exc}")
 
-            if loadouts_store_updated:
+            if settings_migrated or loadouts_store_updated:
                 self.save_settings()
             
         except Exception as e:

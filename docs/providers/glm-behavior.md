@@ -35,10 +35,6 @@ For GLM, these model IDs map to simple behavior presets:
     - **GLM-5V-Turbo**
     - **GLM-5**
     - **GLM-4.7**
-    - **GLM-4.6**
-
-    !!! tip "About GLM-4.6v"
-        GLM-4.6v exists, but IntenseRP intentionally does **not** select it (quality reasons for roleplay).
 
     !!! warning "Fallback behavior"
         If your selected model is not present in the dropdown (UI changes / rollout), IntenseRP logs a warning and selects the **first available** model instead.

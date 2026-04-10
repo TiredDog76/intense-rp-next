@@ -58,11 +58,10 @@ class GLMDriver(BaseDriver):
         "GLM-5-Turbo": "GLM-5-Turbo",
         "GLM-5V-Turbo": "GLM-5v-Turbo",
         "GLM-4.7": "glm-4.7",
-        "GLM-4.6": "GLM-4-6-API-V1",
     }
 
     # Models hidden behind a collapsible section in the dropdown
-    MODELS_IN_COLLAPSIBLE: set = {"GLM-5", "GLM-4.7", "GLM-4.6"}
+    MODELS_IN_COLLAPSIBLE: set = {"GLM-5", "GLM-4.7"}
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.GLM_CHAT)
