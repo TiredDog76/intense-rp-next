@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Callable, Optional, Tuple
 
 from PySide6.QtCore import Qt, QThread, Signal, QObject
-from PySide6.QtWidgets import QDialog, QFrame, QLabel, QProgressBar, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QFrame, QLabel, QVBoxLayout
 
 from ui.core.brand import BrandColors
+from ui.widgets.rounded_progress_bar import RoundedProgressBar
 
 
 class _WorkingWorker(QObject):
@@ -84,24 +85,10 @@ class WorkingDialog(QDialog):
         )
         layout.addWidget(self._status)
 
-        self._progress = QProgressBar()
+        self._progress = RoundedProgressBar()
         self._progress.setTextVisible(False)
         self._progress.setFixedHeight(14)
         self._progress.setRange(0, 0)  # indeterminate
-        self._progress.setStyleSheet(
-            f"""
-            QProgressBar {{
-                background-color: {BrandColors.SIDEBAR_BG};
-                border: 1px solid {BrandColors.INPUT_BORDER};
-                border-radius: 7px;
-                padding: 1px;
-            }}
-            QProgressBar::chunk {{
-                background-color: {BrandColors.ACCENT};
-                border-radius: 6px;
-            }}
-            """
-        )
         layout.addWidget(self._progress)
 
     def set_status(self, text: str) -> None:

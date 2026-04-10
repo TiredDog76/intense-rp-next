@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QMessageBox,
@@ -23,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
+from ui.widgets.rounded_progress_bar import RoundedProgressBar
 from utils.auto_update import AutoUpdateError, PreparedUpdate, prepare_update_from_github, DownloadProgress
 
 
@@ -192,25 +192,11 @@ class UpdateDownloadDialog(QDialog):
         )
         layout.addWidget(self._status_label)
 
-        self._progress = QProgressBar()
+        self._progress = RoundedProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.setTextVisible(False)
         self._progress.setFixedHeight(14)
-        self._progress.setStyleSheet(
-            f"""
-            QProgressBar {{
-                background-color: {BrandColors.SIDEBAR_BG};
-                border: 1px solid {BrandColors.INPUT_BORDER};
-                border-radius: 7px;
-                padding: 1px;
-            }}
-            QProgressBar::chunk {{
-                background-color: {BrandColors.ACCENT};
-                border-radius: 6px;
-            }}
-            """
-        )
         layout.addWidget(self._progress)
 
         self._details_label = QLabel("0 MB / ?  •  0 KB/s")
@@ -346,7 +332,6 @@ class UpdateDownloadDialog(QDialog):
                 thread.wait(1500)
             except Exception:
                 pass
-
     def _on_status(self, text: str) -> None:
         self._status_label.setText(text or "")
 

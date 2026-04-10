@@ -9,12 +9,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QProgressBar,
     QVBoxLayout,
     QWidget,
 )
 
 from ui.core.brand import BrandColors
+from ui.widgets.rounded_progress_bar import RoundedProgressBar
 from ui.widgets.components import Description, Divider, StyledButton
 from utils.browser_manager import (
     PatchrightCommandResult,
@@ -135,25 +135,11 @@ class BrowserManagerWindow(QMainWindow):
         )
         layout.addWidget(self.status_label)
 
-        self.progress = QProgressBar()
+        self.progress = RoundedProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
         self.progress.setFixedHeight(14)
-        self.progress.setStyleSheet(
-            f"""
-            QProgressBar {{
-                background-color: {BrandColors.SIDEBAR_BG};
-                border: 1px solid {BrandColors.INPUT_BORDER};
-                border-radius: 7px;
-                padding: 1px;
-            }}
-            QProgressBar::chunk {{
-                background-color: {BrandColors.ACCENT};
-                border-radius: 6px;
-            }}
-            """
-        )
         layout.addWidget(self.progress)
 
         layout.addWidget(Divider())
