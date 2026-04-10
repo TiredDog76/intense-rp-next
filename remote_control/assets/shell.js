@@ -28,14 +28,20 @@
   const loginStatus = document.getElementById("login-status");
   const homeStatus = document.getElementById("home-status");
   const hotswapStatus = document.getElementById("hotswap-status");
+  const modelSwitchStatus = document.getElementById("model-switch-status");
   const stopToggle = document.getElementById("stop-menu-toggle");
   const stopDropdown = document.getElementById("stop-dropdown");
   const restartAction = document.getElementById("restart-action");
   const switchAccountAction = document.getElementById("switch-account-action");
   const hotswapAction = document.getElementById("hotswap-action");
   const viewLogsButton = document.getElementById("view-logs-button");
+  const modelSwitchRow = document.getElementById("model-switch-row");
+  const modelSwitchButton = document.getElementById("model-switch-button");
+  const modelSwitchCurrentModel = document.getElementById("model-switch-current-model");
   const hotswapGrid = document.getElementById("hotswap-grid");
   const hotswapBackButton = document.getElementById("hotswap-back-button");
+  const modelSwitchList = document.getElementById("model-switch-list");
+  const modelSwitchBackButton = document.getElementById("model-switch-back-button");
   const consoleOutput = document.getElementById("console-output");
   const consolePlaceholder = document.getElementById("console-placeholder");
   const logsStatus = document.getElementById("logs-status");
@@ -118,11 +124,13 @@
     const remoteState = state.remoteState || {};
     const busy = Boolean(remoteState.busy);
     const canSwitchAccount = Boolean(remoteState.can_switch_account);
+    const modelSwitch = remoteState.model_switch || {};
     stopButton.disabled = busy;
     stopToggle.disabled = busy;
     restartAction.disabled = busy;
     switchAccountAction.disabled = busy || !canSwitchAccount;
     hotswapAction.disabled = busy;
+    modelSwitchButton.disabled = busy || !Boolean(modelSwitch.supported);
   }
 
   function renderHotswapTargets() {
@@ -142,6 +150,43 @@
         triggerAction("hotswap", { provider: target.name }, hotswapStatus);
       });
       hotswapGrid.appendChild(button);
+    });
+  }
+
+  function renderModelSwitchHomeState() {
+    const remoteState = state.remoteState || {};
+    const modelSwitch = remoteState.model_switch || {};
+    const supported = Boolean(modelSwitch.supported);
+    const currentModel = String(modelSwitch.current_model || "").trim();
+
+    modelSwitchRow.classList.toggle("hidden", !supported);
+    if (!supported) {
+      modelSwitchCurrentModel.textContent = "";
+      modelSwitchCurrentModel.classList.add("hidden");
+      return;
+    }
+
+    modelSwitchCurrentModel.textContent =
+      "Current Model: " + (currentModel || "Unknown");
+    modelSwitchCurrentModel.classList.remove("hidden");
+  }
+
+  function renderModelSwitchOptions() {
+    modelSwitchList.innerHTML = "";
+    const modelSwitch = (state.remoteState && state.remoteState.model_switch) || {};
+    const options = modelSwitch.options || [];
+    options.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "web-button web-button--secondary model-switch-list__button";
+      button.innerHTML =
+        '<span class="web-button__label">' +
+        escapeHtml(option.name) +
+        "</span>";
+      button.addEventListener("click", function () {
+        handleModelSwitchSelection(button, option.name);
+      });
+      modelSwitchList.appendChild(button);
     });
   }
 
@@ -198,6 +243,8 @@
     });
     updateHomeControls();
     renderHotswapTargets();
+    renderModelSwitchHomeState();
+    renderModelSwitchOptions();
   }
 
   async function completeAuthenticatedLoad(viewName) {
@@ -246,24 +293,66 @@
     }
   }
 
-  async function triggerAction(actionName, payload, statusElement) {
+  async function triggerAction(actionName, payload, statusElement, options) {
+    const actionOptions = options || {};
+    const shouldDisconnect = actionOptions.disconnect !== false;
+    const successView = actionOptions.successView || "";
     closeStopMenu();
     setStatus(statusElement, "", false);
     try {
-      await requestJson(apiUrl("/api/action/" + encodeURIComponent(actionName)), {
+      const response = await requestJson(apiUrl("/api/action/" + encodeURIComponent(actionName)), {
         method: "POST",
         headers: authHeaders(true),
         body: JSON.stringify(payload || {}),
         cache: "no-store",
       });
-      state.pendingView = "home";
-      showView("disconnected");
+      if (response && response.remote_state) {
+        state.remoteState = response.remote_state;
+        updateHomeControls();
+        renderHotswapTargets();
+        renderModelSwitchHomeState();
+        renderModelSwitchOptions();
+      }
+      if (shouldDisconnect) {
+        state.pendingView = "home";
+        showView("disconnected");
+      } else if (successView) {
+        showView(successView);
+      }
+      return true;
     } catch (error) {
       setStatus(
         statusElement,
         error && error.message ? error.message : "Action failed.",
         true
       );
+      return false;
+    }
+  }
+
+  function setModelSwitchBusyState(busy) {
+    const buttons = Array.from(modelSwitchList.querySelectorAll("button"));
+    buttons.forEach((button) => {
+      button.disabled = busy;
+    });
+    modelSwitchBackButton.disabled = busy;
+  }
+
+  async function handleModelSwitchSelection(button, modelName) {
+    const originalHtml = button.innerHTML;
+    setModelSwitchBusyState(true);
+    button.innerHTML = '<span class="web-button__label">Loading...</span>';
+
+    const ok = await triggerAction(
+      "switch-model",
+      { model: modelName },
+      modelSwitchStatus,
+      { disconnect: false, successView: "home" }
+    );
+
+    if (!ok) {
+      button.innerHTML = originalHtml;
+      setModelSwitchBusyState(false);
     }
   }
 
@@ -425,7 +514,13 @@
     closeStopMenu();
     showView("hotswap");
   });
+  modelSwitchButton.addEventListener("click", function () {
+    showView("model-switch");
+  });
   hotswapBackButton.addEventListener("click", function () {
+    showView("home");
+  });
+  modelSwitchBackButton.addEventListener("click", function () {
     showView("home");
   });
   logsFooterButton.addEventListener("click", function () {

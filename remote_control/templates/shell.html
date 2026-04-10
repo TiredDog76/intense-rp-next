@@ -39,6 +39,10 @@
           </div>
           {{ web_button("view-logs-button", "View Logs", variant="secondary", icon_url=asset_urls.icons.terminal, icon_alt="Logs") }}
         </div>
+        <div id="model-switch-row" class="model-switch-row hidden">
+          {{ web_button("model-switch-button", "Switch Models", variant="secondary", icon_url=asset_urls.icons.brain, icon_alt="Models", extra_classes="model-switch-row__button") }}
+          <p id="model-switch-current-model" class="model-switch-current-model hidden"></p>
+        </div>
         <p id="home-status" class="status-text"></p>
       </div>
     </section>
@@ -49,6 +53,15 @@
         <div id="hotswap-grid" class="hotswap-grid"></div>
         {{ web_button("hotswap-back-button", "Back", variant="secondary") }}
         <p id="hotswap-status" class="status-text"></p>
+      </div>
+    </section>
+
+    <section class="view hotswap-view" data-view="model-switch">
+      <div class="hotswap-view__panel">
+        <h1 class="hotswap-view__title">Select Model</h1>
+        <div id="model-switch-list" class="model-switch-list"></div>
+        {{ web_button("model-switch-back-button", "Back", variant="secondary") }}
+        <p id="model-switch-status" class="status-text"></p>
       </div>
     </section>
 

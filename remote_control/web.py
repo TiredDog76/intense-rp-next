@@ -35,6 +35,7 @@ class RemoteControlActions:
     restart: Callable[[], Awaitable[None]]
     switch_account: Callable[[], Awaitable[None]]
     hotswap: Callable[[str], Awaitable[None]]
+    switch_model: Callable[[str], Awaitable[None]]
     get_state: Callable[[], dict[str, Any]]
 
 
@@ -44,6 +45,7 @@ class RemoteLoginRequest(BaseModel):
 
 class RemoteActionRequest(BaseModel):
     provider: str | None = None
+    model: str | None = None
 
 
 class RemoteControlWeb:
@@ -95,6 +97,9 @@ class RemoteControlWeb:
             "icons/terminal.svg": resolve_resource_path(
                 "ui", "assets", "icons", "terminal.svg"
             ),
+            "icons/brain.svg": resolve_resource_path(
+                "ui", "assets", "icons", "sidebar", "brain.svg"
+            ),
             "fonts/Blinker-Regular.ttf": resolve_resource_path(
                 "ui", "fonts", "Blinker-Regular.ttf"
             ),
@@ -142,6 +147,10 @@ class RemoteControlWeb:
         @app.get(f"{self.BASE_PATH}/hotswap")
         async def remote_hotswap(raw_request: Request):
             return self._render_shell(raw_request, initial_view="hotswap")
+
+        @app.get(f"{self.BASE_PATH}/models")
+        async def remote_models(raw_request: Request):
+            return self._render_shell(raw_request, initial_view="model-switch")
 
         @app.get(f"{self.BASE_PATH}/disconnected")
         async def remote_disconnected(raw_request: Request):
@@ -226,6 +235,37 @@ class RemoteControlWeb:
                 action_coro = lambda provider_name=provider.value: self._actions.hotswap(
                     provider_name
                 )
+            elif action == "switch-model":
+                desired_model = str(payload.model or "").strip()
+                if not desired_model:
+                    raise HTTPException(status_code=400, detail="Invalid model")
+
+                model_switch = state.get("model_switch") or {}
+                if not bool(model_switch.get("supported")):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Switch Models is not available for the current provider",
+                    )
+
+                allowed_models = {
+                    str(item.get("name") or "")
+                    for item in (model_switch.get("options") or [])
+                    if isinstance(item, dict)
+                }
+                if desired_model not in allowed_models:
+                    raise HTTPException(status_code=400, detail="Model is unavailable")
+
+                try:
+                    await self._actions.switch_model(desired_model)
+                except Exception as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+                return {
+                    "ok": True,
+                    "disconnect": False,
+                    "action": action,
+                    "remote_state": self._build_remote_state(),
+                }
             else:
                 raise HTTPException(status_code=404, detail="Unknown action")
 
@@ -305,6 +345,7 @@ class RemoteControlWeb:
                 "chevron_right": self.asset_url("icons/chevron-right.svg"),
                 "stop": self.asset_url("icons/square.svg"),
                 "terminal": self.asset_url("icons/terminal.svg"),
+                "brain": self.asset_url("icons/brain.svg"),
             },
             "providers": provider_assets,
         }
@@ -396,12 +437,35 @@ class RemoteControlWeb:
                 }
             )
 
+        model_switch_provider = current_provider or DriverProvider.DEEPSEEK
+        current_model = str(raw_state.get("model_switch_current_model") or "").strip()
+        model_options: list[dict[str, Any]] = []
+        raw_model_options = raw_state.get("model_switch_options")
+        if isinstance(raw_model_options, list):
+            for raw_option in raw_model_options:
+                option_name = str(raw_option or "").strip()
+                if not option_name:
+                    continue
+                model_options.append(
+                    {
+                        "name": option_name,
+                        "icon_url": self.asset_url(
+                            f"providers/{model_switch_provider.key}.svg"
+                        ),
+                    }
+                )
+
         return {
             "running": bool(raw_state.get("running", True)),
             "busy": bool(raw_state.get("busy", False)),
             "can_switch_account": bool(raw_state.get("can_switch_account", False)),
             "current_provider": provider_name,
             "hotswap_targets": targets,
+            "model_switch": {
+                "supported": bool(raw_state.get("model_switch_supported", False)),
+                "current_model": current_model,
+                "options": model_options,
+            },
         }
 
     async def _run_deferred_action(

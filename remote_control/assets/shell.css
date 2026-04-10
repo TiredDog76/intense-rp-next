@@ -196,6 +196,10 @@ img {
   flex-wrap: wrap;
 }
 
+.panel--plain .controls-row {
+  margin-bottom: 10px;
+}
+
 .web-input {
   flex: 1 1 0;
   min-width: 240px;
@@ -378,6 +382,63 @@ img {
   padding: 12px 14px;
 }
 
+.model-switch-row {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-switch-row__button {
+  width: 100%;
+}
+
+.model-switch-current-model {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #333333;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.model-switch-list {
+  width: 100%;
+  max-width: 520px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.model-switch-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.model-switch-list::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.model-switch-list::-webkit-scrollbar-thumb {
+  background: #444444;
+  border-radius: var(--radius-scroll);
+}
+
+.model-switch-list__button {
+  min-width: 0;
+  width: 100%;
+  justify-content: center;
+  padding: 12px 16px;
+}
+
 .status-text {
   min-height: 18px;
   margin: 0;
@@ -543,6 +604,10 @@ img {
 
   .hotswap-grid {
     grid-template-columns: 1fr;
+  }
+
+  .model-switch-list {
+    max-height: 280px;
   }
 
   .console-output {

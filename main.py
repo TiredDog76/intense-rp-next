@@ -19,6 +19,7 @@ from drivers.factory import create_driver
 from drivers.providers import DriverProvider, provider_options
 from api import API
 from config.manager import ConfigManager
+from config.loadouts import get_behavior_category_for_provider, get_loadout_field_defs
 from remote_control import RemoteControlActions
 from ui.windows.settings_window import SettingsWindow
 from ui.windows.console_window import ConsoleWindow
@@ -807,6 +808,37 @@ class MainWindow(QMainWindow):
         current_value = current_provider.value if current_provider else "DeepSeek"
         return [provider_name for provider_name in provider_options() if provider_name != current_value]
 
+    def _get_remote_model_switch_provider(self) -> DriverProvider:
+        current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
+        provider = DriverProvider.from_setting(current)
+        return provider or DriverProvider.DEEPSEEK
+
+    def _get_remote_model_options(self, provider: DriverProvider | None = None) -> list[str]:
+        target_provider = provider or self._get_remote_model_switch_provider()
+        model_field = get_loadout_field_defs(target_provider).get("model")
+        raw_options = getattr(model_field, "options", None) or []
+        options: list[str] = []
+        for raw_option in raw_options:
+            option = str(raw_option or "").strip()
+            if option:
+                options.append(option)
+        return options
+
+    def _provider_supports_remote_model_switch(self, provider: DriverProvider | None = None) -> bool:
+        return bool(self._get_remote_model_options(provider))
+
+    def _get_remote_current_model(self, provider: DriverProvider | None = None) -> str:
+        target_provider = provider or self._get_remote_model_switch_provider()
+        behavior_category = get_behavior_category_for_provider(target_provider)
+        if not behavior_category:
+            return ""
+
+        try:
+            value = self.config_manager.get_setting(behavior_category, "model")
+        except Exception:
+            value = None
+        return str(value or "").strip()
+
     def _loadouts_feature_enabled(self) -> bool:
         return bool(self.config_manager.get_setting("experimental", "enable_loadouts"))
 
@@ -833,12 +865,16 @@ class MainWindow(QMainWindow):
         current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
         current_provider = DriverProvider.from_setting(current)
         current_value = current_provider.value if current_provider else "DeepSeek"
+        model_switch_provider = current_provider or DriverProvider.DEEPSEEK
         return {
             "running": self._are_services_running(),
             "busy": self._is_services_busy(),
             "can_switch_account": self._can_switch_account(),
             "current_provider": current_value,
             "hotswap_targets": self._get_hotswap_targets(),
+            "model_switch_supported": self._provider_supports_remote_model_switch(model_switch_provider),
+            "model_switch_current_model": self._get_remote_current_model(model_switch_provider),
+            "model_switch_options": self._get_remote_model_options(model_switch_provider),
         }
 
     def _update_tray_menu_state(self) -> None:
@@ -1937,6 +1973,119 @@ class MainWindow(QMainWindow):
     async def _remote_hotswap(self, provider_name: str) -> None:
         await self._hotswap_to_provider_impl(provider_name)
 
+    async def _apply_remote_model_switch(
+        self,
+        provider: DriverProvider,
+        runtime_driver: object,
+        desired_model: str,
+    ) -> None:
+        desired = str(desired_model or "").strip()
+        if not desired:
+            raise RuntimeError("Model name cannot be empty.")
+
+        if provider == DriverProvider.GLM_CHAT:
+            apply_model = getattr(runtime_driver, "apply_configured_model", None)
+            if not callable(apply_model):
+                raise RuntimeError("GLM Chat does not expose model switching right now.")
+
+            await apply_model(wait_until_ready=True)
+
+            read_label = getattr(runtime_driver, "_read_current_glm_model_label", None)
+            normalize_label = getattr(runtime_driver, "_normalize_model_label", None)
+            if callable(read_label) and callable(normalize_label):
+                current_label = str(await read_label() or "").strip()
+                if normalize_label(current_label) != normalize_label(desired):
+                    shown = current_label or "Unknown"
+                    raise RuntimeError(
+                        f"GLM Chat did not confirm the requested model switch (still showing '{shown}')."
+                    )
+            return
+
+        if provider == DriverProvider.QWEN_LM:
+            apply_model = getattr(runtime_driver, "apply_configured_model", None)
+            if not callable(apply_model):
+                raise RuntimeError("QwenLM does not expose model switching right now.")
+
+            await apply_model()
+
+            read_label = getattr(runtime_driver, "_read_current_qwen_model_label", None)
+            canonicalize_label = getattr(runtime_driver, "_canonicalize_model_label", None)
+            if callable(read_label) and callable(canonicalize_label):
+                current_label = str(await read_label() or "").strip()
+                if canonicalize_label(current_label) != canonicalize_label(desired):
+                    shown = current_label or "Unknown"
+                    raise RuntimeError(
+                        f"QwenLM did not confirm the requested model switch (still showing '{shown}')."
+                    )
+            return
+
+        if provider == DriverProvider.AI_STUDIO:
+            apply_model = getattr(runtime_driver, "apply_configured_model", None)
+            if not callable(apply_model):
+                raise RuntimeError("Google AI Studio does not expose model switching right now.")
+
+            await apply_model()
+
+            read_label = getattr(runtime_driver, "_read_current_model_id", None)
+            canonicalize_text = getattr(runtime_driver, "_canonicalize_text", None)
+            model_config_for_label = getattr(runtime_driver, "_model_config_for_label", None)
+            expected_label = desired
+            if callable(model_config_for_label):
+                expected_config = model_config_for_label(desired)
+                expected_label = str(expected_config.get("base_id") or desired).strip()
+
+            if callable(read_label) and callable(canonicalize_text):
+                current_label = str(await read_label() or "").strip()
+                if canonicalize_text(current_label) != canonicalize_text(expected_label):
+                    shown = current_label or "Unknown"
+                    raise RuntimeError(
+                        "Google AI Studio did not confirm the requested model switch "
+                        f"(still showing '{shown}')."
+                    )
+            return
+
+        raise RuntimeError(f"{provider.value} does not support remote model switching.")
+
+    async def _remote_switch_model(self, model_name: str) -> None:
+        provider = self._get_remote_model_switch_provider()
+        if not self._provider_supports_remote_model_switch(provider):
+            raise RuntimeError(f"{provider.value} does not support remote model switching.")
+
+        desired_model = str(model_name or "").strip()
+        if not desired_model:
+            raise RuntimeError("Model name cannot be empty.")
+
+        allowed_models = self._get_remote_model_options(provider)
+        if desired_model not in allowed_models:
+            raise RuntimeError(f"'{desired_model}' is not available for {provider.value}.")
+
+        behavior_category = get_behavior_category_for_provider(provider)
+        if not behavior_category:
+            raise RuntimeError(f"{provider.value} does not expose a switchable model setting.")
+
+        runtime_driver = self._get_current_runtime_driver()
+        runtime_provider = getattr(runtime_driver, "provider", None)
+        if runtime_driver is None or runtime_provider != provider:
+            raise RuntimeError(
+                f"{provider.value} is not the active runtime driver, so its model cannot be switched right now."
+            )
+
+        previous_model = self.config_manager.get_setting(behavior_category, "model")
+        previous_label = str(previous_model or "").strip()
+        if previous_label == desired_model:
+            return
+
+        Logger.info(f"Remote Control: switching {provider.value} model to '{desired_model}'.")
+        self.config_manager.set_setting(behavior_category, "model", desired_model)
+        self.config_manager.save_settings()
+
+        try:
+            await self._apply_remote_model_switch(provider, runtime_driver, desired_model)
+        except Exception:
+            self.config_manager.set_setting(behavior_category, "model", previous_model)
+            self.config_manager.save_settings()
+            raise
+
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")
         sync_animations_disabled_from_config(self.config_manager)
@@ -2254,6 +2403,7 @@ class MainWindow(QMainWindow):
                     restart=self._remote_restart_services,
                     switch_account=self._remote_switch_account,
                     hotswap=self._remote_hotswap,
+                    switch_model=self._remote_switch_model,
                     get_state=self._get_remote_control_state,
                 ),
             )
