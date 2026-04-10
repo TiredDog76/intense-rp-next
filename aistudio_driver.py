@@ -189,6 +189,10 @@ class AIStudioDriver(BaseDriver):
         "textarea",
     ]
     SAFETY_RATINGS_BUTTON_SELECTOR = "button[aria-label*='Safety Ratings']"
+    RUN_SAFETY_SETTINGS_PANEL_SELECTOR = "div.run-safety-settings"
+    RUN_SAFETY_SETTINGS_CLOSE_SELECTORS = [
+        "button[aria-label='Close Run Safety Settings']",
+    ]
     SYSTEM_INSTRUCTIONS_STORAGE_KEY = "aistudio_all_system_instructions"
     SYSTEM_INSTRUCTIONS_CARD_SELECTORS = [
         "button.system-instructions-card",
@@ -2150,6 +2154,60 @@ class AIStudioDriver(BaseDriver):
         if not ok:
             Logger.warning("Google AI Studio: maxOutputTokens input was not found.")
 
+    async def _close_safety_settings_panel(self, panel=None) -> bool:
+        """Close the run safety settings panel, preferring the explicit close button."""
+        if not self.page:
+            return False
+
+        current_panel = panel
+        if current_panel is None:
+            current_panel = await self._find_first_visible(
+                [self.RUN_SAFETY_SETTINGS_PANEL_SELECTOR],
+                timeout_ms=0,
+            )
+        if current_panel is None:
+            return True
+
+        close_button = await self._find_first_visible_within(
+            current_panel,
+            self.RUN_SAFETY_SETTINGS_CLOSE_SELECTORS,
+            timeout_ms=1000,
+        )
+        if close_button is not None:
+            for _ in range(3):
+                await self._ui_settle_pause(0.16)
+                try:
+                    await close_button.click(timeout=2000, force=True)
+                except Exception:
+                    try:
+                        await close_button.evaluate("el => el.click()")
+                    except Exception:
+                        pass
+
+                await self._ui_settle_pause(0.16)
+                if (
+                    await self._find_first_visible(
+                        [self.RUN_SAFETY_SETTINGS_PANEL_SELECTOR],
+                        timeout_ms=0,
+                    )
+                    is None
+                ):
+                    return True
+
+        try:
+            await self.page.keyboard.press("Escape")
+        except Exception:
+            pass
+
+        await self._ui_settle_pause(0.12)
+        return (
+            await self._find_first_visible(
+                [self.RUN_SAFETY_SETTINGS_PANEL_SELECTOR],
+                timeout_ms=0,
+            )
+            is None
+        )
+
     async def _set_safety_filters_low(self) -> bool:
         """Open the safety settings panel and move all sliders to their lowest values."""
         if not self.page:
@@ -2178,14 +2236,23 @@ class AIStudioDriver(BaseDriver):
             return False
 
         try:
-            await self.page.wait_for_selector("div.run-safety-settings", timeout=5000, state="visible")
+            await self.page.wait_for_selector(
+                self.RUN_SAFETY_SETTINGS_PANEL_SELECTOR,
+                timeout=5000,
+                state="visible",
+            )
         except Exception:
+            Logger.warning("Google AI Studio: safety settings panel did not appear.")
+            return False
+
+        panel = await self._find_first_visible([self.RUN_SAFETY_SETTINGS_PANEL_SELECTOR], timeout_ms=0)
+        if panel is None:
             Logger.warning("Google AI Studio: safety settings panel did not appear.")
             return False
 
         try:
             await self.page.evaluate(
-                """() => {
+                """(panelSelector) => {
                     const isVisible = (el) => {
                         if (!el) return false;
                         const rect = el.getBoundingClientRect();
@@ -2195,7 +2262,7 @@ class AIStudioDriver(BaseDriver):
                         return style.visibility !== 'hidden' && style.display !== 'none';
                     };
                     const sliders = Array.from(
-                        document.querySelectorAll('div.run-safety-settings input[type="range"]')
+                        document.querySelectorAll(`${panelSelector} input[type="range"]`)
                     ).filter(isVisible);
                     for (const slider of sliders) {
                         const min = slider.getAttribute('min');
@@ -2231,16 +2298,16 @@ class AIStudioDriver(BaseDriver):
                             slider.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX, clientY }));
                         } catch (e) {}
                     }
-                }"""
+                }""",
+                self.RUN_SAFETY_SETTINGS_PANEL_SELECTOR,
             )
         except Exception as e:
             Logger.warning(f"Google AI Studio: failed to lower safety filters: {e}")
             return False
 
-        try:
-            await self.page.keyboard.press("Escape")
-        except Exception:
-            pass
+        if not await self._close_safety_settings_panel(panel):
+            Logger.warning("Google AI Studio: safety settings panel did not close cleanly.")
+            return False
         return True
 
     async def _ensure_safety_filters_initialized(self) -> None:
