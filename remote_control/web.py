@@ -156,13 +156,22 @@ class RemoteControlWeb:
         async def remote_disconnected(raw_request: Request):
             return self._render_shell(raw_request, initial_view="disconnected")
 
+        @app.get(f"{self.BASE_PATH}/assets/v/{{asset_version}}/{{asset_path:path}}")
         @app.get(f"{self.BASE_PATH}/assets/{{asset_path:path}}")
-        async def remote_asset(asset_path: str, raw_request: Request):
+        async def remote_asset(
+            asset_path: str,
+            raw_request: Request,
+            asset_version: str | None = None,
+        ):
             self._ensure_route_available(raw_request)
-            asset = self._asset_map.get(str(asset_path or "").strip())
+            resolved_asset_path = self._resolve_requested_asset_path(
+                asset_path,
+                asset_version=asset_version,
+            )
+            asset = self._asset_map.get(resolved_asset_path)
             if asset is None or not asset.is_file():
                 raise HTTPException(status_code=404, detail="Asset not found")
-            return FileResponse(asset)
+            return FileResponse(asset, headers=self._build_no_store_headers())
 
         @app.post(f"{self.BASE_PATH}/api/login")
         async def remote_login(payload: RemoteLoginRequest, raw_request: Request):
@@ -316,7 +325,7 @@ class RemoteControlWeb:
             ),
         )
         response = HTMLResponse(html)
-        response.headers["Cache-Control"] = "no-store"
+        response.headers.update(self._build_no_store_headers())
         return response
 
     def _build_template_assets(self) -> dict[str, Any]:
@@ -351,7 +360,43 @@ class RemoteControlWeb:
         }
 
     def asset_url(self, asset_path: str) -> str:
-        return f"{self.BASE_PATH}/assets/{asset_path}"
+        asset_version = self._resolve_asset_version(asset_path)
+        return f"{self.BASE_PATH}/assets/v/{asset_version}/{asset_path}"
+
+    @staticmethod
+    def _build_no_store_headers() -> dict[str, str]:
+        return {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+
+    def _resolve_asset_version(self, asset_path: str) -> str:
+        asset = self._asset_map.get(str(asset_path or "").strip())
+        if asset is None:
+            return "static"
+
+        try:
+            stat_result = asset.stat()
+        except OSError:
+            return "static"
+
+        return f"{stat_result.st_mtime_ns:x}-{stat_result.st_size:x}"
+
+    @staticmethod
+    def _resolve_requested_asset_path(
+        asset_path: str,
+        *,
+        asset_version: str | None = None,
+    ) -> str:
+        normalized_path = str(asset_path or "").strip().lstrip("/")
+        if asset_version is not None or not normalized_path.startswith("v/"):
+            return normalized_path
+
+        parts = normalized_path.split("/", 2)
+        if len(parts) == 3 and parts[1]:
+            return parts[2]
+        return normalized_path
 
     def _ensure_route_available(self, raw_request: Request) -> None:
         if not self.is_enabled():
