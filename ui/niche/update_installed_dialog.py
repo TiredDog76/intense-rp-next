@@ -15,6 +15,8 @@ from ui.core.icons import IconType, IconUtils
 REMOTE_LATEST_SURVEY_URL = (
     "https://raw.githubusercontent.com/LyubomirT/intense-rp-next/refs/heads/v2-rewrite/latestsurvey.txt"
 )
+DISCORD_INVITE_URL = "https://discord.gg/4Gvjk2RdsK"
+_POST_UPDATE_ACTIONS = {"discord", "survey", "none"}
 
 
 def _format_version(version: str) -> str:
@@ -32,6 +34,7 @@ def _format_version(version: str) -> str:
 class UpdateInstalledInfo:
     version: str
     release_notes_url: str
+    post_update: str = "survey"
 
 
 class UpdateInstalledDialog(QDialog):
@@ -40,8 +43,8 @@ class UpdateInstalledDialog(QDialog):
     def __init__(self, info: UpdateInstalledInfo, parent=None):
         super().__init__(parent)
         self._info = info
-        self._vote_button: QPushButton | None = None
-        self._vote_button_original_text: str = ""
+        self._post_update_button: QPushButton | None = None
+        self._post_update_button_original_text: str = ""
         self._survey_link_ready.connect(self._on_survey_link_ready, Qt.QueuedConnection)
 
         self.setWindowTitle("Update Installed")
@@ -94,7 +97,10 @@ class UpdateInstalledDialog(QDialog):
         layout.addWidget(subtitle)
 
         layout.addWidget(self._build_button_row())
-        layout.addWidget(self._build_vote_button())
+
+        post_update_button = self._build_post_update_button()
+        if post_update_button is not None:
+            layout.addWidget(post_update_button)
 
     def _build_button_row(self) -> QFrame:
         row = QFrame()
@@ -153,10 +159,17 @@ class UpdateInstalledDialog(QDialog):
 
         return row
 
-    def _build_vote_button(self) -> QPushButton:
-        vote_btn = QPushButton("Vote for the Next Update")
-        vote_btn.setCursor(Qt.PointingHandCursor)
-        vote_btn.setStyleSheet(
+    def _build_post_update_button(self) -> QPushButton | None:
+        action = _normalize_post_update_action(self._info.post_update)
+        if action == "none":
+            self._post_update_button = None
+            return None
+
+        button_text = "Join our Discord!" if action == "discord" else "Vote for the Next Update"
+
+        button = QPushButton(button_text)
+        button.setCursor(Qt.PointingHandCursor)
+        button.setStyleSheet(
             f"""
             QPushButton {{
                 background-color: transparent;
@@ -181,19 +194,23 @@ class UpdateInstalledDialog(QDialog):
             """
         )
 
-        icon = IconUtils.get_icon(
-            "external-link.svg",
-            color=BrandColors.TEXT_PRIMARY,
-            size=16,
-            widget=vote_btn,
-        )
-        if not icon.isNull():
-            vote_btn.setIcon(icon)
-            vote_btn.setIconSize(QSize(16, 16))
+        if action == "discord":
+            IconUtils.apply_icon(button, IconType.DISCORD, BrandColors.TEXT_PRIMARY, size=16)
+            button.setIconSize(QSize(16, 16))
+        else:
+            icon = IconUtils.get_icon(
+                "external-link.svg",
+                color=BrandColors.TEXT_PRIMARY,
+                size=16,
+                widget=button,
+            )
+            if not icon.isNull():
+                button.setIcon(icon)
+                button.setIconSize(QSize(16, 16))
 
-        vote_btn.clicked.connect(self._on_vote_clicked)
-        self._vote_button = vote_btn
-        return vote_btn
+        button.clicked.connect(self._on_post_update_clicked)
+        self._post_update_button = button
+        return button
 
     def _on_release_notes_clicked(self) -> None:
         url = (self._info.release_notes_url or "").strip()
@@ -201,13 +218,18 @@ class UpdateInstalledDialog(QDialog):
             QDesktopServices.openUrl(QUrl(url))
         self.accept()
 
-    def _on_vote_clicked(self) -> None:
-        btn = getattr(self, "_vote_button", None)
+    def _on_post_update_clicked(self) -> None:
+        action = _normalize_post_update_action(self._info.post_update)
+        if action == "discord":
+            QDesktopServices.openUrl(QUrl(DISCORD_INVITE_URL))
+            return
+
+        btn = getattr(self, "_post_update_button", None)
         if btn is None:
             return
 
         btn.setEnabled(False)
-        self._vote_button_original_text = btn.text()
+        self._post_update_button_original_text = btn.text()
         btn.setText("Loading survey link...")
 
         def worker() -> None:
@@ -224,12 +246,12 @@ class UpdateInstalledDialog(QDialog):
 
     @Slot(object, object)
     def _on_survey_link_ready(self, url: object, error_text: object) -> None:
-        btn = getattr(self, "_vote_button", None)
+        btn = getattr(self, "_post_update_button", None)
         if btn is None:
             return
 
         btn.setEnabled(True)
-        btn.setText(self._vote_button_original_text or "Vote for the Next Update")
+        btn.setText(self._post_update_button_original_text or "Vote for the Next Update")
 
         url_str = str(url or "").strip()
         if url_str:
@@ -267,3 +289,10 @@ def _fetch_latest_survey_url(timeout_s: float = 5.0) -> str:
     if not url:
         raise ValueError("The survey link file is empty or invalid.")
     return url
+
+
+def _normalize_post_update_action(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in _POST_UPDATE_ACTIONS:
+        return normalized
+    return "survey"

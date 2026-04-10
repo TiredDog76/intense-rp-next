@@ -45,7 +45,7 @@ from utils.providers_in_parallel import (
     is_parallel_runtime_active,
 )
 from utils.update_checker import check_for_updates
-from utils.version_file import parse_version_file
+from utils.version_file import VersionFileInfo, parse_version_file
 from utils.resource_path import resolve_resource_path
 from utils.docs_links import DOCS_BASE_URL
 from utils.diagnostics import (
@@ -269,15 +269,30 @@ def _install_widget_debug_logging(app: QApplication) -> Path | None:
     return log_path
 
 
-def get_version():
-    """Read version from version.json file."""
+def get_version_info() -> VersionFileInfo:
+    """Read version metadata from version.json."""
     version_file = resolve_resource_path("version.json")
     try:
         with open(version_file, "r", encoding="utf-8") as f:
-            info = parse_version_file(f.read(), default_version="unknown", default_auto_updateable=True, default_severity=2)
-            return info.version.strip() or "unknown"
+            return parse_version_file(
+                f.read(),
+                default_version="unknown",
+                default_auto_updateable=True,
+                default_severity=2,
+            )
     except FileNotFoundError:
-        return "unknown"
+        return parse_version_file(
+            "",
+            default_version="unknown",
+            default_auto_updateable=True,
+            default_severity=2,
+        )
+
+
+def get_version():
+    """Read version from version.json file."""
+    info = get_version_info()
+    return info.version.strip() or "unknown"
 
 
 POSTUPDATE_FLAG_FILENAME = "postupdate_notes_url.txt"
@@ -309,9 +324,16 @@ def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
         return None
 
     try:
-        version = get_version()
+        version_info = get_version_info()
     except Exception:
-        version = "unknown"
+        version_info = parse_version_file(
+            "",
+            default_version="unknown",
+            default_auto_updateable=True,
+            default_severity=2,
+        )
+
+    version = version_info.version.strip() or "unknown"
 
     try:
         release_notes_url = _release_notes_url_for_version(version)
@@ -323,7 +345,11 @@ def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
     except Exception:
         pass
 
-    return UpdateInstalledInfo(version=version, release_notes_url=release_notes_url)
+    return UpdateInstalledInfo(
+        version=version,
+        release_notes_url=release_notes_url,
+        post_update=version_info.post_update,
+    )
 
 
 class MainWindow(QMainWindow):
@@ -569,9 +595,16 @@ class MainWindow(QMainWindow):
         self._post_update_info = _consume_postupdate_installed_info()
         if self._post_update_info is None and fake_update:
             try:
-                version = get_version()
+                version_info = get_version_info()
             except Exception:
-                version = "unknown"
+                version_info = parse_version_file(
+                    "",
+                    default_version="unknown",
+                    default_auto_updateable=True,
+                    default_severity=2,
+                )
+
+            version = version_info.version.strip() or "unknown"
 
             try:
                 release_notes_url = _release_notes_url_for_version(version)
@@ -581,6 +614,7 @@ class MainWindow(QMainWindow):
             self._post_update_info = UpdateInstalledInfo(
                 version=str(version or "unknown"),
                 release_notes_url=str(release_notes_url or ""),
+                post_update=version_info.post_update,
             )
         self._maybe_show_update_installed_dialog()
 

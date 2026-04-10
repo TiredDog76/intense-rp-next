@@ -4,12 +4,16 @@ from dataclasses import dataclass
 import json
 from typing import Any
 
+DEFAULT_POST_UPDATE_ACTION = "survey"
+_POST_UPDATE_ACTIONS = {"discord", "survey", "none"}
+
 
 @dataclass(frozen=True)
 class VersionFileInfo:
     version: str
     auto_updateable: bool
     severity: int  # 1-4
+    post_update: str  # discord | survey | none
 
 
 def parse_version_file(
@@ -18,6 +22,7 @@ def parse_version_file(
     default_version: str = "unknown",
     default_auto_updateable: bool = True,
     default_severity: int = 2,
+    default_post_update: str = DEFAULT_POST_UPDATE_ACTION,
     strict: bool = False,
 ) -> VersionFileInfo:
     """
@@ -28,6 +33,7 @@ def parse_version_file(
     - version: SemVer-like string
     - aua: boolean (auto-updateable?)
     - severity: integer 1-4
+    - pu: post-update action (discord, survey, none)
     """
 
     value = (text or "").strip()
@@ -38,6 +44,7 @@ def parse_version_file(
             version=default_version,
             auto_updateable=default_auto_updateable,
             severity=_clamp_severity(default_severity, default=default_severity),
+            post_update=_coerce_post_update(default_post_update, default=default_post_update),
         )
 
     try:
@@ -61,7 +68,15 @@ def parse_version_file(
     severity_raw = payload.get("severity", default_severity)
     severity = _clamp_severity(_coerce_int(severity_raw, default_severity), default=default_severity)
 
-    return VersionFileInfo(version=version_str, auto_updateable=aua, severity=severity)
+    post_update_raw = payload.get("pu", payload.get("post_update", default_post_update))
+    post_update = _coerce_post_update(post_update_raw, default=default_post_update)
+
+    return VersionFileInfo(
+        version=version_str,
+        auto_updateable=aua,
+        severity=severity,
+        post_update=post_update,
+    )
 
 
 def _coerce_bool(value: Any, default: bool) -> bool:
@@ -95,3 +110,14 @@ def _clamp_severity(value: int, *, default: int) -> int:
     except Exception:
         return default
     return severity if 1 <= severity <= 4 else default
+
+
+def _coerce_post_update(value: Any, *, default: str) -> str:
+    normalized_default = str(default or DEFAULT_POST_UPDATE_ACTION).strip().lower() or DEFAULT_POST_UPDATE_ACTION
+    if normalized_default not in _POST_UPDATE_ACTIONS:
+        normalized_default = DEFAULT_POST_UPDATE_ACTION
+
+    normalized = str(value or "").strip().lower()
+    if normalized in _POST_UPDATE_ACTIONS:
+        return normalized
+    return normalized_default
