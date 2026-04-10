@@ -13,6 +13,7 @@ This page covers the "maintenance" side of IntenseRP Next v2: where settings liv
 These controls are spread across a few of the newer Settings sections:
 
 - :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** (profiles + session cleanup)
+- :material-arrow-right: **Settings** → **Provider and Login** → **Browser Environment** (locale + optional timezone override)
 - :material-arrow-right: **Settings** → **Advanced** → **Config Storage** (config directory location)
 - :material-arrow-right: **Settings** → **Interface** → **Main Window** / **Updates** (queue panel, hotswap button, version checks)
 - :material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Logging Levels** (per-target log severity)
@@ -38,6 +39,28 @@ Next time you start the app, it loads that same profile, so you usually won't se
 
 !!! tip "Best Reliability"
     Keep **Auto Login** enabled as a fallback. If your session expires, Persistent Sessions won't help, but Auto Login will still sign you in automatically.
+
+---
+
+## :material-earth: Browser Locale and Timezone
+
+IntenseRP can now nudge provider pages toward a more predictable browser environment at launch time.
+
+:material-arrow-right: **Settings** → **Provider and Login** → **Browser Environment**
+
+There are two knobs here:
+
+- **Preferred Browser Locale** defaults to **English (en-US)**. This uses Playwright's locale emulation, which affects things like `navigator.language`, the `Accept-Language` header, and locale-sensitive formatting.
+- **Browser Timezone** is optional and defaults to **System Default**. Right now the built-in override is **New York (`America/New_York`)**.
+
+This is intentionally a best-effort hint. Locale can help with providers that otherwise open in a non-English UI, especially on fresh sessions. IntenseRP requires the locale to be English for all drivers to work (because of some hooks we rely on), so this can be reasonable to set even if you don't care about the locale itself.
+
+!!! warning "It doesn't guarantee a perfect environment"
+    - Saved site preferences, account preferences, cookies, or local storage can still override it.
+    - Timezone spoofing only changes what the browser reports. It does **not** change your IP geolocation, so forcing the wrong timezone can sometimes make a site more suspicious, not less.
+
+!!! note "Practical recommendation"
+    Keeping the locale on **English (en-US)** is pretty reasonable for IntenseRP, because **all** drivers currently expect English UI text anyway. The timezone override is more situational, so it's left off by default.
 
 ---
 

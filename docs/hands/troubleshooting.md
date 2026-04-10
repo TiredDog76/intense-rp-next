@@ -178,6 +178,8 @@ Fix:
 2. **Reload the provider page** after changing the language (F5 / Ctrl+R).
 3. In IntenseRP, click **Retry** on the language prompt (or click **Stop** then **Start**).
 
+If this keeps happening on fresh launches, check **Settings** -> **Provider and Login** -> **Browser Environment**. The browser locale now defaults to **English (en-US)**, which can help, but saved provider/account language preferences can still override it.
+
 ---
 
 ## :material-timer-sand: Requests are slow / appear to hang

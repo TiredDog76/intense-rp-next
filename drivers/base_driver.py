@@ -22,6 +22,12 @@ class BaseDriver(ABC):
     _browser_install_verified: bool = False
     _browser_install_lock: asyncio.Lock | None = None
     _browser_executable_path: str | None = None
+    _BROWSER_LOCALE_MAP: dict[str, str] = {
+        "English (en-US)": "en-US",
+    }
+    _BROWSER_TIMEZONE_MAP: dict[str, str] = {
+        "New York (America/New_York)": "America/New_York",
+    }
 
     def __init__(self, config_manager: Any, provider: DriverProvider):
         self.config_manager = config_manager
@@ -635,6 +641,38 @@ class BaseDriver(ABC):
         """
         return True
 
+    def _get_browser_context_options(self) -> dict[str, Any]:
+        """
+        Build shared browser-context options for provider launches.
+
+        We prefer Playwright's first-class context emulation instead of raw
+        Chromium flags so the behavior stays consistent for both persistent and
+        non-persistent sessions.
+        """
+        options: dict[str, Any] = {}
+
+        try:
+            locale_setting = str(
+                self.config_manager.get_setting("system_settings", "browser_locale") or ""
+            ).strip()
+        except Exception:
+            locale_setting = ""
+        locale = self._BROWSER_LOCALE_MAP.get(locale_setting)
+        if locale:
+            options["locale"] = locale
+
+        try:
+            timezone_setting = str(
+                self.config_manager.get_setting("system_settings", "browser_timezone") or ""
+            ).strip()
+        except Exception:
+            timezone_setting = ""
+        timezone_id = self._BROWSER_TIMEZONE_MAP.get(timezone_setting)
+        if timezone_id:
+            options["timezone_id"] = timezone_id
+
+        return options
+
     def _get_persistent_profile_dir(self) -> str:
         config_dir = getattr(self.config_manager, "config_dir", None)
         pair = getattr(self, "_ece_active_pair", None)
@@ -943,6 +981,17 @@ class BaseDriver(ABC):
             persistent_sessions = bool(
                 self.config_manager.get_setting("system_settings", "persistent_sessions")
             )
+            browser_context_options = self._get_browser_context_options()
+
+            if browser_context_options.get("locale"):
+                Logger.info(
+                    f"Provider browser locale override enabled: {browser_context_options['locale']}"
+                )
+            if browser_context_options.get("timezone_id"):
+                Logger.info(
+                    "Provider browser timezone override enabled: "
+                    f"{browser_context_options['timezone_id']}"
+                )
 
             if persistent_sessions:
                 user_data_dir = self._get_persistent_profile_dir()
@@ -954,7 +1003,9 @@ class BaseDriver(ABC):
 
                     os.makedirs(user_data_dir, exist_ok=True)
                     self.context = await self.playwright.chromium.launch_persistent_context(
-                        user_data_dir, headless=False
+                        user_data_dir,
+                        headless=False,
+                        **browser_context_options,
                     )
                     context_browser = getattr(self.context, "browser", None)
                     self.browser = context_browser() if callable(context_browser) else context_browser
@@ -962,11 +1013,11 @@ class BaseDriver(ABC):
                     Logger.error(f"Failed to launch persistent context: {e}")
                     Logger.warning("Falling back to non-persistent session...")
                     self.browser = await self.playwright.chromium.launch(headless=False)
-                    self.context = await self.browser.new_context()
+                    self.context = await self.browser.new_context(**browser_context_options)
             else:
                 Logger.info("Launching Chromium...")
                 self.browser = await self.playwright.chromium.launch(headless=False)
-                self.context = await self.browser.new_context()
+                self.context = await self.browser.new_context(**browser_context_options)
 
             try:
                 pages = getattr(self.context, "pages", [])

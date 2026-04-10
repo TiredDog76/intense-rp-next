@@ -1281,6 +1281,33 @@ SCHEMA = [
                 docs_anchor="persistent-sessions",
             ),
             SettingField(
+                key="browser_locale",
+                label="Preferred Browser Locale",
+                type=SettingType.DROPDOWN,
+                default="English (en-US)",
+                options=["System Default", "English (en-US)"],
+                tooltip=(
+                    "Best-effort browser locale override for provider pages. "
+                    "English helps with providers that expect English UI text, "
+                    "but saved site/account language can still win."
+                ),
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="browser-locale-and-timezone",
+            ),
+            SettingField(
+                key="browser_timezone",
+                label="Browser Timezone",
+                type=SettingType.DROPDOWN,
+                default="System Default",
+                options=["System Default", "New York (America/New_York)"],
+                tooltip=(
+                    "Optional browser timezone override. Leave this on System Default "
+                    "unless you specifically want provider pages to report New York time."
+                ),
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="browser-locale-and-timezone",
+            ),
+            SettingField(
                 key="delete_persistent_profile_row",
                 label="Delete Profile",
                 type=SettingType.ROW,
@@ -1860,7 +1887,7 @@ SETTINGS_SECTIONS = [
         key="provider_login",
         label="Provider and Login",
         icon="key.svg",
-        card_keys=["provider_choice", "sign_in_accounts", "saved_sessions"],
+        card_keys=["provider_choice", "sign_in_accounts", "saved_sessions", "browser_environment"],
     ),
     SettingSection(
         key="provider_behavior",
@@ -1924,6 +1951,17 @@ SETTINGS_CARDS = {
             ("system_settings", "persistent_sessions"),
             ("system_settings", "delete_persistent_profile_row"),
             ("system_settings", "clear_all_persistent_profiles"),
+        ],
+    ),
+    "browser_environment": SettingCard(
+        key="browser_environment",
+        title="Browser Environment",
+        description=(
+            "Launch-time browser overrides for provider pages, especially helpful for non-English systems."
+        ),
+        field_refs=[
+            ("system_settings", "browser_locale"),
+            ("system_settings", "browser_timezone"),
         ],
     ),
     "provider_defaults": SettingCard(
