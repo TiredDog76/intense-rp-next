@@ -53,6 +53,7 @@ class GLMDriver(BaseDriver):
     MODEL_DROPDOWN_ID = "f8T9iEf1QC"
     MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
     MODEL_DATA_VALUE_BY_FRIENDLY: Dict[str, str] = {
+        "GLM-5.1": "GLM-5.1",
         "GLM-5": "glm-5",
         "GLM-5-Turbo": "GLM-5-Turbo",
         "GLM-5V-Turbo": "GLM-5v-Turbo",
@@ -61,7 +62,7 @@ class GLMDriver(BaseDriver):
     }
 
     # Models hidden behind a collapsible section in the dropdown
-    MODELS_IN_COLLAPSIBLE: set = {"GLM-4.7", "GLM-4.6"}
+    MODELS_IN_COLLAPSIBLE: set = {"GLM-5", "GLM-4.7", "GLM-4.6"}
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.GLM_CHAT)

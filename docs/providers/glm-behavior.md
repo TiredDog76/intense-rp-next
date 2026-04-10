@@ -30,9 +30,10 @@ For GLM, these model IDs map to simple behavior presets:
 
     Supported options:
 
-    - **GLM-5** (recommended default)
+    - **GLM-5.1** (recommended for rp)
     - **GLM-5-Turbo**
     - **GLM-5V-Turbo**
+    - **GLM-5**
     - **GLM-4.7**
     - **GLM-4.6**
 
