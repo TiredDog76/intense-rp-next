@@ -22,6 +22,14 @@ _SEMVER_RE = re.compile(
     r"(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
     r"\s*$"
 )
+_REV_SUFFIX_RE = re.compile(r"^rev(?P<number>0|[1-9]\d*)$", re.IGNORECASE)
+_PROJECT_RELEASE_ORDER = {
+    "": 0,
+    "update": 1,
+    "major": 1,
+    "patch": 2,
+    "rev": 3,
+}
 
 
 @dataclass(frozen=True)
@@ -48,6 +56,30 @@ def _parse_semver(version: str) -> Tuple[Tuple[int, int, int], Optional[Tuple[st
     return (major, minor, patch), prerelease_parts
 
 
+def _parse_project_release_stage(
+    prerelease: Optional[Tuple[str, ...]],
+) -> Optional[Tuple[int, int]]:
+    """
+    Recognize IntenseRP's release suffixes so same-core hotfix tags sort in the
+    order they are actually published instead of plain alphabetical order.
+    """
+    if prerelease is None:
+        return _PROJECT_RELEASE_ORDER[""], 0
+
+    if len(prerelease) != 1:
+        return None
+
+    token = prerelease[0].strip().lower()
+    if token in {"update", "major", "patch"}:
+        return _PROJECT_RELEASE_ORDER[token], 0
+
+    rev_match = _REV_SUFFIX_RE.fullmatch(token)
+    if rev_match is not None:
+        return _PROJECT_RELEASE_ORDER["rev"], int(rev_match.group("number"))
+
+    return None
+
+
 def compare_versions(a: str, b: str) -> int:
     """
     Compare two SemVer-like version strings.
@@ -62,6 +94,18 @@ def compare_versions(a: str, b: str) -> int:
 
     if a_core != b_core:
         return -1 if a_core < b_core else 1
+
+    a_stage = _parse_project_release_stage(a_pre)
+    b_stage = _parse_project_release_stage(b_pre)
+
+    if a_stage is not None or b_stage is not None:
+        if a_stage is None:
+            return -1
+        if b_stage is None:
+            return 1
+        if a_stage != b_stage:
+            return -1 if a_stage < b_stage else 1
+        return 0
 
     if a_pre is None and b_pre is None:
         return 0

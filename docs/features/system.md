@@ -252,6 +252,8 @@ When you check for updates, IntenseRP downloads the latest `version.json` from G
 
 IntenseRP compares only `version` to decide if an update is available. `aua` can disable Auto-Update for specific releases.
 
+For the project's same-version hotfix tags, the checker treats the suffixes as release steps in this order: plain release -> `-update`/`-major` -> `-patch` -> `-revN`.
+
 !!! note "Requires internet access"
     If GitHub is blocked (network restrictions, firewall, captive portal), update checks will fail.
 
