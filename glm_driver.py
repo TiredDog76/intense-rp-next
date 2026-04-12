@@ -33,11 +33,12 @@ class GLMDriver(BaseDriver):
     CHAT_URL = "https://chat.z.ai/"
     AUTH_URL = "https://chat.z.ai/auth"
     CONVERSATION_URL_RE = re.compile(r"^https://chat\.z\.ai/c/([^/?#]+)", re.IGNORECASE)
-    PEAK_HOURS_TEXT = "currently in peak hours"
-    PEAK_HOURS_BODY_MARKERS = (
-        "currently in peak hours",
-        "switch to",
-        "intensifying the coordination of resources",
+    MODEL_CONCURRENCY_LIMIT_CODE = "MODEL_CONCURRENCY_LIMIT"
+    MODEL_CAPACITY_TEXT_MARKERS = (
+        "model_concurrency_limit",
+        "currently at capacity",
+        "peak hours",
+        "switch to another model",
     )
 
     REFRESH_AFTER_GENERATION_DELAY_S = 2.0
@@ -173,13 +174,19 @@ class GLMDriver(BaseDriver):
         except asyncio.CancelledError:
             return
 
+        await self._reload_chat_page("Refresh After Generation enabled")
+
+    async def _reload_chat_page(self, reason: str) -> None:
+        if not self.page:
+            return
+
         try:
             if self.page.is_closed():
                 return
         except Exception:
             pass
 
-        Logger.info("GLM Chat: Refresh After Generation enabled, reloading page...")
+        Logger.info(f"GLM Chat: {reason}, reloading page...")
 
         try:
             await self.page.reload(wait_until="domcontentloaded", timeout=45000)
@@ -201,6 +208,45 @@ class GLMDriver(BaseDriver):
                 Logger.warning("GLM Chat: after reload, Sign in was detected - you may need to log in again.")
         except Exception:
             pass
+
+    async def _refresh_page_after_capacity_error(self) -> None:
+        if not self.page:
+            return
+
+        try:
+            if self.page.is_closed():
+                return
+        except Exception:
+            pass
+
+        Logger.info("GLM Chat: Model capacity error detected, returning to main chat page...")
+
+        try:
+            await self.page.goto(self.CHAT_URL, wait_until="domcontentloaded", timeout=45000)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            Logger.warning(f"GLM Chat: failed to return to main chat page after capacity error: {e}")
+            return
+
+        try:
+            await self._wait_for_chat_shell_ready(timeout_ms=60000)
+        except Exception as e:
+            Logger.warning(f"GLM Chat: main chat page loaded but shell was not ready after capacity error: {e}")
+            return
+
+        try:
+            if await self._chat_page_contains_sign_in():
+                Logger.warning("GLM Chat: after capacity-error recovery, Sign in was detected - you may need to log in again.")
+        except Exception:
+            pass
+
+    def _reset_generation_state(self) -> None:
+        self.current_abort_event = None
+        self.abort_requested = False
+        self.current_model = None
+        self.current_send_deepthink = None
+        self.thinking_active = False
 
     @property
     def required_ui_language_label(self) -> str:
@@ -931,13 +977,78 @@ class GLMDriver(BaseDriver):
         Logger.info(log_label)
         await self._send_message(timeout=send_timeout, arm_event=arm_event)
 
+    async def _send_text_request_with_capacity_guard(
+        self,
+        message: str,
+        *,
+        send_timeout: int | None,
+        log_label: str,
+    ) -> str | None:
+        if not self.page:
+            await self._send_text_request(
+                message,
+                send_timeout=send_timeout,
+                log_label=log_label,
+            )
+            return None
+
+        def response_matches(response: Any) -> bool:
+            try:
+                url = str(response.url or "")
+            except Exception:
+                url = ""
+            if "/api/v2/chat/completions" not in url:
+                return False
+
+            try:
+                method = str(response.request.method or "").upper()
+            except Exception:
+                method = ""
+            return method == "POST"
+
+        try:
+            async with self.page.expect_response(response_matches, timeout=10000) as response_info:
+                await self._send_text_request(
+                    message,
+                    send_timeout=send_timeout,
+                    log_label=log_label,
+                )
+            response = await response_info.value
+        except Exception as e:
+            Logger.debug(f"GLM Chat: no completion response observed during guarded send: {e}")
+            return None
+
+        try:
+            await asyncio.wait_for(response.finished(), timeout=3.0)
+        except asyncio.TimeoutError:
+            return None
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed waiting for guarded completion response to finish: {e}")
+            return None
+
+        try:
+            response_text = await asyncio.wait_for(response.text(), timeout=1.0)
+        except asyncio.TimeoutError:
+            return None
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed reading guarded completion response body: {e}")
+            return None
+
+        capacity_error_message = self._extract_model_capacity_error_from_text(response_text)
+        if not capacity_error_message:
+            return None
+
+        Logger.warning(capacity_error_message)
+        await self._refresh_page_after_capacity_error()
+        return capacity_error_message
+
     async def _run_repetition_buster(
         self,
         *,
         effective_deepthink: bool,
         enable_search: bool,
         auto_delete_after_send: bool = False,
-    ) -> None:
+    ) -> str | None:
         Logger.info(
             "Repetition Buster (GLM): duplicate prompt detected. Sending a 128-character "
             "cache-buster prompt in a throwaway chat first..."
@@ -947,14 +1058,17 @@ class GLMDriver(BaseDriver):
             enable_search=enable_search,
             log_label="Repetition Buster (GLM): opening throwaway chat...",
         )
-        await self._send_text_request(
+        capacity_error_message = await self._send_text_request_with_capacity_guard(
             self._generate_repetition_buster_text(128),
             send_timeout=self._msg_send_timeout,
             log_label="Repetition Buster (GLM): sending cache-buster prompt...",
         )
+        if capacity_error_message:
+            return capacity_error_message
         await asyncio.sleep(self._post_delay_s)
         if auto_delete_after_send:
             await self._auto_delete_current_chat(log_context="Repetition Buster (GLM)")
+        return None
 
     def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
         normalized_url = str(url or "").strip()
@@ -1473,98 +1587,44 @@ class GLMDriver(BaseDriver):
         Logger.debug("GLM Chat: Stop button not found.")
         return False
 
-    async def _detect_peak_hours_dialog(self, dismiss: bool = True) -> str | None:
-        if not self.page:
-            return None
-
-        try:
-            result = await self.page.evaluate(
-                """(args) => {
-                    const normalize = (value) => (value || "").toString().replace(/\\s+/g, " ").trim().toLowerCase();
-                    const dismissRequested = !!(args && args.dismissRequested);
-                    const targetText = normalize(args && args.peakHoursText);
-                    const modals = Array.from(document.querySelectorAll("div.modal"));
-                    const modal = modals.find((node) => {
-                        const titleNodes = Array.from(node.querySelectorAll("div"));
-                        return titleNodes.some((titleNode) => normalize(titleNode.textContent) === targetText);
-                    });
-                    if (!modal) {
-                        return { found: false, dismissed: false };
-                    }
-
-                    let dismissed = false;
-                    if (dismissRequested) {
-                        const buttons = Array.from(modal.querySelectorAll("button"));
-                        const cancelButton = buttons.find((button) => {
-                            const childDiv = button.querySelector("div");
-                            if (!childDiv) {
-                                return false;
-                            }
-                            const childSpan = childDiv.querySelector("span");
-                            return normalize(childSpan ? childSpan.textContent : "") === "cancel";
-                        });
-                        if (cancelButton) {
-                            cancelButton.click();
-                            dismissed = true;
-                        }
-                    }
-
-                    return {
-                        found: true,
-                        dismissed,
-                    };
-                }""",
-                {
-                    "dismissRequested": bool(dismiss),
-                    "peakHoursText": self.PEAK_HOURS_TEXT,
-                },
-            )
-        except Exception as e:
-            Logger.debug(f"GLM Chat: failed to inspect peak-hours dialog: {e}")
-            return None
-
-        if not isinstance(result, dict) or not result.get("found"):
-            return None
-
-        if result.get("dismissed"):
-            Logger.warning("GLM Chat: peak-hours dialog detected and dismissed with Cancel.")
-        else:
-            Logger.warning("GLM Chat: peak-hours dialog detected.")
-
+    @classmethod
+    def _build_model_capacity_error_message(cls) -> str:
         return (
-            "GLM Chat is currently in peak hours. "
-            "The service looks overloaded right now, so please try again shortly."
+            "GLM Chat is currently at capacity. "
+            "Please try again later or switch to another model."
         )
 
     @classmethod
-    def _extract_peak_hours_error_from_text(cls, text: str | None) -> str | None:
+    def _extract_model_capacity_error_from_data(cls, data: Any) -> str | None:
+        if not isinstance(data, dict):
+            return None
+
+        raw_error = data.get("error")
+        code = ""
+        detail = ""
+        if isinstance(raw_error, dict):
+            code = str(raw_error.get("code") or "").strip().upper()
+            detail = str(raw_error.get("detail") or raw_error.get("message") or "").strip()
+        else:
+            detail = str(raw_error or "").strip()
+
+        normalized_detail = re.sub(r"\s+", " ", detail).strip().lower()
+        if code == cls.MODEL_CONCURRENCY_LIMIT_CODE:
+            return cls._build_model_capacity_error_message()
+        if normalized_detail and any(marker in normalized_detail for marker in cls.MODEL_CAPACITY_TEXT_MARKERS):
+            return cls._build_model_capacity_error_message()
+        return None
+
+    @classmethod
+    def _extract_model_capacity_error_from_text(cls, text: str | None) -> str | None:
         normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
         if not normalized:
             return None
 
-        if any(marker in normalized for marker in cls.PEAK_HOURS_BODY_MARKERS):
-            return (
-                "GLM Chat is currently in peak hours. "
-                "The service looks overloaded right now, so please try again shortly."
-            )
+        if any(marker in normalized for marker in cls.MODEL_CAPACITY_TEXT_MARKERS):
+            return cls._build_model_capacity_error_message()
 
         return None
-
-    async def _wait_for_peak_hours_dialog(
-        self,
-        timeout_s: float = 2.0,
-        poll_interval_s: float = 0.2,
-    ) -> str | None:
-        deadline = time.time() + max(float(timeout_s), 0.0)
-        while True:
-            message = await self._detect_peak_hours_dialog(dismiss=True)
-            if message:
-                return message
-
-            if time.time() >= deadline:
-                return None
-
-            await asyncio.sleep(max(0.05, float(poll_interval_s)))
 
     async def _send_message(
         self, timeout: int | None = None, arm_event: asyncio.Event | None = None
@@ -2014,11 +2074,15 @@ class GLMDriver(BaseDriver):
             )
 
         if repetition_buster_enabled and prompt_matches_last:
-            await self._run_repetition_buster(
+            repetition_buster_error = await self._run_repetition_buster(
                 effective_deepthink=bool(effective_deepthink),
                 enable_search=bool(enable_search),
                 auto_delete_after_send=auto_delete_enabled,
             )
+            if repetition_buster_error:
+                self._reset_generation_state()
+                yield f"data: {json.dumps({'error': repetition_buster_error})}\n\n"
+                return
 
         async def handle_route(route):
             nonlocal completion_claimed, intercepted_activity_count, intercepted_response
@@ -2067,6 +2131,7 @@ class GLMDriver(BaseDriver):
             openai_usage: dict[str, Any] | None = None
             openai_usage_emitted = False
             openai_finish_emitted = False
+            capacity_error_message: str | None = None
 
             try:
                 count_tokens_setting = self.config_manager.get_setting("glm_behavior", "count_tokens")
@@ -2155,7 +2220,8 @@ class GLMDriver(BaseDriver):
                 openai_usage_emitted = True
 
             def process_sse_line(line: str) -> None:
-                nonlocal thinking_emitted, answer_emitted, glm_block_active, openai_usage, openai_finish_emitted
+                nonlocal thinking_emitted, answer_emitted, glm_block_active, openai_usage
+                nonlocal openai_finish_emitted, capacity_error_message
                 line = line.strip()
                 if not line.startswith("data:"):
                     return
@@ -2179,6 +2245,10 @@ class GLMDriver(BaseDriver):
 
                 data = payload.get("data")
                 if not isinstance(data, dict):
+                    return
+
+                capacity_error_message = self._extract_model_capacity_error_from_data(data)
+                if capacity_error_message:
                     return
 
                 phase = str(data.get("phase") or "").strip().lower()
@@ -2331,6 +2401,11 @@ class GLMDriver(BaseDriver):
                                         )
                                     except Exception:
                                         continue
+                                    if capacity_error_message:
+                                        break
+
+                                if capacity_error_message:
+                                    break
 
                                 # Periodically compact the buffer to avoid unbounded growth
                                 if text_buffer_pos > 8192:
@@ -2338,9 +2413,10 @@ class GLMDriver(BaseDriver):
                                     text_buffer_pos = 0
 
                             # Flush any final SSE line if the stream didn't end with a newline
-                            tail = bytes(text_buffer[text_buffer_pos:])
-                            if tail.strip():
-                                process_sse_line(tail.decode("utf-8", errors="ignore"))
+                            if not capacity_error_message:
+                                tail = bytes(text_buffer[text_buffer_pos:])
+                                if tail.strip():
+                                    process_sse_line(tail.decode("utf-8", errors="ignore"))
                             text_buffer.clear()
                             text_buffer_pos = 0
 
@@ -2348,6 +2424,7 @@ class GLMDriver(BaseDriver):
                                 (not aborted)
                                 and (not intercepted_request_abort.is_set())
                                 and (not self.abort_requested)
+                                and (not capacity_error_message)
                                 and count_tokens_enabled
                                 and (openai_usage is not None)
                                 and (not openai_usage_emitted)
@@ -2384,6 +2461,7 @@ class GLMDriver(BaseDriver):
                 (not aborted)
                 and (not intercepted_request_abort.is_set())
                 and (not self.abort_requested)
+                and (not capacity_error_message)
                 and (not emitted_openai_chunk)
             )
 
@@ -2400,15 +2478,16 @@ class GLMDriver(BaseDriver):
                 except Exception as e:
                     Logger.error(f"GLM Chat: error finalizing route: {e}")
 
-            if should_report_empty_stream_error:
-                msg = self._extract_peak_hours_error_from_text(
+            if capacity_error_message:
+                Logger.warning(capacity_error_message)
+                await self._refresh_page_after_capacity_error()
+                response_queue.put_nowait(f"data: {json.dumps({'error': capacity_error_message})}\n\n")
+            elif should_report_empty_stream_error:
+                msg = self._extract_model_capacity_error_from_text(
                     full_response_body.decode("utf-8", errors="ignore")
                 )
                 if msg:
-                    await asyncio.sleep(0.2)
-                    await self._wait_for_peak_hours_dialog(timeout_s=1.8)
-                else:
-                    msg = await self._wait_for_peak_hours_dialog(timeout_s=2.0)
+                    await self._refresh_page_after_capacity_error()
                 if not msg:
                     # Surface a helpful error instead of silently returning an empty stream.
                     msg = (
@@ -2424,6 +2503,7 @@ class GLMDriver(BaseDriver):
                 not aborted
                 and (not intercepted_request_abort.is_set())
                 and not self.abort_requested
+                and (not capacity_error_message)
             ):
                 Logger.success("GLM Chat response streaming completed.")
 
@@ -2571,11 +2651,6 @@ class GLMDriver(BaseDriver):
                 try:
                     await asyncio.wait_for(completion_started.wait(), timeout=20.0)
                 except asyncio.TimeoutError:
-                    peak_hours_message = await self._wait_for_peak_hours_dialog(timeout_s=2.0)
-                    if peak_hours_message:
-                        Logger.warning(peak_hours_message)
-                        yield f"data: {json.dumps({'error': peak_hours_message})}\n\n"
-                        return
                     Logger.error(
                         "GLM Chat: completion request was not observed. "
                         "The UI may have swallowed the click or the endpoint changed."
@@ -2636,11 +2711,7 @@ class GLMDriver(BaseDriver):
                     await asyncio.wait_for(intercepted_request_finished.wait(), timeout=5.0)
                 except asyncio.TimeoutError:
                     Logger.debug("GLM Chat: timed out waiting for intercepted request cleanup.")
-            self.current_abort_event = None
-            self.abort_requested = False
-            self.current_model = None
-            self.current_send_deepthink = None
-            self.thinking_active = False
+            self._reset_generation_state()
             try:
                 await route_owner.unroute("**/api/v2/chat/completions**", handle_route)
             except Exception:
