@@ -31,6 +31,7 @@ COMMON_REQUEST_MACRO_ACTIONS: Dict[str, tuple[str, Any]] = {
 _CLEAN_REGEN_STATE_KEYS = (
     "deepthink_enabled",
     "search_enabled",
+    "tools_enabled",
     "send_as_text_file",
     "ui_model",
 )
@@ -376,6 +377,7 @@ def read_clean_regeneration_state(
     return {
         "deepthink_enabled": bool(data.get("deepthink_enabled")),
         "search_enabled": bool(data.get("search_enabled")),
+        "tools_enabled": bool(data.get("tools_enabled")),
         "send_as_text_file": bool(data.get("send_as_text_file")),
         "ui_model": str(data.get("ui_model") or "").strip(),
     }
@@ -390,6 +392,7 @@ def write_clean_regeneration_state(
     payload = {
         "deepthink_enabled": bool(state.get("deepthink_enabled")),
         "search_enabled": bool(state.get("search_enabled")),
+        "tools_enabled": bool(state.get("tools_enabled")),
         "send_as_text_file": bool(state.get("send_as_text_file")),
         "ui_model": str(state.get("ui_model") or "").strip(),
     }

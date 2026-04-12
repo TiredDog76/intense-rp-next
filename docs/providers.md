@@ -18,7 +18,7 @@ IntenseRP Next v2 currently supports five providers, and each one has its own Be
 
 -   :providers-zai: **GLM Behavior**
 
-    Configure Deep Think, Search, model selection, token counting, file uploads, regeneration controls, and GLM-specific quirks.
+    Configure Deep Think, Search, Tools, model selection, token counting, file uploads, regeneration controls, and GLM-specific quirks.
 
     [:arrow_right: Learn More](providers/glm-behavior.md)
 
@@ -72,6 +72,7 @@ Fine-tune how GLM Chat processes your requests.
 | **Deep Think** | Toggle GLM reasoning mode |
 | **Send Deep Think** | Include the thinking process in the response (wrapped in `<think>` tags) |
 | **Search** | Toggle GLM Search (search results are not sent to the client) |
+| **Tools** | Toggle GLM's separate Tools button on GLM-5V-Turbo |
 | **Model** | Select GLM's real web UI model picker |
 | **Count Tokens** | Return token usage in API responses |
 | **File Upload Mode** | Send long prompts as a text file to bypass input limits |

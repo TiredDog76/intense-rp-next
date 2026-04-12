@@ -36,6 +36,8 @@ For GLM, these model IDs map to simple behavior presets:
     - **GLM-5**
     - **GLM-4.7**
 
+    Right now, **GLM-5V-Turbo** is also the only GLM model where IntenseRP exposes the separate **Enable Tools** toggle. On other GLM models, that setting is forced off.
+
     !!! warning "Fallback behavior"
         If your selected model is not present in the dropdown (UI changes / rollout), IntenseRP logs a warning and selects the **first available** model instead.
 
@@ -66,6 +68,27 @@ GLM Chat Search can be toggled via IntenseRP.
 GLM streams internal tool/search payloads into the same response stream (wrapped in `<glm_block>...</glm_block>`). IntenseRP strips these blocks, so search results are **not sent** to the client.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Enable Search**
+
+---
+
+## :material-wrench: Tools
+
+Some GLM models now expose a separate **Tools** button next to **Search** and **Deep Think**.
+
+IntenseRP supports that toggle too, but currently only on **GLM-5V-Turbo**. If you pick any other GLM model, **Enable Tools** is automatically forced off instead of pretending everything is fine and then wandering into the UI looking confused.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Enable Tools**
+
+!!! warning "Very heavily recommended to leave off"
+    Leave **Enable Tools** disabled unless you are intentionally poking at it.
+
+    GLM's Tools UI is still unstable, and IntenseRP does **not** support those tool outputs yet. The toggle exists mostly so advanced users can experiment, not because this is a polished or recommended workflow.
+
+!!! note "Separate from Search"
+    **Enable Tools** is its own toggle. It does not replace **Enable Search**, and turning on one does not automatically turn on the other.
+
+!!! note "Loadout-aware"
+    This setting works with **Loadouts** just like the other GLM Behavior fields. If a loadout enables Tools but the selected GLM model does not support it, IntenseRP still forces it back off at runtime.
 
 ---
 
@@ -200,11 +223,16 @@ All macros are stripped from the message before sending it to GLM.
 | `[[nothink]]`, `[[r0]]` | Force Deep Think off |
 | `[[search]]` | Force Search on |
 | `[[nosearch]]`, `[[no_search]]` | Force Search off |
+| `[[tool]]`, `[[tools]]` | Force Tools on |
+| `[[notool]]`, `[[notools]]`, `[[no_tool]]`, `[[no_tools]]` | Force Tools off |
 | `[[file]]` | Force Send As Text File on |
 | `[[nofile]]` | Force Send As Text File off |
 
 !!! note "Search macros"
     Search macros like `[[search]]` / `[[nosearch]]` override the **Enable Search** setting for that request only.
+
+!!! note "Tools macros"
+    Tools macros only do anything on **GLM-5V-Turbo**. On unsupported GLM models, IntenseRP ignores the request and keeps Tools off.
 
 !!! note "Scope"
     Only macros from the latest user message apply. They do not persist across requests.
@@ -228,6 +256,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **Send Deep Think** | Includes thinking in response | Off |
 | **Count Tokens** | Returns token usage in API responses | On |
 | **Enable Search** | Enables GLM search | Off |
+| **Enable Tools** | Enables GLM's separate Tools button on GLM-5V-Turbo | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **Text File Filler** | Text pasted alongside the uploaded file | `.` |

@@ -61,6 +61,8 @@ If the runtime is already running and you switch from the Stop menu, IntenseRP r
 
 Loadouts are provider-specific, and the active loadout for each provider is independent from the others. You can have a "Creative" and "Analysis" loadout for DeepSeek, and a "Balanced" loadout for GLM, and a "Fast" loadout for Moonshot, and switch between them whenever you want.
 
+Provider-specific toggles inside those loadouts behave the same way they do outside loadouts. So if a GLM loadout enables **Tools**, that still only takes effect when the selected GLM UI model actually supports it. No bonus chaos mode there.
+
 If Loadouts are enabled but the provider you are about to run has no loadouts yet, startup is blocked until you create at least 1 for that provider (otherwise IntenseRP wouldn't know which one to use).
 
 ---
