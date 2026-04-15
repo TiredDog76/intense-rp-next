@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional, Callable, Any
 import os
 import glob
+import sys
 import threading
 
 class LogLevel(Enum):
@@ -80,6 +81,37 @@ class Logger:
     _file_lock = threading.RLock()
     _listener_lock = threading.RLock()
     _listeners: list[Callable[[LogLevel, str], None]] = []
+
+    @classmethod
+    def _write_stdout_line(cls, text: str) -> None:
+        """Write a log line to stdout without letting encoding issues crash the app."""
+        try:
+            print(text)
+            return
+        except UnicodeEncodeError:
+            pass
+        except Exception:
+            return
+
+        stdout = getattr(sys, "stdout", None)
+        if stdout is None:
+            return
+
+        encoding = getattr(stdout, "encoding", None) or "utf-8"
+        try:
+            safe_text = text.encode(encoding, errors="backslashreplace").decode(encoding)
+        except Exception:
+            try:
+                safe_text = text.encode("ascii", errors="backslashreplace").decode("ascii")
+            except Exception:
+                safe_text = str(text)
+
+        try:
+            stdout.write(safe_text)
+            stdout.write("\n")
+            stdout.flush()
+        except Exception:
+            pass
     
     @classmethod
     def set_console_callback(cls, callback: Optional[Callable[[LogLevel, str], None]]):
@@ -185,7 +217,7 @@ class Logger:
                 try:
                     os.makedirs(log_dir, exist_ok=True)
                 except OSError:
-                    print(f"Failed to create log directory: {log_dir}")
+                    cls._write_stdout_line(f"Failed to create log directory: {log_dir}")
                     return
 
             # Create new log file for this session
@@ -275,7 +307,7 @@ class Logger:
 
                 os.replace(tmp_path, log_file)
         except Exception as e:
-            print(f"Error trimming log file: {e}")
+            cls._write_stdout_line(f"Error trimming log file: {e}")
             if tmp_path:
                 try:
                     if os.path.exists(tmp_path):
@@ -335,7 +367,7 @@ class Logger:
         # Print to stdout with ANSI colors (if enabled and level meets threshold)
         if cls._stdout_enabled and cls.should_log(level, cls._stdout_level):
             formatted_stdout = cls._format_message(level, message, include_ansi=True)
-            print(formatted_stdout)
+            cls._write_stdout_line(formatted_stdout)
 
         # Console callback (filtering for console window / mini-console
         # happens at the UI layer, so always forward here)
