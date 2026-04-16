@@ -1850,6 +1850,80 @@ class MainWindow(QMainWindow):
 
     def _on_switch_loadout(self):
         provider = get_current_provider(self.config_manager)
+        runtime_providers = [
+            runtime_provider
+            for runtime_provider, _driver in self._iter_runtime_drivers()
+        ]
+        parallel_switch = is_parallel_runtime_active(self.config_manager) and len(runtime_providers) >= 2
+
+        if parallel_switch:
+            provider_loadouts = {
+                runtime_provider: self.config_manager.get_loadouts(runtime_provider)
+                for runtime_provider in runtime_providers
+            }
+            provider_loadouts = {
+                runtime_provider: available
+                for runtime_provider, available in provider_loadouts.items()
+                if available
+            }
+            if not provider_loadouts:
+                QMessageBox.information(
+                    self,
+                    "Loadouts",
+                    "No loadouts are available for the active parallel providers yet.",
+                )
+                return
+
+            initial_provider = (
+                provider
+                if provider in provider_loadouts
+                else next(iter(provider_loadouts))
+            )
+            current_names = {
+                runtime_provider: self.config_manager.get_runtime_active_loadout_name(runtime_provider)
+                for runtime_provider in provider_loadouts
+            }
+            dialog = LoadoutSwitchDialog(
+                initial_provider.value,
+                provider_loadouts.get(initial_provider, []),
+                current_names.get(initial_provider),
+                parent=self,
+                provider_loadouts=provider_loadouts,
+                current_loadout_names=current_names,
+                initial_provider=initial_provider,
+            )
+            if dialog.exec() != LoadoutSwitchDialog.Accepted:
+                return
+
+            selected_names = dialog.selected_loadout_names_by_provider
+            changes = {
+                runtime_provider: selected_name
+                for runtime_provider, selected_name in selected_names.items()
+                if selected_name and selected_name != current_names.get(runtime_provider)
+            }
+            if not changes:
+                return
+
+            try:
+                for runtime_provider, selected_name in changes.items():
+                    self.config_manager.set_preferred_loadout_name(runtime_provider, selected_name)
+            except Exception as exc:
+                QMessageBox.warning(self, "Loadouts", f"Failed to switch loadout.\n\n{exc}")
+                return
+
+            if len(changes) == 1:
+                changed_provider, selected_name = next(iter(changes.items()))
+                Logger.info(f"Loadouts: selected '{selected_name}' for {changed_provider.value}.")
+            else:
+                changed_names = ", ".join(
+                    f"{runtime_provider.value}: {selected_name}"
+                    for runtime_provider, selected_name in changes.items()
+                )
+                Logger.info(f"Loadouts: selected parallel loadouts ({changed_names}).")
+
+            asyncio.create_task(self._restart_services_impl())
+            return
+
         available = self.config_manager.get_loadouts(provider)
         if not available:
             QMessageBox.information(
