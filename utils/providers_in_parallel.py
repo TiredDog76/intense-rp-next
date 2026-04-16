@@ -31,6 +31,13 @@ def is_parallel_feature_enabled(config_manager: Any) -> bool:
         return False
 
 
+def is_parallel_request_queue_feature_enabled(config_manager: Any) -> bool:
+    try:
+        return bool(config_manager.get_setting("experimental", "parallelize_request_queue"))
+    except Exception:
+        return False
+
+
 def get_parallel_selected_providers(config_manager: Any) -> list[DriverProvider]:
     current_provider = get_current_provider(config_manager)
     selected: list[DriverProvider] = [current_provider]
@@ -57,3 +64,8 @@ def get_parallel_selected_providers(config_manager: Any) -> list[DriverProvider]
 def is_parallel_runtime_active(config_manager: Any) -> bool:
     return is_parallel_feature_enabled(config_manager) and (len(get_parallel_selected_providers(config_manager)) >= 2)
 
+
+def is_parallel_request_queue_active(config_manager: Any) -> bool:
+    return is_parallel_runtime_active(config_manager) and is_parallel_request_queue_feature_enabled(
+        config_manager
+    )

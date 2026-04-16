@@ -25,6 +25,7 @@ from utils.model_ids import (
     is_supported_model_id,
     resolve_provider_from_model_id,
 )
+from utils.providers_in_parallel import is_parallel_request_queue_feature_enabled
 
 _RATE_LIMIT_LIKE_RE = re.compile(
     r"(rate\s*limit|too\s*many\s*requests|\b429\b|quota|limit\s*reached)",
@@ -37,6 +38,14 @@ _NON_RETRYABLE_PROVIDER_ERROR_RE = re.compile(
 
 DEFAULT_MAX_REQUEST_QUEUE_SIZE = 128
 QueueStateListener = Callable[[], None]
+
+
+@dataclass(frozen=True)
+class RuntimeExecutionSlot:
+    id: str
+    provider: DriverProvider
+    driver: BaseDriver
+    label: str
 
 
 def _parse_sse_json(chunk: Any) -> dict | None:
@@ -257,6 +266,8 @@ class QueueEntry:
     target_provider: DriverProvider
     response_queue: asyncio.Queue
     abort_event: asyncio.Event
+    target_slot_id: str = ""
+    target_slot_label: Optional[str] = None
     api_key_name: Optional[str] = None
 
 class RequestQueueFullError(Exception):
@@ -313,6 +324,19 @@ class RequestQueue:
         self._notify_listeners()
         return item
 
+    async def wait_for_item(self) -> None:
+        async with self._condition:
+            while not self._items:
+                await self._condition.wait()
+
+    async def get_nowait(self) -> QueueEntry | None:
+        async with self._condition:
+            if not self._items:
+                return None
+            item = self._items.popleft()
+        self._notify_listeners()
+        return item
+
     async def snapshot(self) -> list[QueueEntry]:
         async with self._condition:
             return list(self._items)
@@ -324,6 +348,29 @@ class RequestQueue:
         if drained:
             self._notify_listeners()
         return drained
+
+    async def remove_by_id(self, request_id: str) -> QueueEntry | None:
+        normalized_id = str(request_id or "").strip()
+        if not normalized_id:
+            return None
+
+        async with self._condition:
+            if not self._items:
+                return None
+
+            removed_entry: QueueEntry | None = None
+            kept = deque()
+            while self._items:
+                item = self._items.popleft()
+                if removed_entry is None and str(getattr(item, "id", "") or "") == normalized_id:
+                    removed_entry = item
+                    continue
+                kept.append(item)
+
+            self._items = kept
+        if removed_entry is not None:
+            self._notify_listeners()
+        return removed_entry
 
     async def remove_by_abort_event(self, abort_event: asyncio.Event) -> bool:
         async with self._condition:
@@ -356,17 +403,31 @@ class API:
         self._queue_state_listeners: list[QueueStateListener] = []
         self._request_queue_listener = self._notify_queue_state_changed
         self._drivers_by_provider: dict[DriverProvider, BaseDriver] = self._build_runtime_drivers_map()
-        self._request_queues_by_provider: dict[DriverProvider, RequestQueue] = {
-            provider: RequestQueue() for provider in self._drivers_by_provider
+        self._execution_slots = self._build_execution_slots()
+        self._execution_slots_by_id: dict[str, RuntimeExecutionSlot] = {
+            slot.id: slot for slot in self._execution_slots
         }
-        for queue in self._request_queues_by_provider.values():
+        self._execution_slots_by_provider: dict[DriverProvider, list[RuntimeExecutionSlot]] = {}
+        for slot in self._execution_slots:
+            self._execution_slots_by_provider.setdefault(slot.provider, []).append(slot)
+
+        self._request_queues_by_slot_id: dict[str, RequestQueue] = {
+            slot.id: RequestQueue() for slot in self._execution_slots
+        }
+        for queue in self._request_queues_by_slot_id.values():
             queue.add_listener(self._request_queue_listener)
 
-        self.request_queue = next(iter(self._request_queues_by_provider.values()), RequestQueue())
+        self._global_processing_lock = asyncio.Lock()
+        self._parallel_request_queue_enabled = (
+            is_parallel_request_queue_feature_enabled(getattr(self.driver, "config_manager", None))
+            and len(self._execution_slots) >= 2
+        )
+
+        self.request_queue = next(iter(self._request_queues_by_slot_id.values()), RequestQueue())
         self.current_entry: Optional[QueueEntry] = None
         self.current_abort_event: asyncio.Event = None
-        self.current_entries_by_provider: dict[DriverProvider, QueueEntry] = {}
-        self.current_abort_events_by_provider: dict[DriverProvider, asyncio.Event] = {}
+        self.current_entries_by_slot_id: dict[str, QueueEntry] = {}
+        self.current_abort_events_by_slot_id: dict[str, asyncio.Event] = {}
         self.remote_control: RemoteControlWeb | None = None
         if remote_actions is not None:
             self.remote_control = RemoteControlWeb(
@@ -391,8 +452,53 @@ class API:
         effective_provider = provider if isinstance(provider, DriverProvider) else DriverProvider.DEEPSEEK
         return {effective_provider: self.driver}
 
+    def _build_execution_slots(self) -> list[RuntimeExecutionSlot]:
+        slots: list[RuntimeExecutionSlot] = []
+        slot_counts_by_provider: dict[DriverProvider, int] = {}
+
+        for provider, driver in self._drivers_by_provider.items():
+            next_index = slot_counts_by_provider.get(provider, 0) + 1
+            slot_counts_by_provider[provider] = next_index
+
+            label = provider.value if next_index == 1 else f"{provider.value} {next_index}"
+            slots.append(
+                RuntimeExecutionSlot(
+                    id=f"{provider.key}:{next_index}",
+                    provider=provider,
+                    driver=driver,
+                    label=label,
+                )
+            )
+
+        return slots
+
     def _is_multi_provider_runtime(self) -> bool:
         return len(self._drivers_by_provider) >= 2
+
+    def _get_default_slot(self) -> RuntimeExecutionSlot:
+        if self._execution_slots:
+            return self._execution_slots[0]
+        return RuntimeExecutionSlot(
+            id=f"{DriverProvider.DEEPSEEK.key}:1",
+            provider=DriverProvider.DEEPSEEK,
+            driver=self.driver,
+            label=DriverProvider.DEEPSEEK.value,
+        )
+
+    def _get_execution_slot(self, slot_id: str) -> RuntimeExecutionSlot:
+        slot = self._execution_slots_by_id.get(slot_id)
+        if slot is None:
+            raise KeyError(f"No execution slot is registered for slot: {slot_id}")
+        return slot
+
+    def _get_execution_slots_for_provider(self, provider: DriverProvider) -> list[RuntimeExecutionSlot]:
+        return list(self._execution_slots_by_provider.get(provider) or [])
+
+    def _get_request_queue_for_slot(self, slot_id: str) -> RequestQueue:
+        queue = self._request_queues_by_slot_id.get(slot_id)
+        if queue is None:
+            raise KeyError(f"No request queue is registered for slot: {slot_id}")
+        return queue
 
     def _get_driver_for_provider(self, provider: DriverProvider) -> BaseDriver:
         driver = self._drivers_by_provider.get(provider)
@@ -401,10 +507,10 @@ class API:
         return driver
 
     def _get_request_queue_for_provider(self, provider: DriverProvider) -> RequestQueue:
-        queue = self._request_queues_by_provider.get(provider)
-        if queue is None:
+        slots = self._get_execution_slots_for_provider(provider)
+        if not slots:
             raise KeyError(f"No request queue is registered for provider: {provider.value}")
-        return queue
+        return self._get_request_queue_for_slot(slots[0].id)
 
     def _get_active_loadout_name_for_provider(self, provider: DriverProvider) -> str | None:
         try:
@@ -431,9 +537,17 @@ class API:
         return None
 
     def _get_default_provider(self) -> DriverProvider:
-        if self._drivers_by_provider:
-            return next(iter(self._drivers_by_provider.keys()))
-        return DriverProvider.DEEPSEEK
+        return self._get_default_slot().provider
+
+    def _select_execution_slot_for_provider(self, provider: DriverProvider) -> RuntimeExecutionSlot:
+        slots = self._get_execution_slots_for_provider(provider)
+        if not slots:
+            raise KeyError(f"No execution slot is registered for provider: {provider.value}")
+
+        # Keep the current selection deterministic for now so the queue router stays stable.
+        # The slot abstraction is here to support smarter scheduling once same-provider
+        # multi-account runtime lanes land in a later release.
+        return slots[0]
 
     def _resolve_request_provider(self, model: Any) -> DriverProvider:
         if not self._is_multi_provider_runtime():
@@ -457,6 +571,10 @@ class API:
             )
 
         return provider
+
+    def _resolve_request_slot(self, model: Any) -> RuntimeExecutionSlot:
+        provider = self._resolve_request_provider(model)
+        return self._select_execution_slot_for_provider(provider)
 
     def _ensure_supported_model_id(self, model: Any, provider: DriverProvider) -> None:
         normalized = str(model or "").strip()
@@ -483,30 +601,42 @@ class API:
 
         raise HTTPException(status_code=400, detail=detail)
 
-    def _find_processing_provider_for_abort_event(
+    def _find_processing_slot_id_for_abort_event(
         self, abort_event: asyncio.Event | None
-    ) -> DriverProvider | None:
+    ) -> str | None:
         if abort_event is None:
             return None
 
-        for provider, current_abort_event in self.current_abort_events_by_provider.items():
+        for slot_id, current_abort_event in self.current_abort_events_by_slot_id.items():
             if current_abort_event is abort_event:
-                return provider
+                return slot_id
 
         return None
 
+    def _find_processing_provider_for_abort_event(
+        self, abort_event: asyncio.Event | None
+    ) -> DriverProvider | None:
+        slot_id = self._find_processing_slot_id_for_abort_event(abort_event)
+        if slot_id is None:
+            return None
+
+        try:
+            return self._get_execution_slot(slot_id).provider
+        except Exception:
+            return None
+
     def _request_abort_for_abort_event(self, abort_event: asyncio.Event | None) -> None:
-        provider = self._find_processing_provider_for_abort_event(abort_event)
-        if provider is None:
+        slot_id = self._find_processing_slot_id_for_abort_event(abort_event)
+        if slot_id is None:
             return
 
         try:
-            self._get_driver_for_provider(provider).request_abort()
+            self._get_execution_slot(slot_id).driver.request_abort()
         except Exception:
             pass
 
     async def _remove_queued_request_by_abort_event(self, abort_event: asyncio.Event) -> bool:
-        for queue in self._request_queues_by_provider.values():
+        for queue in self._request_queues_by_slot_id.values():
             try:
                 removed = await queue.remove_by_abort_event(abort_event)
             except Exception:
@@ -519,13 +649,14 @@ class API:
     async def snapshot_requests(self) -> list[tuple[str, QueueEntry]]:
         entries: list[tuple[str, QueueEntry]] = []
 
-        for provider in self._drivers_by_provider:
-            current = self.current_entries_by_provider.get(provider)
+        for slot in self._execution_slots:
+            current = self.current_entries_by_slot_id.get(slot.id)
             if current is not None:
                 current_status = "cancelled" if current.abort_event.is_set() else "processing"
                 entries.append((current_status, current))
 
-        for provider, queue in self._request_queues_by_provider.items():
+        for slot in self._execution_slots:
+            queue = self._get_request_queue_for_slot(slot.id)
             queued = await queue.snapshot()
             for entry in queued:
                 status = "cancelled" if entry.abort_event.is_set() else "pending"
@@ -533,7 +664,7 @@ class API:
 
         def _sort_key(item: tuple[str, QueueEntry]) -> tuple[int, float, str]:
             status, entry = item
-            status_order = 0 if status == "processing" else 1
+            status_order = 0 if status in {"processing", "cancelled"} else 1
             queued_at = float(getattr(entry, "queued_at", 0.0) or 0.0)
             entry_id = str(getattr(entry, "id", "") or "")
             return (status_order, queued_at, entry_id)
@@ -557,16 +688,34 @@ class API:
             except Exception as exc:
                 Logger.debug(f"Queue state listener failed: {exc}")
 
+    async def _close_entry_with_message(self, entry: QueueEntry, message: str) -> None:
+        abort_event = getattr(entry, "abort_event", None)
+        if abort_event is not None:
+            try:
+                abort_event.set()
+            except Exception:
+                pass
+
+        try:
+            await entry.response_queue.put(_make_openai_error_sse_chunk(message))
+        except Exception:
+            pass
+
+        try:
+            await entry.response_queue.put(None)
+        except Exception:
+            pass
+
     async def abort_current_request(self, reason: str | None = None) -> bool:
-        current_entries = list(self.current_entries_by_provider.items())
-        if not current_entries:
+        current_slot_ids = list(self.current_entries_by_slot_id.keys())
+        if not current_slot_ids:
             return False
 
         message = (reason or "Request aborted.").strip() or "Request aborted."
         aborted_any = False
 
-        for provider, entry in current_entries:
-            aborted = await self.abort_current_request_for_provider(provider, reason=message)
+        for slot_id in current_slot_ids:
+            aborted = await self.abort_current_request_for_slot(slot_id, reason=message)
             aborted_any = aborted_any or aborted
 
         return aborted_any
@@ -576,7 +725,21 @@ class API:
         provider: DriverProvider,
         reason: str | None = None,
     ) -> bool:
-        entry = self.current_entries_by_provider.get(provider)
+        message = (reason or "Request aborted.").strip() or "Request aborted."
+        aborted_any = False
+
+        for slot in self._get_execution_slots_for_provider(provider):
+            aborted = await self.abort_current_request_for_slot(slot.id, reason=message)
+            aborted_any = aborted_any or aborted
+
+        return aborted_any
+
+    async def abort_current_request_for_slot(
+        self,
+        slot_id: str,
+        reason: str | None = None,
+    ) -> bool:
+        entry = self.current_entries_by_slot_id.get(slot_id)
         if entry is None:
             return False
 
@@ -589,51 +752,52 @@ class API:
                 pass
 
         try:
-            self._get_driver_for_provider(provider).request_abort()
+            self._get_execution_slot(slot_id).driver.request_abort()
         except Exception:
             pass
 
-        try:
-            await entry.response_queue.put(_make_openai_error_sse_chunk(message))
-        except Exception:
-            pass
-
-        try:
-            await entry.response_queue.put(None)
-        except Exception:
-            pass
-
+        await self._close_entry_with_message(entry, message)
         self._notify_queue_state_changed()
         return True
+
+    async def cancel_request(self, request_id: str, reason: str | None = None) -> bool:
+        normalized_id = str(request_id or "").strip()
+        if not normalized_id:
+            return False
+
+        message = (reason or "Request cancelled.").strip() or "Request cancelled."
+
+        for slot_id, entry in list(self.current_entries_by_slot_id.items()):
+            if str(getattr(entry, "id", "") or "") != normalized_id:
+                continue
+            return await self.abort_current_request_for_slot(slot_id, reason=message)
+
+        for queue in self._request_queues_by_slot_id.values():
+            try:
+                removed_entry = await queue.remove_by_id(normalized_id)
+            except Exception:
+                removed_entry = None
+            if removed_entry is None:
+                continue
+
+            await self._close_entry_with_message(removed_entry, message)
+            self._notify_queue_state_changed()
+            return True
+
+        return False
 
     async def cancel_queued_requests(self, reason: str | None = None) -> int:
         message = (reason or "Request cancelled.").strip() or "Request cancelled."
 
         cancelled = 0
-        for queue in self._request_queues_by_provider.values():
+        for queue in self._request_queues_by_slot_id.values():
             try:
                 entries = await queue.drain()
             except Exception:
                 entries = []
 
             for entry in entries:
-                abort_event = getattr(entry, "abort_event", None)
-                if abort_event is not None:
-                    try:
-                        abort_event.set()
-                    except Exception:
-                        pass
-
-                try:
-                    await entry.response_queue.put(_make_openai_error_sse_chunk(message))
-                except Exception:
-                    pass
-
-                try:
-                    await entry.response_queue.put(None)
-                except Exception:
-                    pass
-
+                await self._close_entry_with_message(entry, message)
                 cancelled += 1
 
         return cancelled
@@ -738,7 +902,8 @@ class API:
             if not self.driver.is_running:
                 raise HTTPException(status_code=503, detail="Driver is not running")
 
-            target_provider = self._resolve_request_provider(request.model)
+            target_slot = self._resolve_request_slot(request.model)
+            target_provider = target_slot.provider
             self._ensure_supported_model_id(request.model, target_provider)
 
             # Log incoming request
@@ -766,10 +931,12 @@ class API:
                 target_provider=target_provider,
                 response_queue=response_queue,
                 abort_event=abort_event,
+                target_slot_id=target_slot.id,
+                target_slot_label=target_slot.label,
                 api_key_name=api_key_name,
             )
             try:
-                await self._get_request_queue_for_provider(target_provider).put(entry)
+                await self._get_request_queue_for_slot(target_slot.id).put(entry)
             except RequestQueueFullError as exc:
                 Logger.warning(
                     "Rejecting chat completion request because the request queue is full "
@@ -868,7 +1035,8 @@ class API:
             if not self.driver.is_running:
                 raise HTTPException(status_code=503, detail="Driver is not running")
 
-            target_provider = self._resolve_request_provider(request.model)
+            target_slot = self._resolve_request_slot(request.model)
+            target_provider = target_slot.provider
             self._ensure_supported_model_id(request.model, target_provider)
 
             normalized_prompt = _normalize_text_completion_prompt(request.prompt)
@@ -894,10 +1062,12 @@ class API:
                 target_provider=target_provider,
                 response_queue=response_queue,
                 abort_event=abort_event,
+                target_slot_id=target_slot.id,
+                target_slot_label=target_slot.label,
                 api_key_name=api_key_name,
             )
             try:
-                await self._get_request_queue_for_provider(target_provider).put(entry)
+                await self._get_request_queue_for_slot(target_slot.id).put(entry)
             except RequestQueueFullError as exc:
                 Logger.warning(
                     "Rejecting text completion request because the request queue is full "
@@ -1044,19 +1214,19 @@ class API:
 
     def start_worker(self):
         self.worker_tasks = {
-            provider: asyncio.create_task(self.worker(provider))
-            for provider in self._drivers_by_provider
+            slot.id: asyncio.create_task(self.worker(slot.id))
+            for slot in self._execution_slots
         }
 
     def _sync_current_entry_aliases(self) -> None:
-        active_entries = list(self.current_entries_by_provider.values())
-        active_abort_events = list(self.current_abort_events_by_provider.values())
+        active_entries = list(self.current_entries_by_slot_id.values())
+        active_abort_events = list(self.current_abort_events_by_slot_id.values())
         self.current_entry = active_entries[0] if len(active_entries) == 1 else None
         self.current_abort_event = active_abort_events[0] if len(active_abort_events) == 1 else None
 
     async def stop(self):
         Logger.info("Stopping API worker...")
-        for queue in self._request_queues_by_provider.values():
+        for queue in self._request_queues_by_slot_id.values():
             try:
                 queue.remove_listener(self._request_queue_listener)
             except Exception:
@@ -1075,173 +1245,192 @@ class API:
         for task in worker_tasks.values():
             task.cancel()
 
-        for provider, task in worker_tasks.items():
+        for slot_id, task in worker_tasks.items():
             try:
                 await task
             except asyncio.CancelledError:
-                Logger.debug(f"API Worker cancelled for {provider.value}")
+                try:
+                    slot_label = self._get_execution_slot(slot_id).label
+                except Exception:
+                    slot_label = slot_id
+                Logger.debug(f"API Worker cancelled for {slot_label}")
 
         self.worker_tasks = {}
         Logger.info("API worker stopped.")
 
-    async def worker(self, provider: DriverProvider):
-        driver = self._get_driver_for_provider(provider)
-        request_queue = self._get_request_queue_for_provider(provider)
-        Logger.info(f"API Worker started for {provider.value}")
+    async def _process_worker_entry(self, slot: RuntimeExecutionSlot, entry: QueueEntry) -> None:
+        slot_id = slot.id
+        driver = slot.driver
+        provider = slot.provider
+        request = entry.request
+        request_type = getattr(entry, "request_type", "chat")
+        response_queue = entry.response_queue
+        abort_event = entry.abort_event
+        loadout_name = self._get_active_loadout_name_for_provider(provider)
+        Logger.info(
+            f"Processing queued {request_type} request for {slot.label}..."
+            + (f" (loadout: {loadout_name})" if loadout_name else "")
+        )
         try:
-            while True:
-                entry = await request_queue.get()
-                request = entry.request
-                request_type = getattr(entry, "request_type", "chat")
-                response_queue = entry.response_queue
-                abort_event = entry.abort_event
-                loadout_name = self._get_active_loadout_name_for_provider(provider)
-                Logger.info(
-                    f"Processing queued {request_type} request for {provider.value}..."
-                    + (f" (loadout: {loadout_name})" if loadout_name else "")
-                )
+            if abort_event.is_set():
+                Logger.info("Queued request was already aborted. Skipping.")
+                return
+
+            self.current_entries_by_slot_id[slot_id] = entry
+            self.current_abort_events_by_slot_id[slot_id] = abort_event
+            self._sync_current_entry_aliases()
+            self._notify_queue_state_changed()
+
+            try:
+                ece_reauth_enabled = bool(driver.ece_reauth_enabled())
+            except Exception:
+                ece_reauth_enabled = False
+
+            max_attempts = 2 if ece_reauth_enabled else 1
+            attempt = 0
+            forwarded_any = False
+
+            while attempt < max_attempts and (not abort_event.is_set()):
+                attempt += 1
+
+                # Track usage for Select Least Used
                 try:
-                    if abort_event.is_set():
-                        Logger.info("Queued request was already aborted. Skipping.")
-                        continue
+                    pair_getter = getattr(driver, "ece_active_pair", None)
+                    mark_used = getattr(driver, "ece_mark_used", None)
+                    if callable(pair_getter) and callable(mark_used):
+                        pair = pair_getter()
+                        email = getattr(pair, "email", None) if pair else None
+                        if isinstance(email, str) and email.strip():
+                            mark_used(email)
+                except Exception:
+                    pass
 
-                    self.current_entries_by_provider[provider] = entry
-                    self.current_abort_events_by_provider[provider] = abort_event
-                    self._sync_current_entry_aliases()
-                    self._notify_queue_state_changed()
+                # Optional provider hook: apply configured *real* model selection (UI model picker),
+                # if the active provider supports it
+                try:
+                    await driver.apply_configured_model()
+                except Exception as e:
+                    provider_label = getattr(driver, "provider_label", None) or provider.value
+                    Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")
 
-                    try:
-                        ece_reauth_enabled = bool(driver.ece_reauth_enabled())
-                    except Exception:
-                        ece_reauth_enabled = False
+                meaningful_seen = False
+                buffered: list[str] = []
+                early_error_message: str | None = None
 
-                    max_attempts = 2 if ece_reauth_enabled else 1
-                    attempt = 0
-                    forwarded_any = False
-
-                    while attempt < max_attempts and (not abort_event.is_set()):
-                        attempt += 1
-
-                        # Track usage for Select Least Used
-                        try:
-                            pair_getter = getattr(driver, "ece_active_pair", None)
-                            mark_used = getattr(driver, "ece_mark_used", None)
-                            if callable(pair_getter) and callable(mark_used):
-                                pair = pair_getter()
-                                email = getattr(pair, "email", None) if pair else None
-                                if isinstance(email, str) and email.strip():
-                                    mark_used(email)
-                        except Exception:
-                            pass
-
-                        # Optional provider hook: apply configured *real* model selection (UI model picker),
-                        # if the active provider supports it
-                        try:
-                            await driver.apply_configured_model()
-                        except Exception as e:
-                            provider_label = getattr(driver, "provider_label", None) or provider.value
-                            Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")
-
-                        meaningful_seen = False
-                        buffered: list[str] = []
-                        early_error_message: str | None = None
-
-                        try:
-                            driver_message = (
-                                request.messages
-                                if request_type == "chat"
-                                else _normalize_text_completion_prompt(request.prompt)
-                            )
-                            async for chunk in driver.generate_response(
-                                message=driver_message,
-                                model=request.model,
-                                stream=request.stream,
-                                temperature=request.temperature,
-                                top_p=request.top_p,
-                                max_tokens=request.max_tokens,
-                                abort_event=abort_event,
-                            ):
-                                if abort_event.is_set():
-                                    Logger.debug("Request aborted, stopping chunk forwarding...")
-                                    break
-
-                                if not meaningful_seen:
-                                    parsed = _parse_sse_json(chunk)
-                                    if parsed and ("error" in parsed):
-                                        early_error_message = _extract_error_message(parsed)
-                                        # Don't forward the error yet; we may retry after rotating
-                                        break
-
-                                    if parsed and _payload_has_meaningful_content(parsed):
-                                        meaningful_seen = True
-                                        for buffered_chunk in buffered:
-                                            await response_queue.put(buffered_chunk)
-                                            forwarded_any = True
-                                        buffered.clear()
-
-                                if meaningful_seen:
-                                    await response_queue.put(chunk)
-                                    forwarded_any = True
-                                else:
-                                    buffered.append(chunk)
-                        except Exception as e:
-                            early_error_message = str(e)
-
+                try:
+                    driver_message = (
+                        request.messages
+                        if request_type == "chat"
+                        else _normalize_text_completion_prompt(request.prompt)
+                    )
+                    async for chunk in driver.generate_response(
+                        message=driver_message,
+                        model=request.model,
+                        stream=request.stream,
+                        temperature=request.temperature,
+                        top_p=request.top_p,
+                        max_tokens=request.max_tokens,
+                        abort_event=abort_event,
+                    ):
                         if abort_event.is_set():
+                            Logger.debug("Request aborted, stopping chunk forwarding...")
                             break
 
-                        if early_error_message and meaningful_seen:
-                            await response_queue.put(_make_openai_error_sse_chunk(early_error_message))
-                            forwarded_any = True
-                            break
+                        if not meaningful_seen:
+                            parsed = _parse_sse_json(chunk)
+                            if parsed and ("error" in parsed):
+                                early_error_message = _extract_error_message(parsed)
+                                # Don't forward the error yet; we may retry after rotating
+                                break
 
-                        # If we saw meaningful content, keep the existing behavior
+                            if parsed and _payload_has_meaningful_content(parsed):
+                                meaningful_seen = True
+                                for buffered_chunk in buffered:
+                                    await response_queue.put(buffered_chunk)
+                                    forwarded_any = True
+                                buffered.clear()
+
                         if meaningful_seen:
-                            break
-
-                        # No meaningful chunks were produced
-                        is_final_attempt = attempt >= max_attempts
-                        if (
-                            (not is_final_attempt)
-                            and (not forwarded_any)
-                            and (not _is_non_retryable_provider_error(early_error_message))
-                        ):
-                            reason = early_error_message or "no meaningful output"
-                            if early_error_message and _is_rate_limit_like_error(early_error_message):
-                                reason = f"rate-limit-like failure: {early_error_message}"
-
-                            restarted = False
-                            if not abort_event.is_set():
-                                restart = getattr(driver, "ece_restart_with_rotation", None)
-                                if callable(restart):
-                                    try:
-                                        restarted = bool(await restart(reason, status_callback=None))
-                                    except Exception:
-                                        restarted = False
-                            if restarted:
-                                continue
-
-                        # Can't / won't retry. Prefer surfacing the early error (if any)
-                        if early_error_message:
-                            await response_queue.put(_make_openai_error_sse_chunk(early_error_message))
+                            await response_queue.put(chunk)
                             forwarded_any = True
                         else:
-                            for buffered_chunk in buffered:
-                                await response_queue.put(buffered_chunk)
-                                forwarded_any = True
-
-                        break
-
+                            buffered.append(chunk)
                 except Exception as e:
-                    Logger.error(f"Error in {provider.value} worker: {e}")
-                    await response_queue.put(_make_openai_error_sse_chunk(str(e)))
-                finally:
-                    self.current_entries_by_provider.pop(provider, None)
-                    self.current_abort_events_by_provider.pop(provider, None)
-                    self._sync_current_entry_aliases()
-                    self._notify_queue_state_changed()
-                    await response_queue.put(None)
-                    Logger.success(f"Request completed for {provider.value}.")
+                    early_error_message = str(e)
+
+                if abort_event.is_set():
+                    break
+
+                if early_error_message and meaningful_seen:
+                    await response_queue.put(_make_openai_error_sse_chunk(early_error_message))
+                    forwarded_any = True
+                    break
+
+                # If we saw meaningful content, keep the existing behavior
+                if meaningful_seen:
+                    break
+
+                # No meaningful chunks were produced
+                is_final_attempt = attempt >= max_attempts
+                if (
+                    (not is_final_attempt)
+                    and (not forwarded_any)
+                    and (not _is_non_retryable_provider_error(early_error_message))
+                ):
+                    reason = early_error_message or "no meaningful output"
+                    if early_error_message and _is_rate_limit_like_error(early_error_message):
+                        reason = f"rate-limit-like failure: {early_error_message}"
+
+                    restarted = False
+                    if not abort_event.is_set():
+                        restart = getattr(driver, "ece_restart_with_rotation", None)
+                        if callable(restart):
+                            try:
+                                restarted = bool(await restart(reason, status_callback=None))
+                            except Exception:
+                                restarted = False
+                    if restarted:
+                        continue
+
+                # Can't / won't retry. Prefer surfacing the early error (if any)
+                if early_error_message:
+                    await response_queue.put(_make_openai_error_sse_chunk(early_error_message))
+                    forwarded_any = True
+                else:
+                    for buffered_chunk in buffered:
+                        await response_queue.put(buffered_chunk)
+                        forwarded_any = True
+
+                break
+
+        except Exception as e:
+            Logger.error(f"Error in {slot.label} worker: {e}")
+            await response_queue.put(_make_openai_error_sse_chunk(str(e)))
+        finally:
+            self.current_entries_by_slot_id.pop(slot_id, None)
+            self.current_abort_events_by_slot_id.pop(slot_id, None)
+            self._sync_current_entry_aliases()
+            self._notify_queue_state_changed()
+            await response_queue.put(None)
+            Logger.success(f"Request completed for {slot.label}.")
+
+    async def worker(self, slot_id: str):
+        slot = self._get_execution_slot(slot_id)
+        request_queue = self._get_request_queue_for_slot(slot_id)
+        Logger.info(f"API Worker started for {slot.label}")
+        try:
+            while True:
+                if self._parallel_request_queue_enabled:
+                    entry = await request_queue.get()
+                    await self._process_worker_entry(slot, entry)
+                    continue
+
+                await request_queue.wait_for_item()
+                async with self._global_processing_lock:
+                    entry = await request_queue.get_nowait()
+                    if entry is None:
+                        continue
+                    await self._process_worker_entry(slot, entry)
         except asyncio.CancelledError:
-            Logger.info(f"API Worker cancelled for {provider.value}")
+            Logger.info(f"API Worker cancelled for {slot.label}")
             raise

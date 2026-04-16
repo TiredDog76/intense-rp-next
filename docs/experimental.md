@@ -15,9 +15,15 @@ Experimental features currently include:
 
 -   :material-source-branch: **Providers in Parallel**
 
-    Keeps multiple provider browser windows alive at once and routes requests by the legacy provider-prefixed model IDs, so different providers can process requests side by side.
+    Keeps multiple provider browser windows alive at once and routes requests by the legacy provider-prefixed model IDs, which helps when you switch between providers often.
 
     [:arrow_right: Read Providers in Parallel docs](experimental/providers-in-parallel.md)
+
+-   :material-lan-connect: **Parallel Request Queue**
+
+    Builds on top of Providers in Parallel and lets different active provider lanes work on API requests at the same time. Useful for shared API setups, but still very experimental.
+
+    [:arrow_right: Read Parallel Request Queue docs](experimental/parallel-request-queue.md)
 
 -   :material-file-code-outline: **Loadouts**
 

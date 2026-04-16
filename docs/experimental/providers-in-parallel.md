@@ -17,12 +17,13 @@ It is neat, and can actually save you time if you use a lot of different models 
 
 ## :material-toggle-switch: Enable it
 
-:material-arrow-right: **Settings** -> **Experimental** -> **Providers in Parallel**
+:material-arrow-right: **Settings** -> **Advanced** -> **Experimental Features** -> **Run Providers in Parallel**
 
 After you enable it, you also get per-provider toggles right under that setting.
 
 - The **current provider** is always forced on.
 - The other toggles let you choose which other providers you want to keep alive in parallel.
+- If you also want requests themselves to overlap, turn on **Parallelize API Request Queue** after this.
 - Changes only apply after you **restart the browser** with **Stop -> Start**.
 
 If fewer than 2 providers end up enabled, IntenseRP quietly falls back to the normal single-provider behavior.
@@ -63,11 +64,18 @@ If you send a model ID that belongs to a provider you did **not** enable, Intens
 
 ## :material-lan-pending: Queue behavior
 
-The queue becomes provider-aware.
+On its own, this feature keeps multiple provider lanes alive and routes requests to the correct one by model ID.
 
-That means that requests for the **same provider** still stay serialized, and requests for **different providers** can run side by side
+If you leave **Parallelize API Request Queue** off, requests are still handled one at a time globally. They just get sent to the correct already-running provider lane when their turn comes up.
 
-So you can queue a `deepseek-*` request and a `glm-*` request and let them work in parallel, while 2 `glm-*` requests still line up behind each other on the GLM browser.
+If you turn **Parallelize API Request Queue** on as well, the queue becomes lane-aware:
+
+- requests for the **same lane** still stay serialized
+- requests for **different lanes** can run side by side
+
+So you can queue a `deepseek-*` request and a `glm-*` request and let them work in parallel, while 2 `glm-*` requests still line up behind the same GLM lane.
+
+[:material-arrow-right: Read Parallel Request Queue docs](parallel-request-queue.md)
 
 ---
 

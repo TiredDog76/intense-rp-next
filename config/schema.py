@@ -29,6 +29,7 @@ DOCS_MULTI_SLOT_CACHE = "features/multi-slot-cache/"
 DOCS_NETWORK = "features/network-api/"
 DOCS_PROVIDER_SUPPORT = "advanced/provider-support/"
 DOCS_QWEN = "providers/qwen-behavior/"
+DOCS_PARALLEL_REQUEST_QUEUE = "experimental/parallel-request-queue/"
 DOCS_REMOTE_CONTROL = "experimental/remote-control/"
 DOCS_PROVIDERS_IN_PARALLEL = "experimental/providers-in-parallel/"
 DOCS_SYSTEM = "features/system/"
@@ -1501,6 +1502,35 @@ SCHEMA = [
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
             SettingField(
+                key="parallelize_request_queue",
+                label="Parallelize API Request Queue",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Very experimental. Allow multiple queued API requests to run at the same time "
+                    "across different active provider lanes. Requires Providers in Parallel and "
+                    "applies on the next browser start."
+                ),
+                visible_depends="experimental.providers_in_parallel",
+                depends="experimental.providers_in_parallel",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PARALLEL_REQUEST_QUEUE,
+            ),
+            SettingField(
+                key="parallelize_request_queue_note",
+                label="Parallel Request Queue",
+                type=SettingType.HINT,
+                default=(
+                    "This is intentionally extra experimental. Today it runs one request per active "
+                    "provider lane, but it still depends on Providers in Parallel and may use more "
+                    "RAM and CPU than the normal setup."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="experimental.parallelize_request_queue",
+                docs_path=DOCS_PARALLEL_REQUEST_QUEUE,
+            ),
+            SettingField(
                 key="parallel_enable_deepseek",
                 label="DeepSeek",
                 type=SettingType.BOOLEAN,
@@ -2145,6 +2175,8 @@ SETTINGS_CARDS = {
             ("experimental", "enable_loadouts"),
             ("experimental", "providers_in_parallel"),
             ("experimental", "providers_in_parallel_note"),
+            ("experimental", "parallelize_request_queue"),
+            ("experimental", "parallelize_request_queue_note"),
             ("experimental", "parallel_enable_deepseek"),
             ("experimental", "parallel_enable_glm"),
             ("experimental", "parallel_enable_moonshot"),

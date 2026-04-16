@@ -397,6 +397,7 @@ class MainWindow(QMainWindow):
         self.queue_preview.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         self.queue_preview.stop_requested.connect(self._on_queue_preview_stop_requested)
         self.queue_preview.clear_after_current_requested.connect(self._on_queue_preview_clear_requested)
+        self.queue_preview.request_action_requested.connect(self._on_queue_preview_request_action_requested)
 
         self.splitter.addWidget(self.main_panel)
         self.splitter.setCollapsible(0, False)
@@ -1553,6 +1554,7 @@ class MainWindow(QMainWindow):
                             "status": status,
                             "request_type": request_type,
                             "provider": provider_name,
+                            "slot_label": getattr(entry, "target_slot_label", None),
                             "message_count": msg_count,
                             "prompt_length": prompt_length,
                             "api_key_name": getattr(entry, "api_key_name", None),
@@ -1583,6 +1585,9 @@ class MainWindow(QMainWindow):
     def _on_queue_preview_clear_requested(self) -> None:
         asyncio.create_task(self._cancel_queue_after_current())
 
+    def _on_queue_preview_request_action_requested(self, request_id: str) -> None:
+        asyncio.create_task(self._cancel_queue_request(request_id))
+
     async def _abort_queue_current_request(self) -> None:
         api = getattr(self, "api", None)
         if api is None:
@@ -1608,6 +1613,27 @@ class MainWindow(QMainWindow):
                 Logger.warning(f"Queue: Cancelled {cancelled} queued request(s) from UI.")
         except Exception as e:
             Logger.error(f"Queue: Failed to clear request queue: {e}")
+
+        self._schedule_queue_preview_refresh()
+
+    async def _cancel_queue_request(self, request_id: str) -> None:
+        normalized_id = str(request_id or "").strip()
+        if not normalized_id:
+            return
+
+        api = getattr(self, "api", None)
+        if api is None:
+            return
+
+        try:
+            cancelled = await api.cancel_request(
+                normalized_id,
+                reason=f"Request {normalized_id} cancelled from UI.",
+            )
+            if cancelled:
+                Logger.warning(f"Queue: Cancelled request {normalized_id} from UI.")
+        except Exception as e:
+            Logger.error(f"Queue: Failed to cancel request {normalized_id}: {e}")
 
         self._schedule_queue_preview_refresh()
 

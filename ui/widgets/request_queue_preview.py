@@ -25,6 +25,8 @@ from ui.core.icons import IconUtils
 
 
 class RequestQueueItemCard(QFrame):
+    action_requested = Signal(str)
+
     STATUS_STYLES = {
         "pending": {
             "header_bg": BrandColors.ITEM_HOVER,
@@ -55,6 +57,9 @@ class RequestQueueItemCard(QFrame):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self._current_status: Optional[str] = None
         self._current_icon_key: Optional[tuple[str, Optional[str], int, float]] = None
+        self._current_action_icon_key: Optional[tuple[str, Optional[str], int, float]] = None
+        self._current_action_style_key: Optional[tuple[str, str]] = None
+        self._request_id = ""
 
         self._icon_label = QLabel()
         self._icon_label.setFixedSize(18, 18)
@@ -76,6 +81,13 @@ class RequestQueueItemCard(QFrame):
             f"color: {BrandColors.TEXT_SECONDARY}; font-size: {BrandColors.FONT_SIZE_SMALL};"
         )
 
+        self._action_button = QPushButton()
+        self._action_button.setCursor(Qt.PointingHandCursor)
+        self._action_button.setFixedSize(26, 26)
+        self._action_button.setIconSize(QSize(14, 14))
+        self._set_action_button_style(BrandColors.INPUT_BORDER, BrandColors.ACCENT)
+        self._action_button.clicked.connect(self._emit_action_requested)
+
         header = QFrame()
         header.setObjectName("requestQueueCardHeader")
         header_layout = QHBoxLayout(header)
@@ -86,6 +98,7 @@ class RequestQueueItemCard(QFrame):
         header_layout.addWidget(self._id_label, 0, Qt.AlignVCenter)
         header_layout.addStretch(1)
         header_layout.addWidget(self._time_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(self._action_button, 0, Qt.AlignVCenter)
 
         self._meta_label = QLabel()
         self._meta_label.setWordWrap(True)
@@ -107,6 +120,39 @@ class RequestQueueItemCard(QFrame):
         main_layout.addWidget(header)
         main_layout.addWidget(meta)
 
+    def _set_action_button_style(self, border_color: str, hover_border_color: str) -> None:
+        style_key = (border_color, hover_border_color)
+        if style_key == self._current_action_style_key:
+            return
+
+        self._action_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(255, 255, 255, 0.08);
+                border: 1px solid {hover_border_color};
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(255, 255, 255, 0.12);
+            }}
+            QPushButton:disabled {{
+                background-color: transparent;
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                opacity: 0.45;
+            }}
+            """
+        )
+        self._current_action_style_key = style_key
+
+    def _emit_action_requested(self) -> None:
+        if self._request_id:
+            self.action_requested.emit(self._request_id)
+
     def update_from_data(self, data: dict[str, Any]) -> None:
         status = (data.get("status") or "pending").lower()
         style = self.STATUS_STYLES.get(status, self.STATUS_STYLES["pending"])
@@ -123,6 +169,7 @@ class RequestQueueItemCard(QFrame):
         self._pos_label.setText(f"#{position}")
         self._id_label.setText(request_id)
         self._time_label.setText(f"Added: {time_str}")
+        self._request_id = request_id
 
         msg_count = int(data.get("message_count") or 0)
         request_type = str(data.get("request_type") or "chat").strip().lower()
@@ -130,6 +177,7 @@ class RequestQueueItemCard(QFrame):
         api_key_name = data.get("api_key_name")
         model = str(data.get("model") or "")
         provider = str(data.get("provider") or "")
+        slot_label = str(data.get("slot_label") or "")
         stream = bool(data.get("stream"))
 
         api_key_text = str(api_key_name) if api_key_name else "None"
@@ -140,9 +188,14 @@ class RequestQueueItemCard(QFrame):
             request_label = "Chat Completion"
             size_line = f"Messages: {msg_count}"
 
+        slot_line = ""
+        if slot_label and slot_label != provider:
+            slot_line = f"\nLane: {slot_label}"
+
         self._meta_label.setText(
-            "Provider: {provider}\nType: {request_type}\n{size_line}\nAPI Key: {api_key}\nModel: {model}\nStreaming: {streaming}".format(
+            "Provider: {provider}{slot_line}\nType: {request_type}\n{size_line}\nAPI Key: {api_key}\nModel: {model}\nStreaming: {streaming}".format(
                 provider=provider or "Unknown",
+                slot_line=slot_line,
                 request_type=request_label,
                 size_line=size_line,
                 api_key=api_key_text,
@@ -156,9 +209,34 @@ class RequestQueueItemCard(QFrame):
         dpr = self.devicePixelRatioF()
         icon_key = (icon_file, icon_color, 18, round(dpr, 2))
 
+        if status == "processing":
+            action_icon_file = "square.svg"
+            action_color = BrandColors.ACCENT
+            action_tooltip = "Abort this active request"
+            action_enabled = bool(request_id)
+            action_border_color = BrandColors.ACCENT
+            action_hover_border_color = BrandColors.CATEGORY_ACTIVE_BORDER
+        elif status == "pending":
+            action_icon_file = "x.svg"
+            action_color = BrandColors.TEXT_SECONDARY
+            action_tooltip = "Cancel this queued request"
+            action_enabled = bool(request_id)
+            action_border_color = BrandColors.INPUT_BORDER
+            action_hover_border_color = BrandColors.TEXT_SECONDARY
+        else:
+            action_icon_file = "x.svg"
+            action_color = BrandColors.TEXT_SECONDARY
+            action_tooltip = "This request is already being cancelled"
+            action_enabled = False
+            action_border_color = BrandColors.INPUT_BORDER
+            action_hover_border_color = BrandColors.TEXT_SECONDARY
+
+        action_icon_key = (action_icon_file, action_color, 14, round(dpr, 2))
+
         if status != self._current_status:
             self._current_status = status
             self._current_icon_key = None
+            self._current_action_icon_key = None
 
             border_color = style["border"]
             header_bg = style["header_bg"]
@@ -194,10 +272,25 @@ class RequestQueueItemCard(QFrame):
                 self._icon_label.setPixmap(pixmap)
             self._current_icon_key = icon_key
 
+        self._action_button.setEnabled(action_enabled)
+        self._action_button.setToolTip(action_tooltip)
+        self._set_action_button_style(action_border_color, action_hover_border_color)
+        if action_icon_key != self._current_action_icon_key:
+            action_icon = IconUtils.get_icon(
+                action_icon_file,
+                color=action_color,
+                size=14,
+                widget=self._action_button,
+            )
+            if not action_icon.isNull():
+                self._action_button.setIcon(action_icon)
+            self._current_action_icon_key = action_icon_key
+
 
 class RequestQueuePreview(QWidget):
     stop_requested = Signal()
     clear_after_current_requested = Signal()
+    request_action_requested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -340,7 +433,7 @@ class RequestQueuePreview(QWidget):
         self._stop_button.setCursor(Qt.PointingHandCursor)
         self._stop_button.setFixedSize(32, 32)
         self._stop_button.setIconSize(QSize(16, 16))
-        self._stop_button.setToolTip("Abort the current processing request(s) and disconnect the client")
+        self._stop_button.setToolTip("Abort all active request(s) and disconnect their clients")
         self._stop_button.setStyleSheet(
             f"""
             QPushButton {{
@@ -378,7 +471,7 @@ class RequestQueuePreview(QWidget):
         self._trash_button.setCursor(Qt.PointingHandCursor)
         self._trash_button.setFixedSize(32, 32)
         self._trash_button.setIconSize(QSize(16, 16))
-        self._trash_button.setToolTip("Cancel all queued requests after the current one")
+        self._trash_button.setToolTip("Cancel all queued requests that are still waiting")
         self._trash_button.setStyleSheet(
             f"""
             QPushButton {{
@@ -423,14 +516,27 @@ class RequestQueuePreview(QWidget):
         if stop_button is None and trash_button is None:
             return
 
-        statuses = {str(r.get("status") or "").lower() for r in (requests or [])}
-        has_processing = "processing" in statuses
-        has_pending = "pending" in statuses
+        processing_count = sum(
+            1 for r in (requests or []) if str(r.get("status") or "").lower() == "processing"
+        )
+        pending_count = sum(
+            1 for r in (requests or []) if str(r.get("status") or "").lower() == "pending"
+        )
 
         if stop_button is not None:
-            stop_button.setEnabled(bool(has_processing))
+            stop_button.setEnabled(processing_count > 0)
+            stop_button.setToolTip(
+                "Abort the active request"
+                if processing_count == 1
+                else "Abort all active requests"
+            )
         if trash_button is not None:
-            trash_button.setEnabled(bool(has_pending))
+            trash_button.setEnabled(pending_count > 0)
+            trash_button.setToolTip(
+                "Cancel the queued request"
+                if pending_count == 1
+                else "Cancel all queued requests that are still waiting"
+            )
 
     def set_requests(self, requests: list[dict[str, Any]]) -> None:
         requests = list(requests or [])
@@ -470,6 +576,7 @@ class RequestQueuePreview(QWidget):
             widget = self._item_widgets.get(request_id)
             if widget is None:
                 widget = RequestQueueItemCard()
+                widget.action_requested.connect(self.request_action_requested.emit)
                 self._item_widgets[request_id] = widget
 
             prev_payload = self._last_payload_by_id.get(request_id)
