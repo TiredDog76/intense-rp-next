@@ -42,11 +42,16 @@ If **Show the Server Address in Logs** is enabled in **Settings -> API Server ->
 
 ![Remote Control UI](../pics/experimental/rcmain.png)
 
-The remote page is intentionally tiny and simple. Right now it can do simple actions like **Stop**, **Restart**, **Hotswap**, **Switch Account**, and **Switch Loadouts**, as well as show you live logs + some minor stuff.
+The remote page is intentionally tiny and simple. Right now it can do simple actions like **Stop**, **Restart**, **Hotswap**, **Switch Account**, and **Switch Models** / **Switch Loadouts**, as well as show you live logs + some minor stuff.
 
-For Hotswap specifically, it shows every provider except the one you're currently using, so Google AI Studio now appears there as well.
+??? info "Hotswap targets"
+    For Hotswap specifically, it shows every provider except the one you're currently using, so Google AI Studio now appears there as well.
 
-If **Loadouts** are enabled, Remote Control uses **Switch Loadouts** instead of **Switch Models**, because the selected model is part of the active loadout. If Loadouts are disabled, providers that support direct model switching still show **Switch Models**.
+??? info "Switch Models vs Switch Loadouts"
+    If **Loadouts** are enabled, Remote Control uses **Switch Loadouts** instead of **Switch Models**, because the selected model is part of the active loadout. If Loadouts are disabled, providers that support direct model switching still show **Switch Models**.
+
+??? info "Providers in Parallel"
+    When **Providers in Parallel** is active and Loadouts are disabled, **Switch Models** gets a provider dropdown too. It only shows providers with a real model list, then lets you pick draft model changes and confirm them together. Single-provider mode keeps the simpler "tap a model and switch" behavior.
 
 !!! note "Not a full dashboard"
     I intentionally did NOT recreate the entire UI in the remote page. Unlike the desktop app, this is not meant to be a full management dashboard, but rather a quick control panel for common actions when you're away from the host PC.

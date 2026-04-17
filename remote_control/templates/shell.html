@@ -63,8 +63,28 @@
     <section class="view hotswap-view" data-view="model-switch">
       <div class="hotswap-view__panel">
         <h1 class="hotswap-view__title">Select Model</h1>
+        <div id="model-provider-block" class="loadout-provider-block hidden">
+          <span class="loadout-provider-block__label">Provider</span>
+          <div id="model-provider-dropdown" class="custom-select">
+            <button id="model-provider-button" class="custom-select__button" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span class="custom-select__value">
+                <span class="custom-select__icon" aria-hidden="true">
+                  <img id="model-provider-button-icon" src="" alt="">
+                </span>
+                <span id="model-provider-button-label" class="custom-select__label"></span>
+              </span>
+              <span class="custom-select__chevron" aria-hidden="true">
+                <img src="{{ asset_urls.icons.chevron_down }}" alt="">
+              </span>
+            </button>
+            <div id="model-provider-menu" class="custom-select__menu" role="listbox" aria-hidden="true"></div>
+          </div>
+        </div>
         <div id="model-switch-list" class="model-switch-list"></div>
-        {{ web_button("model-switch-back-button", "Back", variant="secondary") }}
+        <div id="model-switch-footer" class="loadout-switch-footer is-single">
+          {{ web_button("model-switch-back-button", "Back", variant="secondary") }}
+          {{ web_button("model-switch-confirm-button", "Confirm", variant="accent", icon_url=asset_urls.icons.check, icon_alt="Confirm") }}
+        </div>
         <p id="model-switch-status" class="status-text"></p>
       </div>
     </section>

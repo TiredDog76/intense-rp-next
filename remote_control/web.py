@@ -36,7 +36,7 @@ class RemoteControlActions:
     switch_account: Callable[[], Awaitable[None]]
     hotswap: Callable[[str], Awaitable[None]]
     switch_loadout: Callable[[dict[str, str]], Awaitable[None]]
-    switch_model: Callable[[str], Awaitable[None]]
+    switch_model: Callable[[dict[str, str]], Awaitable[None]]
     get_state: Callable[[], dict[str, Any]]
 
 
@@ -49,6 +49,7 @@ class RemoteActionRequest(BaseModel):
     loadout: str | None = None
     loadouts: dict[str, str] | None = None
     model: str | None = None
+    models: dict[str, str] | None = None
 
 
 class RemoteControlWeb:
@@ -332,27 +333,74 @@ class RemoteControlWeb:
                     selected
                 )
             elif action == "switch-model":
-                desired_model = str(payload.model or "").strip()
-                if not desired_model:
-                    raise HTTPException(status_code=400, detail="Invalid model")
-
                 model_switch = state.get("model_switch") or {}
                 if not bool(model_switch.get("supported")):
                     raise HTTPException(
                         status_code=409,
-                        detail="Switch Models is not available for the current provider",
+                        detail="Switch Models is not available right now",
                     )
 
-                allowed_models = {
-                    str(item.get("name") or "")
-                    for item in (model_switch.get("options") or [])
+                providers_by_name = {
+                    str(item.get("name") or ""): item
+                    for item in (model_switch.get("providers") or [])
                     if isinstance(item, dict)
                 }
-                if desired_model not in allowed_models:
-                    raise HTTPException(status_code=400, detail="Model is unavailable")
+                selected_models: dict[str, str] = {}
+
+                raw_models = payload.models if isinstance(payload.models, dict) else {}
+                for raw_provider, raw_model in raw_models.items():
+                    provider = DriverProvider.from_setting(raw_provider)
+                    provider_name = (
+                        provider.value
+                        if provider is not None
+                        else str(raw_provider or "").strip()
+                    )
+                    model_name = str(raw_model or "").strip()
+                    if provider_name and model_name:
+                        selected_models[provider_name] = model_name
+
+                if not selected_models:
+                    provider = DriverProvider.from_setting(
+                        payload.provider or model_switch.get("current_provider")
+                    )
+                    model_name = str(payload.model or "").strip()
+                    if provider is not None and model_name:
+                        selected_models[provider.value] = model_name
+
+                if not selected_models:
+                    raise HTTPException(status_code=400, detail="Invalid model")
+
+                changes: dict[str, str] = {}
+                for provider_name, model_name in selected_models.items():
+                    provider_info = providers_by_name.get(provider_name)
+                    if provider_info is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Provider is unavailable",
+                        )
+
+                    allowed_models = {
+                        str(item.get("name") or "")
+                        for item in (provider_info.get("options") or [])
+                        if isinstance(item, dict)
+                    }
+                    if model_name not in allowed_models:
+                        raise HTTPException(status_code=400, detail="Model is unavailable")
+
+                    current_model = str(provider_info.get("current_model") or "").strip()
+                    if model_name != current_model:
+                        changes[provider_name] = model_name
+
+                if not changes:
+                    return {
+                        "ok": True,
+                        "disconnect": False,
+                        "action": action,
+                        "remote_state": self._build_remote_state(),
+                    }
 
                 try:
-                    await self._actions.switch_model(desired_model)
+                    await self._actions.switch_model(changes)
                 except Exception as exc:
                     raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -570,23 +618,104 @@ class RemoteControlWeb:
                 }
             )
 
-        model_switch_provider = current_provider or DriverProvider.DEEPSEEK
-        current_model = str(raw_state.get("model_switch_current_model") or "").strip()
-        model_options: list[dict[str, Any]] = []
-        raw_model_options = raw_state.get("model_switch_options")
-        if isinstance(raw_model_options, list):
-            for raw_option in raw_model_options:
-                option_name = str(raw_option or "").strip()
-                if not option_name:
+        model_provider_items: list[dict[str, Any]] = []
+        raw_model_providers = raw_state.get("model_switch_providers")
+        if isinstance(raw_model_providers, list):
+            for raw_provider_info in raw_model_providers:
+                if not isinstance(raw_provider_info, dict):
                     continue
-                model_options.append(
+
+                provider = DriverProvider.from_setting(raw_provider_info.get("name"))
+                if provider is None:
+                    continue
+
+                options: list[dict[str, Any]] = []
+                raw_options = raw_provider_info.get("options")
+                if isinstance(raw_options, list):
+                    for raw_option in raw_options:
+                        if isinstance(raw_option, dict):
+                            option_name = str(raw_option.get("name") or "").strip()
+                        else:
+                            option_name = str(raw_option or "").strip()
+                        if not option_name:
+                            continue
+                        options.append({"name": option_name})
+
+                if not options:
+                    continue
+
+                model_provider_items.append(
                     {
-                        "name": option_name,
-                        "icon_url": self.asset_url(
-                            f"providers/{model_switch_provider.key}.svg"
-                        ),
+                        "name": provider.value,
+                        "key": provider.key,
+                        "icon_url": self.asset_url(f"providers/{provider.key}.svg"),
+                        "current_model": str(
+                            raw_provider_info.get("current_model") or ""
+                        ).strip(),
+                        "options": options,
                     }
                 )
+
+        if not model_provider_items:
+            model_switch_provider = (
+                DriverProvider.from_setting(raw_state.get("model_switch_current_provider"))
+                or current_provider
+                or DriverProvider.DEEPSEEK
+            )
+            raw_model_options = raw_state.get("model_switch_options")
+            model_options: list[dict[str, Any]] = []
+            if isinstance(raw_model_options, list):
+                for raw_option in raw_model_options:
+                    option_name = str(raw_option or "").strip()
+                    if not option_name:
+                        continue
+                    model_options.append({"name": option_name})
+
+            if model_options:
+                model_provider_items.append(
+                    {
+                        "name": model_switch_provider.value,
+                        "key": model_switch_provider.key,
+                        "icon_url": self.asset_url(f"providers/{model_switch_provider.key}.svg"),
+                        "current_model": str(
+                            raw_state.get("model_switch_current_model") or ""
+                        ).strip(),
+                        "options": model_options,
+                    }
+                )
+
+        raw_model_current_provider = DriverProvider.from_setting(
+            raw_state.get("model_switch_current_provider")
+        )
+        model_current_provider = (
+            raw_model_current_provider.value
+            if raw_model_current_provider is not None
+            else (
+                model_provider_items[0]["name"]
+                if model_provider_items
+                else provider_name
+            )
+        )
+        if not any(item.get("name") == model_current_provider for item in model_provider_items):
+            model_current_provider = (
+                model_provider_items[0]["name"]
+                if model_provider_items
+                else provider_name
+            )
+
+        current_model = ""
+        model_options: list[dict[str, Any]] = []
+        for provider_info in model_provider_items:
+            if provider_info.get("name") == model_current_provider:
+                current_model = str(provider_info.get("current_model") or "").strip()
+                raw_options = provider_info.get("options")
+                model_options = raw_options if isinstance(raw_options, list) else []
+                break
+
+        model_switch_supported = bool(
+            raw_state.get("model_switch_supported", False)
+        ) and bool(model_provider_items)
+        model_switch_parallel = bool(raw_state.get("model_switch_parallel", False))
 
         loadout_provider_items: list[dict[str, Any]] = []
         raw_loadout_providers = raw_state.get("loadout_switch_providers")
@@ -650,9 +779,12 @@ class RemoteControlWeb:
             "current_provider": provider_name,
             "hotswap_targets": targets,
             "model_switch": {
-                "supported": bool(raw_state.get("model_switch_supported", False)),
+                "supported": model_switch_supported,
+                "parallel": model_switch_parallel and len(model_provider_items) > 1,
+                "current_provider": model_current_provider,
                 "current_model": current_model,
                 "options": model_options,
+                "providers": model_provider_items,
             },
             "loadout_switch": {
                 "supported": loadout_switch_supported,

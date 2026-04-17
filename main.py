@@ -826,6 +826,17 @@ class MainWindow(QMainWindow):
             return driver.get_driver(current_provider) or driver.get_current_driver()
         return driver
 
+    def _get_runtime_driver_for_provider(self, provider: DriverProvider):
+        driver = getattr(self, "driver", None)
+        if isinstance(driver, ParallelDriversManager):
+            return driver.get_driver(provider)
+
+        runtime_driver = self._get_current_runtime_driver()
+        runtime_provider = getattr(runtime_driver, "provider", None)
+        if runtime_driver is not None and runtime_provider == provider:
+            return runtime_driver
+        return None
+
     def _iter_runtime_drivers(self) -> list[tuple[DriverProvider, object]]:
         driver = getattr(self, "driver", None)
         if isinstance(driver, ParallelDriversManager):
@@ -859,9 +870,6 @@ class MainWindow(QMainWindow):
                 options.append(option)
         return options
 
-    def _provider_supports_remote_model_switch(self, provider: DriverProvider | None = None) -> bool:
-        return bool(self._get_remote_model_options(provider))
-
     def _get_remote_current_model(self, provider: DriverProvider | None = None) -> str:
         target_provider = provider or self._get_remote_model_switch_provider()
         behavior_category = get_behavior_category_for_provider(target_provider)
@@ -873,6 +881,57 @@ class MainWindow(QMainWindow):
         except Exception:
             value = None
         return str(value or "").strip()
+
+    def _get_remote_model_switch_context(self) -> dict[str, object]:
+        if self._loadouts_feature_enabled():
+            return {
+                "supported": False,
+                "parallel": False,
+                "current_provider": "",
+                "providers": [],
+            }
+
+        current_provider = get_current_provider(self.config_manager)
+        runtime_providers = [
+            runtime_provider
+            for runtime_provider, _driver in self._iter_runtime_drivers()
+        ]
+        parallel_switch = (
+            is_parallel_runtime_active(self.config_manager)
+            and len(runtime_providers) >= 2
+        )
+        provider_candidates = runtime_providers if parallel_switch else [current_provider]
+
+        provider_models: dict[DriverProvider, list[str]] = {}
+        for provider in provider_candidates:
+            if not isinstance(provider, DriverProvider):
+                continue
+            options = self._get_remote_model_options(provider)
+            if options:
+                provider_models[provider] = options
+
+        initial_provider = (
+            current_provider
+            if current_provider in provider_models
+            else next(iter(provider_models), current_provider)
+        )
+
+        providers_payload = []
+        for provider, options in provider_models.items():
+            providers_payload.append(
+                {
+                    "name": provider.value,
+                    "current_model": self._get_remote_current_model(provider),
+                    "options": [{"name": option} for option in options],
+                }
+            )
+
+        return {
+            "supported": bool(providers_payload),
+            "parallel": parallel_switch and len(providers_payload) > 1,
+            "current_provider": initial_provider.value,
+            "providers": providers_payload,
+        }
 
     def _get_remote_loadout_switch_context(self) -> dict[str, object]:
         if not self._loadouts_feature_enabled():
@@ -957,21 +1016,25 @@ class MainWindow(QMainWindow):
         current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
         current_provider = DriverProvider.from_setting(current)
         current_value = current_provider.value if current_provider else "DeepSeek"
-        model_switch_provider = current_provider or DriverProvider.DEEPSEEK
+        model_switch = self._get_remote_model_switch_context()
+        model_switch_provider = (
+            DriverProvider.from_setting(model_switch.get("current_provider"))
+            or current_provider
+            or DriverProvider.DEEPSEEK
+        )
         loadout_switch = self._get_remote_loadout_switch_context()
-        loadouts_enabled = self._loadouts_feature_enabled()
         return {
             "running": self._are_services_running(),
             "busy": self._is_services_busy(),
             "can_switch_account": self._can_switch_account(),
             "current_provider": current_value,
             "hotswap_targets": self._get_hotswap_targets(),
-            "model_switch_supported": (
-                (not loadouts_enabled)
-                and self._provider_supports_remote_model_switch(model_switch_provider)
-            ),
+            "model_switch_supported": bool(model_switch.get("supported")),
+            "model_switch_parallel": bool(model_switch.get("parallel")),
+            "model_switch_current_provider": model_switch.get("current_provider"),
             "model_switch_current_model": self._get_remote_current_model(model_switch_provider),
             "model_switch_options": self._get_remote_model_options(model_switch_provider),
+            "model_switch_providers": model_switch.get("providers"),
             "loadout_switch_supported": bool(loadout_switch.get("supported")),
             "loadout_switch_parallel": bool(loadout_switch.get("parallel")),
             "loadout_switch_current_provider": loadout_switch.get("current_provider"),
@@ -2306,45 +2369,89 @@ class MainWindow(QMainWindow):
 
         raise RuntimeError(f"{provider.value} does not support remote model switching.")
 
-    async def _remote_switch_model(self, model_name: str) -> None:
-        provider = self._get_remote_model_switch_provider()
-        if not self._provider_supports_remote_model_switch(provider):
-            raise RuntimeError(f"{provider.value} does not support remote model switching.")
+    async def _remote_switch_model(self, selected_models: dict[str, str] | str) -> None:
+        if isinstance(selected_models, str):
+            selected_models = {
+                self._get_remote_model_switch_provider().value: selected_models,
+            }
 
-        desired_model = str(model_name or "").strip()
-        if not desired_model:
-            raise RuntimeError("Model name cannot be empty.")
+        context = self._get_remote_model_switch_context()
+        providers = context.get("providers")
+        if not isinstance(providers, list) or not providers:
+            raise RuntimeError("Switch Models is not available right now.")
 
-        allowed_models = self._get_remote_model_options(provider)
-        if desired_model not in allowed_models:
-            raise RuntimeError(f"'{desired_model}' is not available for {provider.value}.")
+        providers_by_name = {
+            str(provider_info.get("name") or ""): provider_info
+            for provider_info in providers
+            if isinstance(provider_info, dict)
+        }
+        changes: dict[DriverProvider, str] = {}
 
-        behavior_category = get_behavior_category_for_provider(provider)
-        if not behavior_category:
-            raise RuntimeError(f"{provider.value} does not expose a switchable model setting.")
+        for raw_provider, raw_model in (selected_models or {}).items():
+            provider = DriverProvider.from_setting(raw_provider)
+            if provider is None:
+                raise RuntimeError(f"Unknown provider: {raw_provider}")
 
-        runtime_driver = self._get_current_runtime_driver()
-        runtime_provider = getattr(runtime_driver, "provider", None)
-        if runtime_driver is None or runtime_provider != provider:
-            raise RuntimeError(
-                f"{provider.value} is not the active runtime driver, so its model cannot be switched right now."
-            )
+            provider_info = providers_by_name.get(provider.value)
+            if provider_info is None:
+                raise RuntimeError(f"{provider.value} is not available for model switching.")
 
-        previous_model = self.config_manager.get_setting(behavior_category, "model")
-        previous_label = str(previous_model or "").strip()
-        if previous_label == desired_model:
+            desired_model = str(raw_model or "").strip()
+            allowed_models = {
+                str(item.get("name") or "")
+                for item in (provider_info.get("options") or [])
+                if isinstance(item, dict)
+            }
+            if desired_model not in allowed_models:
+                raise RuntimeError(
+                    f"'{desired_model}' is not available for {provider.value}."
+                )
+
+            current_model = str(provider_info.get("current_model") or "").strip()
+            if desired_model != current_model:
+                changes[provider] = desired_model
+
+        if not changes:
             return
 
-        Logger.info(f"Remote Control: switching {provider.value} model to '{desired_model}'.")
-        self.config_manager.set_setting(behavior_category, "model", desired_model)
-        self.config_manager.save_settings()
+        switch_jobs: list[tuple[DriverProvider, str, object, str, object]] = []
+        for provider, desired_model in changes.items():
+            behavior_category = get_behavior_category_for_provider(provider)
+            if not behavior_category:
+                raise RuntimeError(f"{provider.value} does not expose a switchable model setting.")
 
-        try:
-            await self._apply_remote_model_switch(provider, runtime_driver, desired_model)
-        except Exception:
-            self.config_manager.set_setting(behavior_category, "model", previous_model)
+            runtime_driver = self._get_runtime_driver_for_provider(provider)
+            runtime_provider = getattr(runtime_driver, "provider", None)
+            if runtime_driver is None or runtime_provider != provider:
+                raise RuntimeError(
+                    f"{provider.value} is not an active runtime driver, so its model cannot be switched right now."
+                )
+
+            previous_model = self.config_manager.get_setting(behavior_category, "model")
+            switch_jobs.append(
+                (provider, behavior_category, runtime_driver, desired_model, previous_model)
+            )
+
+        if len(switch_jobs) == 1:
+            provider, _category, _driver, desired_model, _previous_model = switch_jobs[0]
+            Logger.info(f"Remote Control: switching {provider.value} model to '{desired_model}'.")
+        else:
+            changed_models = ", ".join(
+                f"{provider.value}: {desired_model}"
+                for provider, _category, _driver, desired_model, _previous_model in switch_jobs
+            )
+            Logger.info(f"Remote Control: switching parallel models ({changed_models}).")
+
+        for provider, behavior_category, runtime_driver, desired_model, previous_model in switch_jobs:
+            self.config_manager.set_setting(behavior_category, "model", desired_model)
             self.config_manager.save_settings()
-            raise
+
+            try:
+                await self._apply_remote_model_switch(provider, runtime_driver, desired_model)
+            except Exception:
+                self.config_manager.set_setting(behavior_category, "model", previous_model)
+                self.config_manager.save_settings()
+                raise
 
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")

@@ -11,6 +11,8 @@
     currentView: "",
     pendingView: initialState.initial_view || "home",
     remoteState: initialState.remote_state || null,
+    activeModelProvider: "",
+    draftModels: {},
     activeLoadoutProvider: "",
     draftLoadouts: {},
     logController: null,
@@ -47,6 +49,14 @@
   const hotswapBackButton = document.getElementById("hotswap-back-button");
   const modelSwitchList = document.getElementById("model-switch-list");
   const modelSwitchBackButton = document.getElementById("model-switch-back-button");
+  const modelProviderBlock = document.getElementById("model-provider-block");
+  const modelProviderDropdown = document.getElementById("model-provider-dropdown");
+  const modelProviderButton = document.getElementById("model-provider-button");
+  const modelProviderButtonIcon = document.getElementById("model-provider-button-icon");
+  const modelProviderButtonLabel = document.getElementById("model-provider-button-label");
+  const modelProviderMenu = document.getElementById("model-provider-menu");
+  const modelSwitchFooter = document.getElementById("model-switch-footer");
+  const modelSwitchConfirmButton = document.getElementById("model-switch-confirm-button");
   const loadoutProviderBlock = document.getElementById("loadout-provider-block");
   const loadoutProviderDropdown = document.getElementById("loadout-provider-dropdown");
   const loadoutProviderButton = document.getElementById("loadout-provider-button");
@@ -114,6 +124,32 @@
     stopDropdown.setAttribute("aria-hidden", "false");
   }
 
+  function closeModelProviderDropdown() {
+    if (!modelProviderDropdown || !modelProviderButton || !modelProviderMenu) {
+      return;
+    }
+    modelProviderDropdown.classList.remove("is-open");
+    modelProviderButton.setAttribute("aria-expanded", "false");
+    modelProviderMenu.setAttribute("aria-hidden", "true");
+  }
+
+  function openModelProviderDropdown() {
+    if (!modelProviderDropdown || !modelProviderButton || !modelProviderMenu) {
+      return;
+    }
+    modelProviderDropdown.classList.add("is-open");
+    modelProviderButton.setAttribute("aria-expanded", "true");
+    modelProviderMenu.setAttribute("aria-hidden", "false");
+  }
+
+  function toggleModelProviderDropdown() {
+    if (modelProviderDropdown.classList.contains("is-open")) {
+      closeModelProviderDropdown();
+    } else {
+      openModelProviderDropdown();
+    }
+  }
+
   function closeLoadoutProviderDropdown() {
     if (!loadoutProviderDropdown || !loadoutProviderButton || !loadoutProviderMenu) {
       return;
@@ -157,8 +193,16 @@
     } else {
       stopLogs();
     }
+    if (name !== "model-switch") {
+      closeModelProviderDropdown();
+    }
     if (name !== "loadout-switch") {
       closeLoadoutProviderDropdown();
+    }
+    if (name === "model-switch") {
+      renderModelSwitchProviderSelect();
+      renderModelSwitchOptions();
+      updateModelSwitchConfirmState();
     }
     if (name === "loadout-switch") {
       renderLoadoutSwitchProviderSelect();
@@ -205,11 +249,63 @@
     });
   }
 
+  function getModelSwitchState() {
+    return (state.remoteState && state.remoteState.model_switch) || {};
+  }
+
+  function getModelProviders() {
+    const providers = getModelSwitchState().providers || [];
+    return Array.isArray(providers) ? providers : [];
+  }
+
+  function findModelProvider(providerName) {
+    const normalizedName = String(providerName || "").trim();
+    return (
+      getModelProviders().find((provider) => provider.name === normalizedName) ||
+      getModelProviders()[0] ||
+      null
+    );
+  }
+
+  function syncModelDrafts() {
+    const modelSwitch = getModelSwitchState();
+    const providers = getModelProviders();
+    const nextDrafts = {};
+
+    providers.forEach((provider) => {
+      const options = Array.isArray(provider.options) ? provider.options : [];
+      const currentName =
+        String(provider.current_model || "").trim() ||
+        (options[0] ? String(options[0].name || "").trim() : "");
+      const existingDraft = String(state.draftModels[provider.name] || "").trim();
+      const draftStillExists = options.some((option) => option.name === existingDraft);
+      nextDrafts[provider.name] = draftStillExists ? existingDraft : currentName;
+    });
+
+    state.draftModels = nextDrafts;
+
+    const activeProvider = state.activeModelProvider
+      ? findModelProvider(state.activeModelProvider)
+      : null;
+    const stateProvider = modelSwitch.current_provider
+      ? findModelProvider(modelSwitch.current_provider)
+      : null;
+    state.activeModelProvider = (
+      activeProvider ||
+      stateProvider ||
+      providers[0] ||
+      {}
+    ).name || "";
+  }
+
   function renderModelSwitchHomeState() {
-    const remoteState = state.remoteState || {};
-    const modelSwitch = remoteState.model_switch || {};
+    const modelSwitch = getModelSwitchState();
     const supported = Boolean(modelSwitch.supported);
-    const currentModel = String(modelSwitch.current_model || "").trim();
+    const parallel = Boolean(modelSwitch.parallel);
+    const provider = findModelProvider(modelSwitch.current_provider);
+    const currentModel = provider
+      ? String(provider.current_model || "").trim()
+      : String(modelSwitch.current_model || "").trim();
 
     modelSwitchRow.classList.toggle("hidden", !supported);
     if (!supported) {
@@ -218,9 +314,70 @@
       return;
     }
 
-    modelSwitchCurrentModel.textContent =
-      "Current Model: " + (currentModel || "Unknown");
+    modelSwitchCurrentModel.textContent = parallel && provider
+      ? "Current Model: " + provider.name + " - " + (currentModel || "Unknown")
+      : "Current Model: " + (currentModel || "Unknown");
     modelSwitchCurrentModel.classList.remove("hidden");
+  }
+
+  function renderModelSwitchProviderSelect() {
+    const modelSwitch = getModelSwitchState();
+    const providers = getModelProviders();
+    const showProviderSelect = Boolean(modelSwitch.parallel) && providers.length > 1;
+    const activeProvider = findModelProvider(state.activeModelProvider);
+
+    modelProviderBlock.classList.toggle("hidden", !showProviderSelect);
+    modelSwitchFooter.classList.toggle("is-single", !showProviderSelect);
+    modelSwitchConfirmButton.classList.toggle("hidden", !showProviderSelect);
+    if (!showProviderSelect) {
+      closeModelProviderDropdown();
+      return;
+    }
+
+    if (activeProvider) {
+      modelProviderButtonLabel.textContent = activeProvider.name;
+      modelProviderButtonIcon.src = activeProvider.icon_url || "";
+      modelProviderButtonIcon.classList.toggle("hidden", !activeProvider.icon_url);
+    }
+
+    modelProviderMenu.innerHTML = "";
+    providers.forEach((provider) => {
+      const option = document.createElement("button");
+      const selected = activeProvider && provider.name === activeProvider.name;
+      option.type = "button";
+      option.className = "custom-select__option" + (selected ? " is-selected" : "");
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", selected ? "true" : "false");
+      option.innerHTML =
+        '<span class="custom-select__icon" aria-hidden="true"><img src="' +
+        escapeHtml(provider.icon_url || "") +
+        '" alt=""></span><span class="custom-select__label">' +
+        escapeHtml(provider.name) +
+        "</span>";
+      option.addEventListener("click", function () {
+        state.activeModelProvider = provider.name;
+        closeModelProviderDropdown();
+        renderModelSwitchProviderSelect();
+        renderModelSwitchOptions();
+        updateModelSwitchConfirmState();
+      });
+      modelProviderMenu.appendChild(option);
+    });
+  }
+
+  function modelDraftHasChanges() {
+    return getModelProviders().some((provider) => {
+      const currentName = String(provider.current_model || "").trim();
+      const draftName = String(state.draftModels[provider.name] || "").trim();
+      return draftName && draftName !== currentName;
+    });
+  }
+
+  function updateModelSwitchConfirmState() {
+    const modelSwitch = getModelSwitchState();
+    const confirmVisible = Boolean(modelSwitch.parallel);
+    modelSwitchConfirmButton.disabled =
+      !confirmVisible || !modelDraftHasChanges();
   }
 
   function getLoadoutSwitchState() {
@@ -408,18 +565,61 @@
 
   function renderModelSwitchOptions() {
     modelSwitchList.innerHTML = "";
-    const modelSwitch = (state.remoteState && state.remoteState.model_switch) || {};
-    const options = modelSwitch.options || [];
+    const modelSwitch = getModelSwitchState();
+    const activeProvider = findModelProvider(state.activeModelProvider);
+    if (!activeProvider) {
+      return;
+    }
+
+    const parallel = Boolean(modelSwitch.parallel);
+    const currentName = String(activeProvider.current_model || "").trim();
+    const draftName =
+      String(state.draftModels[activeProvider.name] || "").trim() || currentName;
+    const options = Array.isArray(activeProvider.options)
+      ? activeProvider.options
+      : [];
+
     options.forEach((option) => {
+      const optionName = String(option.name || "").trim();
+      if (!optionName) {
+        return;
+      }
+
+      const selected = optionName === draftName;
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "web-button web-button--secondary model-switch-list__button";
-      button.innerHTML =
-        '<span class="web-button__label">' +
-        escapeHtml(option.name) +
-        "</span>";
+      button.className =
+        "web-button web-button--secondary model-switch-list__button" +
+        (parallel ? " model-switch-list__button--stateful" : "") +
+        (selected ? " is-selected" : "");
+
+      if (parallel) {
+        const stateIcon = selected
+          ? '<span class="model-option__check" aria-hidden="true"><img src="' +
+            escapeHtml(assets.icons.check) +
+            '" alt=""></span>'
+          : '<span class="model-option__check" aria-hidden="true"></span>';
+        const meta = selected
+          ? '<span class="model-option__meta">' +
+            escapeHtml(optionName === currentName ? "Current" : "Selected") +
+            "</span>"
+          : "";
+        button.innerHTML =
+          stateIcon +
+          '<span class="model-option__text"><span class="model-option__title">' +
+          escapeHtml(optionName) +
+          "</span>" +
+          meta +
+          "</span>";
+      } else {
+        button.innerHTML =
+          '<span class="web-button__label">' +
+          escapeHtml(optionName) +
+          "</span>";
+      }
+
       button.addEventListener("click", function () {
-        handleModelSwitchSelection(button, option.name);
+        handleModelSwitchSelection(activeProvider.name, optionName, button);
       });
       modelSwitchList.appendChild(button);
     });
@@ -476,11 +676,14 @@
       headers: authHeaders(false),
       cache: "no-store",
     });
+    syncModelDrafts();
     syncLoadoutDrafts();
     updateHomeControls();
     renderHotswapTargets();
     renderModelSwitchHomeState();
+    renderModelSwitchProviderSelect();
     renderModelSwitchOptions();
+    updateModelSwitchConfirmState();
     renderLoadoutSwitchHomeState();
     renderLoadoutSwitchProviderSelect();
     renderLoadoutSwitchOptions();
@@ -558,11 +761,14 @@
       });
       if (response && response.remote_state) {
         state.remoteState = response.remote_state;
+        syncModelDrafts();
         syncLoadoutDrafts();
         updateHomeControls();
         renderHotswapTargets();
         renderModelSwitchHomeState();
+        renderModelSwitchProviderSelect();
         renderModelSwitchOptions();
+        updateModelSwitchConfirmState();
         renderLoadoutSwitchHomeState();
         renderLoadoutSwitchProviderSelect();
         renderLoadoutSwitchOptions();
@@ -594,17 +800,33 @@
     buttons.forEach((button) => {
       button.disabled = busy;
     });
+    modelProviderButton.disabled = busy;
     modelSwitchBackButton.disabled = busy;
+    modelSwitchConfirmButton.disabled =
+      busy || !Boolean(getModelSwitchState().parallel) || !modelDraftHasChanges();
   }
 
-  async function handleModelSwitchSelection(button, modelName) {
+  async function handleModelSwitchSelection(providerName, modelName, button) {
+    const modelSwitch = getModelSwitchState();
+    const provider = findModelProvider(providerName);
+    if (!provider) {
+      return;
+    }
+
+    if (Boolean(modelSwitch.parallel)) {
+      state.draftModels[provider.name] = modelName;
+      renderModelSwitchOptions();
+      updateModelSwitchConfirmState();
+      return;
+    }
+
     const originalHtml = button.innerHTML;
     setModelSwitchBusyState(true);
     button.innerHTML = '<span class="web-button__label">Loading...</span>';
 
     const ok = await triggerAction(
       "switch-model",
-      { model: modelName },
+      { provider: provider.name, model: modelName },
       modelSwitchStatus,
       { disconnect: false, successView: "home" }
     );
@@ -613,6 +835,21 @@
       button.innerHTML = originalHtml;
       setModelSwitchBusyState(false);
     }
+  }
+
+  async function handleModelSwitchConfirm() {
+    if (!modelDraftHasChanges()) {
+      return;
+    }
+
+    setModelSwitchBusyState(true);
+    await triggerAction(
+      "switch-model",
+      { models: state.draftModels },
+      modelSwitchStatus,
+      { disconnect: false, successView: "home" }
+    );
+    setModelSwitchBusyState(false);
   }
 
   function setLoadoutSwitchBusyState(busy) {
@@ -835,6 +1072,8 @@
   modelSwitchBackButton.addEventListener("click", function () {
     showView("home");
   });
+  modelProviderButton.addEventListener("click", toggleModelProviderDropdown);
+  modelSwitchConfirmButton.addEventListener("click", handleModelSwitchConfirm);
   loadoutProviderButton.addEventListener("click", toggleLoadoutProviderDropdown);
   loadoutSwitchBackButton.addEventListener("click", function () {
     showView("home");
@@ -861,6 +1100,20 @@
       return;
     }
     closeStopMenu();
+  });
+
+  document.addEventListener("click", function (event) {
+    if (!modelProviderDropdown || !modelProviderButton) {
+      return;
+    }
+    const target = event.target;
+    if (!target) {
+      return;
+    }
+    if (modelProviderDropdown.contains(target)) {
+      return;
+    }
+    closeModelProviderDropdown();
   });
 
   document.addEventListener("click", function (event) {

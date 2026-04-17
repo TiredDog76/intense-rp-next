@@ -603,6 +603,58 @@ img {
   padding: 12px 16px;
 }
 
+.model-switch-list__button--stateful {
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 58px;
+  border: 1px solid transparent;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.model-switch-list__button--stateful.is-selected {
+  background: #31456c;
+  border: 1px solid var(--accent);
+}
+
+.model-switch-list__button--stateful.is-selected:hover {
+  background: #38527e;
+}
+
+.model-option__check {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+}
+
+.model-option__check img {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0) saturate(100%) invert(100%);
+}
+
+.model-option__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.model-option__title {
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+.model-option__meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
 .loadout-switch-list__button {
   min-width: 0;
   width: 100%;
@@ -672,6 +724,17 @@ img {
 .loadout-switch-footer .web-button {
   width: 100%;
   min-width: 0;
+}
+
+#model-switch-footer.is-single {
+  width: auto;
+  max-width: none;
+  display: flex;
+}
+
+#model-switch-footer.is-single .web-button {
+  width: auto;
+  min-width: 140px;
 }
 
 .status-text {
