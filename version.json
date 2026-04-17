@@ -1,6 +1,6 @@
 {
-  "version": "2.7.4-patch",
+  "version": "2.7.5-patch",
   "aua": true,
-  "severity": 4,
+  "severity": 2,
   "pu": "discord"
 }
