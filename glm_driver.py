@@ -1428,12 +1428,174 @@ class GLMDriver(BaseDriver):
 
         return candidates.first if count > 0 else None
 
+    async def _find_compact_search_button(self):
+        """Find Search in GLM's compact non-Tools composer layout.
+
+        Non-5V models no longer expose a Web Search aria-label wrapper. In that
+        layout, Search is the unlabeled globe button immediately before the Deep
+        Think toggle, while GLM-5V still has a separate Tools button in between.
+        """
+        if not self.page:
+            return None
+
+        try:
+            handle = await self.page.evaluate_handle(
+                """() => {
+                    const isVisible = (element) => {
+                        if (!element) return false;
+                        const style = window.getComputedStyle(element);
+                        const rect = element.getBoundingClientRect();
+                        return (
+                            style.display !== 'none' &&
+                            style.visibility !== 'hidden' &&
+                            rect.width > 0 &&
+                            rect.height > 0
+                        );
+                    };
+
+                    const skipSibling = (element) => (
+                        element?.classList?.contains('flagsContainer') ||
+                        element?.getAttribute?.('aria-hidden') === 'true'
+                    );
+
+                    const deepThinkWrappers = Array.from(
+                        document.querySelectorAll('div[aria-label^="Deep think"]')
+                    );
+                    for (const wrapper of deepThinkWrappers) {
+                        const deepThinkButton = wrapper.querySelector('button[data-autothink]');
+                        if (!isVisible(deepThinkButton)) continue;
+
+                        let searchRoot = wrapper.previousElementSibling;
+                        while (searchRoot && skipSibling(searchRoot)) {
+                            searchRoot = searchRoot.previousElementSibling;
+                        }
+                        if (!searchRoot) continue;
+
+                        const candidates = [];
+                        if (searchRoot.matches?.('button')) {
+                            candidates.push(searchRoot);
+                        }
+                        candidates.push(...searchRoot.querySelectorAll('button'));
+
+                        for (const button of candidates.reverse()) {
+                            if (
+                                button.id === 'upload-file-button' ||
+                                button.id === 'send-message-button' ||
+                                button.hasAttribute('data-autothink') ||
+                                button.closest('div[aria-label^="Deep think"]')
+                            ) {
+                                continue;
+                            }
+                            if (isVisible(button)) {
+                                return button;
+                            }
+                        }
+                    }
+
+                    return null;
+                }"""
+            )
+            button = handle.as_element()
+            if button:
+                return button
+        except Exception as e:
+            Logger.debug(f"GLM Chat: compact Search button lookup failed: {e}")
+
+        return None
+
+    async def _read_composer_toggle_enabled(
+        self,
+        button: Any,
+        *,
+        state_attr: str,
+        enabled_label_prefix: str,
+        enabled_class_markers: tuple[str, ...] = (),
+    ) -> bool:
+        """Read a composer toggle's enabled state across old and compact DOMs."""
+        try:
+            return bool(
+                await button.evaluate(
+                    """(button, options) => {
+                        const nodes = [];
+                        const addNode = (node) => {
+                            if (node && !nodes.includes(node)) {
+                                nodes.push(node);
+                            }
+                        };
+
+                        addNode(button);
+                        addNode(button.closest?.('button'));
+                        addNode(button.closest?.('[aria-label]'));
+
+                        let parent = button.parentElement;
+                        for (let depth = 0; parent && depth < 3; depth += 1) {
+                            addNode(parent);
+                            parent = parent.parentElement;
+                        }
+
+                        for (const node of nodes) {
+                            if (node.hasAttribute?.(options.stateAttr)) {
+                                return String(node.getAttribute(options.stateAttr) || '')
+                                    .trim()
+                                    .toLowerCase() === 'true';
+                            }
+                        }
+
+                        const enabledPrefix = String(options.enabledLabelPrefix || '')
+                            .trim()
+                            .toLowerCase();
+                        if (enabledPrefix) {
+                            for (const node of nodes) {
+                                const label = String(node.getAttribute?.('aria-label') || '')
+                                    .trim()
+                                    .toLowerCase();
+                                if (label.startsWith(enabledPrefix)) {
+                                    return true;
+                                }
+                            }
+                        }
+
+                        const classText = nodes
+                            .map((node) => {
+                                if (typeof node.className === 'string') {
+                                    return node.className;
+                                }
+                                if (node.className?.baseVal) {
+                                    return node.className.baseVal;
+                                }
+                                return '';
+                            })
+                            .join(' ');
+
+                        return (options.enabledClassMarkers || []).some(
+                            (marker) => classText.includes(marker)
+                        );
+                    }""",
+                    {
+                        "stateAttr": state_attr,
+                        "enabledLabelPrefix": enabled_label_prefix,
+                        "enabledClassMarkers": list(enabled_class_markers),
+                    },
+                )
+            )
+        except Exception:
+            pass
+
+        try:
+            attr = await button.get_attribute(state_attr)
+            return str(attr or "").strip().lower() == "true"
+        except Exception:
+            return False
+
     async def _find_deepthink_button(self):
         """Find the Deep Think button by its aria-label wrapper."""
         return await self._find_composer_toggle_button("Deep think", state_attr="data-autothink")
 
     async def _find_search_button(self):
-        """Find the Web Search button by its aria-label wrapper."""
+        """Find the Web Search button in the active GLM composer layout."""
+        if not self._glm_tools_supported_for_model(self._get_configured_glm_model_friendly()):
+            return await self._find_compact_search_button()
+
         return await self._find_composer_toggle_button("Web search", state_attr="data-selected")
 
     async def _find_tools_button(self):
@@ -1472,11 +1634,12 @@ class GLMDriver(BaseDriver):
             Logger.warning("GLM Chat: Search button not found.")
             return
 
-        try:
-            attr = await button.get_attribute("data-selected")
-            is_enabled = str(attr or "").strip().lower() == "true"
-        except Exception:
-            is_enabled = False
+        is_enabled = await self._read_composer_toggle_enabled(
+            button,
+            state_attr="data-selected",
+            enabled_label_prefix="web search enabled",
+            enabled_class_markers=("text-[#0881F0]", "bg-[#F0F7FE]"),
+        )
 
         if is_enabled == state:
             return
@@ -1499,11 +1662,11 @@ class GLMDriver(BaseDriver):
                 Logger.warning("GLM Chat: Tools button not found.")
             return
 
-        try:
-            attr = await button.get_attribute("data-selected")
-            is_enabled = str(attr or "").strip().lower() == "true"
-        except Exception:
-            is_enabled = False
+        is_enabled = await self._read_composer_toggle_enabled(
+            button,
+            state_attr="data-selected",
+            enabled_label_prefix="tools enabled",
+        )
 
         if is_enabled == wanted:
             return
