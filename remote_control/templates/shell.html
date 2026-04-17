@@ -43,6 +43,10 @@
           {{ web_button("model-switch-button", "Switch Models", variant="secondary", icon_url=asset_urls.icons.brain, icon_alt="Models", extra_classes="model-switch-row__button") }}
           <p id="model-switch-current-model" class="model-switch-current-model hidden"></p>
         </div>
+        <div id="loadout-switch-row" class="model-switch-row hidden">
+          {{ web_button("loadout-switch-button", "Switch Loadouts", variant="secondary", icon_url=asset_urls.icons.backpack, icon_alt="Loadouts", extra_classes="model-switch-row__button") }}
+          <p id="loadout-switch-current-loadout" class="model-switch-current-model hidden"></p>
+        </div>
         <p id="home-status" class="status-text"></p>
       </div>
     </section>
@@ -62,6 +66,35 @@
         <div id="model-switch-list" class="model-switch-list"></div>
         {{ web_button("model-switch-back-button", "Back", variant="secondary") }}
         <p id="model-switch-status" class="status-text"></p>
+      </div>
+    </section>
+
+    <section class="view hotswap-view" data-view="loadout-switch">
+      <div class="hotswap-view__panel loadout-switch-panel">
+        <h1 class="hotswap-view__title">Select Loadout</h1>
+        <div id="loadout-provider-block" class="loadout-provider-block hidden">
+          <span class="loadout-provider-block__label">Provider</span>
+          <div id="loadout-provider-dropdown" class="custom-select">
+            <button id="loadout-provider-button" class="custom-select__button" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span class="custom-select__value">
+                <span class="custom-select__icon" aria-hidden="true">
+                  <img id="loadout-provider-button-icon" src="" alt="">
+                </span>
+                <span id="loadout-provider-button-label" class="custom-select__label"></span>
+              </span>
+              <span class="custom-select__chevron" aria-hidden="true">
+                <img src="{{ asset_urls.icons.chevron_down }}" alt="">
+              </span>
+            </button>
+            <div id="loadout-provider-menu" class="custom-select__menu" role="listbox" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div id="loadout-switch-list" class="model-switch-list loadout-switch-list"></div>
+        <div id="loadout-switch-footer" class="loadout-switch-footer">
+          {{ web_button("loadout-switch-back-button", "Back", variant="secondary") }}
+          {{ web_button("loadout-switch-confirm-button", "Confirm", variant="accent", icon_url=asset_urls.icons.check, icon_alt="Confirm") }}
+        </div>
+        <p id="loadout-switch-status" class="status-text"></p>
       </div>
     </section>
 

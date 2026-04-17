@@ -55,6 +55,8 @@ That menu action changes the active runtime loadout for the currently selected p
 
 If the runtime is already running and you switch from the Stop menu, IntenseRP restarts the services so the newly selected loadout really takes effect.
 
+Remote Control gets the same idea with **Switch Loadouts**. When Loadouts are enabled, the remote page hides **Switch Models** and uses the loadout switcher instead, since the model setting lives inside the selected loadout.
+
 ---
 
 ## :material-play-circle-outline: Runtime behavior

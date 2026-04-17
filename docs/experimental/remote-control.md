@@ -42,9 +42,11 @@ If **Show the Server Address in Logs** is enabled in **Settings -> API Server ->
 
 ![Remote Control UI](../pics/experimental/rcmain.png)
 
-The remote page is intentionally tiny and simple. Right now it can do simple actions like **Stop**, **Restart**, **Hotswap**, and **Switch Account**, as well as show you live logs + some minor stuff.
+The remote page is intentionally tiny and simple. Right now it can do simple actions like **Stop**, **Restart**, **Hotswap**, **Switch Account**, and **Switch Loadouts**, as well as show you live logs + some minor stuff.
 
 For Hotswap specifically, it shows every provider except the one you're currently using, so Google AI Studio now appears there as well.
+
+If **Loadouts** are enabled, Remote Control uses **Switch Loadouts** instead of **Switch Models**, because the selected model is part of the active loadout. If Loadouts are disabled, providers that support direct model switching still show **Switch Models**.
 
 !!! note "Not a full dashboard"
     I intentionally did NOT recreate the entire UI in the remote page. Unlike the desktop app, this is not meant to be a full management dashboard, but rather a quick control panel for common actions when you're away from the host PC.
@@ -99,6 +101,7 @@ Those actions are:
 - **Restart**
 - **Switch Account**
 - **Hotswap**
+- **Switch Loadouts**
 
 Why? Because they all stop/restart the server underneath the page. After that, the remote UI shows a reconnect screen. Once the API server is back, you can reconnect and resume control without reopening the page.
 

@@ -11,6 +11,8 @@
     currentView: "",
     pendingView: initialState.initial_view || "home",
     remoteState: initialState.remote_state || null,
+    activeLoadoutProvider: "",
+    draftLoadouts: {},
     logController: null,
     logConnected: false,
   };
@@ -38,10 +40,24 @@
   const modelSwitchRow = document.getElementById("model-switch-row");
   const modelSwitchButton = document.getElementById("model-switch-button");
   const modelSwitchCurrentModel = document.getElementById("model-switch-current-model");
+  const loadoutSwitchRow = document.getElementById("loadout-switch-row");
+  const loadoutSwitchButton = document.getElementById("loadout-switch-button");
+  const loadoutSwitchCurrentLoadout = document.getElementById("loadout-switch-current-loadout");
   const hotswapGrid = document.getElementById("hotswap-grid");
   const hotswapBackButton = document.getElementById("hotswap-back-button");
   const modelSwitchList = document.getElementById("model-switch-list");
   const modelSwitchBackButton = document.getElementById("model-switch-back-button");
+  const loadoutProviderBlock = document.getElementById("loadout-provider-block");
+  const loadoutProviderDropdown = document.getElementById("loadout-provider-dropdown");
+  const loadoutProviderButton = document.getElementById("loadout-provider-button");
+  const loadoutProviderButtonIcon = document.getElementById("loadout-provider-button-icon");
+  const loadoutProviderButtonLabel = document.getElementById("loadout-provider-button-label");
+  const loadoutProviderMenu = document.getElementById("loadout-provider-menu");
+  const loadoutSwitchList = document.getElementById("loadout-switch-list");
+  const loadoutSwitchFooter = document.getElementById("loadout-switch-footer");
+  const loadoutSwitchBackButton = document.getElementById("loadout-switch-back-button");
+  const loadoutSwitchConfirmButton = document.getElementById("loadout-switch-confirm-button");
+  const loadoutSwitchStatus = document.getElementById("loadout-switch-status");
   const consoleOutput = document.getElementById("console-output");
   const consolePlaceholder = document.getElementById("console-placeholder");
   const logsStatus = document.getElementById("logs-status");
@@ -98,6 +114,32 @@
     stopDropdown.setAttribute("aria-hidden", "false");
   }
 
+  function closeLoadoutProviderDropdown() {
+    if (!loadoutProviderDropdown || !loadoutProviderButton || !loadoutProviderMenu) {
+      return;
+    }
+    loadoutProviderDropdown.classList.remove("is-open");
+    loadoutProviderButton.setAttribute("aria-expanded", "false");
+    loadoutProviderMenu.setAttribute("aria-hidden", "true");
+  }
+
+  function openLoadoutProviderDropdown() {
+    if (!loadoutProviderDropdown || !loadoutProviderButton || !loadoutProviderMenu) {
+      return;
+    }
+    loadoutProviderDropdown.classList.add("is-open");
+    loadoutProviderButton.setAttribute("aria-expanded", "true");
+    loadoutProviderMenu.setAttribute("aria-hidden", "false");
+  }
+
+  function toggleLoadoutProviderDropdown() {
+    if (loadoutProviderDropdown.classList.contains("is-open")) {
+      closeLoadoutProviderDropdown();
+    } else {
+      openLoadoutProviderDropdown();
+    }
+  }
+
   function escapeHtml(value) {
     return String(value || "")
       .replace(/&/g, "&amp;")
@@ -115,6 +157,14 @@
     } else {
       stopLogs();
     }
+    if (name !== "loadout-switch") {
+      closeLoadoutProviderDropdown();
+    }
+    if (name === "loadout-switch") {
+      renderLoadoutSwitchProviderSelect();
+      renderLoadoutSwitchOptions();
+      updateLoadoutSwitchConfirmState();
+    }
     if (name !== "disconnected") {
       reconnectStatus.classList.add("hidden");
     }
@@ -125,12 +175,14 @@
     const busy = Boolean(remoteState.busy);
     const canSwitchAccount = Boolean(remoteState.can_switch_account);
     const modelSwitch = remoteState.model_switch || {};
+    const loadoutSwitch = remoteState.loadout_switch || {};
     stopButton.disabled = busy;
     stopToggle.disabled = busy;
     restartAction.disabled = busy;
     switchAccountAction.disabled = busy || !canSwitchAccount;
     hotswapAction.disabled = busy;
     modelSwitchButton.disabled = busy || !Boolean(modelSwitch.supported);
+    loadoutSwitchButton.disabled = busy || !Boolean(loadoutSwitch.supported);
   }
 
   function renderHotswapTargets() {
@@ -169,6 +221,189 @@
     modelSwitchCurrentModel.textContent =
       "Current Model: " + (currentModel || "Unknown");
     modelSwitchCurrentModel.classList.remove("hidden");
+  }
+
+  function getLoadoutSwitchState() {
+    return (state.remoteState && state.remoteState.loadout_switch) || {};
+  }
+
+  function getLoadoutProviders() {
+    const providers = getLoadoutSwitchState().providers || [];
+    return Array.isArray(providers) ? providers : [];
+  }
+
+  function findLoadoutProvider(providerName) {
+    const normalizedName = String(providerName || "").trim();
+    return (
+      getLoadoutProviders().find((provider) => provider.name === normalizedName) ||
+      getLoadoutProviders()[0] ||
+      null
+    );
+  }
+
+  function syncLoadoutDrafts() {
+    const loadoutSwitch = getLoadoutSwitchState();
+    const providers = getLoadoutProviders();
+    const nextDrafts = {};
+
+    providers.forEach((provider) => {
+      const options = Array.isArray(provider.options) ? provider.options : [];
+      const currentName =
+        String(provider.current_loadout || "").trim() ||
+        (options[0] ? String(options[0].name || "").trim() : "");
+      const existingDraft = String(state.draftLoadouts[provider.name] || "").trim();
+      const draftStillExists = options.some((option) => option.name === existingDraft);
+      nextDrafts[provider.name] = draftStillExists ? existingDraft : currentName;
+    });
+
+    state.draftLoadouts = nextDrafts;
+
+    const activeProvider = state.activeLoadoutProvider
+      ? findLoadoutProvider(state.activeLoadoutProvider)
+      : null;
+    const stateProvider = loadoutSwitch.current_provider
+      ? findLoadoutProvider(loadoutSwitch.current_provider)
+      : null;
+    state.activeLoadoutProvider = (
+      activeProvider ||
+      stateProvider ||
+      providers[0] ||
+      {}
+    ).name || "";
+  }
+
+  function renderLoadoutSwitchHomeState() {
+    const loadoutSwitch = getLoadoutSwitchState();
+    const supported = Boolean(loadoutSwitch.supported);
+    const provider = findLoadoutProvider(loadoutSwitch.current_provider);
+    const currentLoadout = provider
+      ? String(provider.current_loadout || "").trim()
+      : "";
+
+    loadoutSwitchRow.classList.toggle("hidden", !supported);
+    if (!supported) {
+      loadoutSwitchCurrentLoadout.textContent = "";
+      loadoutSwitchCurrentLoadout.classList.add("hidden");
+      return;
+    }
+
+    loadoutSwitchCurrentLoadout.textContent =
+      "Current Loadout: " + (currentLoadout || "Unknown");
+    loadoutSwitchCurrentLoadout.classList.remove("hidden");
+  }
+
+  function renderLoadoutSwitchProviderSelect() {
+    const loadoutSwitch = getLoadoutSwitchState();
+    const providers = getLoadoutProviders();
+    const showProviderSelect = Boolean(loadoutSwitch.parallel) && providers.length > 1;
+    const activeProvider = findLoadoutProvider(state.activeLoadoutProvider);
+
+    loadoutProviderBlock.classList.toggle("hidden", !showProviderSelect);
+    loadoutSwitchFooter.classList.toggle("is-single", !showProviderSelect);
+    loadoutSwitchConfirmButton.classList.toggle("hidden", !showProviderSelect);
+    if (!showProviderSelect) {
+      closeLoadoutProviderDropdown();
+      return;
+    }
+
+    if (activeProvider) {
+      loadoutProviderButtonLabel.textContent = activeProvider.name;
+      loadoutProviderButtonIcon.src = activeProvider.icon_url || "";
+      loadoutProviderButtonIcon.classList.toggle("hidden", !activeProvider.icon_url);
+    }
+
+    loadoutProviderMenu.innerHTML = "";
+    providers.forEach((provider) => {
+      const option = document.createElement("button");
+      const selected = activeProvider && provider.name === activeProvider.name;
+      option.type = "button";
+      option.className = "custom-select__option" + (selected ? " is-selected" : "");
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", selected ? "true" : "false");
+      option.innerHTML =
+        '<span class="custom-select__icon" aria-hidden="true"><img src="' +
+        escapeHtml(provider.icon_url || "") +
+        '" alt=""></span><span class="custom-select__label">' +
+        escapeHtml(provider.name) +
+        "</span>";
+      option.addEventListener("click", function () {
+        state.activeLoadoutProvider = provider.name;
+        closeLoadoutProviderDropdown();
+        renderLoadoutSwitchProviderSelect();
+        renderLoadoutSwitchOptions();
+        updateLoadoutSwitchConfirmState();
+      });
+      loadoutProviderMenu.appendChild(option);
+    });
+  }
+
+  function loadoutDraftHasChanges() {
+    return getLoadoutProviders().some((provider) => {
+      const currentName = String(provider.current_loadout || "").trim();
+      const draftName = String(state.draftLoadouts[provider.name] || "").trim();
+      return draftName && draftName !== currentName;
+    });
+  }
+
+  function updateLoadoutSwitchConfirmState() {
+    const loadoutSwitch = getLoadoutSwitchState();
+    const confirmVisible = Boolean(loadoutSwitch.parallel);
+    loadoutSwitchConfirmButton.disabled =
+      !confirmVisible || !loadoutDraftHasChanges();
+  }
+
+  function renderLoadoutSwitchOptions() {
+    loadoutSwitchList.innerHTML = "";
+    const loadoutSwitch = getLoadoutSwitchState();
+    const activeProvider = findLoadoutProvider(state.activeLoadoutProvider);
+    if (!activeProvider) {
+      return;
+    }
+
+    const parallel = Boolean(loadoutSwitch.parallel);
+    const currentName = String(activeProvider.current_loadout || "").trim();
+    const draftName =
+      String(state.draftLoadouts[activeProvider.name] || "").trim() || currentName;
+    const options = Array.isArray(activeProvider.options)
+      ? activeProvider.options
+      : [];
+
+    options.forEach((option) => {
+      const optionName = String(option.name || "").trim();
+      if (!optionName) {
+        return;
+      }
+
+      const selected = optionName === draftName;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className =
+        "web-button web-button--secondary loadout-switch-list__button" +
+        (selected ? " is-selected" : "");
+
+      const stateIcon = parallel && selected
+        ? '<span class="loadout-option__check" aria-hidden="true"><img src="' +
+          escapeHtml(assets.icons.check) +
+          '" alt=""></span>'
+        : '<span class="loadout-option__check" aria-hidden="true"></span>';
+      const meta = selected
+        ? '<span class="loadout-option__meta">' +
+          escapeHtml(optionName === currentName ? "Current" : "Selected") +
+          "</span>"
+        : "";
+
+      button.innerHTML =
+        stateIcon +
+        '<span class="loadout-option__text"><span class="loadout-option__title">' +
+        escapeHtml(optionName) +
+        "</span>" +
+        meta +
+        "</span>";
+      button.addEventListener("click", function () {
+        handleLoadoutSwitchSelection(activeProvider.name, optionName);
+      });
+      loadoutSwitchList.appendChild(button);
+    });
   }
 
   function renderModelSwitchOptions() {
@@ -241,15 +476,30 @@
       headers: authHeaders(false),
       cache: "no-store",
     });
+    syncLoadoutDrafts();
     updateHomeControls();
     renderHotswapTargets();
     renderModelSwitchHomeState();
     renderModelSwitchOptions();
+    renderLoadoutSwitchHomeState();
+    renderLoadoutSwitchProviderSelect();
+    renderLoadoutSwitchOptions();
+    updateLoadoutSwitchConfirmState();
   }
 
   async function completeAuthenticatedLoad(viewName) {
     await loadRemoteState();
-    const targetView = viewName || "home";
+    let targetView = viewName || "home";
+    const remoteState = state.remoteState || {};
+    const modelSwitch = remoteState.model_switch || {};
+    const loadoutSwitch = remoteState.loadout_switch || {};
+    if (
+      targetView === "model-switch" &&
+      !Boolean(modelSwitch.supported) &&
+      Boolean(loadoutSwitch.supported)
+    ) {
+      targetView = "loadout-switch";
+    }
     showView(targetView);
   }
 
@@ -308,12 +558,21 @@
       });
       if (response && response.remote_state) {
         state.remoteState = response.remote_state;
+        syncLoadoutDrafts();
         updateHomeControls();
         renderHotswapTargets();
         renderModelSwitchHomeState();
         renderModelSwitchOptions();
+        renderLoadoutSwitchHomeState();
+        renderLoadoutSwitchProviderSelect();
+        renderLoadoutSwitchOptions();
+        updateLoadoutSwitchConfirmState();
       }
-      if (shouldDisconnect) {
+      const responseDisconnect =
+        response && typeof response.disconnect === "boolean"
+          ? response.disconnect
+          : shouldDisconnect;
+      if (responseDisconnect) {
         state.pendingView = "home";
         showView("disconnected");
       } else if (successView) {
@@ -354,6 +613,56 @@
       button.innerHTML = originalHtml;
       setModelSwitchBusyState(false);
     }
+  }
+
+  function setLoadoutSwitchBusyState(busy) {
+    const buttons = Array.from(loadoutSwitchList.querySelectorAll("button"));
+    buttons.forEach((button) => {
+      button.disabled = busy;
+    });
+    loadoutProviderButton.disabled = busy;
+    loadoutSwitchBackButton.disabled = busy;
+    loadoutSwitchConfirmButton.disabled =
+      busy || !Boolean(getLoadoutSwitchState().parallel) || !loadoutDraftHasChanges();
+  }
+
+  async function handleLoadoutSwitchSelection(providerName, loadoutName) {
+    const loadoutSwitch = getLoadoutSwitchState();
+    const provider = findLoadoutProvider(providerName);
+    if (!provider) {
+      return;
+    }
+
+    if (Boolean(loadoutSwitch.parallel)) {
+      state.draftLoadouts[provider.name] = loadoutName;
+      renderLoadoutSwitchOptions();
+      updateLoadoutSwitchConfirmState();
+      return;
+    }
+
+    setLoadoutSwitchBusyState(true);
+    await triggerAction(
+      "switch-loadout",
+      { provider: provider.name, loadout: loadoutName },
+      loadoutSwitchStatus,
+      { successView: "home" }
+    );
+    setLoadoutSwitchBusyState(false);
+  }
+
+  async function handleLoadoutSwitchConfirm() {
+    if (!loadoutDraftHasChanges()) {
+      return;
+    }
+
+    setLoadoutSwitchBusyState(true);
+    await triggerAction(
+      "switch-loadout",
+      { loadouts: state.draftLoadouts },
+      loadoutSwitchStatus,
+      { successView: "home" }
+    );
+    setLoadoutSwitchBusyState(false);
   }
 
   function clearConsolePlaceholder() {
@@ -517,12 +826,20 @@
   modelSwitchButton.addEventListener("click", function () {
     showView("model-switch");
   });
+  loadoutSwitchButton.addEventListener("click", function () {
+    showView("loadout-switch");
+  });
   hotswapBackButton.addEventListener("click", function () {
     showView("home");
   });
   modelSwitchBackButton.addEventListener("click", function () {
     showView("home");
   });
+  loadoutProviderButton.addEventListener("click", toggleLoadoutProviderDropdown);
+  loadoutSwitchBackButton.addEventListener("click", function () {
+    showView("home");
+  });
+  loadoutSwitchConfirmButton.addEventListener("click", handleLoadoutSwitchConfirm);
   logsFooterButton.addEventListener("click", function () {
     if (state.logConnected) {
       showView("home");
@@ -544,6 +861,20 @@
       return;
     }
     closeStopMenu();
+  });
+
+  document.addEventListener("click", function (event) {
+    if (!loadoutProviderDropdown || !loadoutProviderButton) {
+      return;
+    }
+    const target = event.target;
+    if (!target) {
+      return;
+    }
+    if (loadoutProviderDropdown.contains(target)) {
+      return;
+    }
+    closeLoadoutProviderDropdown();
   });
 
   boot().catch(function () {

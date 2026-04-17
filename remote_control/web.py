@@ -35,6 +35,7 @@ class RemoteControlActions:
     restart: Callable[[], Awaitable[None]]
     switch_account: Callable[[], Awaitable[None]]
     hotswap: Callable[[str], Awaitable[None]]
+    switch_loadout: Callable[[dict[str, str]], Awaitable[None]]
     switch_model: Callable[[str], Awaitable[None]]
     get_state: Callable[[], dict[str, Any]]
 
@@ -45,6 +46,8 @@ class RemoteLoginRequest(BaseModel):
 
 class RemoteActionRequest(BaseModel):
     provider: str | None = None
+    loadout: str | None = None
+    loadouts: dict[str, str] | None = None
     model: str | None = None
 
 
@@ -100,6 +103,9 @@ class RemoteControlWeb:
             "icons/brain.svg": resolve_resource_path(
                 "ui", "assets", "icons", "sidebar", "brain.svg"
             ),
+            "icons/backpack.svg": resolve_resource_path(
+                "ui", "assets", "icons", "backpack.svg"
+            ),
             "fonts/Blinker-Regular.ttf": resolve_resource_path(
                 "ui", "fonts", "Blinker-Regular.ttf"
             ),
@@ -151,6 +157,10 @@ class RemoteControlWeb:
         @app.get(f"{self.BASE_PATH}/models")
         async def remote_models(raw_request: Request):
             return self._render_shell(raw_request, initial_view="model-switch")
+
+        @app.get(f"{self.BASE_PATH}/loadouts")
+        async def remote_loadouts(raw_request: Request):
+            return self._render_shell(raw_request, initial_view="loadout-switch")
 
         @app.get(f"{self.BASE_PATH}/disconnected")
         async def remote_disconnected(raw_request: Request):
@@ -243,6 +253,83 @@ class RemoteControlWeb:
 
                 action_coro = lambda provider_name=provider.value: self._actions.hotswap(
                     provider_name
+                )
+            elif action == "switch-loadout":
+                loadout_switch = state.get("loadout_switch") or {}
+                if not bool(loadout_switch.get("supported")):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Switch Loadouts is not available right now",
+                    )
+
+                providers_by_name = {
+                    str(item.get("name") or ""): item
+                    for item in (loadout_switch.get("providers") or [])
+                    if isinstance(item, dict)
+                }
+                selected_loadouts: dict[str, str] = {}
+
+                raw_loadouts = (
+                    payload.loadouts if isinstance(payload.loadouts, dict) else {}
+                )
+                for raw_provider, raw_loadout in raw_loadouts.items():
+                    provider = DriverProvider.from_setting(raw_provider)
+                    provider_name = (
+                        provider.value
+                        if provider is not None
+                        else str(raw_provider or "").strip()
+                    )
+                    loadout_name = str(raw_loadout or "").strip()
+                    if provider_name and loadout_name:
+                        selected_loadouts[provider_name] = loadout_name
+
+                if not selected_loadouts:
+                    provider = DriverProvider.from_setting(
+                        payload.provider or loadout_switch.get("current_provider")
+                    )
+                    loadout_name = str(payload.loadout or "").strip()
+                    if provider is not None and loadout_name:
+                        selected_loadouts[provider.value] = loadout_name
+
+                if not selected_loadouts:
+                    raise HTTPException(status_code=400, detail="Invalid loadout")
+
+                changes: dict[str, str] = {}
+                for provider_name, loadout_name in selected_loadouts.items():
+                    provider_info = providers_by_name.get(provider_name)
+                    if provider_info is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Provider is unavailable",
+                        )
+
+                    allowed_loadouts = {
+                        str(item.get("name") or "")
+                        for item in (provider_info.get("options") or [])
+                        if isinstance(item, dict)
+                    }
+                    if loadout_name not in allowed_loadouts:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Loadout is unavailable",
+                        )
+
+                    current_loadout = str(
+                        provider_info.get("current_loadout") or ""
+                    ).strip()
+                    if loadout_name != current_loadout:
+                        changes[provider_name] = loadout_name
+
+                if not changes:
+                    return {
+                        "ok": True,
+                        "disconnect": False,
+                        "action": action,
+                        "remote_state": self._build_remote_state(),
+                    }
+
+                action_coro = lambda selected=changes: self._actions.switch_loadout(
+                    selected
                 )
             elif action == "switch-model":
                 desired_model = str(payload.model or "").strip()
@@ -355,6 +442,7 @@ class RemoteControlWeb:
                 "stop": self.asset_url("icons/square.svg"),
                 "terminal": self.asset_url("icons/terminal.svg"),
                 "brain": self.asset_url("icons/brain.svg"),
+                "backpack": self.asset_url("icons/backpack.svg"),
             },
             "providers": provider_assets,
         }
@@ -500,6 +588,61 @@ class RemoteControlWeb:
                     }
                 )
 
+        loadout_provider_items: list[dict[str, Any]] = []
+        raw_loadout_providers = raw_state.get("loadout_switch_providers")
+        if isinstance(raw_loadout_providers, list):
+            for raw_provider_info in raw_loadout_providers:
+                if not isinstance(raw_provider_info, dict):
+                    continue
+
+                provider = DriverProvider.from_setting(raw_provider_info.get("name"))
+                if provider is None:
+                    continue
+
+                options: list[dict[str, Any]] = []
+                raw_options = raw_provider_info.get("options")
+                if isinstance(raw_options, list):
+                    for raw_option in raw_options:
+                        if isinstance(raw_option, dict):
+                            option_name = str(raw_option.get("name") or "").strip()
+                        else:
+                            option_name = str(raw_option or "").strip()
+                        if not option_name:
+                            continue
+                        options.append({"name": option_name})
+
+                if not options:
+                    continue
+
+                loadout_provider_items.append(
+                    {
+                        "name": provider.value,
+                        "key": provider.key,
+                        "icon_url": self.asset_url(f"providers/{provider.key}.svg"),
+                        "current_loadout": str(
+                            raw_provider_info.get("current_loadout") or ""
+                        ).strip(),
+                        "options": options,
+                    }
+                )
+
+        raw_loadout_current_provider = DriverProvider.from_setting(
+            raw_state.get("loadout_switch_current_provider")
+        )
+        loadout_current_provider = (
+            raw_loadout_current_provider.value
+            if raw_loadout_current_provider is not None
+            else (
+                loadout_provider_items[0]["name"]
+                if loadout_provider_items
+                else provider_name
+            )
+        )
+        loadout_switch_supported = bool(
+            raw_state.get("loadout_switch_supported", False)
+        ) and bool(loadout_provider_items)
+        loadout_switch_parallel = bool(raw_state.get("loadout_switch_parallel", False))
+
         return {
             "running": bool(raw_state.get("running", True)),
             "busy": bool(raw_state.get("busy", False)),
@@ -510,6 +653,12 @@ class RemoteControlWeb:
                 "supported": bool(raw_state.get("model_switch_supported", False)),
                 "current_model": current_model,
                 "options": model_options,
+            },
+            "loadout_switch": {
+                "supported": loadout_switch_supported,
+                "parallel": loadout_switch_parallel and len(loadout_provider_items) > 1,
+                "current_provider": loadout_current_provider,
+                "providers": loadout_provider_items,
             },
         }
 

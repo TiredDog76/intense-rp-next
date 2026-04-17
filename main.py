@@ -874,6 +874,63 @@ class MainWindow(QMainWindow):
             value = None
         return str(value or "").strip()
 
+    def _get_remote_loadout_switch_context(self) -> dict[str, object]:
+        if not self._loadouts_feature_enabled():
+            return {
+                "supported": False,
+                "parallel": False,
+                "current_provider": "",
+                "providers": [],
+            }
+
+        current_provider = get_current_provider(self.config_manager)
+        runtime_providers = [
+            runtime_provider
+            for runtime_provider, _driver in self._iter_runtime_drivers()
+        ]
+        parallel_switch = (
+            is_parallel_runtime_active(self.config_manager)
+            and len(runtime_providers) >= 2
+        )
+        provider_candidates = runtime_providers if parallel_switch else [current_provider]
+
+        provider_loadouts = {}
+        for provider in provider_candidates:
+            if not isinstance(provider, DriverProvider):
+                continue
+            available = self.config_manager.get_loadouts(provider)
+            if available:
+                provider_loadouts[provider] = available
+
+        initial_provider = (
+            current_provider
+            if current_provider in provider_loadouts
+            else next(iter(provider_loadouts), current_provider)
+        )
+
+        providers_payload = []
+        for provider, available in provider_loadouts.items():
+            current_name = self.config_manager.get_runtime_active_loadout_name(provider)
+            if not current_name:
+                current_name = self.config_manager.get_preferred_loadout_name(
+                    provider,
+                    available,
+                )
+            providers_payload.append(
+                {
+                    "name": provider.value,
+                    "current_loadout": current_name or "",
+                    "options": [{"name": loadout.name} for loadout in available],
+                }
+            )
+
+        return {
+            "supported": bool(providers_payload),
+            "parallel": parallel_switch and len(providers_payload) > 1,
+            "current_provider": initial_provider.value,
+            "providers": providers_payload,
+        }
+
     def _loadouts_feature_enabled(self) -> bool:
         return bool(self.config_manager.get_setting("experimental", "enable_loadouts"))
 
@@ -901,15 +958,24 @@ class MainWindow(QMainWindow):
         current_provider = DriverProvider.from_setting(current)
         current_value = current_provider.value if current_provider else "DeepSeek"
         model_switch_provider = current_provider or DriverProvider.DEEPSEEK
+        loadout_switch = self._get_remote_loadout_switch_context()
+        loadouts_enabled = self._loadouts_feature_enabled()
         return {
             "running": self._are_services_running(),
             "busy": self._is_services_busy(),
             "can_switch_account": self._can_switch_account(),
             "current_provider": current_value,
             "hotswap_targets": self._get_hotswap_targets(),
-            "model_switch_supported": self._provider_supports_remote_model_switch(model_switch_provider),
+            "model_switch_supported": (
+                (not loadouts_enabled)
+                and self._provider_supports_remote_model_switch(model_switch_provider)
+            ),
             "model_switch_current_model": self._get_remote_current_model(model_switch_provider),
             "model_switch_options": self._get_remote_model_options(model_switch_provider),
+            "loadout_switch_supported": bool(loadout_switch.get("supported")),
+            "loadout_switch_parallel": bool(loadout_switch.get("parallel")),
+            "loadout_switch_current_provider": loadout_switch.get("current_provider"),
+            "loadout_switch_providers": loadout_switch.get("providers"),
         }
 
     def _update_tray_menu_state(self) -> None:
@@ -2107,6 +2173,66 @@ class MainWindow(QMainWindow):
     async def _remote_hotswap(self, provider_name: str) -> None:
         await self._hotswap_to_provider_impl(provider_name)
 
+    async def _remote_switch_loadout(self, selected_loadouts: dict[str, str]) -> None:
+        if not self._loadouts_feature_enabled():
+            raise RuntimeError("Loadouts are not enabled.")
+
+        context = self._get_remote_loadout_switch_context()
+        providers = context.get("providers")
+        if not isinstance(providers, list) or not providers:
+            raise RuntimeError("No loadouts are available right now.")
+
+        providers_by_name = {
+            str(provider_info.get("name") or ""): provider_info
+            for provider_info in providers
+            if isinstance(provider_info, dict)
+        }
+        changes: dict[DriverProvider, str] = {}
+
+        for raw_provider, raw_loadout in (selected_loadouts or {}).items():
+            provider = DriverProvider.from_setting(raw_provider)
+            if provider is None:
+                raise RuntimeError(f"Unknown provider: {raw_provider}")
+
+            provider_info = providers_by_name.get(provider.value)
+            if provider_info is None:
+                raise RuntimeError(f"{provider.value} is not available for loadout switching.")
+
+            selected_name = str(raw_loadout or "").strip()
+            allowed_names = {
+                str(item.get("name") or "")
+                for item in (provider_info.get("options") or [])
+                if isinstance(item, dict)
+            }
+            if selected_name not in allowed_names:
+                raise RuntimeError(
+                    f"Loadout '{selected_name}' is not available for {provider.value}."
+                )
+
+            current_name = str(provider_info.get("current_loadout") or "").strip()
+            if selected_name != current_name:
+                changes[provider] = selected_name
+
+        if not changes:
+            return
+
+        for provider, selected_name in changes.items():
+            self.config_manager.set_preferred_loadout_name(provider, selected_name)
+
+        if len(changes) == 1:
+            changed_provider, selected_name = next(iter(changes.items()))
+            Logger.info(
+                f"Remote Control: selected loadout '{selected_name}' for {changed_provider.value}."
+            )
+        else:
+            changed_names = ", ".join(
+                f"{provider.value}: {selected_name}"
+                for provider, selected_name in changes.items()
+            )
+            Logger.info(f"Remote Control: selected parallel loadouts ({changed_names}).")
+
+        await self._restart_services_impl()
+
     async def _apply_remote_model_switch(
         self,
         provider: DriverProvider,
@@ -2537,6 +2663,7 @@ class MainWindow(QMainWindow):
                     restart=self._remote_restart_services,
                     switch_account=self._remote_switch_account,
                     hotswap=self._remote_hotswap,
+                    switch_loadout=self._remote_switch_loadout,
                     switch_model=self._remote_switch_model,
                     get_state=self._get_remote_control_state,
                 ),
