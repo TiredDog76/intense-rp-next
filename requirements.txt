@@ -36,7 +36,7 @@ pycparser==2.23
 pydantic==2.12.4
 pydantic_core==2.41.5
 pyee==13.0.0
-Pygments==2.19.2
+Pygments==2.20.0
 pyinstaller==6.17.0
 pyinstaller-hooks-contrib==2025.10
 pymdown-extensions==10.19.1
