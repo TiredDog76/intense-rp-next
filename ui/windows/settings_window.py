@@ -32,6 +32,7 @@ from ui.widgets.redirect_card import RedirectCard
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
 from ui.core.icons import IconUtils, IconType
+from ui.core.animation_settings import animations_disabled
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from utils.logger import Logger
 from utils.api_key_generator import generate_api_key
@@ -3469,8 +3470,13 @@ class SettingsWindow(QMainWindow):
                     self._loadout_base_values_cache[full_key] = copy.deepcopy(
                         self._current_field_value(full_key, field_def)
                     )
-        QTimer.singleShot(0, self._update_dirty_markers)
-        self.update_timer.start()
+        if isinstance(sender, Tumbler) and not animations_disabled():
+            # Let the short switch animation finish before dependency/dirty updates
+            # touch the surrounding Settings tree
+            self.update_timer.start(190)
+        else:
+            QTimer.singleShot(0, self._update_dirty_markers)
+            self.update_timer.start()
 
     def _on_input_pair_alternative_action(
         self,

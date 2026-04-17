@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QFrame, QPushButton, QSizePolicy, QFileDialog, QStyle, QStyleOptionComboBox, QToolButton
-from PySide6.QtCore import Property, QSize, Qt, QRect, Signal, QEvent, QPropertyAnimation, QEasingCurve, QAbstractAnimation
+from PySide6.QtCore import Property, QSize, Qt, QRectF, Signal, QEvent, QPropertyAnimation, QEasingCurve, QAbstractAnimation
 import html
 import os
 from pathlib import Path
@@ -538,7 +538,6 @@ class Tumbler(QCheckBox):
         if self.property("depMode") == mode_value:
             return
         self.setProperty("depMode", mode_value)
-        self.setStyleSheet(self._get_stylesheet())
         self.update()
 
     def _get_stylesheet(self):
@@ -610,7 +609,7 @@ class Tumbler(QCheckBox):
             painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, self.text())
         
         # Draw track
-        track_rect = QRect(0, 0, self._width, self._height)
+        track_rect = QRectF(0, 0, self._width, self._height)
         dep_mode = self.property("depMode") or ""
         if dep_mode == "forced":
             bg_color = QColor(BrandColors.WARNING)
@@ -636,7 +635,7 @@ class Tumbler(QCheckBox):
             
         handle_y = self._margin
         
-        painter.drawEllipse(int(round(handle_x)), handle_y, handle_d, handle_d)
+        painter.drawEllipse(QRectF(handle_x, handle_y, handle_d, handle_d))
         painter.end()
 
 class StyledLineEdit(QLineEdit):

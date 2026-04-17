@@ -2,9 +2,9 @@
 Mini-console widget for displaying grouped logs in the main window.
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame, QStackedLayout, QGraphicsOpacityEffect
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame, QStackedLayout
 )
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QAbstractAnimation
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QAbstractAnimation
 
 from ui.core.animation_settings import animations_disabled
 from ui.core.brand import BrandColors
@@ -42,10 +42,7 @@ class LogGroup(QWidget):
         self.is_expanded = True
         self._loaded_level_icon = False
         self._loaded_chevron_path = None
-        self._toggle_anim_group = None
         self._content_height_anim = None
-        self._content_opacity_anim = None
-        self._content_opacity_effect = None
         self._animating = False
         
         colors = self.LEVEL_COLORS.get(level, self.LEVEL_COLORS["INFO"])
@@ -112,34 +109,18 @@ class LogGroup(QWidget):
         self._update_chevron()
 
     def _init_animations(self) -> None:
-        self._content_opacity_effect = QGraphicsOpacityEffect(self.content_widget)
-        self._content_opacity_effect.setOpacity(1.0)
-        self.content_widget.setGraphicsEffect(self._content_opacity_effect)
-
         self._content_height_anim = QPropertyAnimation(self.content_widget, b"maximumHeight")
         self._content_height_anim.setDuration(170)
         self._content_height_anim.setEasingCurve(QEasingCurve.OutCubic)
-
-        self._content_opacity_anim = QPropertyAnimation(self._content_opacity_effect, b"opacity")
-        self._content_opacity_anim.setDuration(170)
-        self._content_opacity_anim.setEasingCurve(QEasingCurve.OutCubic)
-
-        self._toggle_anim_group = QParallelAnimationGroup(self)
-        self._toggle_anim_group.addAnimation(self._content_height_anim)
-        self._toggle_anim_group.addAnimation(self._content_opacity_anim)
-        self._toggle_anim_group.finished.connect(self._on_toggle_anim_finished)
+        self._content_height_anim.finished.connect(self._on_toggle_anim_finished)
 
     def _apply_expanded_state(self, initial: bool = False) -> None:
         if self.is_expanded:
             self.content_widget.setVisible(True)
             self.content_widget.setMaximumHeight(16777215)
-            if self._content_opacity_effect:
-                self._content_opacity_effect.setOpacity(1.0)
         else:
             self.content_widget.setMaximumHeight(0)
             self.content_widget.setVisible(False)
-            if self._content_opacity_effect:
-                self._content_opacity_effect.setOpacity(0.0)
 
         if initial or not self._animating:
             self._update_expand_styles()
@@ -160,15 +141,11 @@ class LogGroup(QWidget):
         self._animating = False
         if self.is_expanded:
             self.content_widget.setMaximumHeight(16777215)
-            if self._content_opacity_effect:
-                self._content_opacity_effect.setOpacity(1.0)
             self._update_expand_styles()
             return
 
         self.content_widget.setMaximumHeight(0)
         self.content_widget.setVisible(False)
-        if self._content_opacity_effect:
-            self._content_opacity_effect.setOpacity(0.0)
         self._update_expand_styles()
 
     def _load_level_icon(self) -> None:
@@ -253,8 +230,8 @@ class LogGroup(QWidget):
         """Toggle the expanded/collapsed state."""
         self.is_expanded = not self.is_expanded
 
-        if self._toggle_anim_group and self._toggle_anim_group.state() == QAbstractAnimation.Running:
-            self._toggle_anim_group.stop()
+        if self._content_height_anim and self._content_height_anim.state() == QAbstractAnimation.Running:
+            self._content_height_anim.stop()
 
         if animations_disabled():
             self._animating = False
@@ -272,16 +249,12 @@ class LogGroup(QWidget):
 
             self._content_height_anim.setStartValue(start_h)
             self._content_height_anim.setEndValue(end_h)
-            self._content_opacity_anim.setStartValue(float(self._content_opacity_effect.opacity()))
-            self._content_opacity_anim.setEndValue(1.0)
         else:
             start_h = int(self.content_widget.height())
             self._content_height_anim.setStartValue(start_h)
             self._content_height_anim.setEndValue(0)
-            self._content_opacity_anim.setStartValue(float(self._content_opacity_effect.opacity()))
-            self._content_opacity_anim.setEndValue(0.0)
 
-        self._toggle_anim_group.start()
+        self._content_height_anim.start()
         self._update_chevron()
     
     @staticmethod
