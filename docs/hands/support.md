@@ -69,27 +69,20 @@ Donatello is a Ukrainian donation platform that supports various payment methods
 
 ### Bank transfer (IBAN / SWIFT)
 
-```plaintext
+```
 Recipient name: TERNAVSKYI LIUBOMYR
-
 IBAN: UA873052990262086400972406403
-
 SWIFT/BIC: PBANUA2X
-
 Bank name: PrivatBank
-
 Country: Ukraine
-
 Reference / purpose / note (optional): Donation for IntenseRP Next
 ```
 
 ### Crypto (USDT)
 
-```plaintext
+```
 Token: USDT
-
 Network: TRC20
-
 Address: TCG9DpeWMKKoYH3KT51JQuUJMrzPouZVRG
 ```
 
