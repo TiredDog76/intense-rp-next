@@ -36,7 +36,7 @@ IntenseRP Next v2 currently supports five providers, and each one has its own Be
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 
-    Configure Gemini model selection, Thinking Level, Search, URL Context, uploads, and sampling controls.
+    Configure AI Studio model selection, Thinking Level, Search, URL Context, uploads, and sampling controls.
 
     [:arrow_right: Learn More](providers/aistudio-behavior.md)
 
@@ -118,10 +118,10 @@ Fine-tune how Google AI Studio processes your requests.
 
 | Feature | What It Does |
 |---------|-------------|
-| **Gemini Model Picker (UI)** | Select Google AI Studio's real Gemini model |
-| **Enable Thinking** | Uses a higher Thinking Level on supported Gemini 3 / 3.1 models |
-| **Thinking Level** | Picks the Thinking Level tier for supported Gemini 3 / 3.1 models |
-| **Send Thinking** | Includes Gemini thinking summaries in the response (wrapped in `<think>` tags) |
+| **Model Picker (UI)** | Select Google AI Studio's real model |
+| **Enable Thinking** | Uses a higher Thinking Level on supported AI Studio models |
+| **Thinking Level** | Picks the Thinking Level tier for supported AI Studio models |
+| **Send Thinking** | Includes AI Studio thinking summaries in the response (wrapped in `<think>` tags) |
 | **Search** | Toggles Google Search grounding |
 | **URL Context** | Toggles the URL Context browsing tool |
 | **File Upload Mode** | Uploads prompts through AI Studio's media picker |

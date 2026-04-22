@@ -968,10 +968,12 @@ SCHEMA = [
                     "Gemini 2.5 Pro",
                     "Gemini 2.5 Flash",
                     "Gemini 2.5 Flash Lite",
+                    "Gemma 4 26B-A4B",
+                    "Gemma 4 31B",
                 ],
-                tooltip="Select which Gemini model to use in the Google AI Studio web UI.",
+                tooltip="Select which model to use in the Google AI Studio web UI.",
                 docs_path=DOCS_AISTUDIO,
-                docs_anchor="real-gemini-model-selection-web-ui",
+                docs_anchor="real-ai-studio-model-selection-web-ui",
             ),
             SettingField(
                 key="enable_deepthink",
@@ -979,7 +981,7 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "Use the configured Thinking Level on supported Gemini 3 / 3.1 models. "
+                    "Use the configured Thinking Level on supported AI Studio models. "
                     "When disabled, IntenseRP falls back to the lowest available level instead."
                 ),
                 docs_path=DOCS_AISTUDIO,
@@ -992,7 +994,7 @@ SCHEMA = [
                 default="Medium",
                 options=["Minimal", "Low", "Medium", "High"],
                 tooltip=(
-                    "Thinking level for supported Gemini 3 / 3.1 models. "
+                    "Thinking level for supported AI Studio models. "
                     "Gemini 2.5 models ignore this setting."
                 ),
                 depends="aistudio_behavior.enable_deepthink",
@@ -1004,7 +1006,7 @@ SCHEMA = [
                 label="Send Thinking",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Include Gemini thinking summaries in the response sent to the API.",
+                tooltip="Include AI Studio thinking summaries in the response sent to the API.",
                 docs_path=DOCS_AISTUDIO,
                 docs_anchor="send-thinking",
             ),
@@ -1147,7 +1149,7 @@ SCHEMA = [
                 default=65536,
                 tooltip=(
                     "Default output token budget for AI Studio requests. "
-                    "This maps to the web UI's maxOutputTokens control."
+                    "This maps to the web UI's maxOutputTokens control; model-specific caps still apply."
                 ),
                 docs_path=DOCS_AISTUDIO,
                 docs_anchor="max-output-tokens",

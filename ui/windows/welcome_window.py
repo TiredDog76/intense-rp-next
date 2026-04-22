@@ -662,7 +662,7 @@ class WelcomeWindow(QDialog):
             elif provider == "QwenLM":
                 desc = "Email/password login, very smooth experience."
             elif provider == "Google AI Studio":
-                desc = "Google login with Gemini models. Persistent sessions recommended."
+                desc = "Google login with AI Studio models. Persistent sessions recommended."
 
             icon_file = PROVIDER_ICON_MAP.get(provider)
             card = ProviderChoiceCard(provider, desc, icon_file, parent=frame)

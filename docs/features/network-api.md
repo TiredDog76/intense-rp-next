@@ -214,7 +214,7 @@ These IDs are behavior presets (modes), not true model selection.
     | Model ID | Behavior |
     |----------|----------|
     | `aistudio-auto` | Uses your IntenseRP settings |
-    | `aistudio-chat` | Suppresses `<think>` output and lowers Thinking Level on supported Gemini 3 / 3.1 models |
+    | `aistudio-chat` | Suppresses `<think>` output and lowers Thinking Level on supported AI Studio models |
     | `aistudio-reasoner` | Uses your configured Thinking Level and Send Thinking setting |
 
 ---

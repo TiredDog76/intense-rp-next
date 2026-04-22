@@ -107,7 +107,7 @@ Providers are prioritized in this order:
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 
-    Gemini model selection, Thinking Level, Search, URL Context, and sampling controls.
+    AI Studio model selection, Thinking Level, Search, URL Context, and sampling controls.
 
     [:arrow_right: Google AI Studio Behavior](../providers/aistudio-behavior.md)
 

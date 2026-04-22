@@ -10,18 +10,18 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ## :material-tune: Modes (model IDs)
 
-In IntenseRP Next v2, the `model` you select in SillyTavern is still mostly a **behavior preset**, not a true Gemini model picker.
+In IntenseRP Next v2, the `model` you select in SillyTavern is still mostly a **behavior preset**, not a true AI Studio model picker.
 
 For Google AI Studio, these model IDs map to the following behavior:
 
 | Model ID | Behavior |
 |---|---|
 | `aistudio-auto` | Uses your IntenseRP settings |
-| `aistudio-chat` | Suppresses `<think>` output and lowers Thinking Level on supported Gemini 3 / 3.1 models |
+| `aistudio-chat` | Suppresses `<think>` output and lowers Thinking Level on supported AI Studio models |
 | `aistudio-reasoner` | Uses your configured Thinking Level and Send Thinking setting |
 
 !!! note "Why chat mode works differently here"
-    Google AI Studio's supported Gemini models do not expose a true "thinking off" switch the way some other providers do.
+    Google AI Studio's supported thinking models do not expose a true "thinking off" switch the way some other providers do.
 
     So IntenseRP approximates a chat-like mode by:
 
@@ -30,9 +30,9 @@ For Google AI Studio, these model IDs map to the following behavior:
 
 ---
 
-## :material-chip: Real Gemini model selection (web UI)
+## :material-chip: Real AI Studio model selection (web UI)
 
-Google AI Studio has a real Gemini model picker in the web UI:
+Google AI Studio has a real model picker in the web UI:
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Model**
 
@@ -44,6 +44,8 @@ Currently supported:
 - `Gemini 2.5 Pro`
 - `Gemini 2.5 Flash`
 - `Gemini 2.5 Flash Lite`
+- `Gemma 4 26B-A4B`
+- `Gemma 4 31B`
 
 This is separate from the API `aistudio-*` behavior presets.
 
@@ -82,7 +84,7 @@ Google AI Studio exposes **Thinking Level** instead of a simple on/off reasoning
 
 ### Enable Thinking
 
-When enabled, IntenseRP uses your configured **Thinking Level** on supported Gemini 3 / 3.1 models.
+When enabled, IntenseRP uses your configured **Thinking Level** on supported AI Studio models.
 
 When disabled, IntenseRP falls back to the lowest available level instead.
 
@@ -90,7 +92,7 @@ When disabled, IntenseRP falls back to the lowest available level instead.
 
 ### Thinking Level
 
-Controls the level IntenseRP selects on supported Gemini 3 / 3.1 models:
+Controls the level IntenseRP selects on supported AI Studio models:
 
 - `Minimal`
 - `Low`
@@ -102,9 +104,12 @@ Controls the level IntenseRP selects on supported Gemini 3 / 3.1 models:
 !!! note "Gemini 2.5 models"
     Gemini 2.5 models use a different internal budgeting system, so IntenseRP does not apply Thinking Level changes to them.
 
+!!! note "Gemma 4 models"
+    Gemma 4 models currently expose `Minimal` and `High`. When your configured level lands between those two, IntenseRP picks the nearest available level.
+
 ### Send Thinking
 
-When enabled, Gemini thinking summaries are included in the API response, wrapped in `<think>` tags.
+When enabled, AI Studio thinking summaries are included in the API response, wrapped in `<think>` tags.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Send Thinking**
 
@@ -125,6 +130,9 @@ Toggles **Grounding with Google Search**.
 Toggles **URL Context** browsing.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Enable URL Context**
+
+!!! note "Gemma 4 models"
+    Gemma 4 models force Google Search grounding on and do not expose URL Context in AI Studio, so IntenseRP treats Search as enabled and skips the URL Context toggle for them.
 
 !!! note "Grounding payloads"
     AI Studio can emit extra grounding/search payloads into the same response stream. IntenseRP strips those provider-specific payloads and forwards only the assistant text.
@@ -207,6 +215,8 @@ Default is `0.95`.
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Max Output Tokens**
 
 Default is `65536`.
+
+Gemma 4 models are capped at `32768`, so IntenseRP clamps larger request or settings values before applying the web UI control.
 
 ---
 
@@ -332,10 +342,10 @@ All macros are stripped before sending.
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
-| **Model** | Selects AI Studio's real Gemini model picker | Gemini 2.5 Flash |
-| **Enable Thinking** | Uses a higher Thinking Level on supported Gemini 3 / 3.1 models | Off |
+| **Model** | Selects AI Studio's real model picker | Gemini 2.5 Flash |
+| **Enable Thinking** | Uses a higher Thinking Level on supported AI Studio models | Off |
 | **Thinking Level** | Picks the Thinking Level when Thinking is enabled | Medium |
-| **Send Thinking** | Includes Gemini thinking summaries in response | Off |
+| **Send Thinking** | Includes AI Studio thinking summaries in response | Off |
 | **Enable Search** | Toggles Google Search grounding | Off |
 | **Enable URL Context** | Toggles URL Context browsing | Off |
 | **Use System Prompt Field** | Moves leading system messages into AI Studio's System Instructions UI | Off |

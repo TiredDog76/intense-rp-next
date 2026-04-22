@@ -92,7 +92,7 @@ Google AI Studio model IDs are also behavior presets:
 | Model ID | Thinking Level | Send Thinking |
 |---|---|---|
 | `aistudio-auto` | Uses your settings | Uses your settings |
-| `aistudio-chat` | Lowers Thinking Level on supported Gemini 3 / 3.1 models | Forced off |
+| `aistudio-chat` | Lowers Thinking Level on supported AI Studio models | Forced off |
 | `aistudio-reasoner` | Uses your configured Thinking Level | Uses your settings |
 
 !!! info "What these IDs are (and are not)"

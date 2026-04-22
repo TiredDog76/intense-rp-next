@@ -149,6 +149,9 @@ class AIStudioDriver(BaseDriver):
 
     START_URL = "https://aistudio.google.com/prompts/new_chat?incognito=true"
     AUTH_HOST_MARKER = "accounts.google.com"
+    DEFAULT_MODEL_LABEL = "Gemini 3.1 Pro"
+    DEFAULT_MAX_OUTPUT_TOKENS = 65536
+    MODEL_FAMILY_FILTER_LABEL = "All"
     GENERATE_ROUTE_GLOB = (
         "**/$rpc/google.internal.alkali.applications.makersuite.v1.MakerSuiteService/GenerateContent*"
     )
@@ -243,12 +246,17 @@ class AIStudioDriver(BaseDriver):
         "gemini-3.1-pro-preview": "Low",
         "gemini-3.1-flash-lite-preview": "Minimal",
         "gemini-3-flash-preview": "Minimal",
+        "gemma-4-26b-a4b-it": "Minimal",
+        "gemma-4-31b-it": "Minimal",
     }
     THINKING_LEVELS_BY_MODEL: Dict[str, tuple[str, ...]] = {
         "gemini-3.1-pro-preview": ("Low", "Medium", "High"),
         "gemini-3.1-flash-lite-preview": ("Minimal", "Low", "Medium", "High"),
         "gemini-3-flash-preview": ("Minimal", "Low", "Medium", "High"),
+        "gemma-4-26b-a4b-it": ("Minimal", "High"),
+        "gemma-4-31b-it": ("Minimal", "High"),
     }
+    THINKING_LEVEL_ORDER = ("Minimal", "Low", "Medium", "High")
     MODEL_CONFIGS: Dict[str, Dict[str, Any]] = {
         "Gemini 3.1 Pro": {
             "base_id": "gemini-3.1-pro-preview",
@@ -273,6 +281,20 @@ class AIStudioDriver(BaseDriver):
         "Gemini 2.5 Flash Lite": {
             "base_id": "gemini-2.5-flash-lite",
             "selector_id": "model-carousel-row-models/gemini-2.5-flash-lite",
+        },
+        "Gemma 4 26B-A4B": {
+            "base_id": "gemma-4-26b-a4b-it",
+            "selector_id": "model-carousel-row-models/gemma-4-26b-a4b-it",
+            "force_search": True,
+            "supports_url_context": False,
+            "max_output_tokens": 32768,
+        },
+        "Gemma 4 31B": {
+            "base_id": "gemma-4-31b-it",
+            "selector_id": "model-carousel-row-models/gemma-4-31b-it",
+            "force_search": True,
+            "supports_url_context": False,
+            "max_output_tokens": 32768,
         },
     }
     CLEAN_REGEN_STATE_KEYS = (
@@ -879,11 +901,46 @@ class AIStudioDriver(BaseDriver):
             value = str(self.config_manager.get_setting("aistudio_behavior", "model") or "").strip()
         except Exception:
             value = ""
-        return value if value in self.MODEL_CONFIGS else "Gemini 2.5 Flash"
+        return value if value in self.MODEL_CONFIGS else self.DEFAULT_MODEL_LABEL
 
     @classmethod
     def _model_config_for_label(cls, label: str) -> Dict[str, Any]:
-        return dict(cls.MODEL_CONFIGS.get(label) or cls.MODEL_CONFIGS["Gemini 2.5 Flash"])
+        return dict(cls.MODEL_CONFIGS.get(label) or cls.MODEL_CONFIGS[cls.DEFAULT_MODEL_LABEL])
+
+    @classmethod
+    def _model_max_output_tokens(cls, model_config: Dict[str, Any]) -> int:
+        return cls._clamp_int(
+            model_config.get("max_output_tokens"),
+            cls.DEFAULT_MAX_OUTPUT_TOKENS,
+            1,
+            cls.DEFAULT_MAX_OUTPUT_TOKENS,
+        )
+
+    @staticmethod
+    def _model_supports_url_context(model_config: Dict[str, Any]) -> bool:
+        return bool(model_config.get("supports_url_context", True))
+
+    @staticmethod
+    def _model_forces_search(model_config: Dict[str, Any]) -> bool:
+        return bool(model_config.get("force_search", False))
+
+    @classmethod
+    def _current_model_matches(
+        cls,
+        current_label: str,
+        desired_label: str,
+        model_config: Dict[str, Any],
+    ) -> bool:
+        current = cls._canonicalize_text(current_label)
+        if not current:
+            return False
+
+        candidates = [
+            desired_label,
+            str(model_config.get("base_id") or ""),
+            str(model_config.get("selector_id") or "").rsplit("/", 1)[-1],
+        ]
+        return any(current == cls._canonicalize_text(candidate) for candidate in candidates if candidate)
 
     async def _read_current_model_id(self) -> str:
         """Read the currently selected model label from the model selector card."""
@@ -933,25 +990,27 @@ class AIStudioDriver(BaseDriver):
             Logger.warning("Google AI Studio: model selector did not appear.")
             return False
 
-    async def _click_gemini_model_family(self) -> bool:
+    async def _click_model_family_filter(self) -> bool:
         if not self.page:
             return False
 
         try:
             clicked = await self.page.evaluate(
-                "() => {"
+                "(familyLabel) => {"
                 "  const root = document.querySelector(\"[data-test-id='model-carousel-in-selector']\");"
                 "  if (!root) return false;"
+                "  const target = (familyLabel || '').toString().trim().toLowerCase();"
                 "  const buttons = Array.from(root.querySelectorAll('button'));"
                 "  for (const btn of buttons) {"
                 "    const text = (btn.textContent || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();"
-                "    if (text === 'gemini') {"
+                "    if (text === target) {"
                 "      btn.click();"
                 "      return true;"
                 "    }"
                 "  }"
                 "  return false;"
-                "}"
+                "}",
+                self.MODEL_FAMILY_FILTER_LABEL,
             )
         except Exception:
             clicked = False
@@ -992,7 +1051,7 @@ class AIStudioDriver(BaseDriver):
         return False
 
     async def _ensure_model_selected(self, desired_label: str) -> None:
-        """Best-effort apply the configured Gemini model in the picker UI."""
+        """Best-effort apply the configured AI Studio model in the picker UI."""
         desired = self._model_config_for_label(desired_label)
         desired_base = str(desired.get("base_id") or "").strip()
         desired_selector = str(desired.get("selector_id") or "").strip()
@@ -1000,13 +1059,13 @@ class AIStudioDriver(BaseDriver):
             return
 
         current = await self._read_current_model_id()
-        if self._canonicalize_text(current) == self._canonicalize_text(desired_base):
+        if self._current_model_matches(current, desired_label, desired):
             return
 
         if not await self._open_model_selector():
             return
 
-        await self._click_gemini_model_family()
+        await self._click_model_family_filter()
         if not await self._click_model_option(desired_selector):
             Logger.warning(
                 f"Google AI Studio: target model '{desired_label}' was not found in the picker."
@@ -1016,7 +1075,7 @@ class AIStudioDriver(BaseDriver):
         deadline = time.time() + 5.0
         while time.time() < deadline:
             current = await self._read_current_model_id()
-            if self._canonicalize_text(current) == self._canonicalize_text(desired_base):
+            if self._current_model_matches(current, desired_label, desired):
                 return
             await asyncio.sleep(0.12)
 
@@ -1057,6 +1116,28 @@ class AIStudioDriver(BaseDriver):
         return normalized or "Medium"
 
     @classmethod
+    def _closest_supported_thinking_level(cls, wanted: str, supported: tuple[str, ...]) -> str:
+        """Return the nearest thinking level the selected model actually exposes."""
+        if not supported:
+            return ""
+        if wanted in supported:
+            return wanted
+
+        try:
+            wanted_rank = cls.THINKING_LEVEL_ORDER.index(wanted)
+        except ValueError:
+            return supported[0]
+
+        def score(level: str) -> tuple[int, bool, int]:
+            try:
+                rank = cls.THINKING_LEVEL_ORDER.index(level)
+            except ValueError:
+                return (999, True, 999)
+            return (abs(rank - wanted_rank), rank > wanted_rank, rank)
+
+        return min(supported, key=score)
+
+    @classmethod
     def _resolve_macro_thinking_level(cls, token: str, model_base_id: str) -> str:
         """Map macro tokens like ``r1``-``r4`` onto model-supported thinking levels."""
         normalized = str(token or "").strip().lower()
@@ -1066,9 +1147,7 @@ class AIStudioDriver(BaseDriver):
 
         if normalized in {"minimal", "low", "medium", "high"}:
             wanted = cls._normalize_thinking_level(normalized)
-            if wanted in supported:
-                return wanted
-            return supported[0] if supported else ""
+            return cls._closest_supported_thinking_level(wanted, supported)
 
         if normalized == "r1":
             return supported[0]
@@ -1171,6 +1250,9 @@ class AIStudioDriver(BaseDriver):
         desired_label = self._get_configured_model_label()
         model_config = self._model_config_for_label(desired_label)
         model_base_id = str(model_config.get("base_id") or "").strip().lower()
+        force_search = self._model_forces_search(model_config)
+        supports_url_context = self._model_supports_url_context(model_config)
+        model_max_output_tokens = self._model_max_output_tokens(model_config)
 
         deepthink_enabled = bool(self.config_manager.get_setting("aistudio_behavior", "enable_deepthink"))
         send_deepthink = bool(self.config_manager.get_setting("aistudio_behavior", "send_deepthink"))
@@ -1213,6 +1295,10 @@ class AIStudioDriver(BaseDriver):
             url_context_enabled = bool(merged_overrides["url_context_enabled"])
         if "send_as_text_file" in merged_overrides:
             send_as_text_file = bool(merged_overrides["send_as_text_file"])
+        if force_search:
+            search_enabled = True
+        if not supports_url_context:
+            url_context_enabled = False
         configured_thinking_level = self._configured_thinking_level()
         macro_level_token = str(merged_overrides.get("thinking_level_macro") or "").strip()
         if macro_level_token:
@@ -1248,7 +1334,7 @@ class AIStudioDriver(BaseDriver):
             raw_max = self.config_manager.get_setting("aistudio_behavior", "max_output_tokens")
         else:
             raw_max = max_tokens
-        max_output_tokens = self._clamp_int(raw_max, 65536, 1, 65536)
+        max_output_tokens = self._clamp_int(raw_max, model_max_output_tokens, 1, model_max_output_tokens)
         file_upload_timeout = self._clamp_int(
             self.config_manager.get_setting("aistudio_behavior", "file_upload_timeout"),
             20,
@@ -1264,7 +1350,9 @@ class AIStudioDriver(BaseDriver):
             "thinking_level": thinking_level,
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(search_enabled),
+            "force_search": bool(force_search),
             "url_context_enabled": bool(url_context_enabled),
+            "supports_url_context": bool(supports_url_context),
             "use_system_prompt_field": bool(use_system_prompt_field),
             "send_as_text_file": bool(send_as_text_file),
             "text_file_message": text_file_message,
@@ -1275,6 +1363,7 @@ class AIStudioDriver(BaseDriver):
             "temperature": float(temperature_value),
             "top_p": float(top_p_value),
             "max_output_tokens": int(max_output_tokens),
+            "model_max_output_tokens": int(model_max_output_tokens),
         }
 
     def _message_format_separator(self) -> str:
@@ -2340,10 +2429,12 @@ class AIStudioDriver(BaseDriver):
                 )
             await self._ui_settle_pause(0.24)
 
-        await self.set_search_state(bool(settings.get("search_enabled")))
-        await self._ui_settle_pause(0.18)
-        await self._set_url_context_state(bool(settings.get("url_context_enabled")))
-        await self._ui_settle_pause(0.18)
+        if not bool(settings.get("force_search", False)):
+            await self.set_search_state(bool(settings.get("search_enabled")))
+            await self._ui_settle_pause(0.18)
+        if bool(settings.get("supports_url_context", True)):
+            await self._set_url_context_state(bool(settings.get("url_context_enabled")))
+            await self._ui_settle_pause(0.18)
         await self._set_temperature_value(float(settings.get("temperature", 1.0)))
         await self._ui_settle_pause(0.14)
         await self._set_top_p_value(float(settings.get("top_p", 0.95)))
