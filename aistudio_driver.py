@@ -147,7 +147,7 @@ class _AiStudioJsonEventStreamParser:
 class AIStudioDriver(BaseDriver):
     """Drive the Google AI Studio web UI and expose OpenAI-style streaming output."""
 
-    START_URL = "https://aistudio.google.com/prompts/new_chat"
+    START_URL = "https://aistudio.google.com/prompts/new_chat?incognito=true"
     AUTH_HOST_MARKER = "accounts.google.com"
     GENERATE_ROUTE_GLOB = (
         "**/$rpc/google.internal.alkali.applications.makersuite.v1.MakerSuiteService/GenerateContent*"
@@ -169,7 +169,6 @@ class AIStudioDriver(BaseDriver):
     SEARCH_TOGGLE_LABEL = "Grounding with Google Search"
     URL_CONTEXT_TOGGLE_LABEL = "Browse the url context"
     ADVANCED_SETTINGS_LABEL = "Expand or collapse advanced settings"
-    TEMPORARY_CHAT_BUTTON_ARIA_DESCRIBEDBY = "cdk-describedby-message-ng-1-27"
     TERMS_DIALOG_SELECTOR = "div.mat-mdc-dialog-surface.mdc-dialog__surface"
     UPLOAD_ACK_DIALOG_TITLE_SELECTOR = "div.mat-mdc-dialog-title.mdc-dialog__title.shared-dialog-header"
     UPLOAD_ACK_DIALOG_CONTAINER_SELECTOR = "mat-dialog-container#copyright-acknowledgement-dialog"
@@ -1460,145 +1459,6 @@ class AIStudioDriver(BaseDriver):
     async def _set_url_context_state(self, state: bool) -> None:
         await self._set_toggle_state_by_aria_label(self.URL_CONTEXT_TOGGLE_LABEL, state)
 
-    async def _read_temporary_chat_enabled(self) -> Optional[bool]:
-        """Infer whether Temporary Chats is enabled from the toolbar button state."""
-        if not self.page:
-            return None
-
-        try:
-            state = await self.page.evaluate(
-                """(describedBy) => {
-                    const normalize = (value) => (value || '').toString().trim().toLowerCase();
-                    const isVisible = (el) => {
-                        if (!el) return false;
-                        const rect = el.getBoundingClientRect();
-                        if (!rect || rect.width <= 0 || rect.height <= 0) return false;
-                        const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        return style.visibility !== 'hidden' && style.display !== 'none';
-                    };
-
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    let best = null;
-                    let bestScore = -9999;
-
-                    for (const button of buttons) {
-                        if (!isVisible(button)) continue;
-                        const className = (button.getAttribute('class') || '').toString();
-                        if (!className.includes('ms-button-borderless') || !className.includes('ms-button-icon')) {
-                            continue;
-                        }
-
-                        const ariaLabel = normalize(button.getAttribute('aria-label'));
-                        const ariaDescribedBy = normalize(button.getAttribute('aria-describedby'));
-                        const ariaDisabled = normalize(button.getAttribute('aria-disabled'));
-                        let score = 0;
-
-                        if (ariaLabel.includes('temporary')) score += 100;
-                        if (ariaDescribedBy === normalize(describedBy)) score += 40;
-                        if (className.includes('ms-button-active')) score += 25;
-                        if (ariaLabel === 'new chat') score -= 120;
-                        if (ariaDisabled === 'true') score -= 40;
-
-                        if (score > bestScore) {
-                            bestScore = score;
-                            best = button;
-                        }
-                    }
-
-                    if (!best) return null;
-                    const className = (best.getAttribute('class') || '').toString();
-                    if (className.includes('ms-button-active')) return true;
-                    return false;
-                }""",
-                self.TEMPORARY_CHAT_BUTTON_ARIA_DESCRIBEDBY,
-            )
-        except Exception:
-            state = None
-
-        if isinstance(state, bool):
-            return state
-        return None
-
-    async def _ensure_temporary_chat_enabled(self) -> None:
-        """Enable Temporary Chats when the control is available and not already active."""
-        current = await self._read_temporary_chat_enabled()
-        if current is True:
-            return
-
-        try:
-            clicked = await self.page.evaluate(
-                """(describedBy) => {
-                    const normalize = (value) => (value || '').toString().trim().toLowerCase();
-                    const isVisible = (el) => {
-                        if (!el) return false;
-                        const rect = el.getBoundingClientRect();
-                        if (!rect || rect.width <= 0 || rect.height <= 0) return false;
-                        const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        return style.visibility !== 'hidden' && style.display !== 'none';
-                    };
-
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    let best = null;
-                    let bestScore = -9999;
-
-                    for (const button of buttons) {
-                        if (!isVisible(button)) continue;
-                        const className = (button.getAttribute('class') || '').toString();
-                        if (!className.includes('ms-button-borderless') || !className.includes('ms-button-icon')) {
-                            continue;
-                        }
-
-                        const ariaLabel = normalize(button.getAttribute('aria-label'));
-                        const ariaDescribedBy = normalize(button.getAttribute('aria-describedby'));
-                        const ariaDisabled = normalize(button.getAttribute('aria-disabled'));
-                        let score = 0;
-
-                        if (ariaLabel.includes('temporary')) score += 100;
-                        if (ariaDescribedBy === normalize(describedBy)) score += 40;
-                        if (className.includes('ms-button-active')) score += 25;
-                        if (ariaLabel === 'new chat') score -= 120;
-                        if (ariaDisabled === 'true') score -= 40;
-
-                        if (score > bestScore) {
-                            bestScore = score;
-                            best = button;
-                        }
-                    }
-
-                    if (!best) return false;
-                    if ((best.getAttribute('class') || '').toString().includes('ms-button-active')) {
-                        return true;
-                    }
-                    if (normalize(best.getAttribute('aria-disabled')) === 'true') {
-                        return false;
-                    }
-                    best.click();
-                    return true;
-                }""",
-                self.TEMPORARY_CHAT_BUTTON_ARIA_DESCRIBEDBY,
-            )
-        except Exception:
-            clicked = False
-
-        if not clicked:
-            Logger.warning("Google AI Studio: Temporary Chats button was not found or clickable.")
-            return
-
-        deadline = time.time() + 4.0
-        while time.time() < deadline:
-            current = await self._read_temporary_chat_enabled()
-            if current is True:
-                return
-            if current is None:
-                chat_ready = await self._wait_for_chat_ready(timeout_ms=0)
-                if chat_ready:
-                    return
-            await asyncio.sleep(0.1)
-
-        Logger.warning("Google AI Studio: Temporary Chats did not become enabled.")
-
     async def _ui_settle_pause(self, delay_s: float = 0.22) -> None:
         await asyncio.sleep(max(0.0, float(delay_s)))
 
@@ -2480,8 +2340,6 @@ class AIStudioDriver(BaseDriver):
                 )
             await self._ui_settle_pause(0.24)
 
-        await self._ensure_temporary_chat_enabled()
-        await self._ui_settle_pause(0.18)
         await self.set_search_state(bool(settings.get("search_enabled")))
         await self._ui_settle_pause(0.18)
         await self._set_url_context_state(bool(settings.get("url_context_enabled")))
