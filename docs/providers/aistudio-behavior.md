@@ -101,8 +101,12 @@ Controls the level IntenseRP selects on supported AI Studio models:
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Thinking Level**
 
-!!! note "Gemini 2.5 models"
-    Gemini 2.5 models use a different internal budgeting system, so IntenseRP does not apply Thinking Level changes to them.
+!!! note "Gemini 2.5 Flash, Flash Lite, and Pro"
+    Gemini 2.5 Flash, Flash Lite, and Pro use a manual thinking budget instead of the newer Thinking Level dropdown.
+
+    For **Gemini 2.5 Flash** and **Gemini 2.5 Flash Lite**, `Minimal` turns Thinking Mode off. `Low`, `Medium`, and `High` turn Thinking Mode on and set the manual budget to `8192`, `16384`, and `24576`. Flash Lite's manual budget range starts at `512`.
+
+    For **Gemini 2.5 Pro**, Thinking Mode is always on, so `Minimal`, `Low`, `Medium`, and `High` map to `128`, `8192`, `16384`, and `32768`.
 
 !!! note "Gemma 4 models"
     Gemma 4 models currently expose `Minimal` and `High`. When your configured level lands between those two, IntenseRP picks the nearest available level.

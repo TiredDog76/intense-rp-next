@@ -171,6 +171,11 @@ class AIStudioDriver(BaseDriver):
     THINKING_LISTBOX_SELECTOR = "div[role='listbox'] mat-option"
     SEARCH_TOGGLE_LABEL = "Grounding with Google Search"
     URL_CONTEXT_TOGGLE_LABEL = "Browse the url context"
+    THINKING_MODE_TOGGLE_LABEL = "Toggle thinking mode"
+    THINKING_BUDGET_TOGGLE_LABEL = "Toggle thinking budget between auto and manual"
+    THINKING_BUDGET_WRAPPER_SELECTOR = "[data-test-id='user-setting-budget-animation-wrapper']"
+    TOP_P_TOOLTIP = "Probability threshold for top-p sampling"
+    MAX_OUTPUT_TOKENS_INPUT_LABEL = "Maximum output tokens"
     ADVANCED_SETTINGS_LABEL = "Expand or collapse advanced settings"
     TERMS_DIALOG_SELECTOR = "div.mat-mdc-dialog-surface.mdc-dialog__surface"
     UPLOAD_ACK_DIALOG_TITLE_SELECTOR = "div.mat-mdc-dialog-title.mdc-dialog__title.shared-dialog-header"
@@ -246,6 +251,9 @@ class AIStudioDriver(BaseDriver):
         "gemini-3.1-pro-preview": "Low",
         "gemini-3.1-flash-lite-preview": "Minimal",
         "gemini-3-flash-preview": "Minimal",
+        "gemini-2.5-pro": "Minimal",
+        "gemini-2.5-flash": "Minimal",
+        "gemini-2.5-flash-lite": "Minimal",
         "gemma-4-26b-a4b-it": "Minimal",
         "gemma-4-31b-it": "Minimal",
     }
@@ -253,10 +261,39 @@ class AIStudioDriver(BaseDriver):
         "gemini-3.1-pro-preview": ("Low", "Medium", "High"),
         "gemini-3.1-flash-lite-preview": ("Minimal", "Low", "Medium", "High"),
         "gemini-3-flash-preview": ("Minimal", "Low", "Medium", "High"),
+        "gemini-2.5-pro": ("Minimal", "Low", "Medium", "High"),
+        "gemini-2.5-flash": ("Minimal", "Low", "Medium", "High"),
+        "gemini-2.5-flash-lite": ("Minimal", "Low", "Medium", "High"),
         "gemma-4-26b-a4b-it": ("Minimal", "High"),
         "gemma-4-31b-it": ("Minimal", "High"),
     }
     THINKING_LEVEL_ORDER = ("Minimal", "Low", "Medium", "High")
+    THINKING_MODE_TOGGLE_MODELS = {"gemini-2.5-flash", "gemini-2.5-flash-lite"}
+    THINKING_BUDGET_BY_MODEL: Dict[str, Dict[str, Optional[int]]] = {
+        "gemini-2.5-pro": {
+            "Minimal": 128,
+            "Low": 8192,
+            "Medium": 16384,
+            "High": 32768,
+        },
+        "gemini-2.5-flash": {
+            "Minimal": None,
+            "Low": 8192,
+            "Medium": 16384,
+            "High": 24576,
+        },
+        "gemini-2.5-flash-lite": {
+            "Minimal": None,
+            "Low": 8192,
+            "Medium": 16384,
+            "High": 24576,
+        },
+    }
+    THINKING_BUDGET_RANGE_BY_MODEL: Dict[str, tuple[int, int]] = {
+        "gemini-2.5-pro": (128, 32768),
+        "gemini-2.5-flash": (1, 24576),
+        "gemini-2.5-flash-lite": (512, 24576),
+    }
     MODEL_CONFIGS: Dict[str, Dict[str, Any]] = {
         "Gemini 3.1 Pro": {
             "base_id": "gemini-3.1-pro-preview",
@@ -1163,6 +1200,21 @@ class AIStudioDriver(BaseDriver):
     def _default_low_thinking_level(cls, model_base_id: str) -> str:
         return cls.LOWEST_LEVEL_BY_MODEL.get(str(model_base_id or "").strip().lower(), "")
 
+    @classmethod
+    def _thinking_budget_for_level(cls, model_base_id: str, level: str) -> Optional[int]:
+        model_key = str(model_base_id or "").strip().lower()
+        normalized = cls._normalize_thinking_level(level)
+        budget_map = cls.THINKING_BUDGET_BY_MODEL.get(model_key) or {}
+        if normalized not in budget_map:
+            return None
+
+        budget = budget_map.get(normalized)
+        if budget is None:
+            return None
+
+        min_value, max_value = cls.THINKING_BUDGET_RANGE_BY_MODEL.get(model_key, (1, budget))
+        return cls._clamp_int(budget, budget, min_value, max_value)
+
     def _extract_model_level_override(self, model: str) -> tuple[str, Dict[str, Any]]:
         """Split suffixes like ``-high`` or ``-r2`` into a base model and overrides."""
         normalized = str(model or "").strip()
@@ -1548,6 +1600,99 @@ class AIStudioDriver(BaseDriver):
     async def _set_url_context_state(self, state: bool) -> None:
         await self._set_toggle_state_by_aria_label(self.URL_CONTEXT_TOGGLE_LABEL, state)
 
+    async def _read_thinking_budget_value(self) -> Optional[int]:
+        """Read AI Studio's visible thinking-budget slider value."""
+        if not self.page:
+            return None
+
+        try:
+            raw_value = await self.page.evaluate(
+                """(wrapperSelector) => {
+                    const wrapper = document.querySelector(wrapperSelector);
+                    if (!wrapper) return null;
+
+                    let input = null;
+                    try {
+                        input = wrapper.querySelector(':scope > div > ms-slider > div > input:nth-child(2)');
+                    } catch (e) {}
+                    input = input || wrapper.querySelector('ms-slider input') || wrapper.querySelector('input');
+                    if (!input) return null;
+
+                    const value = (input.value ?? '').toString().trim();
+                    if (value) return value;
+                    const ariaValue = (input.getAttribute('aria-valuenow') || '').toString().trim();
+                    return ariaValue || null;
+                }""",
+                self.THINKING_BUDGET_WRAPPER_SELECTOR,
+            )
+        except Exception:
+            return None
+
+        try:
+            return int(float(str(raw_value or "").strip()))
+        except Exception:
+            return None
+
+    async def _set_thinking_budget_value(self, value: int) -> bool:
+        """Set AI Studio's manual thinking-budget slider input."""
+        if not self.page:
+            return False
+
+        try:
+            applied = await self.page.evaluate(
+                """(payload) => {
+                    const wrapper = document.querySelector(payload.wrapperSelector);
+                    if (!wrapper) return false;
+
+                    let input = null;
+                    try {
+                        input = wrapper.querySelector(':scope > div > ms-slider > div > input:nth-child(2)');
+                    } catch (e) {}
+                    input = input || wrapper.querySelector('ms-slider input') || wrapper.querySelector('input');
+                    if (!input) return false;
+
+                    const desired = Math.max(
+                        payload.minValue,
+                        Math.min(payload.maxValue, Number.parseInt(payload.value, 10))
+                    ).toString();
+                    try { input.focus({ preventScroll: true }); } catch (e) {
+                        try { input.focus(); } catch (e2) {}
+                    }
+
+                    let proto = input;
+                    let setter = null;
+                    while (proto && !setter) {
+                        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                        if (desc && typeof desc.set === 'function') {
+                            setter = desc.set;
+                            break;
+                        }
+                        proto = Object.getPrototypeOf(proto);
+                    }
+
+                    if (setter) {
+                        setter.call(input, desired);
+                    } else {
+                        input.value = desired;
+                    }
+
+                    input.setAttribute('aria-valuenow', desired);
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    return (input.value ?? '').toString() === desired;
+                }""",
+                {
+                    "wrapperSelector": self.THINKING_BUDGET_WRAPPER_SELECTOR,
+                    "value": int(value),
+                    "minValue": 1,
+                    "maxValue": max(1, int(value)),
+                },
+            )
+        except Exception:
+            return False
+
+        return bool(applied)
+
     async def _ui_settle_pause(self, delay_s: float = 0.22) -> None:
         await asyncio.sleep(max(0.0, float(delay_s)))
 
@@ -1781,126 +1926,39 @@ class AIStudioDriver(BaseDriver):
         text = str(value or "").strip()
         return text or None
 
-    async def _read_nth_matching_input_value(self, selector: str, occurrence: int) -> Optional[str]:
-        """Read the current DOM value of the Nth input matching a selector."""
-        if not self.page:
-            return None
-
-        try:
-            value = await self.page.evaluate(
-                """(payload) => {
-                    const selector = (payload && payload.selector) ? payload.selector.toString() : '';
-                    const occurrence = (payload && Number.isInteger(payload.occurrence))
-                        ? payload.occurrence
-                        : 0;
-                    const inputs = Array.from(document.querySelectorAll(selector));
-                    const input = inputs[occurrence];
-                    if (!input) return null;
-                    return (input.value ?? '').toString();
-                }""",
-                {
-                    "selector": selector,
-                    "occurrence": int(occurrence),
-                },
-            )
-        except Exception:
-            return None
-
-        text = str(value or "").strip()
-        return text or None
-
-    async def _set_nth_matching_input_value(
-        self, selector: str, occurrence: int, value_text: str
-    ) -> bool:
-        """Set the Nth input matching a selector and dispatch the usual UI events."""
-        if not self.page:
-            return False
-
-        try:
-            applied = await self.page.evaluate(
-                """(payload) => {
-                    const selector = (payload && payload.selector) ? payload.selector.toString() : '';
-                    const occurrence = (payload && Number.isInteger(payload.occurrence))
-                        ? payload.occurrence
-                        : 0;
-                    const value = (payload && payload.value !== undefined)
-                        ? (payload.value ?? '').toString()
-                        : '';
-                    const inputs = Array.from(document.querySelectorAll(selector));
-                    const input = inputs[occurrence];
-                    if (!input) return false;
-
-                    let proto = input;
-                    let setter = null;
-                    while (proto && !setter) {
-                        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-                        if (desc && typeof desc.set === 'function') {
-                            setter = desc.set;
-                            break;
-                        }
-                        proto = Object.getPrototypeOf(proto);
-                    }
-
-                    try { input.focus({ preventScroll: true }); } catch (e) {
-                        try { input.focus(); } catch (e2) {}
-                    }
-
-                    if (setter) {
-                        setter.call(input, value);
-                    } else {
-                        input.value = value;
-                    }
-
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                    return (input.value ?? '').toString() === value;
-                }""",
-                {
-                    "selector": selector,
-                    "occurrence": int(occurrence),
-                    "value": str(value_text or ""),
-                },
-            )
-        except Exception:
-            applied = False
-
-        return bool(applied)
-
     async def _read_top_p_value(self) -> Optional[str]:
         """Best-effort read of the current top-p input value from the run settings panel."""
         if not self.page:
             return None
 
-        direct = await self._read_nth_matching_input_value("input.slider-number-input.small", 1)
-        if direct:
-            return direct
-
         try:
             value = await self.page.evaluate(
-                """() => {
-                    const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();
-                    const inputs = Array.from(document.querySelectorAll('input'));
-                    const candidates = [];
-                    for (const input of inputs) {
-                        const name = normalize(input.getAttribute('name'));
-                        if (name === 'maxoutputtokens') continue;
-                        if (input.closest("[data-test-id='temperatureSliderContainer']")) continue;
+                """(tooltip) => {
+                    const root = Array.from(document.querySelectorAll('div[mattooltip]'))
+                        .find((el) => (el.getAttribute('mattooltip') || '').toString() === tooltip);
+                    if (!root) return null;
 
-                        const container = input.closest('mat-form-field, div, section, form') || input.parentElement;
-                        const contextText = normalize(container ? container.textContent : '');
-                        const rawValue = normalize(input.value);
-                        if (contextText.includes('top p') || contextText.includes('top-p') || contextText.includes('topp')) {
-                            candidates.unshift(input);
-                            continue;
-                        }
-                        if (rawValue && /^0(\\.\\d+)?$|^1(\\.0+)?$/.test(rawValue)) {
-                            candidates.push(input);
-                        }
-                    }
+                    const secondChild = root.children && root.children.length >= 2
+                        ? root.children[1]
+                        : null;
+                    let input = null;
+                    try {
+                        input = secondChild
+                            ? secondChild.querySelector(':scope > ms-slider > div > input:nth-child(2)')
+                            : null;
+                    } catch (e) {}
+                    input = input
+                        || (secondChild ? secondChild.querySelector('ms-slider input') : null)
+                        || root.querySelector('ms-slider input')
+                        || root.querySelector('input');
+                    if (!input) return null;
 
-                    if (!candidates.length) return null;
-                    return (candidates[0].value ?? '').toString();
-                }"""
+                    const value = (input.value ?? '').toString().trim();
+                    if (value) return value;
+                    const ariaValue = (input.getAttribute('aria-valuenow') || '').toString().trim();
+                    return ariaValue || null;
+                }""",
+                self.TOP_P_TOOLTIP,
             )
         except Exception:
             return None
@@ -1943,21 +2001,17 @@ class AIStudioDriver(BaseDriver):
                         return style.visibility !== 'hidden' && style.display !== 'none';
                     };
 
-                    const maxTokens = document.querySelector("input[name='maxOutputTokens']");
+                    const maxTokens =
+                        document.querySelector("input[aria-label='Maximum output tokens']") ||
+                        document.querySelector("input[name='maxOutputTokens']");
                     if (isVisible(maxTokens)) return true;
 
                     const safetyTrigger = document.querySelector("div.safety-settings button");
                     if (isVisible(safetyTrigger)) return true;
 
-                    const topPInputs = Array.from(document.querySelectorAll("input")).filter(isVisible);
-                    for (const input of topPInputs) {
-                        if (input.closest("[data-test-id='temperatureSliderContainer']")) continue;
-                        const container = input.closest('mat-form-field, div, section, form') || input.parentElement;
-                        const contextText = ((container && container.textContent) || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();
-                        if (contextText.includes('top p') || contextText.includes('top-p') || contextText.includes('topp')) {
-                            return true;
-                        }
-                    }
+                    const topP = Array.from(document.querySelectorAll('div[mattooltip]'))
+                        .find((el) => (el.getAttribute('mattooltip') || '').toString() === 'Probability threshold for top-p sampling');
+                    if (isVisible(topP)) return true;
 
                     return false;
                 }"""
@@ -2023,28 +2077,14 @@ class AIStudioDriver(BaseDriver):
             )
             return
 
-        ok = await self._set_nth_matching_input_value(
-            "input.slider-number-input.small",
-            1,
-            formatted,
-        )
-        if ok:
-            return
-
         try:
             ok = await self.page.evaluate(
-                """(targetValue) => {
-                    const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();
-                    const isVisible = (el) => {
-                        if (!el) return false;
-                        const rect = el.getBoundingClientRect();
-                        if (!rect || rect.width <= 0 || rect.height <= 0) return false;
-                        const style = window.getComputedStyle(el);
-                        if (!style) return false;
-                        return style.visibility !== 'hidden' && style.display !== 'none';
-                    };
+                """(payload) => {
                     const apply = (input) => {
                         if (!input) return false;
+                        const targetValue = (payload && payload.value !== undefined)
+                            ? (payload.value ?? '').toString()
+                            : '';
                         const proto = Object.getPrototypeOf(input);
                         const desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null;
                         if (desc && typeof desc.set === 'function') {
@@ -2057,29 +2097,30 @@ class AIStudioDriver(BaseDriver):
                         return true;
                     };
 
-                    const inputs = Array.from(document.querySelectorAll('input')).filter(isVisible);
-                    const candidates = [];
-                    for (const input of inputs) {
-                        const name = normalize(input.getAttribute('name'));
-                        if (name === 'maxoutputtokens') continue;
-                        if (input.closest("[data-test-id='temperatureSliderContainer']")) continue;
+                    const tooltip = (payload && payload.tooltip) ? payload.tooltip.toString() : '';
+                    const root = Array.from(document.querySelectorAll('div[mattooltip]'))
+                        .find((el) => (el.getAttribute('mattooltip') || '').toString() === tooltip);
+                    if (!root) return false;
 
-                        const container = input.closest('mat-form-field, div, section, form') || input.parentElement;
-                        const contextText = normalize(container ? container.textContent : '');
-                        const rawValue = normalize(input.value);
-                        if (contextText.includes('top p') || contextText.includes('top-p') || contextText.includes('topp')) {
-                            candidates.unshift(input);
-                            continue;
-                        }
-                        if (rawValue && /^0(\\.\\d+)?$|^1(\\.0+)?$/.test(rawValue)) {
-                            candidates.push(input);
-                        }
-                    }
-
-                    if (!candidates.length) return false;
-                    return apply(candidates[0]);
+                    const secondChild = root.children && root.children.length >= 2
+                        ? root.children[1]
+                        : null;
+                    let input = null;
+                    try {
+                        input = secondChild
+                            ? secondChild.querySelector(':scope > ms-slider > div > input:nth-child(2)')
+                            : null;
+                    } catch (e) {}
+                    input = input
+                        || (secondChild ? secondChild.querySelector('ms-slider input') : null)
+                        || root.querySelector('ms-slider input')
+                        || root.querySelector('input');
+                    return apply(input);
                 }""",
-                formatted,
+                {
+                    "tooltip": self.TOP_P_TOOLTIP,
+                    "value": formatted,
+                },
             )
         except Exception:
             ok = False
@@ -2088,7 +2129,11 @@ class AIStudioDriver(BaseDriver):
             Logger.warning("Google AI Studio: top-p input was not found.")
 
     async def _set_max_output_tokens(self, value: int) -> None:
-        current = await self._read_input_value("input[name='maxOutputTokens']")
+        max_tokens_selector = (
+            f"input[aria-label='{self.MAX_OUTPUT_TOKENS_INPUT_LABEL}'], "
+            "input[name='maxOutputTokens']"
+        )
+        current = await self._read_input_value(max_tokens_selector)
         if self._integer_setting_matches(current, value):
             Logger.debug(
                 f"Google AI Studio: maxOutputTokens already matches {int(value)}; skipping update."
@@ -2099,7 +2144,7 @@ class AIStudioDriver(BaseDriver):
         if not expanded:
             Logger.warning("Google AI Studio: advanced settings could not be expanded for maxOutputTokens.")
             return
-        ok = await self._set_input_value("input[name='maxOutputTokens']", str(int(value)))
+        ok = await self._set_input_value(max_tokens_selector, str(int(value)))
         if not ok:
             Logger.warning("Google AI Studio: maxOutputTokens input was not found.")
 
@@ -2395,9 +2440,45 @@ class AIStudioDriver(BaseDriver):
 
         return False
 
+    async def _apply_thinking_budget_level(self, model_base: str, level: str) -> bool:
+        """Apply 2.5 Flash/Pro thinking via mode and manual budget controls."""
+        model_key = str(model_base or "").strip().lower()
+        if model_key not in self.THINKING_BUDGET_BY_MODEL:
+            return False
+
+        budget = self._thinking_budget_for_level(model_key, level)
+        if model_key in self.THINKING_MODE_TOGGLE_MODELS and budget is None:
+            await self._set_toggle_state_by_aria_label(self.THINKING_MODE_TOGGLE_LABEL, False)
+            await self._ui_settle_pause(0.2)
+            return True
+
+        if budget is None:
+            return False
+
+        if model_key in self.THINKING_MODE_TOGGLE_MODELS:
+            await self._set_toggle_state_by_aria_label(self.THINKING_MODE_TOGGLE_LABEL, True)
+            await self._ui_settle_pause(0.25)
+
+        await self._set_toggle_state_by_aria_label(self.THINKING_BUDGET_TOGGLE_LABEL, True)
+        await self._ui_settle_pause(0.25)
+
+        current = await self._read_thinking_budget_value()
+        if current is not None and self._integer_setting_matches(current, budget):
+            return True
+
+        min_value, max_value = self.THINKING_BUDGET_RANGE_BY_MODEL.get(model_key, (1, budget))
+        budget = self._clamp_int(budget, budget, min_value, max_value)
+        ok = await self._set_thinking_budget_value(budget)
+        if ok:
+            await self._ui_settle_pause(0.12)
+        return ok
+
     async def set_deepthink_state(self, state: bool) -> None:
         current_model = await self._read_current_model_id()
         model_base = str(current_model or "").strip().lower()
+        if model_base not in self.THINKING_LEVELS_BY_MODEL:
+            configured_model = self._model_config_for_label(self._get_configured_model_label())
+            model_base = str(configured_model.get("base_id") or "").strip().lower()
         if model_base not in self.THINKING_LEVELS_BY_MODEL:
             return
 
@@ -2407,7 +2488,10 @@ class AIStudioDriver(BaseDriver):
         if not target_level:
             return
 
-        ok = await self._select_thinking_level(target_level)
+        if model_base in self.THINKING_BUDGET_BY_MODEL:
+            ok = await self._apply_thinking_budget_level(model_base, target_level)
+        else:
+            ok = await self._select_thinking_level(target_level)
         if not ok:
             Logger.warning(
                 f"Google AI Studio: failed to set thinking level to '{target_level}'."
@@ -2419,9 +2503,16 @@ class AIStudioDriver(BaseDriver):
         await self._ui_settle_pause(0.28)
 
         current_model = await self._read_current_model_id()
-        model_base = str(current_model or settings.get("model_base_id") or "").strip().lower()
+        model_base = str(settings.get("model_base_id") or current_model or "").strip().lower()
         thinking_level = self._normalize_thinking_level(str(settings.get("thinking_level") or ""))
-        if thinking_level and model_base in self.THINKING_LEVELS_BY_MODEL:
+        if thinking_level and model_base in self.THINKING_BUDGET_BY_MODEL:
+            ok = await self._apply_thinking_budget_level(model_base, thinking_level)
+            if not ok:
+                Logger.warning(
+                    f"Google AI Studio: failed to apply thinking budget for '{thinking_level}'."
+                )
+            await self._ui_settle_pause(0.24)
+        elif thinking_level and model_base in self.THINKING_LEVELS_BY_MODEL:
             ok = await self._select_thinking_level(thinking_level)
             if not ok:
                 Logger.warning(

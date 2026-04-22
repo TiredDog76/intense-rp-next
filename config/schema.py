@@ -995,7 +995,7 @@ SCHEMA = [
                 options=["Minimal", "Low", "Medium", "High"],
                 tooltip=(
                     "Thinking level for supported AI Studio models. "
-                    "Gemini 2.5 models ignore this setting."
+                    "Gemini 2.5 Flash, Flash Lite, and Pro map this to the thinking budget."
                 ),
                 depends="aistudio_behavior.enable_deepthink",
                 docs_path=DOCS_AISTUDIO,
