@@ -4,6 +4,7 @@ Outputs to stdout and optionally duplicates to console window.
 """
 from enum import Enum
 from datetime import datetime
+from collections import deque
 from typing import Optional, Callable, Any
 import os
 import glob
@@ -81,6 +82,8 @@ class Logger:
     _file_lock = threading.RLock()
     _listener_lock = threading.RLock()
     _listeners: list[Callable[[LogLevel, str], None]] = []
+    _history_lock = threading.RLock()
+    _history: deque[tuple[LogLevel, str]] = deque(maxlen=500)
 
     @classmethod
     def _write_stdout_line(cls, text: str) -> None:
@@ -178,6 +181,18 @@ class Logger:
             return
         with cls._listener_lock:
             cls._listeners = [listener for listener in cls._listeners if listener != callback]
+
+    @classmethod
+    def recent_messages(cls, limit: int | None = None) -> list[tuple[LogLevel, str]]:
+        """Return recent clean log messages for late subscribers."""
+        with cls._history_lock:
+            history = list(cls._history)
+        if limit is None:
+            return history
+        limit = max(0, int(limit))
+        if limit == 0:
+            return []
+        return history[-limit:]
 
     @classmethod
     def set_file_level(cls, level: LogLevel):
@@ -377,10 +392,12 @@ class Logger:
         need_callback = cls._console_callback is not None
         need_file = cls._log_file and cls.should_log(level, cls._file_level)
         need_listeners = bool(listeners)
+        formatted_clean = cls._format_message(level, message, include_ansi=False)
+
+        with cls._history_lock:
+            cls._history.append((level, formatted_clean))
 
         if need_callback or need_file or need_listeners:
-            formatted_clean = cls._format_message(level, message, include_ansi=False)
-
             if need_callback:
                 if cls._qt_dispatcher is not None:
                     try:

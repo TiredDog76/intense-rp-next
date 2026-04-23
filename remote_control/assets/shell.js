@@ -17,6 +17,8 @@
     draftLoadouts: {},
     logController: null,
     logConnected: false,
+    logLastId: 0,
+    remoteStateLoad: null,
   };
 
   const views = new Map(
@@ -69,7 +71,6 @@
   const loadoutSwitchConfirmButton = document.getElementById("loadout-switch-confirm-button");
   const loadoutSwitchStatus = document.getElementById("loadout-switch-status");
   const consoleOutput = document.getElementById("console-output");
-  const consolePlaceholder = document.getElementById("console-placeholder");
   const logsStatus = document.getElementById("logs-status");
   const logsFooterButton = document.getElementById("logs-footer-button");
   const reconnectButton = document.getElementById("reconnect-button");
@@ -690,9 +691,30 @@
     updateLoadoutSwitchConfirmState();
   }
 
+  function loadRemoteStateInBackground() {
+    if (state.remoteStateLoad) {
+      return state.remoteStateLoad;
+    }
+
+    state.remoteStateLoad = loadRemoteState()
+      .catch(function () {
+        // The logs view should stay useful even if state refresh is briefly blocked
+      })
+      .finally(function () {
+        state.remoteStateLoad = null;
+      });
+    return state.remoteStateLoad;
+  }
+
   async function completeAuthenticatedLoad(viewName) {
-    await loadRemoteState();
     let targetView = viewName || "home";
+    if (targetView === "logs") {
+      showView("logs");
+      loadRemoteStateInBackground();
+      return;
+    }
+
+    await loadRemoteState();
     const remoteState = state.remoteState || {};
     const modelSwitch = remoteState.model_switch || {};
     const loadoutSwitch = remoteState.loadout_switch || {};
@@ -903,18 +925,76 @@
   }
 
   function clearConsolePlaceholder() {
-    if (consolePlaceholder) {
-      consolePlaceholder.remove();
+    const placeholder = document.getElementById("console-placeholder");
+    if (placeholder) {
+      placeholder.remove();
     }
   }
 
-  function appendLog(entry) {
+  function setConsolePlaceholder(text) {
+    let placeholder = document.getElementById("console-placeholder");
+    if (!placeholder && consoleOutput && !consoleOutput.children.length) {
+      placeholder = document.createElement("div");
+      placeholder.id = "console-placeholder";
+      placeholder.className = "console-output__placeholder";
+      consoleOutput.appendChild(placeholder);
+    }
+    if (placeholder) {
+      placeholder.textContent = text || "";
+    }
+  }
+
+  let pendingLogEntries = [];
+  let logFlushScheduled = false;
+
+  function logEntryId(entry) {
+    const id = Number(entry && entry.id);
+    return Number.isFinite(id) && id > 0 ? id : 0;
+  }
+
+  function flushPendingLogs() {
+    logFlushScheduled = false;
+    if (!pendingLogEntries.length) {
+      return;
+    }
+
     clearConsolePlaceholder();
-    const line = document.createElement("div");
-    line.className = "log-line log-line--" + escapeHtml(entry.level || "INFO");
-    line.textContent = entry.message || "";
-    consoleOutput.appendChild(line);
+    const fragment = document.createDocumentFragment();
+    pendingLogEntries.forEach((entry) => {
+      const line = document.createElement("div");
+      line.className = "log-line log-line--" + escapeHtml(entry.level || "INFO");
+      line.textContent = entry.message || "";
+      fragment.appendChild(line);
+    });
+    pendingLogEntries = [];
+    consoleOutput.appendChild(fragment);
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
+  }
+
+  function appendLog(entry) {
+    const id = logEntryId(entry);
+    if (id && id <= state.logLastId) {
+      return;
+    }
+    if (id) {
+      state.logLastId = id;
+    }
+
+    pendingLogEntries.push(entry);
+    if (logFlushScheduled) {
+      return;
+    }
+    logFlushScheduled = true;
+    window.requestAnimationFrame(flushPendingLogs);
+  }
+
+  function resetConsoleOutput(placeholderText) {
+    pendingLogEntries = [];
+    logFlushScheduled = false;
+    if (consoleOutput) {
+      consoleOutput.innerHTML = "";
+    }
+    setConsolePlaceholder(placeholderText || "Loading logs");
   }
 
   function setLogsConnected(connected, message) {
@@ -939,15 +1019,50 @@
     state.logConnected = false;
   }
 
+  async function loadLogHistory(controller) {
+    const response = await requestJson(apiUrl("/api/logs/history"), {
+      method: "GET",
+      headers: authHeaders(false),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const entries = response && Array.isArray(response.entries) ? response.entries : [];
+    const latestId = Number(response && response.latest_id);
+    if (Number.isFinite(latestId) && latestId < state.logLastId) {
+      state.logLastId = 0;
+      resetConsoleOutput("Loading logs");
+    }
+
+    entries.forEach((entry) => {
+      appendLog(entry);
+    });
+    flushPendingLogs();
+
+    if (Number.isFinite(latestId) && latestId > state.logLastId) {
+      state.logLastId = latestId;
+    }
+  }
+
   async function startLogs() {
     stopLogs();
     setLogsConnected(true, "");
+    setConsolePlaceholder("Loading logs");
 
     const controller = new AbortController();
     state.logController = controller;
 
     try {
-      const response = await fetch(apiUrl("/api/logs/stream"), {
+      await loadLogHistory(controller);
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      setConsolePlaceholder("Connected. Waiting for logs...");
+      const streamUrl = apiUrl(
+        "/api/logs/stream?after=" + encodeURIComponent(String(state.logLastId || 0))
+      );
+      const response = await fetch(streamUrl, {
         method: "GET",
         headers: authHeaders(false),
         cache: "no-store",
@@ -986,6 +1101,11 @@
               dataText += line.slice(5).trim();
             }
           });
+          if (eventName === "connected") {
+            setLogsConnected(true, "");
+            setConsolePlaceholder("Connected. Waiting for logs...");
+            return;
+          }
           if (eventName !== "log" || !dataText) {
             return;
           }

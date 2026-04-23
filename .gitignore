@@ -63,3 +63,4 @@ autodeletion.md
 newdeepseek/
 tests/
 temp.html
+test_*.py

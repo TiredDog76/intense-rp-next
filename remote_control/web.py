@@ -68,7 +68,12 @@ class RemoteControlWeb:
         self._actions = actions
         self._loop = asyncio.get_running_loop()
         self._session_store = RemoteControlSessionStore(self.config_manager.config_dir)
+        self._next_log_id = 0
         self._log_history: deque[dict[str, Any]] = deque(maxlen=self.LOG_BACKLOG_LIMIT)
+        for level, message in Logger.recent_messages(self.LOG_BACKLOG_LIMIT):
+            self._log_history.append(
+                self._make_log_event(level.value, str(message or ""))
+            )
         self._log_subscribers: set[asyncio.Queue] = set()
         self._template_env = Environment(
             loader=FileSystemLoader(
@@ -420,18 +425,25 @@ class RemoteControlWeb:
                 "action": action,
             }
 
+        @app.get(f"{self.BASE_PATH}/api/logs/history")
+        async def remote_logs_history(raw_request: Request):
+            self._authenticate_remote_request(raw_request)
+            return self._build_logs_history_payload()
+
         @app.get(f"{self.BASE_PATH}/api/logs/stream")
         async def remote_logs_stream(raw_request: Request):
             self._authenticate_remote_request(raw_request)
+            after_id = self._read_after_log_id(raw_request)
             queue: asyncio.Queue = asyncio.Queue()
-            history = list(self._log_history)
             self._log_subscribers.add(queue)
+            history = self._log_history_after(after_id)
             return StreamingResponse(
-                self._log_stream(queue, history, raw_request),
+                self._log_stream(queue, history, raw_request, after_id=after_id),
                 media_type="text/event-stream",
                 headers={
-                    "Cache-Control": "no-store",
+                    "Cache-Control": "no-cache, no-transform",
                     "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
                 },
             )
 
@@ -439,10 +451,15 @@ class RemoteControlWeb:
         self._ensure_route_available(raw_request)
         template = self._template_env.get_template("shell.html")
         asset_urls = self._build_template_assets()
+        initial_view_name = str(initial_view or "home")
         initial_state = {
             "needs_auth": self._needs_auth(),
-            "initial_view": str(initial_view or "home"),
-            "remote_state": self._build_remote_state(),
+            "initial_view": initial_view_name,
+            "remote_state": (
+                None
+                if initial_view_name == "logs"
+                else self._build_remote_state()
+            ),
         }
         html = template.render(
             base_path=self.BASE_PATH,
@@ -816,23 +833,80 @@ class RemoteControlWeb:
             pass
 
     def _broadcast_log_event(self, event: dict[str, Any]) -> None:
-        self._log_history.append(dict(event))
+        log_event = self._make_log_event(
+            str(event.get("level") or LogLevel.INFO.value),
+            str(event.get("message") or ""),
+        )
+        self._log_history.append(dict(log_event))
         for queue in list(self._log_subscribers):
             try:
-                queue.put_nowait(dict(event))
+                queue.put_nowait(dict(log_event))
             except Exception:
                 self._log_subscribers.discard(queue)
+
+    def _make_log_event(self, level: str, message: str) -> dict[str, Any]:
+        self._next_log_id += 1
+        return {
+            "id": self._next_log_id,
+            "level": str(level or LogLevel.INFO.value),
+            "message": str(message or ""),
+        }
+
+    def _build_logs_history_payload(self) -> dict[str, Any]:
+        entries = list(self._log_history)
+        return {
+            "entries": entries,
+            "latest_id": self._latest_log_id(entries),
+        }
+
+    def _log_history_after(self, after_id: int) -> list[dict[str, Any]]:
+        return [
+            dict(entry)
+            for entry in self._log_history
+            if self._log_entry_id(entry) > after_id
+        ]
+
+    @staticmethod
+    def _latest_log_id(entries: list[dict[str, Any]]) -> int:
+        latest_id = 0
+        for entry in entries:
+            latest_id = max(latest_id, RemoteControlWeb._log_entry_id(entry))
+        return latest_id
+
+    @staticmethod
+    def _log_entry_id(entry: dict[str, Any]) -> int:
+        try:
+            return max(0, int(entry.get("id") or 0))
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _read_after_log_id(raw_request: Request) -> int:
+        try:
+            return max(0, int(raw_request.query_params.get("after") or 0))
+        except Exception:
+            return 0
 
     async def _log_stream(
         self,
         queue: asyncio.Queue,
         history: list[dict[str, Any]],
         raw_request: Request,
+        *,
+        after_id: int = 0,
     ):
+        latest_sent_id = max(0, int(after_id or 0))
         try:
-            yield self._encode_sse_event("connected", {"ok": True})
+            yield self._encode_sse_event(
+                "connected",
+                {"ok": True, "after": latest_sent_id},
+            )
             for entry in history:
+                entry_id = self._log_entry_id(entry)
+                if entry_id <= latest_sent_id:
+                    continue
                 yield self._encode_sse_event("log", entry)
+                latest_sent_id = entry_id
 
             while True:
                 if await raw_request.is_disconnected():
@@ -845,7 +919,11 @@ class RemoteControlWeb:
 
                 if event is None:
                     break
+                event_id = self._log_entry_id(event)
+                if event_id <= latest_sent_id:
+                    continue
                 yield self._encode_sse_event("log", event)
+                latest_sent_id = event_id
         except asyncio.CancelledError:
             raise
         finally:
