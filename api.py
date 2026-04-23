@@ -5,7 +5,7 @@ import secrets
 import time
 from collections import deque
 from dataclasses import dataclass
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Callable, Literal, Union
@@ -37,6 +37,11 @@ _NON_RETRYABLE_PROVIDER_ERROR_RE = re.compile(
 )
 
 DEFAULT_MAX_REQUEST_QUEUE_SIZE = 128
+API_CORS_PATH_PREFIX = "/v1/"
+API_CORS_ALLOWED_METHODS = ("GET", "POST", "OPTIONS")
+API_CORS_ALLOW_METHODS_HEADER = ", ".join(API_CORS_ALLOWED_METHODS)
+API_CORS_DEFAULT_ALLOW_HEADERS = "Content-Type, Authorization"
+API_CORS_MAX_AGE_SECONDS = "600"
 QueueStateListener = Callable[[], None]
 
 
@@ -123,6 +128,27 @@ def _make_openai_error_sse_chunk(message: str) -> str:
         }
     }
     return f"data: {json.dumps(error_chunk)}\n\n"
+
+
+def _is_api_cors_path(path: Any) -> bool:
+    normalized_path = str(path or "")
+    return normalized_path.startswith(API_CORS_PATH_PREFIX)
+
+
+def _build_api_cors_headers(raw_request: Request, *, preflight: bool = False) -> dict[str, str]:
+    headers = {"Access-Control-Allow-Origin": "*"}
+    if not preflight:
+        return headers
+
+    requested_headers = str(raw_request.headers.get("access-control-request-headers") or "").strip()
+    headers.update(
+        {
+            "Access-Control-Allow-Methods": API_CORS_ALLOW_METHODS_HEADER,
+            "Access-Control-Allow-Headers": requested_headers or API_CORS_DEFAULT_ALLOW_HEADERS,
+            "Access-Control-Max-Age": API_CORS_MAX_AGE_SECONDS,
+        }
+    )
+    return headers
 
 class Message(BaseModel):
     role: str
@@ -399,6 +425,7 @@ class API:
         remote_actions: RemoteControlActions | None = None,
     ):
         self.app = FastAPI()
+        self._install_api_cors_middleware()
         self.driver = driver
         self._queue_state_listeners: list[QueueStateListener] = []
         self._request_queue_listener = self._notify_queue_state_changed
@@ -439,6 +466,43 @@ class API:
         if self.remote_control is not None:
             self.remote_control.register_routes(self.app)
         self.start_worker()
+
+    def _install_api_cors_middleware(self) -> None:
+        @self.app.middleware("http")
+        async def api_cors_middleware(raw_request: Request, call_next):
+            if not _is_api_cors_path(raw_request.url.path):
+                return await call_next(raw_request)
+
+            origin = raw_request.headers.get("origin")
+            if not origin:
+                return await call_next(raw_request)
+
+            is_preflight = (
+                raw_request.method.upper() == "OPTIONS"
+                and raw_request.headers.get("access-control-request-method")
+            )
+            if is_preflight:
+                requested_method = str(
+                    raw_request.headers.get("access-control-request-method") or ""
+                ).upper()
+                headers = _build_api_cors_headers(raw_request, preflight=True)
+                if requested_method not in API_CORS_ALLOWED_METHODS:
+                    return Response(
+                        "Disallowed CORS method",
+                        status_code=400,
+                        media_type="text/plain",
+                        headers=headers,
+                    )
+                return Response(
+                    "OK",
+                    status_code=200,
+                    media_type="text/plain",
+                    headers=headers,
+                )
+
+            response = await call_next(raw_request)
+            response.headers.update(_build_api_cors_headers(raw_request))
+            return response
 
     def _build_runtime_drivers_map(self) -> dict[DriverProvider, BaseDriver]:
         if isinstance(self.driver, ParallelDriversManager):
