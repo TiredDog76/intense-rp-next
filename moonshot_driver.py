@@ -2260,42 +2260,22 @@ class MoonshotDriver(BaseDriver):
 
         app = self.page.locator("div.app.has-sidebar")
         app_count = await app.count()
-        if app_count > 0:
-            for idx in range(min(app_count, 5)):
-                candidate = app.nth(idx)
-                try:
-                    if not await candidate.is_visible():
-                        continue
-                except Exception:
+        for idx in range(min(app_count, 5)):
+            candidate = app.nth(idx)
+            try:
+                if not await candidate.is_visible():
                     continue
+            except Exception:
+                continue
 
-                class_attr = await candidate.get_attribute("class") or ""
-                classes = set(class_attr.split())
-                return "fold" in classes
-
-            # Fallback to first match even if visibility probing fails
-            class_attr = await app.first.get_attribute("class") or ""
+            class_attr = await candidate.get_attribute("class") or ""
             classes = set(class_attr.split())
             return "fold" in classes
 
-        # Fallback heuristics
-        close_button = self.page.locator("div.sidebar-header div.expand-btn:not(.icon-button)")
-        close_count = await close_button.count()
-        for idx in range(min(close_count, 5)):
-            try:
-                if await close_button.nth(idx).is_visible():
-                    return True
-            except Exception:
-                continue
-
-        open_button = self.page.locator("div.icon-button.expand-btn")
-        open_count = await open_button.count()
-        for idx in range(min(open_count, 5)):
-            try:
-                if await open_button.nth(idx).is_visible():
-                    return False
-            except Exception:
-                continue
+        if app_count > 0:
+            class_attr = await app.first.get_attribute("class") or ""
+            classes = set(class_attr.split())
+            return "fold" in classes
 
         return None
 
@@ -2425,8 +2405,7 @@ class MoonshotDriver(BaseDriver):
             if target_open:
                 button = await self._find_first_visible(
                     [
-                        "aside.sidebar div.sidebar-header div.icon-button.expand-btn",
-                        "div.icon-button.expand-btn",
+                        "div.expand-btn:has(svg[name='LeftBar'])",
                     ],
                     timeout_ms=1500,
                 )
@@ -2436,8 +2415,8 @@ class MoonshotDriver(BaseDriver):
             else:
                 button = await self._find_first_visible(
                     [
-                        "aside.sidebar div.sidebar-header div.expand-btn:not(.icon-button)",
-                        "div.sidebar-header div.expand-btn:not(.icon-button)",
+                        "aside.sidebar div.sidebar-header div.expand-btn:has(svg[name='LeftBar'])",
+                        "div.expand-btn:has(svg[name='LeftBar'])",
                     ],
                     timeout_ms=1500,
                 )
@@ -2476,8 +2455,9 @@ class MoonshotDriver(BaseDriver):
         await self.set_sidebar_status(open=True)
         new_chat_button = await self._find_first_visible(
             [
-                "aside.sidebar div.sidebar-nav button.new-chat-btn",
-                "div.sidebar-nav .new-chat-btn",
+                "aside.sidebar div.sidebar-new-chat a.new-chat-btn",
+                "aside.sidebar a.new-chat-btn[href*='chat_enter_method=new_chat']",
+                "aside.sidebar a[href*='chat_enter_method=new_chat']:has-text('New Chat')",
             ],
             timeout_ms=8000,
         )
