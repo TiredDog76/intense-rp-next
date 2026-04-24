@@ -53,8 +53,8 @@ class MoonshotDriver(BaseDriver):
         "x-traffic-id",
     }
     CONNECT_MAX_FRAME_BYTES = 8 * 1024 * 1024
-    MODEL_INSTANT = "K2.5 Instant"
-    MODEL_THINKING = "K2.5 Thinking"
+    MODEL_INSTANT = "K2.6 Instant"
+    MODEL_THINKING = "K2.6 Thinking"
     MODEL_CHAT_API = "moonshot-chat"
     MODEL_REASONER_API = "moonshot-reasoner"
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
@@ -2199,7 +2199,7 @@ class MoonshotDriver(BaseDriver):
                 # Fallback in case class names change
                 "div.toolkit-container > *",
             ],
-            visible_index=2,
+            visible_index=3,
             timeout_ms=3000,
         )
         if parent_tool is None:

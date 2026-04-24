@@ -38,8 +38,8 @@ Kimi exposes reasoning through model mode selection in the web UI.
 
 ### Enable Thinking
 
-Switches Kimi to **K2.5 Thinking** before sending a request.
-When disabled, IntenseRP switches to **K2.5 Instant**.
+Switches Kimi to **K2.6 Thinking** before sending a request.
+When disabled, IntenseRP switches to **K2.6 Instant**.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Moonshot** -> **Enable Thinking**
 
@@ -51,7 +51,7 @@ When disabled, only final answer text is forwarded.
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Moonshot** -> **Send Thinking**
 
 !!! warning "Model downgrading"
-    As part of a paywall strategy, Kimi will downgrade to K2.5 Instant (if you're on their Free plan) when you enable Thinking mode. This is a provider-side change and not something IntenseRP can control. They say it's because of high demand, but really it probably just means they're trying to force you to pay `¯\_(ツ)_/¯`.
+    As part of a paywall strategy, Kimi will downgrade to K2.6 Instant (if you're on their Free plan) when you enable Thinking mode. This is a provider-side change and not something IntenseRP can control. They say it's because of high demand, but really it probably just means they're trying to force you to pay `¯\_(ツ)_/¯`.
 
 ---
 

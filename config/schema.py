@@ -662,7 +662,7 @@ SCHEMA = [
                 label="Enable Thinking",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Switch Kimi between K2.5 Instant and K2.5 Thinking before sending.",
+                tooltip="Switch Kimi between K2.6 Instant and K2.6 Thinking before sending.",
                 docs_path=DOCS_MOONSHOT,
                 docs_anchor="enable-thinking",
             ),
