@@ -56,8 +56,10 @@ class QwenLMDriver(BaseDriver):
     NEW_CHAT_LOOKUP_POLL_INTERVAL_S = 0.15
 
     THINKING_TRIGGER_SELECTOR = "span.ant-select-selection-item:has(div.qwen-select-thinking-label)"
-    THINKING_LABEL_SELECTOR = "span.qwen-select-thinking-label-text"
+    THINKING_TRIGGER_LABEL_SELECTOR = "span.qwen-select-thinking-label-text"
     THINKING_OPTIONS_SELECTOR = "div.rc-virtual-list-holder-inner"
+    THINKING_OPTION_LABEL_SELECTOR = "span.qwen-select-option-selected-label"
+    THINKING_OPTION_SELECTOR = "div.ant-select-item-option"
 
     SEARCH_MODE_CONTAINER_SELECTOR = "div.mode-select-current-mode"
     SEARCH_CLOSE_SELECTOR = "span.mode-select-current-mode-close"
@@ -1681,7 +1683,8 @@ class QwenLMDriver(BaseDriver):
         if not self.page:
             return ""
 
-        label = self.page.locator(self.THINKING_LABEL_SELECTOR)
+        trigger = self.page.locator(self.THINKING_TRIGGER_SELECTOR)
+        label = trigger.first.locator(self.THINKING_TRIGGER_LABEL_SELECTOR)
         if await label.count() == 0:
             return ""
 
@@ -1715,7 +1718,9 @@ class QwenLMDriver(BaseDriver):
 
         seen: set[str] = set()
         out: List[str] = []
-        labels = self.page.locator(self.THINKING_LABEL_SELECTOR)
+        labels = self.page.locator(
+            f"{self.THINKING_OPTIONS_SELECTOR} {self.THINKING_OPTION_LABEL_SELECTOR}"
+        )
 
         count = 0
         try:
@@ -1729,13 +1734,6 @@ class QwenLMDriver(BaseDriver):
                 if not await cand.is_visible():
                     continue
             except Exception:
-                continue
-
-            try:
-                in_trigger = await cand.evaluate("el => !!el.closest('span.ant-select-selection-item')")
-            except Exception:
-                in_trigger = False
-            if in_trigger:
                 continue
 
             try:
@@ -1762,7 +1760,7 @@ class QwenLMDriver(BaseDriver):
         async def _try_dom_click() -> bool:
             try:
                 clicked = await self.page.evaluate(
-                    "(labelSel, wantedCanon) => {"
+                    "(rootSel, optionSel, labelSel, wantedCanon) => {"
                     "  const canon = (value) => {"
                     "    try {"
                     "      return (value || '').toString().normalize('NFKC')"
@@ -1786,24 +1784,23 @@ class QwenLMDriver(BaseDriver):
                     "      return false;"
                     "    }"
                     "  };"
-                    "  const labels = Array.from(document.querySelectorAll(labelSel)).filter(isVisible);"
-                    "  for (const label of labels) {"
-                    "    if (label.closest('span.ant-select-selection-item')) continue;"
-                    "    const raw = (label.textContent || '').toString().trim();"
-                    "    if (canon(raw) !== wantedCanon) continue;"
-                    "    const target = "
-                    "      label.closest('[role=\"option\"]') || "
-                    "      label.closest('div.ant-select-item-option') || "
-                    "      label.closest('div.qwen-select-thinking-label') || "
-                    "      label.parentElement || "
-                    "      label;"
-                    "    try { target.scrollIntoView({ block: 'center' }); } catch (e) {}"
-                    "    try { target.click(); return true; } catch (e) {}"
-                    "    try { label.click(); return true; } catch (e) {}"
+                    "  const roots = Array.from(document.querySelectorAll(rootSel)).filter(isVisible);"
+                    "  for (const root of roots) {"
+                    "    const labels = Array.from(root.querySelectorAll(labelSel)).filter(isVisible);"
+                    "    for (const label of labels) {"
+                    "      const raw = (label.textContent || '').toString().trim();"
+                    "      if (canon(raw) !== wantedCanon) continue;"
+                    "      const target = label.closest(optionSel) || label;"
+                    "      try { target.scrollIntoView({ block: 'center' }); } catch (e) {}"
+                    "      try { target.click(); return true; } catch (e) {}"
+                    "      try { label.click(); return true; } catch (e) {}"
+                    "    }"
                     "  }"
                     "  return false;"
                     "}",
-                    self.THINKING_LABEL_SELECTOR,
+                    self.THINKING_OPTIONS_SELECTOR,
+                    self.THINKING_OPTION_SELECTOR,
+                    self.THINKING_OPTION_LABEL_SELECTOR,
                     wanted_canon,
                 )
             except Exception:
@@ -1811,7 +1808,9 @@ class QwenLMDriver(BaseDriver):
             return bool(clicked)
 
         async def _try_locator_click() -> bool:
-            labels = self.page.locator(self.THINKING_LABEL_SELECTOR)
+            labels = self.page.locator(
+                f"{self.THINKING_OPTIONS_SELECTOR} {self.THINKING_OPTION_LABEL_SELECTOR}"
+            )
 
             count = 0
             try:
@@ -1828,24 +1827,13 @@ class QwenLMDriver(BaseDriver):
                     continue
 
                 try:
-                    in_trigger = await cand.evaluate("el => !!el.closest('span.ant-select-selection-item')")
-                except Exception:
-                    in_trigger = False
-                if in_trigger:
-                    continue
-
-                try:
                     text = str(await cand.text_content() or "").strip()
                 except Exception:
                     continue
                 if self._canonicalize_label_text(text) != wanted_canon:
                     continue
 
-                option = cand.locator("xpath=ancestor::*[@role='option'][1]")
-                if await option.count() == 0:
-                    option = cand.locator("xpath=ancestor::div[contains(@class,'ant-select-item-option')][1]")
-                if await option.count() == 0:
-                    option = cand.locator("xpath=ancestor::div[contains(@class,'qwen-select-thinking-label')][1]")
+                option = cand.locator("xpath=ancestor::div[contains(@class,'ant-select-item-option')][1]")
 
                 target = option.first if await option.count() > 0 else cand
 
