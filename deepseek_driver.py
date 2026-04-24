@@ -38,6 +38,16 @@ class DeepSeekDriver(BaseDriver):
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
     CONVERSATION_URL_RE = re.compile(r"^https://chat\.deepseek\.com/a/chat/s/([^/?#]+)", re.IGNORECASE)
+    FOLLOWUP_REQUEST_HEADER_ALLOWLIST = {
+        "accept",
+        "accept-language",
+        "authorization",
+        "content-type",
+        "dnt",
+        "origin",
+        "referer",
+        "user-agent",
+    }
     CHAT_READY_SELECTORS = [
         "textarea[placeholder='Message DeepSeek']",
         "textarea",
@@ -72,6 +82,7 @@ class DeepSeekDriver(BaseDriver):
         self.clean_regen_state_cache_key = "last_message_state.json"
         self.multi_slot_cache_key = "deepseek_multi_slot_cache.json"
         self._last_generation_censored = False
+        self._last_followup_request_headers: Dict[str, str] = {}
         self._reset_stream_parser()
 
     def _reset_stream_parser(self) -> None:
@@ -481,23 +492,121 @@ class DeepSeekDriver(BaseDriver):
 
             await asyncio.sleep(max(0.05, float(poll_interval_s)))
 
+    @classmethod
+    def _build_followup_request_headers(cls, source_headers: Any) -> Dict[str, str]:
+        if not isinstance(source_headers, dict):
+            return {}
+
+        forwarded: Dict[str, str] = {}
+        for key, value in source_headers.items():
+            try:
+                name = str(key or "").strip().lower()
+                text = str(value or "").strip()
+            except Exception:
+                continue
+            if not name or not text:
+                continue
+            if name in cls.FOLLOWUP_REQUEST_HEADER_ALLOWLIST or name.startswith("x-"):
+                forwarded[name] = text
+        return forwarded
+
+    @staticmethod
+    def _is_deepseek_success_code(value: Any) -> bool:
+        if value is None:
+            return False
+        try:
+            return int(value) == 0
+        except Exception:
+            return str(value).strip() == "0"
+
+    @classmethod
+    def _is_delete_response_success(cls, status: int, response_text: str) -> bool:
+        if not (200 <= int(status or 0) < 300):
+            return False
+
+        try:
+            payload = json.loads(response_text or "")
+        except Exception:
+            return False
+        if not isinstance(payload, dict):
+            return False
+        if not cls._is_deepseek_success_code(payload.get("code")):
+            return False
+
+        data = payload.get("data")
+        if isinstance(data, dict) and "biz_code" in data:
+            return cls._is_deepseek_success_code(data.get("biz_code"))
+        return True
+
+    @staticmethod
+    def _format_delete_response_preview(response_text: str, limit: int = 1000) -> str:
+        response_preview = str(response_text or "").strip()
+        if not response_preview:
+            return "<empty>"
+
+        try:
+            response_preview = json.dumps(
+                json.loads(response_preview),
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+        except Exception:
+            pass
+
+        if len(response_preview) > limit:
+            return response_preview[:limit] + "...<truncated>"
+        return response_preview
+
     async def _delete_conversation_by_id(self, conversation_id: str) -> bool:
         normalized_id = str(conversation_id or "").strip()
         if not normalized_id:
             return False
 
-        result = await self._run_browser_request(
-            method="POST",
-            url="https://chat.deepseek.com/api/v0/chat_session/delete",
-            body={"chat_session_id": normalized_id},
-            use_xhr=True,
-            referrer="https://chat.deepseek.com/",
+        headers = self._build_followup_request_headers(
+            getattr(self, "_last_followup_request_headers", {}) or {}
         )
-        if bool(result.get("ok")):
+        headers.setdefault("accept", "application/json, text/plain, */*")
+        headers.setdefault("content-type", "application/json")
+        headers.setdefault("origin", "https://chat.deepseek.com")
+        headers.setdefault("referer", "https://chat.deepseek.com/")
+        cookies = await self._get_context_cookie_dict()
+        auth_state = "present" if str(headers.get("authorization") or "").strip() else "missing"
+
+        Logger.extra_debug(
+            "DeepSeek: auto-delete request -> "
+            f"POST /api/v0/chat_session/delete chat_session_id={normalized_id}; "
+            f"authorization={auth_state}; cookies={len(cookies)}"
+        )
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://chat.deepseek.com/api/v0/chat_session/delete",
+                    headers=headers,
+                    cookies=cookies,
+                    json={"chat_session_id": normalized_id},
+                    timeout=20.0,
+                )
+        except Exception as e:
+            Logger.warning(f"DeepSeek: failed to auto-delete chat {normalized_id}: {e}")
+            return False
+
+        status = int(response.status_code or 0)
+        response_text = str(response.text or "").strip()
+        ok = self._is_delete_response_success(status, response_text)
+        response_preview = self._format_delete_response_preview(response_text)
+        response_error = ""
+
+        error_preview = response_error or "<none>"
+        Logger.extra_debug(
+            "DeepSeek: auto-delete response -> "
+            f"chat_session_id={normalized_id}; ok={ok}; status={status}; "
+            f"error={error_preview}; body={response_preview}"
+        )
+
+        if ok:
             return True
 
-        detail = str(result.get("error") or result.get("text") or "").strip()
-        status = int(result.get("status") or 0)
+        detail = str(response_error or response_text).strip()
         suffix = f" ({detail[:180]})" if detail else ""
         Logger.warning(
             f"DeepSeek: failed to auto-delete chat {normalized_id} (status={status}){suffix}"
@@ -711,6 +820,7 @@ class DeepSeekDriver(BaseDriver):
             # Remove headers auto-generated by httpx
             headers.pop("content-length", None)
             headers.pop("host", None)
+            self._last_followup_request_headers = self._build_followup_request_headers(headers)
             
             # Get cookies from the context
             cookies = await self.context.cookies()

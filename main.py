@@ -58,7 +58,7 @@ import time
 import traceback
 
 
-def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool, bool]:
+def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool, bool, bool]:
     """
     Parse and remove internal startup args from argv.
 
@@ -69,6 +69,7 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
       --clearFlags
       --fakeUpdate
       --debugWidgetShows
+      --extraDebugLogs
     """
     remaining: list[str] = []
     delete_updater = False
@@ -76,6 +77,7 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
     clear_flags = False
     fake_update = False
     debug_widget_shows = False
+    extra_debug_logs = False
 
     i = 0
     while i < len(argv):
@@ -113,10 +115,15 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
             i += 1
             continue
 
+        if arg.lower() == "--extradebuglogs":
+            extra_debug_logs = True
+            i += 1
+            continue
+
         remaining.append(arg)
         i += 1
 
-    return remaining, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows
+    return remaining, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows, extra_debug_logs
 
 
 def _delete_updater_best_effort(cleanup_path: Path) -> None:
@@ -3220,8 +3227,9 @@ def main():
             print(f"Failed to run module {module_name}: {e}")
             sys.exit(1)
 
-    remaining_args, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows = _parse_update_cleanup_args(sys.argv[1:])
+    remaining_args, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows, extra_debug_logs = _parse_update_cleanup_args(sys.argv[1:])
     sys.argv = [sys.argv[0]] + remaining_args
+    Logger.set_extra_debug_logs_enabled(extra_debug_logs)
 
     if clear_flags:
         sys.exit(0 if _clear_app_flags() else 1)

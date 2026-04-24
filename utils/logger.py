@@ -74,6 +74,7 @@ class Logger:
 
     _stdout_level: LogLevel = LogLevel.DEBUG
     _file_level: LogLevel = LogLevel.DEBUG
+    _extra_debug_logs_enabled: bool = False
 
     _log_file: Optional[str] = None
     _max_file_size: float = 0.0
@@ -159,6 +160,16 @@ class Logger:
     def set_stdout_enabled(cls, enabled: bool):
         """Enable/disable stdout logging."""
         cls._stdout_enabled = bool(enabled)
+
+    @classmethod
+    def set_extra_debug_logs_enabled(cls, enabled: bool):
+        """Enable extra developer-only debug logs."""
+        cls._extra_debug_logs_enabled = bool(enabled)
+
+    @classmethod
+    def extra_debug_logs_enabled(cls) -> bool:
+        """Return whether extra developer-only debug logs are enabled."""
+        return cls._extra_debug_logs_enabled
 
     @classmethod
     def set_stdout_level(cls, level: LogLevel):
@@ -421,6 +432,12 @@ class Logger:
     def debug(cls, message: str):
         """Log a debug message."""
         cls._log(LogLevel.DEBUG, message)
+
+    @classmethod
+    def extra_debug(cls, message: str):
+        """Log a debug message only when extra developer logs are enabled."""
+        if cls._extra_debug_logs_enabled:
+            cls.debug(message)
     
     @classmethod
     def info(cls, message: str):
