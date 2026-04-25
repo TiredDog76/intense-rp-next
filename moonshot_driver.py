@@ -2199,7 +2199,8 @@ class MoonshotDriver(BaseDriver):
                 # Fallback in case class names change
                 "div.toolkit-container > *",
             ],
-            visible_index=3,
+            # Kimi's Search submenu is currently the fifth visible item in the + menu
+            visible_index=4,
             timeout_ms=3000,
         )
         if parent_tool is None:
