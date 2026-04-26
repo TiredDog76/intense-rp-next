@@ -803,6 +803,7 @@ class SettingsWindow(QMainWindow):
         "glm_behavior": "providers/zai.svg",
         "moonshot_behavior": "providers/moonshot.svg",
         "qwen_behavior": "providers/qwen.svg",
+        "perplexity_behavior": "providers/perplexity.svg",
         "aistudio_behavior": "providers/aistudio.svg",
         "diagnostics": "bug.svg",
         "logfiles": "file.svg",
@@ -819,6 +820,7 @@ class SettingsWindow(QMainWindow):
         DriverProvider.GLM_CHAT: "glm_behavior",
         DriverProvider.MOONSHOT: "moonshot_behavior",
         DriverProvider.QWEN_LM: "qwen_behavior",
+        DriverProvider.PERPLEXITY: "perplexity_behavior",
         DriverProvider.AI_STUDIO: "aistudio_behavior",
     }
     PROVIDER_BY_BEHAVIOR_CATEGORY = {
@@ -1241,6 +1243,7 @@ class SettingsWindow(QMainWindow):
                         "GLM Chat": "providers/zai.svg",
                         "Moonshot": "providers/moonshot.svg",
                         "QwenLM": "providers/qwen.svg",
+                        "Perplexity": "providers/perplexity.svg",
                         "Google AI Studio": "providers/aistudio.svg",
                     }.get(provider_name)
                     if not icon_file:
@@ -2086,6 +2089,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.GLM_CHAT: "providers/zai.svg",
             DriverProvider.MOONSHOT: "providers/moonshot.svg",
             DriverProvider.QWEN_LM: "providers/qwen.svg",
+            DriverProvider.PERPLEXITY: "providers/perplexity.svg",
             DriverProvider.AI_STUDIO: "providers/aistudio.svg",
         }.get(provider)
 
@@ -2104,6 +2108,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.GLM_CHAT,
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
+            DriverProvider.PERPLEXITY,
             DriverProvider.AI_STUDIO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
@@ -2127,6 +2132,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.GLM_CHAT,
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
+            DriverProvider.PERPLEXITY,
             DriverProvider.AI_STUDIO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
@@ -2234,6 +2240,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.GLM_CHAT,
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
+            DriverProvider.PERPLEXITY,
             DriverProvider.AI_STUDIO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)

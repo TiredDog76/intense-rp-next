@@ -10,6 +10,7 @@ PARALLEL_PROVIDER_FIELD_BY_PROVIDER: dict[DriverProvider, str] = {
     DriverProvider.GLM_CHAT: "parallel_enable_glm",
     DriverProvider.MOONSHOT: "parallel_enable_moonshot",
     DriverProvider.QWEN_LM: "parallel_enable_qwen",
+    DriverProvider.PERPLEXITY: "parallel_enable_perplexity",
     DriverProvider.AI_STUDIO: "parallel_enable_aistudio",
 }
 

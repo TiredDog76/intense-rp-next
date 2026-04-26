@@ -4,7 +4,7 @@ icon: material/key
 
 # :material-key: Login & Sessions
 
-Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio) and keeping your session alive between restarts. These two features work together to make your life easier.
+Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio) and keeping your session alive between restarts. These two features work together to make your life easier.
 
 ---
 
@@ -43,12 +43,15 @@ Next time you start IntenseRP, the driver can fill credentials and click login f
 !!! note "Google AI Studio login"
     Google AI Studio also uses Google sign-in. Auto Login can try to fill the Google flow, but Persistent Sessions are strongly recommended because Google may still require manual confirmation.
 
+!!! note "Perplexity login"
+    Perplexity uses email-code login. Auto Login can enter your email and start the code flow, but you still need to type the 6-digit code in the browser window.
+
 ### How It Works
 
 When IntenseRP detects you've been redirected to the provider sign-in page:
 
 1. It waits for the login form to appear
-2. Fills in your email and password
+2. Fills in your email and password, or just your email for providers that use email-code login
 3. Clicks the login button
 4. Waits for the redirect back to the chat page
 
@@ -92,6 +95,9 @@ This folder contains your provider session cookies and browser data. It's automa
 
 !!! tip "GLM recommendation"
     Persistent Sessions are strongly recommended for GLM Chat, because login requires a CAPTCHA.
+
+!!! tip "Perplexity recommendation"
+    Persistent Sessions are strongly recommended for Perplexity, because they reduce how often you need to go through the email-code step.
 
 !!! tip "Best of Both Worlds"
     You can use both features together! Enable Persistent Sessions so you're usually already logged in, and keep Auto Login as a backup for when the session expires.

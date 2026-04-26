@@ -6,9 +6,9 @@ icon: material/cloud
 
 IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
 
-Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, and **Google AI Studio** are implemented and usable.
+Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, **Perplexity**, and **Google AI Studio** are implemented and usable.
 
-Search Older Matching Chats is currently supported on **DeepSeek**, **GLM Chat**, **Moonshot**, and **QwenLM**. **Google AI Studio** still only has the regular single-slot Reuse Matching Chat flow for now.
+Search Older Matching Chats is currently supported on **DeepSeek**, **GLM Chat**, **Moonshot**, and **QwenLM**. **Perplexity** does not support chat reuse yet, and **Google AI Studio** still only has the regular single-slot Reuse Matching Chat flow for now.
 
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
@@ -66,14 +66,18 @@ Providers are prioritized in this order:
 | **DeepSeek** | 1 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
 | **GLM Chat** | 2 | :material-check-circle:{ style="color: #51CF66" } **Stable (mostly)** |
 | **Moonshot** | 3 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
-| **QwenLM** | 4 | :material-shield-check:{ style="color: #FFD43B" } **Stable** |
-| **Google AI Studio** | 5 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
+| **Google AI Studio** | 4 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
+| **QwenLM** | 5 | :material-shield-check:{ style="color: #FFD43B" } **Stable** |
+| **Perplexity** | 6 | :material-hammer-wrench:{ style="color: #FF922B" } **Driver Implementation** |
 
 !!! note "What 'Verification' means for Moonshot"
     Moonshot is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
 
 !!! note "Google AI Studio status"
     Of all the providers, Google AI Studio is the weirdest and most complex, so it is taking extra time to verify and stabilize. It is usable, but expect some rough edges until it's fully verified. Breakage is also possible, especially if Google updates the AI Studio web UI.
+
+!!! note "Perplexity status"
+    Perplexity is implemented as an early integration. It can send prompts and stream answer text, but chat reuse/regeneration and thinking-trace forwarding are not supported yet.
 
 ---
 
@@ -104,6 +108,12 @@ Providers are prioritized in this order:
     Thinking, Web search, model selection, and token counting.
 
     [:arrow_right: QwenLM Behavior](../providers/qwen-behavior.md)
+
+-   :providers-perplexity: **Perplexity Behavior**
+
+    Model selection, Thinking, Search, uploads, and email-code login notes.
+
+    [:arrow_right: Perplexity Behavior](../providers/perplexity-behavior.md)
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 

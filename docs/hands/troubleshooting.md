@@ -20,6 +20,7 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
     - All providers also support Auto Login.
     - For GLM Chat, login requires solving a CAPTCHA (Persistent Sessions are strongly recommended).
     - For Moonshot, Google login may require manual confirmation/challenge steps, 2FA, or manually closing the popup after login.
+    - For Perplexity, Auto Login starts the email-code flow, but you still need to type the 6-digit code.
     - For Google AI Studio, Auto Login can try to fill Google sign-in, but Google may still require manual confirmation.
 
 3. **Is the provider UI language set to English?**
@@ -28,6 +29,7 @@ This page is a practical checklist for diagnosing problems with IntenseRP Next v
     - GLM Chat: English (en-US)
     - Moonshot: English (en-US)
     - QwenLM: English (en / en-US)
+    - Perplexity: English (en / en-US)
     - Google AI Studio: English (en / en-US)
     - If you see a warning/popup about UI language, change it in the provider browser window and **reload the page**, then retry.
     - If that doesn't fix it after changing the language, close IntenseRP and start it again.
@@ -153,7 +155,7 @@ Fixes, in order:
 2. GLM Chat requires a CAPTCHA during login. Auto Login can fill credentials, but you still need to solve the CAPTCHA in the browser window.
 3. Try toggling **Keep Provider Sessions Signed In** off and back on (then Start again).
 4. If **Keep Provider Sessions Signed In** is enabled but things feel "stuck", use **Delete Profile** (or **Clear All Profiles**) to reset the saved browser profile.
-5. For DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio, try manual login once (disable **Sign In Automatically** temporarily) to confirm the provider isn't blocking automated sign-in.
+5. For DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio, try manual login once (disable **Sign In Automatically** temporarily) to confirm the provider isn't blocking automated sign-in.
 
 See:
 
@@ -229,7 +231,7 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - [ ] Reproduce once (so you can describe exact steps).
 - [ ] If possible, reproduce with logs enabled (console and/or logfiles).
 - [ ] If you want the easy route, enable **Bug Reports** in **Settings** -> **Logs and Troubleshooting** before reproducing.
-- [ ] Note whether it happens on `deepseek-*`, `glm-*`, `moonshot-*`, or `qwen-*` (depending on your provider).
+- [ ] Note whether it happens on `deepseek-*`, `glm-*`, `moonshot-*`, `qwen-*`, `perplexity-*`, or `aistudio-*` (depending on your provider).
 - [ ] If you are using LAN, try locally too (to rule out firewall/network issues).
 
 ### :material-clipboard-text-outline: What to include
@@ -237,10 +239,10 @@ If something is genuinely broken (crash, login loop, API failures), a good repor
 - **Version** (app title bar)
 - **OS** (Windows/Linux + version)
 - **Install method** (release zip vs from source)
-- **Provider** (DeepSeek, GLM Chat, Moonshot, QwenLM, or Google AI Studio)
+- **Provider** (DeepSeek, GLM Chat, Moonshot, QwenLM, Perplexity, or Google AI Studio)
 - **Client** (SillyTavern or other client + version)
 - **Endpoint** (example: `http://127.0.0.1:7777/v1`)
-- **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto` / `qwen-auto` / `aistudio-auto`)
+- **Model** (example: `deepseek-auto` / `glm-auto` / `moonshot-auto` / `qwen-auto` / `perplexity-auto` / `aistudio-auto`)
 - **Streaming** (`stream: true` or `stream: false`)
 - **Expected vs actual**
 - **Logs** (`Bug Report` zip from **Tools**, console dump, or `logs/log_*.txt`)

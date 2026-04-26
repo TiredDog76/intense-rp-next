@@ -43,6 +43,7 @@ class BaseDriver(ABC):
         self.monitoring_active = False
         self._monitor_task: Optional[asyncio.Task] = None
         self.notify_user_callback: Optional[Callable[[str, str, str], None]] = None
+        self.request_user_text_callback: Optional[Callable[..., Any]] = None
 
         # Abort handling (provider-specific use; common surface)
         self.current_abort_event: asyncio.Event | None = None
@@ -609,6 +610,41 @@ class BaseDriver(ABC):
         except Exception:
             return
 
+    async def request_user_text(
+        self,
+        title: str,
+        message: str,
+        *,
+        label: str = "Input",
+        placeholder: str = "",
+        max_length: int = 0,
+        min_length: int = 0,
+        digits_only: bool = False,
+        level: str = "info",
+        force_notify: bool = False,
+    ) -> str | None:
+        cb = getattr(self, "request_user_text_callback", None)
+        if not cb:
+            self.notify_user(title, message, level=level)
+            return None
+
+        result = cb(
+            str(title or ""),
+            str(message or ""),
+            label=str(label or "Input"),
+            placeholder=str(placeholder or ""),
+            max_length=int(max_length or 0),
+            min_length=int(min_length or 0),
+            digits_only=bool(digits_only),
+            level=str(level or "info"),
+            force_notify=bool(force_notify),
+        )
+        if asyncio.iscoroutine(result) or hasattr(result, "__await__"):
+            result = await result
+        if result is None:
+            return None
+        return str(result)
+
     def _notify_on_driver_crash_enabled(self) -> bool:
         try:
             return bool(self.config_manager.get_setting("system_settings", "notify_on_driver_crash"))
@@ -894,6 +930,16 @@ class BaseDriver(ABC):
         - Providers without a model selector can keep the default no-op implementation.
         """
         return None
+
+    def should_apply_configured_model_before_request(self) -> bool:
+        """
+        Whether the API worker should apply the provider UI model before a request.
+
+        Most providers keep model state across chats, so applying it before entering
+        the request is harmless. Providers that reset model state when creating a
+        new chat can return False and apply it inside their request flow instead.
+        """
+        return True
 
     async def _navigate_to_start_url(self, start_url: str) -> None:
         """

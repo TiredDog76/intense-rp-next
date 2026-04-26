@@ -56,6 +56,11 @@ LEGACY_MODE_BY_PROVIDER: Dict[DriverProvider, Dict[str, str]] = {
         "qwen-chat": MODE_CHAT,
         "qwen-reasoner": MODE_REASONER,
     },
+    DriverProvider.PERPLEXITY: {
+        "perplexity-auto": MODE_AUTO,
+        "perplexity-chat": MODE_CHAT,
+        "perplexity-reasoner": MODE_REASONER,
+    },
     DriverProvider.AI_STUDIO: {
         "aistudio-auto": MODE_AUTO,
         "aistudio-chat": MODE_CHAT,
@@ -73,6 +78,7 @@ LEGACY_MODEL_PREFIX_BY_PROVIDER: Dict[DriverProvider, str] = {
     DriverProvider.GLM_CHAT: "glm",
     DriverProvider.MOONSHOT: "moonshot",
     DriverProvider.QWEN_LM: "qwen",
+    DriverProvider.PERPLEXITY: "perplexity",
     DriverProvider.AI_STUDIO: "aistudio",
 }
 
@@ -81,6 +87,7 @@ OWNED_BY_PROVIDER: Dict[DriverProvider, str] = {
     DriverProvider.GLM_CHAT: "glm",
     DriverProvider.MOONSHOT: "moonshot",
     DriverProvider.QWEN_LM: "qwen",
+    DriverProvider.PERPLEXITY: "perplexity",
     DriverProvider.AI_STUDIO: "aistudio",
 }
 

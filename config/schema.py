@@ -27,6 +27,7 @@ DOCS_LOADOUTS = "experimental/loadouts/"
 DOCS_MOONSHOT = "providers/moonshot-behavior/"
 DOCS_MULTI_SLOT_CACHE = "features/multi-slot-cache/"
 DOCS_NETWORK = "features/network-api/"
+DOCS_PERPLEXITY = "providers/perplexity-behavior/"
 DOCS_PROVIDER_SUPPORT = "advanced/provider-support/"
 DOCS_QWEN = "providers/qwen-behavior/"
 DOCS_PARALLEL_REQUEST_QUEUE = "experimental/parallel-request-queue/"
@@ -947,6 +948,122 @@ SCHEMA = [
         ],
     ),
     SettingCategory(
+        name="Perplexity Behavior",
+        key="perplexity_behavior",
+        fields=[
+            SettingField(
+                key="model",
+                label="Model",
+                type=SettingType.DROPDOWN,
+                default="Best (Auto)",
+                options=[
+                    "Best (Auto)",
+                    "Sonar 2",
+                    "GPT-5.4",
+                    "GPT-5.5",
+                    "Gemini 3.1 Pro",
+                    "Claude Sonnet 4.6",
+                    "Claude Opus 4.7",
+                    "Kimi K2.6",
+                    "Nemotron 3 Super",
+                ],
+                tooltip="Select which Perplexity model to use in the web UI. Requires a Pro or Max account.",
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="real-perplexity-model-selection-web-ui",
+            ),
+            SettingField(
+                key="subscription_note",
+                label="Model Selection",
+                type=SettingType.HINT,
+                default=(
+                    "Perplexity only exposes model and Thinking controls on paid accounts. "
+                    "Free accounts can still send prompts, but IntenseRP will skip those toggles."
+                ),
+                tooltip=None,
+                hint_variant="info",
+            ),
+            SettingField(
+                key="enable_deepthink",
+                label="Enable Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Toggle Perplexity Thinking for models/accounts that expose it.",
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="enable-thinking",
+            ),
+            SettingField(
+                key="send_deepthink",
+                label="Send Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Reserved for API mode consistency. Perplexity does not currently expose "
+                    "thinking traces in the intercepted stream, so no <think> content is forwarded."
+                ),
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="send-thinking",
+            ),
+            SettingField(
+                key="search_forced_off_note",
+                label="Search",
+                type=SettingType.HINT,
+                default=(
+                    "Perplexity search/source payloads are not forwarded to the client for stability. "
+                    "Only the assistant answer text is streamed."
+                ),
+                tooltip=None,
+                hint_variant="info",
+            ),
+            SettingField(
+                key="enable_search",
+                label="Enable Search",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Toggle Perplexity Web search in the web UI.",
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="search",
+            ),
+            SettingField(
+                key="send_as_text_file",
+                label="Send As Text File",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Upload message as a text file instead of pasting it into Perplexity.",
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="file-upload-mode",
+            ),
+            SettingField(
+                key="text_file_message",
+                label="Text File Message",
+                type=SettingType.TEXTAREA,
+                default="",
+                tooltip="Optional text pasted alongside the uploaded file. Leave empty to send file-only.",
+                depends="perplexity_behavior.send_as_text_file",
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="text-file-message",
+            ),
+            SettingField(
+                key="file_upload_timeout",
+                label="File Upload Timeout",
+                type=SettingType.INTEGER,
+                default=20,
+                tooltip="Max seconds to wait for the send button to become available after file upload.",
+                depends="perplexity_behavior.send_as_text_file",
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="file-upload-timeout",
+            ),
+            SettingField(
+                key="message_send_timeout",
+                label="Message Send Timeout (s)",
+                type=SettingType.INTEGER,
+                default=8,
+                tooltip="Max seconds to wait for the send button to appear after text entry.",
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="message-send-timeout",
+            ),
+        ],
+    ),
+    SettingCategory(
         name="Google AI Studio Behavior",
         key="aistudio_behavior",
         fields=[
@@ -1577,6 +1694,17 @@ SCHEMA = [
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
             SettingField(
+                key="parallel_enable_perplexity",
+                label="Perplexity",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include Perplexity in the parallel browser pool.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="providers_credentials.provider!=Perplexity",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
                 key="parallel_enable_aistudio",
                 label="Google AI Studio",
                 type=SettingType.BOOLEAN,
@@ -2183,6 +2311,7 @@ SETTINGS_CARDS = {
             ("experimental", "parallel_enable_glm"),
             ("experimental", "parallel_enable_moonshot"),
             ("experimental", "parallel_enable_qwen"),
+            ("experimental", "parallel_enable_perplexity"),
             ("experimental", "parallel_enable_aistudio"),
             ("experimental", "enable_remote_control"),
             ("experimental", "remote_control_password"),
@@ -2214,6 +2343,10 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
+    ],
+    "perplexity_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "subscription_note", "enable_deepthink", "send_deepthink", "search_forced_off_note", "enable_search"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
     ],
     "aistudio_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},

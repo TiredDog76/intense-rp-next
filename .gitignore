@@ -64,3 +64,5 @@ newdeepseek/
 tests/
 temp.html
 test_*.py
+PerplexityFindings.md
+Perplexity*.txt

@@ -6,6 +6,7 @@ from aistudio_driver import AIStudioDriver
 from deepseek_driver import DeepSeekDriver
 from glm_driver import GLMDriver
 from moonshot_driver import MoonshotDriver
+from perplexity_driver import PerplexityDriver
 from qwen_driver import QwenLMDriver
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
@@ -32,6 +33,8 @@ def create_driver_for_provider(config_manager: Any, provider: DriverProvider) ->
         return MoonshotDriver(scoped_config)
     if provider == DriverProvider.QWEN_LM:
         return QwenLMDriver(scoped_config)
+    if provider == DriverProvider.PERPLEXITY:
+        return PerplexityDriver(scoped_config)
     if provider == DriverProvider.AI_STUDIO:
         return AIStudioDriver(scoped_config)
 

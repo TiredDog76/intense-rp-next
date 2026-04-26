@@ -26,6 +26,7 @@ LOADOUT_BEHAVIOR_CATEGORY_BY_PROVIDER: dict[DriverProvider, str] = {
     DriverProvider.GLM_CHAT: "glm_behavior",
     DriverProvider.MOONSHOT: "moonshot_behavior",
     DriverProvider.QWEN_LM: "qwen_behavior",
+    DriverProvider.PERPLEXITY: "perplexity_behavior",
     DriverProvider.AI_STUDIO: "aistudio_behavior",
 }
 

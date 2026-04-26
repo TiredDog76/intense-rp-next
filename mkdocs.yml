@@ -36,6 +36,7 @@ nav:
           - GLM Behavior: providers/glm-behavior.md
           - Kimi Behavior: providers/moonshot-behavior.md
           - QwenLM Behavior: providers/qwen-behavior.md
+          - Perplexity Behavior: providers/perplexity-behavior.md
           - Google AI Studio Behavior: providers/aistudio-behavior.md
       - Experimental:
           - Overview: experimental.md

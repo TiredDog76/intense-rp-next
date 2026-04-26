@@ -49,6 +49,7 @@ python -m PyInstaller \
     --add-data "ui/fonts:ui/fonts" \
     --collect-all patchright \
     --collect-all playwright \
+    --collect-all desktop_notifier \
     "$ENTRY_POINT"
 
 BUILT_APP_DIR="$DIST_DIR/$APP_NAME"

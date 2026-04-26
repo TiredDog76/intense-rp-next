@@ -21,7 +21,7 @@ Right now this feature works on:
 - Moonshot / Kimi
 - QwenLM
 
-It does **not** work on **Google AI Studio** right now.
+It does **not** work on **Perplexity** or **Google AI Studio** right now.
 
 ---
 

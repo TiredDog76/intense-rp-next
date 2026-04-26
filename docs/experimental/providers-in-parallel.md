@@ -51,6 +51,7 @@ While this mode is active, routing is done by the **provider-prefixed model IDs*
 - `glm-auto` / `glm-chat` / `glm-reasoner`
 - `moonshot-auto` / `moonshot-chat` / `moonshot-reasoner`
 - `qwen-auto` / `qwen-chat` / `qwen-reasoner`
+- `perplexity-auto` / `perplexity-chat` / `perplexity-reasoner`
 - `aistudio-auto` / `aistudio-chat` / `aistudio-reasoner`
 
 `GET /v1/models` returns the variants for every enabled provider.

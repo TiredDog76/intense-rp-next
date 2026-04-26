@@ -11,6 +11,7 @@ class DriverProvider(str, Enum):
     GLM_CHAT = "GLM Chat"
     MOONSHOT = "Moonshot"
     QWEN_LM = "QwenLM"
+    PERPLEXITY = "Perplexity"
     AI_STUDIO = "Google AI Studio"
     # Backwards compatible alias (legacy label was "Moonshot / Kimi")
     MOONSHOT_KIMI = "Moonshot"
@@ -53,6 +54,15 @@ class DriverProvider(str, Enum):
             "qwen chat.ai",
         }:
             return cls.QWEN_LM
+        if normalized in {
+            "perplexity",
+            "perplexity ai",
+            "perplexity.ai",
+            "pplx",
+            "pplx ai",
+            "pplx.ai",
+        }:
+            return cls.PERPLEXITY
         if normalized in {
             "google ai studio",
             "google-ai-studio",

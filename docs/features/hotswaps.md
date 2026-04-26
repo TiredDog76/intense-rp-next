@@ -47,6 +47,8 @@ Adds a small icon button to the **left of the Help button**. The button shows yo
 | GLM Chat | Z |
 | Moonshot | :material-moon-waning-crescent: Eclipse |
 | QwenLM | (whatever the Qwen logo is meant to represent) |
+| Perplexity | Perplexity logo |
+| Google AI Studio | Sparkle tile |
 
 The button is only visible while services are running. Click it to open the same provider-selection dialog.
 

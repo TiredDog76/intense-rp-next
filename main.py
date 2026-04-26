@@ -8,7 +8,8 @@ import errno
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
-    QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon, QMenu
+    QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon, QMenu,
+    QDialog, QLineEdit
 )
 from PySide6.QtCore import Signal, Slot, Qt, QProcess, QSize, QUrl, QEvent, QObject
 from PySide6.QtCore import QTimer
@@ -597,6 +598,8 @@ class MainWindow(QMainWindow):
         self._tray_action_stop = None
         self._tray_action_restart = None
         self._tray_action_exit = None
+        self._desktop_notifier = None
+        self._desktop_notifier_unavailable = False
         self._exit_requested = False
         self._setup_tray_icon()
 
@@ -1161,6 +1164,172 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _tray_message_icon(self, level: str):
+        level_norm = str(level or "info").strip().lower()
+        if level_norm in {"warn", "warning"}:
+            return QSystemTrayIcon.Warning
+        if level_norm in {"err", "error", "critical"}:
+            return QSystemTrayIcon.Critical
+        return QSystemTrayIcon.Information
+
+    def _show_tray_message(self, title: str, message: str, level: str = "info") -> bool:
+        tray_icon = getattr(self, "_tray_icon", None)
+        try:
+            tray_available = bool(QSystemTrayIcon.isSystemTrayAvailable())
+        except Exception:
+            tray_available = False
+        try:
+            messages_supported = bool(QSystemTrayIcon.supportsMessages())
+        except Exception:
+            messages_supported = False
+        tray_visible = bool(tray_icon and tray_icon.isVisible())
+        Logger.extra_debug(
+            "Tray notification request: "
+            f"available={tray_available}, supportsMessages={messages_supported}, "
+            f"icon_present={bool(tray_icon)}, icon_visible={tray_visible}, level={level}, "
+            f"title={title!r}"
+        )
+        qt_invoked = False
+        if tray_icon and tray_icon.isVisible():
+            try:
+                tray_icon.showMessage(title, message, self._tray_message_icon(level))
+                qt_invoked = True
+                Logger.extra_debug("Qt tray showMessage invoked.")
+            except Exception as exc:
+                Logger.extra_debug(f"Qt tray showMessage failed: {exc}")
+        return qt_invoked
+
+    def _get_desktop_notifier(self):
+        if getattr(self, "_desktop_notifier_unavailable", False):
+            return None
+        notifier = getattr(self, "_desktop_notifier", None)
+        if notifier is not None:
+            return notifier
+        try:
+            from desktop_notifier import DesktopNotifier, Icon
+        except Exception as exc:
+            self._desktop_notifier_unavailable = True
+            Logger.extra_debug(f"desktop-notifier import failed: {exc}")
+            return None
+
+        try:
+            init_kwargs: dict[str, object] = {"app_name": "IntenseRP"}
+            try:
+                from utils.resource_path import resolve_resource_path
+
+                icon_path = resolve_resource_path("ui", "assets", "brand", "newlogo.png")
+                if icon_path.exists():
+                    init_kwargs["app_icon"] = Icon(path=icon_path)
+            except Exception as exc:
+                Logger.extra_debug(f"desktop-notifier icon resolve failed: {exc}")
+
+            notifier = DesktopNotifier(**init_kwargs)
+            self._desktop_notifier = notifier
+            Logger.extra_debug("desktop-notifier backend initialized.")
+            return notifier
+        except Exception as exc:
+            self._desktop_notifier_unavailable = True
+            Logger.extra_debug(f"desktop-notifier initialization failed: {exc}")
+            return None
+
+    @staticmethod
+    def _desktop_notification_urgency(level: str):
+        from desktop_notifier import Urgency
+
+        level_norm = str(level or "info").strip().lower()
+        if level_norm in {"warn", "warning", "err", "error", "critical"}:
+            return Urgency.Critical
+        return Urgency.Normal
+
+    async def _send_desktop_notification(
+        self, title: str, message: str, level: str = "info"
+    ) -> bool:
+        notifier = self._get_desktop_notifier()
+        if notifier is None:
+            return False
+
+        try:
+            from desktop_notifier import DEFAULT_SOUND
+
+            notification_id = await notifier.send(
+                title=str(title or ""),
+                message=str(message or ""),
+                urgency=self._desktop_notification_urgency(level),
+                sound=DEFAULT_SOUND,
+                thread=str(title or "") or None,
+            )
+            Logger.extra_debug(f"desktop-notifier sent notification id={notification_id!r}.")
+            return True
+        except Exception as exc:
+            Logger.extra_debug(f"desktop-notifier send failed: {exc}")
+            return False
+
+    def _schedule_desktop_notification(
+        self, title: str, message: str, level: str = "info"
+    ) -> bool:
+        if self._get_desktop_notifier() is None:
+            return False
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+
+        task = loop.create_task(self._send_desktop_notification(title, message, level))
+
+        def _on_done(done_task: asyncio.Task) -> None:
+            try:
+                ok = bool(done_task.result())
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                Logger.extra_debug(f"desktop-notifier task failed: {exc}")
+                ok = False
+            if not ok:
+                self._show_tray_message(title, message, level)
+
+        task.add_done_callback(_on_done)
+        return True
+
+    def _flash_attention_window(self, widget: QWidget | None = None) -> None:
+        target = widget or self
+        try:
+            QApplication.alert(target, 0)
+        except Exception:
+            pass
+
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            hwnd = int(target.winId())
+            if not hwnd:
+                return
+
+            class FLASHWINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.UINT),
+                    ("hwnd", wintypes.HWND),
+                    ("dwFlags", wintypes.DWORD),
+                    ("uCount", wintypes.UINT),
+                    ("dwTimeout", wintypes.DWORD),
+                ]
+
+            flash_info = FLASHWINFO(
+                ctypes.sizeof(FLASHWINFO),
+                wintypes.HWND(hwnd),
+                0x0000000F,
+                8,
+                0,
+            )
+            ctypes.windll.user32.FlashWindowEx(ctypes.byref(flash_info))
+            Logger.extra_debug("Windows FlashWindowEx invoked for attention request.")
+        except Exception as exc:
+            Logger.extra_debug(f"Windows FlashWindowEx failed: {exc}")
+
     def _notify_user(self, title: str, message: str, level: str = "info") -> None:
         title = str(title or "Notification")
         message = str(message or "")
@@ -1181,21 +1350,151 @@ class MainWindow(QMainWindow):
             dialog.open()
             return
 
-        tray_icon = getattr(self, "_tray_icon", None)
-        if tray_icon and tray_icon.isVisible():
-            icon = QSystemTrayIcon.Information
-            if level_norm in {"warn", "warning"}:
-                icon = QSystemTrayIcon.Warning
-            elif level_norm in {"err", "error", "critical"}:
-                icon = QSystemTrayIcon.Critical
+        if self._schedule_desktop_notification(title, message, level_norm):
+            return
+        if self._show_tray_message(title, message, level_norm):
+            return
+        Logger.warning(f"{title}: {message}")
 
+    async def _request_user_text(
+        self,
+        title: str,
+        message: str,
+        *,
+        label: str = "Input",
+        placeholder: str = "",
+        max_length: int = 0,
+        min_length: int = 0,
+        digits_only: bool = False,
+        level: str = "info",
+        force_notify: bool = False,
+    ) -> str | None:
+        title = str(title or "Input Required")
+        message = str(message or "")
+        label = str(label or "Input")
+        placeholder = str(placeholder or "")
+        level_norm = str(level or "info").strip().lower()
+        max_length = max(0, int(max_length or 0))
+        min_length = max(0, int(min_length or 0))
+
+        is_focused = bool(self.isVisible() and self.isActiveWindow())
+        should_notify = bool(force_notify) or (not is_focused)
+
+        if should_notify:
+            shown = await self._send_desktop_notification(title, message, level_norm)
+            if not shown:
+                shown = self._show_tray_message(title, message, level_norm)
+            Logger.extra_debug(
+                "Request text prompt notification: "
+                f"focused={is_focused}, force_notify={force_notify}, notification_sent={shown}. "
+                "Delaying modal activation so the OS can surface the notification first."
+            )
             try:
-                tray_icon.showMessage(title, message, icon)
+                QApplication.beep()
+            except Exception:
+                pass
+            await asyncio.sleep(0.8)
+            self._flash_attention_window(self)
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[str | None] = loop.create_future()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setWindowFlags(
+            dialog.windowFlags()
+            | Qt.Window
+            | Qt.WindowStaysOnTopHint
+            | Qt.WindowTitleHint
+            | Qt.WindowCloseButtonHint
+        )
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+
+        layout = QVBoxLayout(dialog)
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+
+        input_label = QLabel(label)
+        layout.addWidget(input_label)
+
+        input_box = QLineEdit(dialog)
+        input_box.setPlaceholderText(placeholder)
+        input_box.setClearButtonEnabled(True)
+        if max_length:
+            input_box.setMaxLength(max_length)
+        layout.addWidget(input_box)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel_button = QPushButton("Cancel", dialog)
+        submit_button = QPushButton("Continue", dialog)
+        submit_button.setDefault(True)
+        buttons.addWidget(cancel_button)
+        buttons.addWidget(submit_button)
+        layout.addLayout(buttons)
+
+        normalizing = False
+
+        def _normalized_text() -> str:
+            text = input_box.text().strip()
+            if digits_only:
+                text = "".join(ch for ch in text if ch.isdigit())
+            if max_length:
+                text = text[:max_length]
+            return text
+
+        def _set_future(value: str | None) -> None:
+            if not future.done():
+                future.set_result(value)
+
+        def _sync_text() -> None:
+            nonlocal normalizing
+            if normalizing:
                 return
+            normalized = _normalized_text()
+            if input_box.text() != normalized:
+                normalizing = True
+                input_box.setText(normalized)
+                normalizing = False
+            submit_button.setEnabled(len(normalized) >= min_length)
+
+        def _submit() -> None:
+            value = _normalized_text()
+            if len(value) < min_length:
+                return
+            _set_future(value)
+            dialog.accept()
+
+        def _cancel() -> None:
+            _set_future(None)
+            dialog.reject()
+
+        input_box.textChanged.connect(lambda _text: _sync_text())
+        input_box.returnPressed.connect(_submit)
+        submit_button.clicked.connect(_submit)
+        cancel_button.clicked.connect(_cancel)
+        dialog.finished.connect(lambda _result: _set_future(None))
+        _sync_text()
+
+        dialog.open()
+        input_box.setFocus(Qt.OtherFocusReason)
+        dialog.raise_()
+        dialog.activateWindow()
+        self._flash_attention_window(dialog)
+        if is_focused:
+            try:
+                QApplication.beep()
             except Exception:
                 pass
 
-        Logger.warning(f"{title}: {message}")
+        try:
+            return await future
+        except asyncio.CancelledError:
+            if dialog.isVisible():
+                dialog.close()
+            raise
 
     def _maybe_show_update_installed_dialog(self) -> None:
         info = getattr(self, "_post_update_info", None)
@@ -2349,6 +2648,24 @@ class MainWindow(QMainWindow):
                     )
             return
 
+        if provider == DriverProvider.PERPLEXITY:
+            apply_model = getattr(runtime_driver, "apply_configured_model", None)
+            if not callable(apply_model):
+                raise RuntimeError("Perplexity does not expose model switching right now.")
+
+            await apply_model()
+
+            read_label = getattr(runtime_driver, "_read_current_model_selection", None)
+            canonicalize_label = getattr(runtime_driver, "_canonicalize_model_label", None)
+            if callable(read_label) and callable(canonicalize_label):
+                current_label = str(await read_label() or "").strip()
+                if canonicalize_label(current_label) != canonicalize_label(desired):
+                    shown = current_label or "Unknown"
+                    raise RuntimeError(
+                        f"Perplexity did not confirm the requested model switch (still showing '{shown}')."
+                    )
+            return
+
         if provider == DriverProvider.AI_STUDIO:
             apply_model = getattr(runtime_driver, "apply_configured_model", None)
             if not callable(apply_model):
@@ -2750,6 +3067,7 @@ class MainWindow(QMainWindow):
             else:
                 self.driver = create_driver(self.config_manager)
             self.driver.notify_user_callback = self._notify_user
+            self.driver.request_user_text_callback = self._request_user_text
             self.driver.on_crash_callback = self.on_browser_crashed
 
             # Silence uvicorn loggers to avoid noisy console output.

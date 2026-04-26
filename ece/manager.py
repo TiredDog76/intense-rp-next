@@ -20,6 +20,11 @@ def _provider_key(provider: DriverProvider | str) -> str:
     return str(provider or "").strip().lower().replace(" ", "_")
 
 
+def _provider_requires_password(provider: DriverProvider | str) -> bool:
+    normalized = provider if isinstance(provider, DriverProvider) else DriverProvider.from_setting(str(provider or ""))
+    return normalized is not DriverProvider.PERPLEXITY
+
+
 def _normalize_email(email: str) -> str:
     return (email or "").strip().lower()
 
@@ -224,6 +229,7 @@ class EceManager:
         Returns (ok, errors).
         """
         key = _provider_key(provider)
+        requires_password = _provider_requires_password(provider)
         errors: List[str] = []
 
         cleaned: List[Dict[str, Any]] = []
@@ -249,7 +255,7 @@ class EceManager:
                 errors.append(f"Row {idx}: {exc}")
                 continue
 
-            if not password:
+            if requires_password and not password:
                 errors.append(f"Row {idx}: password is empty.")
                 continue
 
@@ -330,6 +336,7 @@ class EceManager:
             if pinned_pair is not None:
                 return pinned_pair
 
+        requires_password = _provider_requires_password(provider)
         pairs = self.get_provider_pairs(provider)
         if not pairs:
             return None
@@ -339,7 +346,7 @@ class EceManager:
         for pair in pairs:
             email = (pair.email or "").strip()
             password = pair.password or ""
-            if not email or not password:
+            if not email or (requires_password and not password):
                 continue
             if exclude_norm and _normalize_email(email) == exclude_norm:
                 continue
@@ -375,13 +382,14 @@ class EceManager:
         exclude_email: Optional[str] = None,
     ) -> Optional[CredentialPair]:
         exclude_norm = _normalize_email(exclude_email or "")
+        requires_password = _provider_requires_password(provider)
         for pair in self.get_provider_pairs(provider):
             if not bool(getattr(pair, "pinned", False)):
                 continue
 
             email = str(pair.email or "").strip()
             password = str(pair.password or "")
-            if not email or not password:
+            if not email or (requires_password and not password):
                 continue
             if exclude_norm and _normalize_email(email) == exclude_norm:
                 continue

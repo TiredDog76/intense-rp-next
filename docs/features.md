@@ -7,7 +7,7 @@ icon: material/star-four-points
 IntenseRP Next v2 packs a lot of useful features under the hood. This page gives you an overview of the app-wide features and links to detailed documentation for each one.
 
 !!! info "Provider settings moved"
-    DeepSeek, GLM, Moonshot, QwenLM, and Google AI Studio Behavior settings now live in the dedicated [:material-cloud: Providers](providers.md) section.
+    DeepSeek, GLM, Moonshot, QwenLM, Perplexity, and Google AI Studio Behavior settings now live in the dedicated [:material-cloud: Providers](providers.md) section.
 
 ---
 
@@ -92,7 +92,7 @@ IntenseRP doesn't just forward your messages to the provider. It formats them in
 
 Provider-specific Behavior settings now live in their own section.
 
-If you are looking for DeepSeek / GLM / Moonshot / QwenLM / Google AI Studio toggles, model pickers, search settings, or provider-specific quirks:
+If you are looking for DeepSeek / GLM / Moonshot / QwenLM / Perplexity / Google AI Studio toggles, model pickers, search settings, or provider-specific quirks:
 
 :material-arrow-right: **Open** [:material-cloud: Providers Overview](providers.md)
 

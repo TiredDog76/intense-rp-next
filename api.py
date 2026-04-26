@@ -1372,7 +1372,16 @@ class API:
                 # Optional provider hook: apply configured *real* model selection (UI model picker),
                 # if the active provider supports it
                 try:
-                    await driver.apply_configured_model()
+                    should_apply_model = True
+                    should_apply_model_before_request = getattr(
+                        driver,
+                        "should_apply_configured_model_before_request",
+                        None,
+                    )
+                    if callable(should_apply_model_before_request):
+                        should_apply_model = bool(should_apply_model_before_request())
+                    if should_apply_model:
+                        await driver.apply_configured_model()
                 except Exception as e:
                     provider_label = getattr(driver, "provider_label", None) or provider.value
                     Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")

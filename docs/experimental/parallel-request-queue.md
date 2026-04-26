@@ -41,6 +41,9 @@ The router uses that model ID to pick the provider lane:
 
 - `deepseek-*` goes to the DeepSeek lane
 - `glm-*` goes to the GLM Chat lane
+- `moonshot-*` goes to the Moonshot lane
+- `qwen-*` goes to the QwenLM lane
+- `perplexity-*` goes to the Perplexity lane
 - `aistudio-*` goes to the Google AI Studio lane
 
 Each lane still processes its own requests in order. The new part is that different lanes are allowed to work at the same time.

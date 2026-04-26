@@ -73,7 +73,7 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 ## :material-account-switch: How account selection works
 
-Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio).
+Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio).
 
 When **Sign In Automatically** is enabled, IntenseRP selects an account on driver start and logs in automatically. If it is disabled, you can still log in manually and use **Keep Provider Sessions Signed In** to stay signed in between restarts.
 
@@ -109,6 +109,7 @@ IntenseRP stores one profile per identity (account or manual) under:
 [config_dir]/playwright_profiles/accounts/glm_chat/<hash>/
 [config_dir]/playwright_profiles/accounts/moonshot_kimi/<hash>/
 [config_dir]/playwright_profiles/accounts/qwenlm/<hash>/
+[config_dir]/playwright_profiles/accounts/perplexity/<hash>/
 [config_dir]/playwright_profiles/accounts/aistudio/<hash>/
 ```
 
@@ -178,6 +179,8 @@ These files are encrypted using the same `settings.key` used for your main setti
 **Moonshot:** login is Google-based. Auto Login can try to fill the popup, but Google may still require manual confirmation/challenges depending on your account security settings.
 
 **QwenLM:** standard email/password login. Auto Login can fill credentials automatically.
+
+**Perplexity:** email-code login. Auto Login can fill the email and start the code flow, but you still need to enter the 6-digit code in the browser. Password can be left blank in Saved Accounts.
 
 **Google AI Studio:** Google login with optional credential autofill. Persistent Sessions are strongly recommended because Google may still ask for manual confirmation/challenge steps.
 

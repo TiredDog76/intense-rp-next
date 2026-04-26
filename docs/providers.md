@@ -4,7 +4,7 @@ icon: material/cloud
 
 # :material-cloud: Providers
 
-IntenseRP Next v2 currently supports five providers, and each one has its own Behavior page. This overview gives you a quick sense of what each provider-specific settings section covers and links to the full docs for each one.
+IntenseRP Next v2 currently supports six providers, and each one has its own Behavior page. This overview gives you a quick sense of what each provider-specific settings section covers and links to the full docs for each one.
 
 ---
 
@@ -33,6 +33,12 @@ IntenseRP Next v2 currently supports five providers, and each one has its own Be
     Configure Thinking, Web search, model selection, token counting, uploads, and provider guardrails.
 
     [:arrow_right: Learn More](providers/qwen-behavior.md)
+
+-   :providers-perplexity: **Perplexity Behavior**
+
+    Configure Perplexity model selection, Thinking, Search, uploads, and email-code login notes.
+
+    [:arrow_right: Learn More](providers/perplexity-behavior.md)
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 
@@ -109,6 +115,20 @@ Fine-tune how QwenLM processes your requests.
 | **Model Picker (UI)** | Select Qwen's real model dropdown |
 | **File Upload Mode** | Send long prompts as a text file |
 | **Reuse Matching Chat** | Regenerate on duplicate prompts instead of opening a new chat |
+
+---
+
+### :providers-perplexity: Perplexity Behavior
+
+Fine-tune how Perplexity processes your requests.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Model Picker (UI)** | Select Perplexity's real model picker on paid accounts |
+| **Enable Thinking** | Toggles Perplexity Thinking where available |
+| **Send Thinking** | Reserved for consistency; no thinking traces are forwarded yet |
+| **Web Search** | Toggles Perplexity Web search (search/source payloads are not sent to the client) |
+| **File Upload Mode** | Uploads long prompts as a text file, with text fallback if uploads are capped |
 
 ---
 

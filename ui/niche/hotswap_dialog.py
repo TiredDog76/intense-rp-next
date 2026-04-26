@@ -14,10 +14,18 @@ PROVIDER_ICON_MAP: dict[str, str] = {
     "GLM Chat": "providers/zai.svg",
     "Moonshot": "providers/moonshot.svg",
     "QwenLM": "providers/qwen.svg",
+    "Perplexity": "providers/perplexity.svg",
     "Google AI Studio": "providers/aistudio.svg",
 }
 
-ALL_PROVIDERS: list[str] = ["DeepSeek", "GLM Chat", "Moonshot", "QwenLM", "Google AI Studio"]
+ALL_PROVIDERS: list[str] = [
+    "DeepSeek",
+    "GLM Chat",
+    "Moonshot",
+    "QwenLM",
+    "Perplexity",
+    "Google AI Studio",
+]
 
 
 class HotswapDialog(QDialog):

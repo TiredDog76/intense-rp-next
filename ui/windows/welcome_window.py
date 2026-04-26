@@ -368,7 +368,7 @@ class WelcomeWindow(QDialog):
 
         desc = QLabel(
             "IntenseRP Next is a local OpenAI-compatible API + desktop app that drives provider web UIs "
-            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio) in a real browser, so clients like SillyTavern can use them "
+            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio) in a real browser, so clients like SillyTavern can use them "
             "without wiring up the paid official APIs."
         )
         desc.setWordWrap(True)
@@ -661,6 +661,8 @@ class WelcomeWindow(QDialog):
                 desc = "Google popup login. Auto Login can fill it, but Persistent Sessions are still recommended."
             elif provider == "QwenLM":
                 desc = "Email/password login, very smooth experience."
+            elif provider == "Perplexity":
+                desc = "Email-code login. Persistent Sessions are strongly recommended."
             elif provider == "Google AI Studio":
                 desc = "Google login with AI Studio models. Persistent sessions recommended."
 
@@ -691,7 +693,7 @@ class WelcomeWindow(QDialog):
         self._auto_login_row = ToggleRow(
             "Enable Auto Login",
             self._auto_login,
-            description="Fill credentials automatically (DeepSeek / GLM Chat / Moonshot / QwenLM / Google AI Studio).",
+            description="Fill credentials automatically (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio).",
         )
         layout.addWidget(self._auto_login_row, 0)
 
@@ -997,6 +999,8 @@ class WelcomeWindow(QDialog):
             return "moonshot_behavior"
         if provider == DriverProvider.QWEN_LM:
             return "qwen_behavior"
+        if provider == DriverProvider.PERPLEXITY:
+            return "perplexity_behavior"
         if provider == DriverProvider.AI_STUDIO:
             return "aistudio_behavior"
         return "deepseek_behavior"
@@ -1037,6 +1041,7 @@ class WelcomeWindow(QDialog):
             DriverProvider.GLM_CHAT,
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
+            DriverProvider.PERPLEXITY,
             DriverProvider.AI_STUDIO,
         }
 
@@ -1055,6 +1060,11 @@ class WelcomeWindow(QDialog):
         elif provider == DriverProvider.QWEN_LM:
             self._account_info.setText(
                 "QwenLM supports Auto Login. If you keep it off, the browser will wait for manual login."
+            )
+        elif provider == DriverProvider.PERPLEXITY:
+            self._account_info.setText(
+                "Perplexity uses email-code login. Auto Login can enter your email, but you still need "
+                "to type the 6-digit code in the browser. Persistent Sessions help a lot here."
             )
         elif provider == DriverProvider.AI_STUDIO:
             self._account_info.setText(
@@ -1080,6 +1090,10 @@ class WelcomeWindow(QDialog):
         self._password_row.label.setText("Password")
         self._email_input.setPlaceholderText("Email")
         self._password_input.setPlaceholderText("Password")
+        if provider == DriverProvider.PERPLEXITY:
+            self._password_row.label.setText("Password")
+            self._password_input.setPlaceholderText("Unused for Perplexity email-code login")
+            self._password_row.setVisible(False)
 
         if not show_identity_fields:
             self._auto_login.blockSignals(True)
@@ -1091,7 +1105,12 @@ class WelcomeWindow(QDialog):
         self._on_reasoning_toggles_changed()
 
     def _sync_feature_labels(self, provider: DriverProvider) -> None:
-        if provider in {DriverProvider.MOONSHOT, DriverProvider.QWEN_LM, DriverProvider.AI_STUDIO}:
+        if provider in {
+            DriverProvider.MOONSHOT,
+            DriverProvider.QWEN_LM,
+            DriverProvider.PERPLEXITY,
+            DriverProvider.AI_STUDIO,
+        }:
             self._enable_reasoning_row.label.setText("Enable Thinking")
             self._send_reasoning_row.label.setText("Send Thinking")
         else:
@@ -1208,6 +1227,8 @@ class WelcomeWindow(QDialog):
 
         email = self._email_input.text().strip()
         password = self._password_input.text()
+        provider = DriverProvider.from_setting(self._state.provider)
+        requires_password = provider is not DriverProvider.PERPLEXITY
 
         ok = True
         try:
@@ -1218,7 +1239,7 @@ class WelcomeWindow(QDialog):
             self._account_error.setVisible(True)
             ok = False
 
-        if not password.strip():
+        if requires_password and not password.strip():
             self._password_input.set_error(True)
             self._account_error.setText("Password is empty.")
             self._account_error.setVisible(True)
@@ -1263,6 +1284,8 @@ class WelcomeWindow(QDialog):
             model_text = "moonshot-auto\nmoonshot-chat\nmoonshot-reasoner"
         elif provider == DriverProvider.QWEN_LM:
             model_text = "qwen-auto\nqwen-chat\nqwen-reasoner"
+        elif provider == DriverProvider.PERPLEXITY:
+            model_text = "perplexity-auto\nperplexity-chat\nperplexity-reasoner"
         elif provider == DriverProvider.AI_STUDIO:
             model_text = "aistudio-auto\naistudio-chat\naistudio-reasoner"
         else:
@@ -1352,18 +1375,20 @@ class WelcomeWindow(QDialog):
             DriverProvider.GLM_CHAT,
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
+            DriverProvider.PERPLEXITY,
             DriverProvider.AI_STUDIO,
         }
         should_write_identity = bool(supports_auto_login and self._state.auto_login)
         if should_write_identity:
             email = self._state.email.strip()
             password = self._state.password
+            requires_password = provider_enum is not DriverProvider.PERPLEXITY
 
             try:
                 validate_email(email)
             except ValueError as exc:
                 return False, str(exc)
-            if not password.strip():
+            if requires_password and not password.strip():
                 return False, "Password is empty."
 
             try:
@@ -1371,7 +1396,7 @@ class WelcomeWindow(QDialog):
                 existing = ece.get_provider_pairs(provider_enum)
                 email_norm = email.lower()
                 kept = [p for p in existing if str(p.email or "").strip().lower() != email_norm]
-                kept.append(CredentialPair(email=email, password=password))
+                kept.append(CredentialPair(email=email, password=password if requires_password else ""))
                 ok, errors = ece.set_provider_pairs(provider_enum, kept)
                 if not ok:
                     return False, "\n".join(errors or ["Failed to save credentials."])

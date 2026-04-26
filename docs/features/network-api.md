@@ -209,6 +209,14 @@ These IDs are behavior presets (modes), not true model selection.
     | `qwen-chat` | Forces Thinking off |
     | `qwen-reasoner` | Forces Thinking on |
 
+=== ":material-compass: Perplexity"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `perplexity-auto` | Uses your IntenseRP settings |
+    | `perplexity-chat` | Forces Thinking off |
+    | `perplexity-reasoner` | Forces Thinking on when available |
+
 === ":material-image-auto-adjust: Google AI Studio"
 
     | Model ID | Behavior |

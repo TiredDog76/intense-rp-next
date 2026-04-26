@@ -24,7 +24,7 @@ Right now this works on:
 - Moonshot / Kimi
 - QwenLM
 
-It does **not** apply to **Google AI Studio**. AI Studio already starts chats with its incognito mode, so there is nothing useful for IntenseRP to auto-delete there.
+It does **not** apply to **Perplexity** or **Google AI Studio**. Perplexity does not have a stable cleanup path yet, and AI Studio already starts chats with its incognito mode, so there is nothing useful for IntenseRP to auto-delete there.
 
 ---
 

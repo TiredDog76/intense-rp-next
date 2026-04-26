@@ -85,6 +85,16 @@ QwenLM model IDs are behavior presets:
 | `qwen-chat` | Forced off | Forced off |
 | `qwen-reasoner` | Forced on | Uses your settings |
 
+### Perplexity
+
+Perplexity model IDs are behavior presets:
+
+| Model ID | Thinking | Send Thinking |
+|---|---|---|
+| `perplexity-auto` | Uses your settings | No thinking traces forwarded yet |
+| `perplexity-chat` | Forced off | Forced off |
+| `perplexity-reasoner` | Forced on when available | No thinking traces forwarded yet |
+
 ### Google AI Studio
 
 Google AI Studio model IDs are also behavior presets:
@@ -98,7 +108,7 @@ Google AI Studio model IDs are also behavior presets:
 !!! info "What these IDs are (and are not)"
     These IDs are not true model selection. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
-    For providers with a real web UI model picker (GLM Chat, QwenLM, Google AI Studio), that *real* model is selected via **Provider Behavior**. The API `*-auto` / `*-chat` / `*-reasoner` IDs still remain behavior presets.
+    For providers with a real web UI model picker (GLM Chat, QwenLM, Perplexity, Google AI Studio), that *real* model is selected via **Provider Behavior**. The API `*-auto` / `*-chat` / `*-reasoner` IDs still remain behavior presets.
 
 !!! note "AI Studio anti-censorship retries"
     When **Settings -> Provider Behavior -> Google AI Studio -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.
