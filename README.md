@@ -181,6 +181,9 @@ Available model IDs (depends on provider):
   - `deepseek-auto` (uses your IntenseRP settings)
   - `deepseek-chat` (forces DeepThink off)
   - `deepseek-reasoner` (forces DeepThink on, Send DeepThink follows your setting)
+  - `deepseek-expert-auto` (uses your IntenseRP settings, but with Expert Mode enabled in the web UI)
+  - `deepseek-expert-chat` (forces DeepThink off, with Expert Mode enabled in the web UI)
+  - `deepseek-expert-reasoner` (forces DeepThink on, Send DeepThink follows your setting, with Expert Mode enabled in the web UI)
 - GLM Chat:
   - `glm-auto` (uses your IntenseRP settings)
   - `glm-chat` (forces Deep Think off)
@@ -189,10 +192,26 @@ Available model IDs (depends on provider):
   - `moonshot-auto` (uses your IntenseRP settings)
   - `moonshot-chat` (forces Thinking off, Send Thinking off)
   - `moonshot-reasoner` (forces Thinking on, Send Thinking follows your setting)
+- QwenLM:
+  - `qwen-auto` (uses your IntenseRP settings)
+  - `qwen-chat` (forces Thinking off, Send Thinking off)
+  - `qwen-reasoner` (forces Thinking on, Send Thinking follows your setting)
+- Google AI Studio:
+  - `aistudio-auto` (uses your IntenseRP settings)
+  - `aistudio-chat` (forces Thinking off, Send Thinking off)
+  - `aistudio-reasoner` (forces Thinking on, Send Thinking follows your setting)
+- Perplexity:
+  - `perplexity-auto` (uses your IntenseRP settings)
+  - `perplexity-chat` (forces Reasoning off)
+  - `perplexity-reasoner` (forces Reasoning on)
 
-Note: these IDs are behavior presets (modes). GLM has separate real model selection in Settings. Moonshot `moonshot-*` IDs are still behavior presets, not a separate backend model selector.
+Note: these IDs are behavior presets (modes). For providers that support actual model selection in their web UI (like GLM and Google AI Studio), the mode will still apply its behavior changes, but the model will be whatever you have selected in settings within the app.
 
 If you change the port in Settings, update the endpoint to match (example: `http://127.0.0.1:YOUR_PORT/v1`).
+
+> [!TIP]
+> If you don't want to use different provider names for model selection, enable **Universal Model Names** in Settings. This replaces all provider names with `intenserp`, so the above would become `intenserp-auto`, `intenserp-chat`, and `intenserp-reasoner`. With the exception of DeepSeek's Expert Mode presets, which would become `intenserp-expert-auto`, `intenserp-expert-chat`, and `intenserp-expert-reasoner`.
+
 
 ## Quick troubleshooting 🧯
 
