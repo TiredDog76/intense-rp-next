@@ -113,6 +113,8 @@ Google AI Studio model IDs are also behavior presets:
 !!! note "AI Studio anti-censorship retries"
     When **Settings -> Provider Behavior -> Google AI Studio -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.
 
+    If **CAARS** is enabled, AI Studio first runs a hidden savior-model prelude in the browser, edits that turn, then streams only the main model's continuation back to the API.
+
 ---
 
 ## :material-arrow-decision-outline: Request flow (high level)

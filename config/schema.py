@@ -1216,6 +1216,42 @@ SCHEMA = [
                 docs_anchor="anti-censorship",
             ),
             SettingField(
+                key="caars_enabled",
+                label="CAARS",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Run a cheap savior model first, replace its assistant turn, "
+                    "then switch back and continue with the real model."
+                ),
+                depends="aistudio_behavior.anti_censorship",
+                visible_depends="aistudio_behavior.anti_censorship",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="caars",
+            ),
+            SettingField(
+                key="caars_savior_model",
+                label="Savior Model",
+                type=SettingType.DROPDOWN,
+                default="Gemini 3.1 Flash Lite",
+                options=[
+                    "Gemini 3.1 Pro",
+                    "Gemini 3.1 Flash Lite",
+                    "Gemini 3 Flash",
+                    "Gemini 2.5 Pro",
+                    "Gemini 2.5 Flash",
+                    "Gemini 2.5 Flash Lite",
+                    "Gemma 4 26B-A4B",
+                    "Gemma 4 31B",
+                ],
+                tooltip="Cheap/secondary AI Studio model used for the CAARS prelude.",
+                depends="aistudio_behavior.anti_censorship&&aistudio_behavior.caars_enabled",
+                visible_depends="aistudio_behavior.anti_censorship&&aistudio_behavior.caars_enabled",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="savior-model",
+            ),
+            SettingField(
                 key="anti_censorship_replacement_message",
                 label="Replacement Message",
                 type=SettingType.TEXTAREA,
@@ -2460,7 +2496,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
     "aistudio_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
-        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
+        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
         {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "clean_regeneration"]},
     ],

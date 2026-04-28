@@ -231,6 +231,14 @@ class AIStudioDriver(BaseDriver):
         "button[name='run-button']",
         "button[name='run-button-tooltip']",
     ]
+    STOP_BUTTON_SELECTORS = [
+        "button[mattooltipclass='run-button-tooltip']",
+        "[mattooltipclass='run-button-tooltip']",
+        "button[data-test-id='run-button-tooltip']",
+        "[data-test-id='run-button-tooltip'] button",
+        "button[name='run-button']",
+        "button[name='run-button-tooltip']",
+    ]
     GOOGLE_EMAIL_SELECTORS = [
         "input#identifierId",
         "input[type='email']",
@@ -245,6 +253,7 @@ class AIStudioDriver(BaseDriver):
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 180.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
     MAX_ANTI_CENSORSHIP_NUDGES = 3
+    CAARS_MEANINGFUL_CHUNK_TARGET = 5
     RATE_LIMIT_HINT_RE = re.compile(
         r"(rate\s*limit|too\s*many\s*requests|\b429\b|quota|limit\s*reached)",
         flags=re.IGNORECASE,
@@ -349,6 +358,8 @@ class AIStudioDriver(BaseDriver):
         "anti_censorship",
         "anti_censorship_replacement_message",
         "anti_censorship_continue_nudge",
+        "caars_enabled",
+        "caars_savior_model",
         "temperature",
         "top_p",
         "max_output_tokens",
@@ -373,6 +384,8 @@ class AIStudioDriver(BaseDriver):
         "nourl": ("url_context_enabled", False),
         "no_url": ("url_context_enabled", False),
         "no-url": ("url_context_enabled", False),
+        "nocaars": ("caars_enabled", False),
+        "nocars": ("caars_enabled", False),
     }
 
     def __init__(self, config_manager):
@@ -1364,6 +1377,7 @@ class AIStudioDriver(BaseDriver):
         top_p: float | None = None,
         max_tokens: int | None = None,
         overrides: Optional[Dict[str, Any]] = None,
+        model_label_override: str | None = None,
     ) -> Dict[str, Any]:
         """Resolve the effective per-request AI Studio settings.
 
@@ -1380,7 +1394,9 @@ class AIStudioDriver(BaseDriver):
 
         mode = resolve_behavior_mode(requested_model, self.provider)
 
-        desired_label = self._get_configured_model_label()
+        configured_label = self._get_configured_model_label()
+        override_label = str(model_label_override or "").strip()
+        desired_label = override_label if override_label in self.MODEL_CONFIGS else configured_label
         model_config = self._model_config_for_label(desired_label)
         model_base_id = str(model_config.get("base_id") or "").strip().lower()
         force_search = self._model_forces_search(model_config)
@@ -1411,6 +1427,16 @@ class AIStudioDriver(BaseDriver):
             )
             or "Continue."
         )
+        caars_enabled = bool(
+            anti_censorship
+            and self.config_manager.get_setting("aistudio_behavior", "caars_enabled")
+        )
+        caars_savior_model = str(
+            self.config_manager.get_setting("aistudio_behavior", "caars_savior_model")
+            or ""
+        ).strip()
+        if caars_savior_model not in self.MODEL_CONFIGS:
+            caars_savior_model = "Gemini 3.1 Flash Lite"
 
         if mode == MODE_CHAT:
             deepthink_enabled = False
@@ -1428,6 +1454,8 @@ class AIStudioDriver(BaseDriver):
             url_context_enabled = bool(merged_overrides["url_context_enabled"])
         if "send_as_text_file" in merged_overrides:
             send_as_text_file = bool(merged_overrides["send_as_text_file"])
+        if "caars_enabled" in merged_overrides:
+            caars_enabled = bool(caars_enabled and merged_overrides["caars_enabled"])
         if force_search:
             search_enabled = True
         if not supports_url_context:
@@ -1492,6 +1520,8 @@ class AIStudioDriver(BaseDriver):
             "anti_censorship": bool(anti_censorship),
             "anti_censorship_replacement_message": anti_censorship_replacement_message,
             "anti_censorship_continue_nudge": anti_censorship_continue_nudge,
+            "caars_enabled": bool(caars_enabled),
+            "caars_savior_model": caars_savior_model,
             "file_upload_timeout": int(file_upload_timeout),
             "temperature": float(temperature_value),
             "top_p": float(top_p_value),
@@ -3337,6 +3367,112 @@ class AIStudioDriver(BaseDriver):
         """Locate the first visible AI Studio send/run button."""
         return await self._find_first_visible(self.SEND_BUTTON_SELECTORS, timeout_ms=timeout_ms)
 
+    async def _run_control_looks_like_stop(self, button) -> bool:
+        """Return whether AI Studio's run control is currently in Stop mode."""
+        if button is None:
+            return False
+
+        try:
+            signature = str(
+                await button.evaluate(
+                    r"""(el) => {
+                        const normalize = (value) => (value || '').toString().replace(/\s+/g, ' ').trim().toLowerCase();
+                        const values = [];
+                        const attrNames = [
+                            'aria-label',
+                            'mattooltip',
+                            'data-test-id',
+                            'name',
+                            'title',
+                        ];
+                        for (const name of attrNames) {
+                            values.push(normalize(el.getAttribute(name)));
+                        }
+                        values.push(normalize(el.innerText || el.textContent || ''));
+                        for (const icon of Array.from(el.querySelectorAll('mat-icon, .material-symbols-outlined, .material-icons'))) {
+                            values.push(normalize(icon.innerText || icon.textContent || ''));
+                        }
+                        return values.filter(Boolean).join(' ');
+                    }"""
+                )
+                or ""
+            ).strip().lower()
+        except Exception:
+            return False
+
+        if not signature:
+            return False
+
+        if "system instruction" in signature or "system-instruction" in signature:
+            return False
+        if "stop" not in signature:
+            return False
+        if "run-button" in signature:
+            return True
+        if "run button" in signature:
+            return True
+        if re.search(r"(^|\s)stop($|\s)", signature):
+            return True
+        return False
+
+    async def _find_stop_generation_button(self, timeout_ms: int = 0):
+        """Locate AI Studio's visible Stop button while a response is running."""
+        if not self.page:
+            return None
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            for selector in self.STOP_BUTTON_SELECTORS:
+                locator = self.page.locator(selector)
+                try:
+                    count = await locator.count()
+                except Exception:
+                    count = 0
+
+                for idx in range(min(count, 8)):
+                    candidate = locator.nth(idx)
+                    try:
+                        if not await candidate.is_visible():
+                            continue
+                    except Exception:
+                        continue
+
+                    if await self._run_control_looks_like_stop(candidate):
+                        return candidate
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return None
+            await asyncio.sleep(0.1)
+
+    async def _click_stop_generation(self) -> bool:
+        """Best-effort click AI Studio's Stop button for the active response."""
+        button = await self._find_stop_generation_button(timeout_ms=1200)
+        if button is None:
+            return False
+
+        try:
+            await button.click(timeout=2000)
+            await self._ui_settle_pause(0.2)
+            return True
+        except Exception as e:
+            try:
+                await button.click(timeout=2000, force=True)
+                await self._ui_settle_pause(0.2)
+                return True
+            except Exception:
+                Logger.warning(f"Google AI Studio: failed to click the stop button: {e}")
+                return False
+
+    async def _wait_for_generation_idle(self, timeout_ms: int = 10000) -> bool:
+        """Wait until AI Studio no longer shows a visible Stop button."""
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            if await self._find_stop_generation_button(timeout_ms=0) is None:
+                return True
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return False
+            await asyncio.sleep(0.15)
+
     async def send_message(self, timeout: int | None = None) -> None:
         """Wait for the send button to become enabled and click it."""
         wait_timeout_s = 15.0 if timeout is None else max(float(timeout), 0.0)
@@ -3626,8 +3762,44 @@ class AIStudioDriver(BaseDriver):
                 return False
             await asyncio.sleep(0.1)
 
+    async def _latest_assistant_turn_visible_text(self) -> str:
+        """Return normalized visible text from the latest assistant turn."""
+        turn, _container = await self._find_latest_visible_assistant_turn()
+        if turn is None:
+            return ""
+
+        try:
+            text = str(
+                await turn.evaluate(
+                    r"""(el) => {
+                        const normalize = (value) => (value || '').toString().replace(/\s+/g, ' ').trim();
+                        return normalize(el.innerText || el.textContent || '');
+                    }"""
+                )
+                or ""
+            )
+        except Exception:
+            return ""
+
+        if text.strip().lower() == "content blocked":
+            return ""
+        return text.strip()
+
+    async def _latest_assistant_turn_has_visible_text(self) -> bool:
+        """Return whether the latest assistant turn has visible generated text."""
+        return bool(await self._latest_assistant_turn_visible_text())
+
     async def _replace_latest_assistant_message(self, replacement_text: str) -> bool:
         """Edit the latest assistant turn in-place and replace it with the provided text."""
+        if await self._is_system_prompt_panel_open():
+            Logger.warning(
+                "Google AI Studio: system-instructions panel was open before assistant "
+                "replacement; closing it before looking for the edit button."
+            )
+            if not await self._close_system_prompt_panel():
+                return False
+            await self._ui_settle_pause(0.2)
+
         turn, container = await self._find_latest_visible_assistant_turn()
         if turn is None or container is None:
             Logger.warning("Google AI Studio: assistant turn for anti-censorship replacement was not found.")
@@ -3835,6 +4007,8 @@ class AIStudioDriver(BaseDriver):
             "anti_censorship_continue_nudge": str(
                 settings.get("anti_censorship_continue_nudge") or "Continue."
             ),
+            "caars_enabled": bool(settings.get("caars_enabled")),
+            "caars_savior_model": str(settings.get("caars_savior_model") or ""),
             "temperature": round(float(settings.get("temperature", 1.0)), 4),
             "top_p": round(float(settings.get("top_p", 0.95)), 4),
             "max_output_tokens": int(settings.get("max_output_tokens", 65536)),
@@ -3975,6 +4149,7 @@ class AIStudioDriver(BaseDriver):
             effective_settings["use_system_prompt_field"] = False
         self.current_send_deepthink = bool(effective_settings["send_deepthink"])
         anti_censorship_enabled = bool(effective_settings.get("anti_censorship"))
+        caars_enabled = bool(effective_settings.get("caars_enabled"))
 
         def _reset_attempt_state() -> None:
             nonlocal response_queue, completion_armed, completion_started
@@ -4095,6 +4270,31 @@ class AIStudioDriver(BaseDriver):
 
             return await _wait_for_attempt_start("Clean Regeneration (Google AI Studio)")
 
+        async def _prepare_formatted_prompt_for_send(
+            settings: Dict[str, Any],
+            formatted_message: str,
+        ) -> tuple[str | None, int | None]:
+            if bool(settings.get("send_as_text_file")):
+                file_payload = {
+                    "name": "prompt.txt",
+                    "mimeType": "text/plain",
+                    "buffer": formatted_message.encode("utf-8"),
+                }
+                try:
+                    await self.upload_file(file_payload)
+                except Exception as e:
+                    return f"Google AI Studio upload failed: {e}", None
+                await self._ui_settle_pause(0.35)
+                text_file_message = str(settings.get("text_file_message") or "")
+                if text_file_message.strip():
+                    await self.enter_message(text_file_message)
+                    await self._ui_settle_pause(0.1)
+                return None, int(settings.get("file_upload_timeout", 20))
+
+            await self.enter_message(formatted_message)
+            await asyncio.sleep(0.1)
+            return None, None
+
         async def _start_new_chat_attempt(
             *,
             formatted_message: str,
@@ -4110,47 +4310,176 @@ class AIStudioDriver(BaseDriver):
                 await self._sync_system_prompt_field(system_prompt_text)
                 await self._ui_settle_pause(0.18)
 
-            if bool(effective_settings.get("send_as_text_file")):
-                file_payload = {
-                    "name": "prompt.txt",
-                    "mimeType": "text/plain",
-                    "buffer": formatted_message.encode("utf-8"),
-                }
-                try:
-                    await self.upload_file(file_payload)
-                except Exception as e:
-                    return f"Google AI Studio upload failed: {e}"
-                await self._ui_settle_pause(0.35)
-                text_file_message = str(effective_settings.get("text_file_message") or "")
-                if text_file_message.strip():
-                    await self.enter_message(text_file_message)
-                    await self._ui_settle_pause(0.1)
-                completion_armed.set()
-                Logger.info("Google AI Studio: sending request...")
-                await self.send_message(timeout=int(effective_settings.get("file_upload_timeout", 20)))
-            else:
-                await self.enter_message(formatted_message)
-                await asyncio.sleep(0.1)
-                completion_armed.set()
-                Logger.info("Google AI Studio: sending request...")
-                await self.send_message()
+            prepare_error, send_timeout = await _prepare_formatted_prompt_for_send(
+                effective_settings,
+                formatted_message,
+            )
+            if prepare_error:
+                return prepare_error
+
+            completion_armed.set()
+            Logger.info("Google AI Studio: sending request...")
+            await self.send_message(timeout=send_timeout)
 
             if await _wait_for_attempt_start("Google AI Studio"):
                 return None
             return "Google AI Studio: completion request was not observed after sending the prompt."
 
-        async def _send_continue_nudge_attempt(continue_nudge: str) -> str | None:
+        async def _wait_for_caars_savior_activity(timeout_ms: int = 45000) -> tuple[bool, bool, bool]:
+            deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+            stop_seen = False
+            meaningful_chunks = 0
+            last_visible_text = ""
+            last_text_changed_at = 0.0
+
+            while True:
+                if self.abort_requested or (abort_event and abort_event.is_set()):
+                    return False, False, False
+
+                if await self._is_latest_assistant_turn_content_blocked(timeout_ms=0):
+                    return False, True, False
+
+                visible_text = await self._latest_assistant_turn_visible_text()
+                if visible_text and visible_text != last_visible_text:
+                    last_visible_text = visible_text
+                    last_text_changed_at = time.time()
+                    meaningful_chunks += 1
+                    if meaningful_chunks >= self.CAARS_MEANINGFUL_CHUNK_TARGET:
+                        return True, False, False
+
+                stop_button = await self._find_stop_generation_button(timeout_ms=0)
+                if stop_button is not None:
+                    stop_seen = True
+                elif stop_seen:
+                    await self._ui_settle_pause(0.35)
+                    blocked = await self._is_latest_assistant_turn_content_blocked(timeout_ms=0)
+                    has_text = await self._latest_assistant_turn_has_visible_text()
+                    return bool(has_text), bool(blocked), True
+                elif visible_text and last_text_changed_at and (time.time() - last_text_changed_at) >= 1.5:
+                    await self._ui_settle_pause(0.2)
+                    if await self._find_stop_generation_button(timeout_ms=0) is None:
+                        blocked = await self._is_latest_assistant_turn_content_blocked(timeout_ms=0)
+                        return True, bool(blocked), True
+
+                if time.time() >= deadline:
+                    return False, False, False
+
+                await asyncio.sleep(0.15)
+
+        async def _run_caars_savior_prelude(
+            *,
+            formatted_message: str,
+            system_prompt_text: str,
+        ) -> str | None:
+            savior_label = str(
+                effective_settings.get("caars_savior_model") or "Gemini 3.1 Flash Lite"
+            )
+            savior_overrides = dict(macros_overrides)
+            savior_overrides.pop("thinking_level_macro", None)
+            savior_overrides["deepthink_enabled"] = False
+            savior_overrides["send_deepthink"] = False
+            savior_settings = self._resolve_ai_studio_request_settings(
+                self.current_model or "aistudio-auto",
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                overrides=savior_overrides,
+                model_label_override=savior_label,
+            )
+            if isinstance(message_for_formatting, str):
+                savior_settings["use_system_prompt_field"] = False
+
+            _reset_attempt_state()
+            Logger.info(
+                "Google AI Studio CAARS: preparing savior prelude "
+                f"with '{savior_settings.get('model_label')}'."
+            )
+            await self.click_new_chat(source="caars")
+            await asyncio.sleep(0.2)
+            await self._apply_request_controls(savior_settings)
+            await asyncio.sleep(0.2)
+            if bool(savior_settings.get("use_system_prompt_field")):
+                await self._sync_system_prompt_field(system_prompt_text)
+                await self._ui_settle_pause(0.18)
+
+            prepare_error, send_timeout = await _prepare_formatted_prompt_for_send(
+                savior_settings,
+                formatted_message,
+            )
+            if prepare_error:
+                return prepare_error
+
+            Logger.info("Google AI Studio CAARS: sending savior model prelude...")
+            await self.send_message(timeout=send_timeout)
+
+            saw_text, saw_block, savior_completed = await _wait_for_caars_savior_activity()
+            if saw_text:
+                if savior_completed:
+                    Logger.info(
+                        "Google AI Studio CAARS: savior request completed before "
+                        "the stop threshold; keeping the completed turn for replacement."
+                    )
+                else:
+                    Logger.info(
+                        "Google AI Studio CAARS: savior produced enough visible text "
+                        "updates; stopping it."
+                    )
+                    if not await self._click_stop_generation():
+                        Logger.warning(
+                            "Google AI Studio CAARS: savior model produced text, but the Stop "
+                            "button was not available."
+                        )
+                    await self._wait_for_generation_idle(timeout_ms=10000)
+                    await self._ui_settle_pause(0.35)
+            elif saw_block:
+                Logger.info(
+                    "Google AI Studio CAARS: savior turn was blocked; replacing it anyway."
+                )
+            else:
+                await self._wait_for_generation_idle(timeout_ms=5000)
+                await self._ui_settle_pause(0.35)
+                saw_text = await self._latest_assistant_turn_has_visible_text()
+                saw_block = await self._is_latest_assistant_turn_content_blocked(timeout_ms=0)
+                if not (saw_text or saw_block):
+                    Logger.warning(
+                        "Google AI Studio CAARS: savior prelude finished without obvious "
+                        "assistant text or a blocked-turn marker. Trying the edit step anyway."
+                    )
+
+            replacement_message = str(
+                effective_settings.get("anti_censorship_replacement_message") or "."
+            )
+            Logger.info("Google AI Studio CAARS: replacing savior assistant turn...")
+            if not await self._replace_latest_assistant_message(replacement_message):
+                return (
+                    "Google AI Studio CAARS could not replace the savior assistant turn "
+                    "before sending the main continue nudge."
+                )
+
+            Logger.info("Google AI Studio CAARS: switching back to the main model...")
+            await self._apply_request_controls(effective_settings)
+            await self._ui_settle_pause(0.25)
+            return None
+
+        async def _send_continue_nudge_attempt(
+            continue_nudge: str,
+            *,
+            log_label: str = "Google AI Studio Anti-Censorship",
+        ) -> str | None:
             _reset_attempt_state()
             await self.enter_message(continue_nudge)
             await self._ui_settle_pause(0.1)
             completion_armed.set()
-            Logger.info("Google AI Studio: sending anti-censorship continue nudge...")
+            if log_label == "Google AI Studio CAARS":
+                Logger.info("Google AI Studio CAARS: sending main continue nudge...")
+            else:
+                Logger.info("Google AI Studio: sending anti-censorship continue nudge...")
             await self.send_message()
-            if await _wait_for_attempt_start("Google AI Studio Anti-Censorship"):
+            if await _wait_for_attempt_start(log_label):
                 return None
             return (
-                "Google AI Studio anti-censorship retry failed because the continue nudge "
-                "did not start a completion request."
+                f"{log_label} failed because the continue nudge did not start a "
+                "completion request."
             )
 
         async def handle_route(route):
@@ -4344,27 +4673,52 @@ class AIStudioDriver(BaseDriver):
                     "use_system_prompt_field": bool(effective_settings.get("use_system_prompt_field")),
                     "send_as_text_file": bool(effective_settings.get("send_as_text_file")),
                     "anti_censorship": bool(effective_settings.get("anti_censorship")),
+                    "caars_enabled": bool(effective_settings.get("caars_enabled")),
+                    "caars_savior_model": str(effective_settings.get("caars_savior_model") or ""),
                 },
             )
             await self._ensure_safety_filters_initialized()
             clean_regeneration = bool(
                 self.config_manager.get_setting("aistudio_behavior", "clean_regeneration")
-            )
+            ) and not caars_enabled
             clean_regen_state = self._build_clean_regeneration_state(
                 effective_settings,
                 system_prompt_text=system_prompt_text,
             )
 
-            regenerated = await _attempt_clean_regeneration(
-                clean_regeneration=clean_regeneration,
-                formatted_message=formatted_message,
-                clean_regen_state=clean_regen_state,
-            )
-            if not regenerated:
-                setup_error = await _start_new_chat_attempt(
+            if caars_enabled:
+                setup_error = await _run_caars_savior_prelude(
                     formatted_message=formatted_message,
                     system_prompt_text=system_prompt_text,
                 )
+                if setup_error:
+                    yield f"data: {json.dumps({'error': setup_error})}\n\n"
+                    return
+
+                continue_nudge = str(
+                    effective_settings.get("anti_censorship_continue_nudge") or "Continue."
+                )
+                setup_error = await _send_continue_nudge_attempt(
+                    continue_nudge,
+                    log_label="Google AI Studio CAARS",
+                )
+                if setup_error:
+                    yield f"data: {json.dumps({'error': setup_error})}\n\n"
+                    return
+            else:
+                regenerated = await _attempt_clean_regeneration(
+                    clean_regeneration=clean_regeneration,
+                    formatted_message=formatted_message,
+                    clean_regen_state=clean_regen_state,
+                )
+                if regenerated:
+                    setup_error = None
+                else:
+                    setup_error = await _start_new_chat_attempt(
+                        formatted_message=formatted_message,
+                        system_prompt_text=system_prompt_text,
+                    )
+
                 if setup_error:
                     yield f"data: {json.dumps({'error': setup_error})}\n\n"
                     return

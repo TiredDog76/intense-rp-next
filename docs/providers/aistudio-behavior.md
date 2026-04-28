@@ -260,6 +260,27 @@ Blocked attempts stay hidden from the API stream. As soon as a recovery attempt 
 
     In plain English: the next identical request will start fresh instead of trying to regenerate inside that now-cursed chat.
 
+### CAARS (Cupcake's AIStudio AntiCensorship Ratelimit Saver)
+
+> "We've been trying to reach you about your caar's extended warranty."
+
+CAARS is an optional prelude for AI Studio Anti-Censorship. It only appears when **Anti-Censorship** is enabled.
+
+When enabled, IntenseRP sends the original prompt to a secondary **Savior Model** first, with that model's thinking level pushed as low as AI Studio allows. The default is `Gemini 3.1 Flash Lite`, since it's cheap and close enough to latest for this little warm-up act. IntenseRP waits until either the savior request finishes on its own or the assistant turn has produced 5 meaningful visible text updates. If the 5-update threshold wins while the savior is still running, IntenseRP clicks AI Studio's **Stop** button. Then it edits that savior assistant turn and replaces it with your configured **Replacement Message**, even if the turn was not blocked.
+
+After that, IntenseRP switches back to your normal AI Studio **Model** and sends your configured **Continue Nudge**. The main model's answer is the one that streams back to the API. If the main model gets hard-censored too, the normal Anti-Censorship edit + continue retry flow still runs.
+
+!!! note "Reuse Matching Chat"
+    CAARS starts a fresh AI Studio chat for the prelude and skips **Reuse Matching Chat** for that request. It needs the savior turn and the main continuation to live in the same fresh chat.
+
+### Savior Model
+
+The AI Studio model used for the CAARS prelude.
+
+Default is `Gemini 3.1 Flash Lite`.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Savior Model**
+
 ### Replacement Message
 
 Text used to replace the blocked assistant turn before IntenseRP sends the continue nudge.
@@ -330,6 +351,9 @@ All macros are stripped before sending.
 | `[[nosearch]]`, `[[no_search]]` | Force Search off |
 | `[[url]]`, `[[urlcontext]]` | Force URL Context on |
 | `[[nourl]]`, `[[no_url]]` | Force URL Context off |
+| `[[nocaars]]`, `[[nocars]]` | Disable CAARS for this request |
+
+`[[nocaars]]` / `[[nocars]]` only matters when AI Studio Anti-Censorship and CAARS are both enabled. Otherwise it has nothing to turn off.
 
 !!! tip "Model-name suffixes"
     You can also append a Thinking Level suffix directly to the API model string, for example:
@@ -357,6 +381,8 @@ All macros are stripped before sending.
 | **Text File Message** | Optional text sent alongside the uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait for the send button after file selection | `20` |
 | **Anti-Censorship** | Detects blocked AI Studio turns and runs the edit + continue workaround | Off |
+| **CAARS** | Runs a savior model prelude before the main AI Studio model | Off |
+| **Savior Model** | Model used for the CAARS prelude | `Gemini 3.1 Flash Lite` |
 | **Replacement Message** | Text used to replace a blocked assistant turn before retrying | `.` |
 | **Continue Nudge** | Follow-up user message sent after a blocked turn | `Continue.` |
 | **Temperature** | Default temperature | `1.0` |
