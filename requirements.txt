@@ -46,7 +46,7 @@ PySide6==6.10.0
 PySide6_Addons==6.10.0
 PySide6_Essentials==6.10.0
 python-dateutil==2.9.0.post0
-python-dotenv==1.2.1
+python-dotenv==1.2.2
 pywin32-ctypes==0.2.3
 PyYAML==6.0.3
 pyyaml_env_tag==1.1
