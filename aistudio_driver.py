@@ -1782,6 +1782,8 @@ class AIStudioDriver(BaseDriver):
         if not self.page:
             return
 
+        started = time.perf_counter()
+        Logger.extra_debug("Google AI Studio timing: dismiss transient overlays -> start")
         try:
             await self.page.evaluate(
                 """() => {
@@ -1799,14 +1801,30 @@ class AIStudioDriver(BaseDriver):
         except Exception:
             pass
         await self._ui_settle_pause(0.12)
+        Logger.extra_debug(
+            "Google AI Studio timing: dismiss transient overlays -> "
+            f"done in {time.perf_counter() - started:.3f}s"
+        )
 
     async def _refocus_composer_before_send(self) -> None:
         if not self.page:
             return
 
+        started = time.perf_counter()
+        Logger.extra_debug("Google AI Studio timing: refocus composer -> start")
         await self._dismiss_transient_overlays()
+        find_started = time.perf_counter()
         editor = await self._find_first_visible(self.CHAT_READY_SELECTORS, timeout_ms=3000)
+        Logger.extra_debug(
+            "Google AI Studio timing: refocus composer -> find editor "
+            f"{'found' if editor is not None else 'missing'} in "
+            f"{time.perf_counter() - find_started:.3f}s"
+        )
         if editor is None:
+            Logger.extra_debug(
+                "Google AI Studio timing: refocus composer -> abandoned "
+                f"after {time.perf_counter() - started:.3f}s"
+            )
             return
 
         try:
@@ -1814,10 +1832,19 @@ class AIStudioDriver(BaseDriver):
         except Exception:
             pass
 
+        box_started = time.perf_counter()
         try:
             box = await editor.bounding_box()
-        except Exception:
+            Logger.extra_debug(
+                "Google AI Studio timing: refocus composer -> bounding_box "
+                f"{'resolved' if box else 'empty'} in {time.perf_counter() - box_started:.3f}s"
+            )
+        except Exception as e:
             box = None
+            Logger.extra_debug(
+                "Google AI Studio timing: refocus composer -> bounding_box failed "
+                f"after {time.perf_counter() - box_started:.3f}s: {e}"
+            )
 
         if box:
             try:
@@ -1827,22 +1854,53 @@ class AIStudioDriver(BaseDriver):
                 await asyncio.sleep(0.04)
                 await self.page.mouse.click(x, y)
                 await asyncio.sleep(0.08)
+                Logger.extra_debug(
+                    "Google AI Studio timing: refocus composer -> mouse click completed "
+                    f"in {time.perf_counter() - started:.3f}s"
+                )
                 return
-            except Exception:
+            except Exception as e:
+                Logger.extra_debug(
+                    "Google AI Studio timing: refocus composer -> mouse click failed "
+                    f"after {time.perf_counter() - started:.3f}s: {e}"
+                )
                 pass
 
+        click_started = time.perf_counter()
         try:
             await editor.click(timeout=2000)
-        except Exception:
+            Logger.extra_debug(
+                "Google AI Studio timing: refocus composer -> locator click completed "
+                f"in {time.perf_counter() - click_started:.3f}s "
+                f"(total {time.perf_counter() - started:.3f}s)"
+            )
+        except Exception as e:
+            Logger.extra_debug(
+                "Google AI Studio timing: refocus composer -> locator click failed "
+                f"after {time.perf_counter() - click_started:.3f}s "
+                f"(total {time.perf_counter() - started:.3f}s): {e}"
+            )
             pass
 
-    async def _set_input_value(self, selector: str, value_text: str, *, timeout_ms: int = 8000) -> bool:
+    async def _set_input_value(
+        self,
+        selector: str,
+        value_text: str,
+        *,
+        timeout_ms: int = 8000,
+        debug_label: str = "",
+    ) -> bool:
         """Set an input value via DOM setters first, with a Playwright fallback."""
         field = await self._find_first_visible([selector], timeout_ms=timeout_ms)
         if field is None:
             return False
 
-        return await self._set_text_control_value(field, value_text, nested_selector="input")
+        return await self._set_text_control_value(
+            field,
+            value_text,
+            nested_selector="input",
+            debug_label=debug_label,
+        )
 
     async def _set_text_control_value(
         self,
@@ -1850,6 +1908,7 @@ class AIStudioDriver(BaseDriver):
         value_text: str,
         *,
         nested_selector: str | None = None,
+        debug_label: str = "",
     ) -> bool:
         """Force-set an input or textarea value while re-focusing between retries."""
         if field is None:
@@ -1857,13 +1916,35 @@ class AIStudioDriver(BaseDriver):
 
         value_text = str(value_text or "")
         nested_selector = str(nested_selector or "").strip()
+        debug_label = str(debug_label or "").strip()
+        debug_prefix = (
+            f"Google AI Studio timing: set text control [{debug_label}]"
+            if debug_label
+            else "Google AI Studio timing: set text control"
+        )
+        started = time.perf_counter()
+        Logger.extra_debug(
+            f"{debug_prefix} -> start chars={len(value_text)} "
+            f"nested_selector={nested_selector or '<none>'}"
+        )
 
-        for _ in range(4):
+        for attempt in range(1, 5):
+            attempt_started = time.perf_counter()
+            Logger.extra_debug(f"{debug_prefix} -> attempt {attempt} start")
             try:
                 await field.click(timeout=1500, force=True)
-            except Exception:
+                Logger.extra_debug(
+                    f"{debug_prefix} -> attempt {attempt} click completed in "
+                    f"{time.perf_counter() - attempt_started:.3f}s"
+                )
+            except Exception as e:
+                Logger.extra_debug(
+                    f"{debug_prefix} -> attempt {attempt} click failed after "
+                    f"{time.perf_counter() - attempt_started:.3f}s: {e}"
+                )
                 pass
 
+            evaluate_started = time.perf_counter()
             try:
                 applied = await field.evaluate(
                     """(el, payload) => {
@@ -1919,12 +2000,25 @@ class AIStudioDriver(BaseDriver):
                         "nestedSelector": nested_selector,
                     },
                 )
-            except Exception:
+                Logger.extra_debug(
+                    f"{debug_prefix} -> attempt {attempt} evaluate returned "
+                    f"{bool(applied)} in {time.perf_counter() - evaluate_started:.3f}s"
+                )
+            except Exception as e:
                 applied = False
+                Logger.extra_debug(
+                    f"{debug_prefix} -> attempt {attempt} evaluate failed after "
+                    f"{time.perf_counter() - evaluate_started:.3f}s: {e}"
+                )
 
             if applied:
+                Logger.extra_debug(
+                    f"{debug_prefix} -> applied by evaluate in "
+                    f"{time.perf_counter() - started:.3f}s"
+                )
                 return True
 
+            fill_started = time.perf_counter()
             try:
                 await field.fill(value_text)
                 current_value = await field.evaluate(
@@ -1936,12 +2030,28 @@ class AIStudioDriver(BaseDriver):
                     }"""
                 )
                 if str(current_value or "") == value_text:
+                    Logger.extra_debug(
+                        f"{debug_prefix} -> applied by fill in "
+                        f"{time.perf_counter() - started:.3f}s "
+                        f"(fill phase {time.perf_counter() - fill_started:.3f}s)"
+                    )
                     return True
-            except Exception:
+                Logger.extra_debug(
+                    f"{debug_prefix} -> attempt {attempt} fill value mismatch "
+                    f"after {time.perf_counter() - fill_started:.3f}s"
+                )
+            except Exception as e:
+                Logger.extra_debug(
+                    f"{debug_prefix} -> attempt {attempt} fill failed after "
+                    f"{time.perf_counter() - fill_started:.3f}s: {e}"
+                )
                 pass
 
             await asyncio.sleep(0.08)
 
+        Logger.extra_debug(
+            f"{debug_prefix} -> failed after {time.perf_counter() - started:.3f}s"
+        )
         return False
 
     async def _set_textarea_value(self, selector: str, value_text: str, *, timeout_ms: int = 8000) -> bool:
@@ -2852,59 +2962,195 @@ class AIStudioDriver(BaseDriver):
         """Open AI Studio's System Instructions panel."""
         if not self.page:
             return False
+        started = time.perf_counter()
+        Logger.extra_debug("Google AI Studio timing: system-instructions open panel -> start")
         if await self._is_system_prompt_panel_open():
+            Logger.extra_debug(
+                "Google AI Studio timing: system-instructions open panel -> "
+                f"already open in {time.perf_counter() - started:.3f}s"
+            )
             return True
 
+        find_started = time.perf_counter()
         trigger = await self._find_first_visible(self.SYSTEM_INSTRUCTIONS_CARD_SELECTORS, timeout_ms=8000)
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions open panel -> trigger "
+            f"{'found' if trigger is not None else 'missing'} in "
+            f"{time.perf_counter() - find_started:.3f}s"
+        )
         if trigger is None:
             Logger.warning("Google AI Studio: system-instructions trigger was not found.")
             return False
 
-        for _ in range(4):
+        for attempt in range(1, 5):
             await self._dismiss_transient_overlays()
+            click_started = time.perf_counter()
             try:
                 await trigger.click(timeout=2000, force=True)
-            except Exception:
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions open panel -> "
+                    f"attempt {attempt} click completed in "
+                    f"{time.perf_counter() - click_started:.3f}s"
+                )
+            except Exception as e:
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions open panel -> "
+                    f"attempt {attempt} click failed after "
+                    f"{time.perf_counter() - click_started:.3f}s: {e}"
+                )
                 try:
-                    await trigger.evaluate("el => el.click()")
-                except Exception:
+                    await trigger.evaluate("el => el.click()", timeout=1000)
+                    Logger.extra_debug(
+                        "Google AI Studio timing: system-instructions open panel -> "
+                        f"attempt {attempt} JS click completed"
+                    )
+                except Exception as js_error:
+                    Logger.extra_debug(
+                        "Google AI Studio timing: system-instructions open panel -> "
+                        f"attempt {attempt} JS click failed: {js_error}"
+                    )
                     pass
 
             await self._ui_settle_pause(0.16)
             if await self._is_system_prompt_panel_open():
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions open panel -> "
+                    f"opened on attempt {attempt} in {time.perf_counter() - started:.3f}s"
+                )
                 return True
 
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions open panel -> "
+            f"failed after {time.perf_counter() - started:.3f}s"
+        )
         Logger.warning("Google AI Studio: system-instructions panel did not open.")
         return False
+
+    async def _wait_for_system_prompt_panel_closed(self, timeout_ms: int = 0) -> bool:
+        """Return once the system-instructions panel is no longer visible."""
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            if not await self._is_system_prompt_panel_open():
+                return True
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return False
+            await asyncio.sleep(0.1)
+
+    async def _click_system_prompt_close_button_with_js(self) -> bool:
+        """Click the current close button through the page DOM without locator auto-waiting."""
+        if not self.page:
+            return False
+        try:
+            return bool(
+                await self.page.evaluate(
+                    """(selectors) => {
+                        const isVisible = (el) => {
+                            if (!el) return false;
+                            const rect = el.getBoundingClientRect();
+                            if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+                            const style = window.getComputedStyle(el);
+                            if (!style) return false;
+                            return style.display !== 'none' && style.visibility !== 'hidden';
+                        };
+
+                        for (const selector of selectors || []) {
+                            for (const el of Array.from(document.querySelectorAll(selector))) {
+                                if (!isVisible(el)) continue;
+                                try {
+                                    el.click();
+                                    return true;
+                                } catch (e) {}
+                            }
+                        }
+                        return false;
+                    }""",
+                    self.SYSTEM_INSTRUCTIONS_CLOSE_SELECTORS,
+                )
+            )
+        except Exception:
+            return False
 
     async def _close_system_prompt_panel(self) -> bool:
         """Close AI Studio's System Instructions panel."""
         if not self.page:
             return False
+        started = time.perf_counter()
+        Logger.extra_debug("Google AI Studio timing: system-instructions close panel -> start")
         if not await self._is_system_prompt_panel_open():
+            Logger.extra_debug(
+                "Google AI Studio timing: system-instructions close panel -> "
+                f"already closed in {time.perf_counter() - started:.3f}s"
+            )
             return True
 
-        close_button = await self._find_first_visible(
-            self.SYSTEM_INSTRUCTIONS_CLOSE_SELECTORS,
-            timeout_ms=5000,
-        )
-        if close_button is None:
-            Logger.warning("Google AI Studio: system-instructions close button was not found.")
-            return False
+        for attempt in range(1, 5):
+            find_started = time.perf_counter()
+            close_button = await self._find_first_visible(
+                self.SYSTEM_INSTRUCTIONS_CLOSE_SELECTORS,
+                timeout_ms=5000 if attempt == 1 else 1000,
+            )
+            Logger.extra_debug(
+                "Google AI Studio timing: system-instructions close panel -> close button "
+                f"{'found' if close_button is not None else 'missing'} on attempt {attempt} in "
+                f"{time.perf_counter() - find_started:.3f}s"
+            )
+            if close_button is None:
+                wait_started = time.perf_counter()
+                if await self._wait_for_system_prompt_panel_closed(timeout_ms=1500):
+                    Logger.extra_debug(
+                        "Google AI Studio timing: system-instructions close panel -> "
+                        f"closed after close button disappeared in "
+                        f"{time.perf_counter() - wait_started:.3f}s "
+                        f"(total {time.perf_counter() - started:.3f}s)"
+                    )
+                    return True
+                continue
 
-        for _ in range(4):
+            click_started = time.perf_counter()
             try:
                 await close_button.click(timeout=2000, force=True)
-            except Exception:
-                try:
-                    await close_button.evaluate("el => el.click()")
-                except Exception:
-                    pass
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions close panel -> "
+                    f"attempt {attempt} click completed in "
+                    f"{time.perf_counter() - click_started:.3f}s"
+                )
+            except Exception as e:
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions close panel -> "
+                    f"attempt {attempt} click failed after "
+                    f"{time.perf_counter() - click_started:.3f}s: {e}"
+                )
 
-            await self._ui_settle_pause(0.16)
-            if not await self._is_system_prompt_panel_open():
+            wait_started = time.perf_counter()
+            if await self._wait_for_system_prompt_panel_closed(timeout_ms=3500):
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions close panel -> "
+                    f"closed after attempt {attempt} click in "
+                    f"{time.perf_counter() - wait_started:.3f}s "
+                    f"(total {time.perf_counter() - started:.3f}s)"
+                )
                 return True
 
+            js_started = time.perf_counter()
+            js_clicked = await self._click_system_prompt_close_button_with_js()
+            Logger.extra_debug(
+                "Google AI Studio timing: system-instructions close panel -> "
+                f"attempt {attempt} page JS click "
+                f"{'completed' if js_clicked else 'found no button'} in "
+                f"{time.perf_counter() - js_started:.3f}s"
+            )
+            if js_clicked and await self._wait_for_system_prompt_panel_closed(timeout_ms=2500):
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions close panel -> "
+                    f"closed after attempt {attempt} page JS click in "
+                    f"{time.perf_counter() - started:.3f}s"
+                )
+                return True
+
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions close panel -> "
+            f"failed after {time.perf_counter() - started:.3f}s"
+        )
         Logger.warning("Google AI Studio: system-instructions panel did not close cleanly.")
         return False
 
@@ -2913,6 +3159,11 @@ class AIStudioDriver(BaseDriver):
         if not self.page:
             return False
 
+        started = time.perf_counter()
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions save status wait -> "
+            f"start timeout_ms={int(timeout_ms)}"
+        )
         deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
         while True:
             try:
@@ -2929,9 +3180,17 @@ class AIStudioDriver(BaseDriver):
 
             if bool(save_visible):
                 await self._ui_settle_pause(0.12)
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions save status wait -> "
+                    f"visible in {time.perf_counter() - started:.3f}s"
+                )
                 return True
 
             if time.time() >= deadline:
+                Logger.extra_debug(
+                    "Google AI Studio timing: system-instructions save status wait -> "
+                    f"timed out after {time.perf_counter() - started:.3f}s"
+                )
                 Logger.warning(
                     "Google AI Studio: system-instructions save status did not become visible in time."
                 )
@@ -2948,54 +3207,129 @@ class AIStudioDriver(BaseDriver):
         if not self.page:
             return
 
+        started = time.perf_counter()
+        system_prompt_text = str(system_prompt_text or "")
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions sync -> "
+            f"start chars={len(system_prompt_text)}"
+        )
+        open_started = time.perf_counter()
         opened = await self._open_system_prompt_panel()
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions sync -> open panel "
+            f"{'ok' if opened else 'failed'} in {time.perf_counter() - open_started:.3f}s"
+        )
         if not opened:
             return
 
         title_value = self._build_system_prompt_title()
-        if str(system_prompt_text or "").strip():
+        if system_prompt_text.strip():
+            title_started = time.perf_counter()
             title_ok = await self._set_input_value(
                 self.SYSTEM_INSTRUCTIONS_TITLE_INPUT_SELECTORS[0],
                 title_value,
                 timeout_ms=5000,
+                debug_label="system-instructions-title",
             )
             if not title_ok:
                 title_field = await self._find_first_visible(
                     self.SYSTEM_INSTRUCTIONS_TITLE_INPUT_SELECTORS,
                     timeout_ms=2000,
                 )
-                title_ok = await self._set_text_control_value(title_field, title_value)
+                title_ok = await self._set_text_control_value(
+                    title_field,
+                    title_value,
+                    debug_label="system-instructions-title-fallback",
+                )
+            Logger.extra_debug(
+                "Google AI Studio timing: system-instructions sync -> title "
+                f"{'ok' if title_ok else 'failed'} in {time.perf_counter() - title_started:.3f}s"
+            )
             if not title_ok:
                 Logger.warning("Google AI Studio: failed to set the system-instructions title.")
 
+        textarea_started = time.perf_counter()
         textarea = await self._find_first_visible(
             self.SYSTEM_INSTRUCTIONS_TEXTAREA_SELECTORS,
             timeout_ms=8000,
+        )
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions sync -> textarea "
+            f"{'found' if textarea is not None else 'missing'} in "
+            f"{time.perf_counter() - textarea_started:.3f}s"
         )
         if textarea is None:
             Logger.warning("Google AI Studio: system-instructions textarea was not found.")
             await self._close_system_prompt_panel()
             return
 
-        body_ok = await self._set_text_control_value(textarea, str(system_prompt_text or ""))
+        body_started = time.perf_counter()
+        body_ok = await self._set_text_control_value(
+            textarea,
+            system_prompt_text,
+            debug_label="system-instructions-body",
+        )
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions sync -> body "
+            f"{'ok' if body_ok else 'failed'} in {time.perf_counter() - body_started:.3f}s"
+        )
         if not body_ok:
             Logger.warning("Google AI Studio: failed to set the system-instructions body.")
 
+        save_started = time.perf_counter()
         await self._wait_for_system_prompt_save_status()
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions sync -> save wait returned in "
+            f"{time.perf_counter() - save_started:.3f}s"
+        )
+        close_started = time.perf_counter()
         await self._close_system_prompt_panel()
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions sync -> close panel returned in "
+            f"{time.perf_counter() - close_started:.3f}s"
+        )
+        refocus_started = time.perf_counter()
         await self._refocus_composer_before_send()
+        Logger.extra_debug(
+            "Google AI Studio timing: system-instructions sync -> refocus returned in "
+            f"{time.perf_counter() - refocus_started:.3f}s "
+            f"(total {time.perf_counter() - started:.3f}s)"
+        )
 
     async def enter_message(self, message: str) -> None:
         """Populate the prompt composer without relying on paste shortcuts."""
         if not self.page:
             return
 
+        started = time.perf_counter()
+        message = str(message or "")
+        Logger.extra_debug(
+            "Google AI Studio timing: enter prompt -> "
+            f"start chars={len(message)}"
+        )
+        find_started = time.perf_counter()
         editor = await self._find_first_visible(self.CHAT_READY_SELECTORS, timeout_ms=15000)
+        Logger.extra_debug(
+            "Google AI Studio timing: enter prompt -> editor "
+            f"{'found' if editor is not None else 'missing'} in "
+            f"{time.perf_counter() - find_started:.3f}s"
+        )
         if editor is None:
             Logger.warning("Google AI Studio: prompt textarea was not found.")
             return
 
-        ok = await self._set_text_control_value(editor, str(message or ""), nested_selector="textarea")
+        set_started = time.perf_counter()
+        ok = await self._set_text_control_value(
+            editor,
+            message,
+            nested_selector="textarea",
+            debug_label="prompt-composer",
+        )
+        Logger.extra_debug(
+            "Google AI Studio timing: enter prompt -> set text "
+            f"{'ok' if ok else 'failed'} in {time.perf_counter() - set_started:.3f}s "
+            f"(total {time.perf_counter() - started:.3f}s)"
+        )
         if not ok:
             Logger.warning("Google AI Studio: failed to enter the prompt.")
 
