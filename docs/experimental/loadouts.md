@@ -53,7 +53,7 @@ The **Stop** button menu has **Switch Loadout** while Loadouts are enabled.
 
 That menu action changes the active runtime loadout for the currently selected provider.
 
-If the runtime is already running and you switch from the Stop menu, IntenseRP restarts the services so the newly selected loadout really takes effect.
+If the runtime is already running and you switch from the Stop menu, IntenseRP restarts the affected provider lane so the newly selected loadout really takes effect. In normal single-provider mode, that's still just the current provider. In **Providers in Parallel**, the other provider windows stay up instead of getting dragged into the restart party.
 
 Remote Control gets the same idea with **Switch Loadouts**. When Loadouts are enabled, the remote page hides **Switch Models** and uses the loadout switcher instead, since the model setting lives inside the selected loadout.
 

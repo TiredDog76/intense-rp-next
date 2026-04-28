@@ -2084,8 +2084,25 @@ class MainWindow(QMainWindow):
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(float(timeout_s), 0.0)
         while True:
-            current_entries = getattr(api, "current_entries_by_provider", None) or {}
-            if current_entries.get(provider) is None:
+            is_processing = getattr(api, "is_provider_processing", None)
+            if callable(is_processing):
+                try:
+                    provider_busy = bool(is_processing(provider))
+                except Exception:
+                    provider_busy = False
+            else:
+                provider_busy = False
+                current_entries = getattr(api, "current_entries_by_slot_id", None) or {}
+                get_slots = getattr(api, "_get_execution_slots_for_provider", None)
+                if callable(get_slots):
+                    try:
+                        provider_busy = any(
+                            getattr(slot, "id", None) in current_entries
+                            for slot in get_slots(provider)
+                        )
+                    except Exception:
+                        provider_busy = False
+            if not provider_busy:
                 return True
             if loop.time() >= deadline:
                 return False
@@ -2280,6 +2297,165 @@ class MainWindow(QMainWindow):
         finally:
             self._update_tray_menu_state()
 
+    def _normalize_runtime_provider_list(self, providers) -> list[DriverProvider]:
+        normalized: list[DriverProvider] = []
+        for raw_provider in providers or []:
+            provider = (
+                raw_provider
+                if isinstance(raw_provider, DriverProvider)
+                else DriverProvider.from_setting(raw_provider)
+            )
+            if provider is not None and provider not in normalized:
+                normalized.append(provider)
+        return normalized
+
+    def _running_status_text(self) -> str:
+        port_setting = self.config_manager.get_setting("network_settings", "port")
+        try:
+            port = int(port_setting) if port_setting else 7777
+        except (TypeError, ValueError):
+            port = 7777
+        return f"Running (Port {port})"
+
+    async def _restart_runtime_providers_impl(
+        self,
+        providers,
+        *,
+        reason: str,
+        allow_full_fallback: bool = True,
+    ) -> bool:
+        target_providers = self._normalize_runtime_provider_list(providers)
+        if not target_providers:
+            return True
+
+        if not self._are_services_running():
+            return True
+
+        runtime_entries = [
+            (runtime_provider, runtime_driver)
+            for runtime_provider, runtime_driver in self._iter_runtime_drivers()
+            if runtime_provider in target_providers and runtime_driver is not None
+        ]
+        covered_providers = {runtime_provider for runtime_provider, _driver in runtime_entries}
+        missing_providers = [
+            provider for provider in target_providers if provider not in covered_providers
+        ]
+        if missing_providers:
+            missing_text = ", ".join(provider.value for provider in missing_providers)
+            if not allow_full_fallback:
+                Logger.warning(f"Selective restart unavailable for {missing_text}.")
+                return False
+            Logger.warning(
+                f"Selective restart unavailable for {missing_text}; falling back to full restart."
+            )
+            await self._restart_services_impl()
+            return True
+
+        runtime_providers = [
+            runtime_provider for runtime_provider, _driver in self._iter_runtime_drivers()
+        ]
+        if self._loadouts_feature_enabled() and not self._validate_runtime_loadouts(
+            providers=runtime_providers,
+        ):
+            self._update_status("Loadouts validation failed", "error")
+            return False
+
+        provider_text = ", ".join(provider.value for provider in target_providers)
+        self.start_button.setEnabled(False)
+        self._update_status(f"Restarting {provider_text}...", "info")
+        self._update_tray_menu_state()
+
+        try:
+            for _provider, runtime_driver in runtime_entries:
+                try:
+                    runtime_driver.is_running = False
+                except Exception:
+                    pass
+
+            api = getattr(self, "api", None)
+            if api is not None:
+                cancel_queued_for_provider = getattr(
+                    api,
+                    "cancel_queued_requests_for_provider",
+                    None,
+                )
+                for provider in target_providers:
+                    if callable(cancel_queued_for_provider):
+                        cancelled = await cancel_queued_for_provider(
+                            provider,
+                            reason=(
+                                f"Queued {provider.value} request cancelled due to "
+                                f"{reason}."
+                            ),
+                        )
+                        if cancelled:
+                            Logger.warning(
+                                f"Queue: Cancelled {cancelled} queued {provider.value} "
+                                f"request(s) before {reason}."
+                            )
+
+                    aborted = await api.abort_current_request_for_provider(
+                        provider,
+                        reason=(
+                            f"Current {provider.value} request aborted due to {reason}."
+                        ),
+                    )
+                    if aborted:
+                        Logger.warning(
+                            f"Queue: Aborted current {provider.value} request before {reason}."
+                        )
+                        cleared = await self._wait_for_provider_queue_head_to_clear(
+                            provider,
+                            timeout_s=5.0,
+                        )
+                        if not cleared:
+                            Logger.warning(
+                                f"Queue: Timed out waiting for {provider.value} request "
+                                f"to clear before {reason}."
+                            )
+
+            for provider, runtime_driver in runtime_entries:
+                label = getattr(runtime_driver, "provider_label", None) or provider.value
+                Logger.info(f"Selective restart: closing {label}...")
+                await asyncio.wait_for(runtime_driver.close(), timeout=20.0)
+
+                Logger.info(f"Selective restart: starting {label}...")
+                await runtime_driver.start(
+                    status_callback=(
+                        lambda msg, current_label=label: self._update_status(
+                            f"{current_label}: {msg}",
+                            "info",
+                        )
+                    )
+                )
+                if not await self._ensure_driver_ui_language_is_compatible(runtime_driver):
+                    raise RuntimeError(
+                        f"{label} UI language is not compatible after restart."
+                    )
+
+            Logger.success(f"Selective restart completed for {provider_text}.")
+            self._update_status(self._running_status_text(), "running")
+            self._schedule_queue_preview_refresh()
+            return True
+        except Exception as exc:
+            Logger.error(f"Selective restart failed for {provider_text}: {exc}")
+            for provider, runtime_driver in runtime_entries:
+                if bool(getattr(runtime_driver, "is_running", False)):
+                    continue
+                try:
+                    await asyncio.wait_for(runtime_driver.close(), timeout=20.0)
+                except Exception as close_error:
+                    Logger.debug(
+                        f"Selective restart cleanup failed for {provider.value}: {close_error}"
+                    )
+            self._update_status(f"Provider restart failed: {exc}", "error")
+            return False
+        finally:
+            self.start_button.setEnabled(True)
+            self._refresh_chevron_menu()
+            self._sync_hotswap_button()
+            self._update_tray_menu_state()
+
     def _on_account_switch(self):
         asyncio.create_task(self._account_switch_impl())
 
@@ -2356,7 +2532,12 @@ class MainWindow(QMainWindow):
                 )
                 Logger.info(f"Loadouts: selected parallel loadouts ({changed_names}).")
 
-            asyncio.create_task(self._restart_services_impl())
+            asyncio.create_task(
+                self._restart_runtime_providers_impl(
+                    list(changes.keys()),
+                    reason="loadout switch",
+                )
+            )
             return
 
         available = self.config_manager.get_loadouts(provider)
@@ -2389,7 +2570,12 @@ class MainWindow(QMainWindow):
 
         Logger.info(f"Loadouts: selected '{selected_name}' for {provider.value}.")
         if self._are_services_running():
-            asyncio.create_task(self._restart_services_impl())
+            asyncio.create_task(
+                self._restart_runtime_providers_impl(
+                    [provider],
+                    reason="loadout switch",
+                )
+            )
         else:
             self._update_status(f"Selected loadout: {selected_name}", "info")
 
@@ -2600,7 +2786,13 @@ class MainWindow(QMainWindow):
             )
             Logger.info(f"Remote Control: selected parallel loadouts ({changed_names}).")
 
-        await self._restart_services_impl()
+        restarted = await self._restart_runtime_providers_impl(
+            list(changes.keys()),
+            reason="remote loadout switch",
+            allow_full_fallback=False,
+        )
+        if not restarted:
+            raise RuntimeError("Loadout switch was saved, but provider restart failed.")
 
     async def _apply_remote_model_switch(
         self,

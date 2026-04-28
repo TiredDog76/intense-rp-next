@@ -335,9 +335,17 @@ class RemoteControlWeb:
                         "remote_state": self._build_remote_state(),
                     }
 
-                action_coro = lambda selected=changes: self._actions.switch_loadout(
-                    selected
-                )
+                try:
+                    await self._actions.switch_loadout(changes)
+                except Exception as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+                return {
+                    "ok": True,
+                    "disconnect": False,
+                    "action": action,
+                    "remote_state": self._build_remote_state(),
+                }
             elif action == "switch-model":
                 model_switch = state.get("model_switch") or {}
                 if not bool(model_switch.get("supported")):

@@ -912,6 +912,35 @@ class API:
 
         return cancelled
 
+    def is_provider_processing(self, provider: DriverProvider) -> bool:
+        for slot in self._get_execution_slots_for_provider(provider):
+            if slot.id in self.current_entries_by_slot_id:
+                return True
+        return False
+
+    async def cancel_queued_requests_for_provider(
+        self,
+        provider: DriverProvider,
+        reason: str | None = None,
+    ) -> int:
+        message = (reason or "Request cancelled.").strip() or "Request cancelled."
+        cancelled = 0
+
+        for slot in self._get_execution_slots_for_provider(provider):
+            queue = self._get_request_queue_for_slot(slot.id)
+            try:
+                entries = await queue.drain()
+            except Exception:
+                entries = []
+
+            for entry in entries:
+                await self._close_entry_with_message(entry, message)
+                cancelled += 1
+
+        if cancelled:
+            self._notify_queue_state_changed()
+        return cancelled
+
     def _authenticate_request(self, raw_request: Request) -> Optional[str]:
         cfg = getattr(self.driver, "config_manager", None)
         if not cfg or not cfg.get_setting("network_settings", "use_api_keys"):
