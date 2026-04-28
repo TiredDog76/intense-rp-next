@@ -6,7 +6,7 @@ import secrets
 import string
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Iterable, List, Optional, Union
 
 from patchright.async_api import Browser, BrowserContext, Page, async_playwright
 
@@ -60,6 +60,9 @@ class BaseDriver(ABC):
         self._ece_active_profile_slot: int = 0
         self._ece_pending_pair: CredentialPair | None = None
         self._ece_pending_profile_slot: int | None = None
+        self._ece_disable_profile_slot_rotation: bool = False
+        self._ece_die_on_failed_rotation: bool = False
+        self._ece_rotation_exclude_emails_callback: Optional[Callable[[], Iterable[str]]] = None
 
     def _ece_select_least_used(self) -> bool:
         try:
@@ -72,6 +75,28 @@ class BaseDriver(ABC):
             return bool(self.config_manager.get_setting("providers_credentials", "reload_on_failure"))
         except Exception:
             return False
+
+    def configure_parallel_ece_identity(
+        self,
+        *,
+        pair: CredentialPair,
+        slot: int = 0,
+        disable_profile_slot_rotation: bool = False,
+        die_on_failed_rotation: bool = False,
+        rotation_exclude_emails_callback: Optional[Callable[[], Iterable[str]]] = None,
+    ) -> None:
+        """
+        Preselect the account/profile this driver should use on its next start.
+
+        Full Parallelization creates several driver instances for the same provider.
+        Each instance gets a specific saved account so browser profile directories
+        do not collide and retry rotation can avoid accounts already used by siblings.
+        """
+        self._ece_pending_pair = pair
+        self._ece_pending_profile_slot = max(0, int(slot or 0))
+        self._ece_disable_profile_slot_rotation = bool(disable_profile_slot_rotation)
+        self._ece_die_on_failed_rotation = bool(die_on_failed_rotation)
+        self._ece_rotation_exclude_emails_callback = rotation_exclude_emails_callback
 
     async def _get_context_cookie_dict(self) -> dict[str, str]:
         """Return the current browser-context cookies as a simple name/value mapping."""
@@ -532,13 +557,23 @@ class BaseDriver(ABC):
 
         current = getattr(self, "_ece_active_pair", None)
         current_email = current.email if current else None
+        excluded_emails: set[str] = set()
+        if current_email:
+            excluded_emails.add(str(current_email))
+
+        exclude_callback = getattr(self, "_ece_rotation_exclude_emails_callback", None)
+        if callable(exclude_callback):
+            try:
+                excluded_emails.update(str(email or "") for email in (exclude_callback() or []))
+            except Exception:
+                pass
 
         next_pair = None
         try:
             next_pair = self._get_ece_manager().select_pair(
                 self.provider,
                 least_used=self._ece_select_least_used(),
-                exclude_email=current_email,
+                exclude_emails=excluded_emails,
             )
         except Exception:
             next_pair = None
@@ -549,6 +584,13 @@ class BaseDriver(ABC):
             self._ece_pending_profile_slot = 0
             Logger.warning(f"Account rotation: switching accounts due to: {reason}")
             return True
+
+        if getattr(self, "_ece_disable_profile_slot_rotation", False):
+            Logger.warning(
+                "Account rotation: no spare account available; this instance will stay offline "
+                "until the next service restart."
+            )
+            return False
 
         # Fallback: same account, new profile slot
         if current_email:
@@ -569,7 +611,11 @@ class BaseDriver(ABC):
         return False
 
     async def ece_restart_with_rotation(
-        self, reason: str, status_callback: Optional[Callable[[str], None]] = None
+        self,
+        reason: str,
+        status_callback: Optional[Callable[[str], None]] = None,
+        *,
+        die_on_no_rotation: bool = False,
     ) -> bool:
         """
         Rotate identity (account/profile) and restart the driver to re-auth.
@@ -585,6 +631,11 @@ class BaseDriver(ABC):
                 return False
 
         if not self.ece_rotate_identity(reason):
+            if die_on_no_rotation:
+                try:
+                    await self.close()
+                except Exception as e:
+                    Logger.warning(f"Account rotation: driver close failed while disabling instance: {e}")
             return False
 
         Logger.warning("Account rotation: restarting driver to re-auth with a different profile...")

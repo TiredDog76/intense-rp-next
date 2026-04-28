@@ -52,7 +52,7 @@ Quick answers to the questions that come up the most. If you need a step-by-step
 ??? question "Why are responses slow sometimes?"
     Two common reasons:
 
-    - IntenseRP processes one request at a time (requests are queued)
+    - IntenseRP processes one request at a time by default (requests are queued)
     - DeepThink can add extra time
 
     For details, see :material-api: [API Behavior](../advanced/api-behavior.md).

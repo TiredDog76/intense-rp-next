@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 import re
 import secrets
 import time
@@ -330,6 +331,10 @@ class RequestQueue:
     def max_size(self) -> int:
         return self._max_size
 
+    @property
+    def size(self) -> int:
+        return len(self._items)
+
     async def put(self, item: QueueEntry) -> None:
         async with self._condition:
             current_size = len(self._items)
@@ -455,6 +460,8 @@ class API:
         self.current_abort_event: asyncio.Event = None
         self.current_entries_by_slot_id: dict[str, QueueEntry] = {}
         self.current_abort_events_by_slot_id: dict[str, asyncio.Event] = {}
+        self._slot_last_used_order: dict[str, int] = {}
+        self._slot_use_counter = 0
         self.remote_control: RemoteControlWeb | None = None
         if remote_actions is not None:
             self.remote_control = RemoteControlWeb(
@@ -506,11 +513,11 @@ class API:
 
     def _build_runtime_drivers_map(self) -> dict[DriverProvider, BaseDriver]:
         if isinstance(self.driver, ParallelDriversManager):
-            return {
-                provider: driver
-                for provider, driver in self.driver.iter_drivers()
-                if driver is not None
-            }
+            drivers_by_provider: dict[DriverProvider, BaseDriver] = {}
+            for provider, driver in self.driver.iter_drivers():
+                if driver is not None:
+                    drivers_by_provider.setdefault(provider, driver)
+            return drivers_by_provider
 
         provider = getattr(self.driver, "provider", None)
         effective_provider = provider if isinstance(provider, DriverProvider) else DriverProvider.DEEPSEEK
@@ -520,7 +527,12 @@ class API:
         slots: list[RuntimeExecutionSlot] = []
         slot_counts_by_provider: dict[DriverProvider, int] = {}
 
-        for provider, driver in self._drivers_by_provider.items():
+        if isinstance(self.driver, ParallelDriversManager):
+            driver_entries = self.driver.iter_drivers()
+        else:
+            driver_entries = list(self._drivers_by_provider.items())
+
+        for provider, driver in driver_entries:
             next_index = slot_counts_by_provider.get(provider, 0) + 1
             slot_counts_by_provider[provider] = next_index
 
@@ -604,14 +616,48 @@ class API:
         return self._get_default_slot().provider
 
     def _select_execution_slot_for_provider(self, provider: DriverProvider) -> RuntimeExecutionSlot:
-        slots = self._get_execution_slots_for_provider(provider)
-        if not slots:
+        all_slots = self._get_execution_slots_for_provider(provider)
+        if not all_slots:
             raise KeyError(f"No execution slot is registered for provider: {provider.value}")
 
-        # Keep the current selection deterministic for now so the queue router stays stable.
-        # The slot abstraction is here to support smarter scheduling once same-provider
-        # multi-account runtime lanes land in a later release.
-        return slots[0]
+        slots = [slot for slot in all_slots if bool(getattr(slot.driver, "is_running", False))]
+        if not slots:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"No running {provider.value} instance is available. "
+                    "Restart services to relaunch this provider."
+                ),
+            )
+
+        if len(slots) == 1:
+            selected = slots[0]
+        else:
+            def load_for_slot(slot: RuntimeExecutionSlot) -> int:
+                queue = self._request_queues_by_slot_id.get(slot.id)
+                queued = int(getattr(queue, "size", 0) or 0)
+                processing = 1 if slot.id in self.current_entries_by_slot_id else 0
+                return queued + processing
+
+            min_load = min(load_for_slot(slot) for slot in slots)
+            least_loaded = [slot for slot in slots if load_for_slot(slot) == min_load]
+            unused = [slot for slot in least_loaded if slot.id not in self._slot_last_used_order]
+            if unused:
+                selected = random.choice(unused)
+            else:
+                oldest_order = min(
+                    self._slot_last_used_order.get(slot.id, 0) for slot in least_loaded
+                )
+                oldest = [
+                    slot
+                    for slot in least_loaded
+                    if self._slot_last_used_order.get(slot.id, 0) == oldest_order
+                ]
+                selected = random.choice(oldest)
+
+        self._slot_use_counter += 1
+        self._slot_last_used_order[selected.id] = self._slot_use_counter
+        return selected
 
     def _resolve_request_provider(self, model: Any) -> DriverProvider:
         if not self._is_multi_provider_runtime():
@@ -1336,6 +1382,14 @@ class API:
             + (f" (loadout: {loadout_name})" if loadout_name else "")
         )
         try:
+            if not bool(getattr(driver, "is_running", False)):
+                await response_queue.put(
+                    _make_openai_error_sse_chunk(
+                        f"{slot.label} is not running. Restart services to relaunch this instance."
+                    )
+                )
+                return
+
             if abort_event.is_set():
                 Logger.info("Queued request was already aborted. Skipping.")
                 return
@@ -1459,7 +1513,15 @@ class API:
                         restart = getattr(driver, "ece_restart_with_rotation", None)
                         if callable(restart):
                             try:
-                                restarted = bool(await restart(reason, status_callback=None))
+                                restarted = bool(
+                                    await restart(
+                                        reason,
+                                        status_callback=None,
+                                        die_on_no_rotation=bool(
+                                            getattr(driver, "_ece_die_on_failed_rotation", False)
+                                        ),
+                                    )
+                                )
                             except Exception:
                                 restarted = False
                     if restarted:

@@ -188,7 +188,7 @@ If this keeps happening on fresh launches, check **Settings** -> **Provider and 
 
 Reality check:
 
-- IntenseRP currently processes **one request at a time**. If multiple clients/requests are active, later requests will wait in a queue.
+- IntenseRP processes **one request at a time** by default. If multiple clients/requests are active, later requests will wait in a queue unless you are intentionally using the experimental parallel modes.
 - First request after launch can be slower (browser warmup, login, UI settling).
 
 What to check:

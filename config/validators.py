@@ -147,3 +147,30 @@ def validate_float_range(
             raise ValueError(f"{label} must be at most {max_value}.")
 
     return _validator
+
+
+def validate_integer_range(
+    min_value: int | None = None,
+    max_value: int | None = None,
+    *,
+    label: str = "Value",
+):
+    def _validator(value) -> None:
+        if value is None:
+            return
+
+        text = str(value).strip()
+        if not text:
+            return
+
+        try:
+            parsed = int(text)
+        except (TypeError, ValueError):
+            raise ValueError(f"{label} must be a whole number.")
+
+        if (min_value is not None) and (parsed < int(min_value)):
+            raise ValueError(f"{label} must be at least {min_value}.")
+        if (max_value is not None) and (parsed > int(max_value)):
+            raise ValueError(f"{label} must be at most {max_value}.")
+
+    return _validator

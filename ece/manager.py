@@ -4,7 +4,7 @@ import hashlib
 import random
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from config.validators import validate_email
 from drivers.providers import DriverProvider
@@ -323,33 +323,30 @@ class EceManager:
         ok = self._write_usage_payload(providers)
         return ok
 
-    def select_pair(
+    def _eligible_pairs(
         self,
         provider: DriverProvider | str,
         *,
-        least_used: bool,
-        exclude_email: Optional[str] = None,
-        prefer_pinned: bool = False,
-    ) -> Optional[CredentialPair]:
-        if prefer_pinned:
-            pinned_pair = self.get_pinned_pair(provider, exclude_email=exclude_email)
-            if pinned_pair is not None:
-                return pinned_pair
-
+        exclude_emails: Iterable[str] | None = None,
+    ) -> List[CredentialPair]:
         requires_password = _provider_requires_password(provider)
-        pairs = self.get_provider_pairs(provider)
-        if not pairs:
-            return None
+        excluded = {
+            _normalize_email(str(email or ""))
+            for email in (exclude_emails or [])
+            if _normalize_email(str(email or ""))
+        }
 
-        exclude_norm = _normalize_email(exclude_email or "")
         candidates: List[CredentialPair] = []
-        for pair in pairs:
+        seen_emails: set[str] = set()
+        for pair in self.get_provider_pairs(provider):
             email = (pair.email or "").strip()
+            email_norm = _normalize_email(email)
             password = pair.password or ""
-            if not email or (requires_password and not password):
+            if not email_norm or (requires_password and not password):
                 continue
-            if exclude_norm and _normalize_email(email) == exclude_norm:
+            if email_norm in excluded or email_norm in seen_emails:
                 continue
+            seen_emails.add(email_norm)
             candidates.append(
                 CredentialPair(
                     email=email,
@@ -358,6 +355,35 @@ class EceManager:
                 )
             )
 
+        return candidates
+
+    def get_selectable_pair_count(self, provider: DriverProvider | str) -> int:
+        return len(self._eligible_pairs(provider))
+
+    def select_pair(
+        self,
+        provider: DriverProvider | str,
+        *,
+        least_used: bool,
+        exclude_email: Optional[str] = None,
+        exclude_emails: Iterable[str] | None = None,
+        prefer_pinned: bool = False,
+    ) -> Optional[CredentialPair]:
+        excluded = {
+            _normalize_email(str(email or ""))
+            for email in (exclude_emails or [])
+            if _normalize_email(str(email or ""))
+        }
+        exclude_norm = _normalize_email(exclude_email or "")
+        if exclude_norm:
+            excluded.add(exclude_norm)
+
+        if prefer_pinned:
+            pinned_pair = self.get_pinned_pair(provider, exclude_emails=excluded)
+            if pinned_pair is not None:
+                return pinned_pair
+
+        candidates = self._eligible_pairs(provider, exclude_emails=excluded)
         if not candidates:
             return None
 
@@ -375,25 +401,75 @@ class EceManager:
         candidates_sorted = sorted(candidates, key=sort_key)
         return candidates_sorted[0] if candidates_sorted else None
 
+    def select_parallel_pairs(
+        self,
+        provider: DriverProvider | str,
+        *,
+        desired_count: int,
+        least_used: bool,
+        prefer_pinned: bool = True,
+    ) -> List[CredentialPair]:
+        try:
+            count = max(0, int(desired_count))
+        except Exception:
+            count = 0
+        if count <= 0:
+            return []
+
+        candidates = self._eligible_pairs(provider)
+        if not candidates:
+            return []
+
+        selected: List[CredentialPair] = []
+        remaining = list(candidates)
+
+        if prefer_pinned:
+            pinned = next((pair for pair in remaining if bool(getattr(pair, "pinned", False))), None)
+            if pinned is not None:
+                selected.append(pinned)
+                pinned_norm = _normalize_email(pinned.email)
+                remaining = [
+                    pair for pair in remaining if _normalize_email(pair.email) != pinned_norm
+                ]
+
+        if least_used:
+            usage = self.get_last_used_map(provider)
+            random.shuffle(remaining)
+
+            def sort_key(pair: CredentialPair) -> Tuple[int, float]:
+                ts = usage.get(_normalize_email(pair.email))
+                if ts is None:
+                    return (0, 0.0)
+                return (1, float(ts))
+
+            remaining = sorted(remaining, key=sort_key)
+        else:
+            random.shuffle(remaining)
+
+        open_slots = max(0, count - len(selected))
+        selected.extend(remaining[:open_slots])
+        return selected[:count]
+
     def get_pinned_pair(
         self,
         provider: DriverProvider | str,
         *,
         exclude_email: Optional[str] = None,
+        exclude_emails: Iterable[str] | None = None,
     ) -> Optional[CredentialPair]:
+        excluded = {
+            _normalize_email(str(email or ""))
+            for email in (exclude_emails or [])
+            if _normalize_email(str(email or ""))
+        }
         exclude_norm = _normalize_email(exclude_email or "")
-        requires_password = _provider_requires_password(provider)
-        for pair in self.get_provider_pairs(provider):
+        if exclude_norm:
+            excluded.add(exclude_norm)
+
+        for pair in self._eligible_pairs(provider, exclude_emails=excluded):
             if not bool(getattr(pair, "pinned", False)):
                 continue
-
-            email = str(pair.email or "").strip()
-            password = str(pair.password or "")
-            if not email or (requires_password and not password):
-                continue
-            if exclude_norm and _normalize_email(email) == exclude_norm:
-                continue
-            return CredentialPair(email=email, password=password, pinned=True)
+            return CredentialPair(email=pair.email, password=pair.password, pinned=True)
         return None
 
     def is_email_pinned(self, provider: DriverProvider | str, email: Optional[str]) -> bool:

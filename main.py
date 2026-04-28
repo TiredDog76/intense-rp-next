@@ -902,10 +902,10 @@ class MainWindow(QMainWindow):
             }
 
         current_provider = get_current_provider(self.config_manager)
-        runtime_providers = [
-            runtime_provider
-            for runtime_provider, _driver in self._iter_runtime_drivers()
-        ]
+        runtime_providers = []
+        for runtime_provider, _driver in self._iter_runtime_drivers():
+            if runtime_provider not in runtime_providers:
+                runtime_providers.append(runtime_provider)
         parallel_switch = (
             is_parallel_runtime_active(self.config_manager)
             and len(runtime_providers) >= 2
@@ -953,10 +953,10 @@ class MainWindow(QMainWindow):
             }
 
         current_provider = get_current_provider(self.config_manager)
-        runtime_providers = [
-            runtime_provider
-            for runtime_provider, _driver in self._iter_runtime_drivers()
-        ]
+        runtime_providers = []
+        for runtime_provider, _driver in self._iter_runtime_drivers():
+            if runtime_provider not in runtime_providers:
+                runtime_providers.append(runtime_provider)
         parallel_switch = (
             is_parallel_runtime_active(self.config_manager)
             and len(runtime_providers) >= 2
@@ -2285,10 +2285,10 @@ class MainWindow(QMainWindow):
 
     def _on_switch_loadout(self):
         provider = get_current_provider(self.config_manager)
-        runtime_providers = [
-            runtime_provider
-            for runtime_provider, _driver in self._iter_runtime_drivers()
-        ]
+        runtime_providers = []
+        for runtime_provider, _driver in self._iter_runtime_drivers():
+            if runtime_provider not in runtime_providers:
+                runtime_providers.append(runtime_provider)
         parallel_switch = is_parallel_runtime_active(self.config_manager) and len(runtime_providers) >= 2
 
         if parallel_switch:

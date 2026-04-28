@@ -43,6 +43,7 @@ nav:
           - Loadouts: experimental/loadouts.md
           - Providers in Parallel: experimental/providers-in-parallel.md
           - Parallel Request Queue: experimental/parallel-request-queue.md
+          - Full Parallelization: experimental/full-parallelization.md
           - Remote Control: experimental/remote-control.md
       - Advanced:
           - Overview: advanced.md

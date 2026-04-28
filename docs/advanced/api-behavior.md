@@ -121,7 +121,7 @@ At a high level, a request goes through these layers:
 
 1. Client calls `POST /v1/chat/completions` or `POST /v1/completions`
 2. IntenseRP enqueues the request (FIFO)
-3. A single worker dequeues one request at a time
+3. A queue worker dequeues the request
 4. The driver either formats chat messages or forwards a raw text-completion prompt, then drives the selected provider UI and intercepts its network stream
 5. IntenseRP forwards the stream to the client (or accumulates it and returns a single JSON response)
 
@@ -135,7 +135,7 @@ sequenceDiagram
 
     C->>A: POST /v1/chat/completions or /v1/completions
     A->>Q: enqueue (request)
-    Q->>D: worker dequeues (one at a time)
+    Q->>D: worker dequeues request
     D->>DS: proxied stream of provider request
     DS-->>D: SSE chunks
     D-->>A: OpenAI-style chunk(s)
@@ -146,7 +146,7 @@ sequenceDiagram
 
 ## :material-lan-pending: Concurrency and queueing
 
-IntenseRP processes **one generation at a time**.
+By default, IntenseRP processes **one generation at a time**.
 
 - Incoming requests are put into an internal queue.
 - A single worker pulls from that queue and calls the driver.
@@ -154,6 +154,9 @@ IntenseRP processes **one generation at a time**.
 
 !!! tip "Why no parallel requests?"
     The current provider implementation drives a single live browser session and installs network interception on that page. Running multiple generations in parallel would conflict with UI state and interception handlers, so requests are serialized on purpose.
+
+!!! note "Experimental parallel modes"
+    **Providers in Parallel**, **Parallel Request Queue**, and **Full Parallelization** can add more runtime lanes. Those modes are documented under [:material-flask-outline: Experimental](../experimental.md) because they are much heavier and still rougher than the normal queue.
 
 What this means in practice:
 

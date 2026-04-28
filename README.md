@@ -85,13 +85,13 @@ It would work well for you if you:
 
 Not the best fit if you:
 
-- need high throughput / parallel requests (this uses one live browser session)
+- need high throughput / parallel requests without using the experimental parallel modes
 - want to run headless on a server
 - want something that never breaks (that's perhaps the biggest caveat)
 
 > [!NOTE]
 > 1. Provider web apps change. When they do, a driver can break until it's updated.
-> 2. IntenseRP currently processes **one request at a time** (requests are queued). This is on purpose (single live browser session).
+> 2. By default, IntenseRP processes **one request at a time** (requests are queued). This is on purpose for a single live browser session.
 > 3. This project is not affiliated with DeepSeek, ZhipuAI, SillyTavern, or any provider.
 
 </details>
@@ -219,7 +219,7 @@ If you change the port in Settings, update the endpoint to match (example: `http
 - **Client cannot connect**: confirm the app says **Running**, and the endpoint matches your port (`http://127.0.0.1:7777/v1` by default).
 - **401 Unauthorized**: you probably enabled API keys in Settings. Either disable them or add a key in your client.
 - **Login loops / stuck sign-in**: try disabling Persistent Sessions, or clear the profile in Settings (it wipes saved cookies).
-- **Slow responses**: requests are queued (one at a time), and DeepThink can add extra time.
+- **Slow responses**: requests are queued by default, and DeepThink can add extra time. Experimental parallel modes can help, but they are much heavier.
 
 Tip: enable the console and/or logfiles before reporting issues. Logs help a lot when diagnosing!
 

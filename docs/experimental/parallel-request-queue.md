@@ -8,7 +8,7 @@ Parallel Request Queue builds on **Providers in Parallel**.
 
 Providers in Parallel keeps multiple provider browsers alive. This setting lets the API queue use those active provider lanes at the same time, instead of making every request wait behind one global queue.
 
-In practice, this means a DeepSeek request and a GLM Chat request can run side by side, while 2 GLM Chat requests still wait for the same GLM lane.
+In practice, this means a DeepSeek request and a GLM Chat request can run side by side, while same-provider requests wait for that provider's lane unless **Full Parallelization** is enabled too.
 
 !!! warning "Very experimental"
     This touches API request routing, cancellation, and the Request Queue panel. It is useful, but it is still new enough that you should expect rough edges.
@@ -48,8 +48,10 @@ The router uses that model ID to pick the provider lane:
 
 Each lane still processes its own requests in order. The new part is that different lanes are allowed to work at the same time.
 
-!!! note "Same-provider lanes are not here yet"
-    This does not yet let 2 DeepSeek accounts process 2 DeepSeek requests at the same time. The internal router is now shaped around reusable lanes so that can be added later, but this first version is still one lane per active provider runtime.
+!!! tip "Want same-provider lanes too?"
+    Full Parallelization builds on this queue mode and can launch multiple account-backed lanes for the same enabled provider.
+
+    [:material-arrow-right: Read Full Parallelization docs](full-parallelization.md)
 
 ---
 
@@ -81,9 +83,9 @@ If your machine is already struggling with multiple provider windows, this setti
 ## :material-alert-circle-outline: Current Limits
 
 - Changes apply on the next browser start.
-- Requests for the same provider lane are still serialized.
+- Requests for the same provider lane are still serialized unless Full Parallelization adds more lanes.
 - If a managed provider browser crashes, the parallel runtime may stop and ask you to start it again.
-- The same-provider multi-account version is planned separately.
+- Full Parallelization is available separately and is even heavier than this queue mode.
 
 If you are sharing the API with multiple clients, this can make queue behavior much more useful. Keep it disabled unless you are comfortable testing experimental behavior.
 

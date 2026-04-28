@@ -25,6 +25,12 @@ Experimental features currently include:
 
     [:arrow_right: Read Parallel Request Queue docs](experimental/parallel-request-queue.md)
 
+-   :material-source-branch-plus: **Full Parallelization**
+
+    Adds multiple account-backed instances for the same enabled provider, so queue parallelization can spread work across providers and across accounts.
+
+    [:arrow_right: Read Full Parallelization docs](experimental/full-parallelization.md)
+
 -   :material-file-code-outline: **Loadouts**
 
     Lets you build and edit provider-specific Formatting + Provider Behavior presets directly in Settings, then switch the active one per provider.

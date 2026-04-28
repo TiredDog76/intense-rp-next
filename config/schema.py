@@ -6,6 +6,7 @@ from .validators import (
     validate_directory_path,
     validate_ip_address_list,
     validate_float_range,
+    validate_integer_range,
 )
 from .formatting_presets import FORMATTING_PRESET_OPTIONS
 from .location import get_config_storage_options
@@ -24,6 +25,7 @@ DOCS_HOTSWAPS = "features/hotswaps/"
 DOCS_IP_WHITELIST = "advanced/ip-whitelist/"
 DOCS_LOGIN = "features/login-sessions/"
 DOCS_LOADOUTS = "experimental/loadouts/"
+DOCS_FULL_PARALLELIZATION = "experimental/full-parallelization/"
 DOCS_MOONSHOT = "providers/moonshot-behavior/"
 DOCS_MULTI_SLOT_CACHE = "features/multi-slot-cache/"
 DOCS_NETWORK = "features/network-api/"
@@ -1646,8 +1648,35 @@ SCHEMA = [
                 ),
                 tooltip=None,
                 hint_variant="warn",
-                visible_depends="experimental.parallelize_request_queue",
+                visible_depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
                 docs_path=DOCS_PARALLEL_REQUEST_QUEUE,
+            ),
+            SettingField(
+                key="full_parallelization",
+                label="Full Parallelization",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Extremely experimental. Launch multiple account-backed browser "
+                    "instances per enabled parallel provider. Requires the parallelized API queue."
+                ),
+                visible_depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
+                depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_FULL_PARALLELIZATION,
+            ),
+            SettingField(
+                key="full_parallelization_note",
+                label="Full Parallelization",
+                type=SettingType.HINT,
+                default=(
+                    "This is heavier than the other parallel features combined. Each extra lane "
+                    "launches another provider browser/profile and uses saved accounts when available."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="experimental.full_parallelization",
+                docs_path=DOCS_FULL_PARALLELIZATION,
             ),
             SettingField(
                 key="parallel_enable_deepseek",
@@ -1661,6 +1690,18 @@ SCHEMA = [
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
             SettingField(
+                key="parallel_instances_deepseek",
+                label="DeepSeek Instances",
+                type=SettingType.INTEGER,
+                default=1,
+                tooltip="How many DeepSeek account/profile lanes to launch when Full Parallelization is enabled.",
+                validator=validate_integer_range(1, 32, label="DeepSeek instances"),
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_deepseek",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_deepseek",
+                force_when_dep_unmet=1,
+                docs_path=DOCS_FULL_PARALLELIZATION,
+            ),
+            SettingField(
                 key="parallel_enable_glm",
                 label="GLM Chat",
                 type=SettingType.BOOLEAN,
@@ -1670,6 +1711,18 @@ SCHEMA = [
                 depends="providers_credentials.provider!=GLM Chat",
                 force_when_dep_unmet=True,
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_instances_glm",
+                label="GLM Chat Instances",
+                type=SettingType.INTEGER,
+                default=1,
+                tooltip="How many GLM Chat account/profile lanes to launch when Full Parallelization is enabled.",
+                validator=validate_integer_range(1, 32, label="GLM Chat instances"),
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_glm",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_glm",
+                force_when_dep_unmet=1,
+                docs_path=DOCS_FULL_PARALLELIZATION,
             ),
             SettingField(
                 key="parallel_enable_moonshot",
@@ -1683,6 +1736,18 @@ SCHEMA = [
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
             SettingField(
+                key="parallel_instances_moonshot",
+                label="Moonshot Instances",
+                type=SettingType.INTEGER,
+                default=1,
+                tooltip="How many Moonshot account/profile lanes to launch when Full Parallelization is enabled.",
+                validator=validate_integer_range(1, 32, label="Moonshot instances"),
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_moonshot",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_moonshot",
+                force_when_dep_unmet=1,
+                docs_path=DOCS_FULL_PARALLELIZATION,
+            ),
+            SettingField(
                 key="parallel_enable_qwen",
                 label="QwenLM",
                 type=SettingType.BOOLEAN,
@@ -1692,6 +1757,18 @@ SCHEMA = [
                 depends="providers_credentials.provider!=QwenLM",
                 force_when_dep_unmet=True,
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_instances_qwen",
+                label="QwenLM Instances",
+                type=SettingType.INTEGER,
+                default=1,
+                tooltip="How many QwenLM account/profile lanes to launch when Full Parallelization is enabled.",
+                validator=validate_integer_range(1, 32, label="QwenLM instances"),
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_qwen",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_qwen",
+                force_when_dep_unmet=1,
+                docs_path=DOCS_FULL_PARALLELIZATION,
             ),
             SettingField(
                 key="parallel_enable_perplexity",
@@ -1705,6 +1782,18 @@ SCHEMA = [
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
             SettingField(
+                key="parallel_instances_perplexity",
+                label="Perplexity Instances",
+                type=SettingType.INTEGER,
+                default=1,
+                tooltip="How many Perplexity account/profile lanes to launch when Full Parallelization is enabled.",
+                validator=validate_integer_range(1, 32, label="Perplexity instances"),
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_perplexity",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_perplexity",
+                force_when_dep_unmet=1,
+                docs_path=DOCS_FULL_PARALLELIZATION,
+            ),
+            SettingField(
                 key="parallel_enable_aistudio",
                 label="Google AI Studio",
                 type=SettingType.BOOLEAN,
@@ -1714,6 +1803,18 @@ SCHEMA = [
                 depends="providers_credentials.provider!=Google AI Studio",
                 force_when_dep_unmet=True,
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_instances_aistudio",
+                label="Google AI Studio Instances",
+                type=SettingType.INTEGER,
+                default=1,
+                tooltip="How many Google AI Studio account/profile lanes to launch when Full Parallelization is enabled.",
+                validator=validate_integer_range(1, 32, label="Google AI Studio instances"),
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_aistudio",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_aistudio",
+                force_when_dep_unmet=1,
+                docs_path=DOCS_FULL_PARALLELIZATION,
             ),
             SettingField(
                 key="classic_title",
@@ -2307,12 +2408,20 @@ SETTINGS_CARDS = {
             ("experimental", "providers_in_parallel_note"),
             ("experimental", "parallelize_request_queue"),
             ("experimental", "parallelize_request_queue_note"),
+            ("experimental", "full_parallelization"),
+            ("experimental", "full_parallelization_note"),
             ("experimental", "parallel_enable_deepseek"),
+            ("experimental", "parallel_instances_deepseek"),
             ("experimental", "parallel_enable_glm"),
+            ("experimental", "parallel_instances_glm"),
             ("experimental", "parallel_enable_moonshot"),
+            ("experimental", "parallel_instances_moonshot"),
             ("experimental", "parallel_enable_qwen"),
+            ("experimental", "parallel_instances_qwen"),
             ("experimental", "parallel_enable_perplexity"),
+            ("experimental", "parallel_instances_perplexity"),
             ("experimental", "parallel_enable_aistudio"),
+            ("experimental", "parallel_instances_aistudio"),
             ("experimental", "enable_remote_control"),
             ("experimental", "remote_control_password"),
         ],

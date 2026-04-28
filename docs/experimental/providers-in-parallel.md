@@ -24,6 +24,7 @@ After you enable it, you also get per-provider toggles right under that setting.
 - The **current provider** is always forced on.
 - The other toggles let you choose which other providers you want to keep alive in parallel.
 - If you also want requests themselves to overlap, turn on **Parallelize API Request Queue** after this.
+- If you also want multiple account-backed instances for the same provider, turn on **Full Parallelization** after the queue mode.
 - Changes only apply after you **restart the browser** with **Stop -> Start**.
 
 If fewer than 2 providers end up enabled, IntenseRP quietly falls back to the normal single-provider behavior.
@@ -74,9 +75,13 @@ If you turn **Parallelize API Request Queue** on as well, the queue becomes lane
 - requests for the **same lane** still stay serialized
 - requests for **different lanes** can run side by side
 
-So you can queue a `deepseek-*` request and a `glm-*` request and let them work in parallel, while 2 `glm-*` requests still line up behind the same GLM lane.
+So you can queue a `deepseek-*` request and a `glm-*` request and let them work in parallel, while 2 `glm-*` requests still line up behind the same GLM lane unless Full Parallelization adds more GLM lanes.
 
 [:material-arrow-right: Read Parallel Request Queue docs](parallel-request-queue.md)
+
+If you turn **Full Parallelization** on after that, enabled providers can get more than 1 account-backed lane. That is the same-provider version: 2 DeepSeek requests can overlap only when DeepSeek has multiple full-parallel instances available.
+
+[:material-arrow-right: Read Full Parallelization docs](full-parallelization.md)
 
 ---
 
