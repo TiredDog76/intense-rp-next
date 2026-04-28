@@ -1,0 +1,9 @@
+{% from "macros.html" import web_button %}
+<section class="view hotswap-view" data-view="hotswap">
+  <div class="hotswap-view__panel">
+    <h1 class="hotswap-view__title">Hotswap to...</h1>
+    <div id="hotswap-grid" class="hotswap-grid"></div>
+    {{ web_button("hotswap-back-button", "Back", variant="secondary") }}
+    <p id="hotswap-status" class="status-text"></p>
+  </div>
+</section>

@@ -1,0 +1,15 @@
+{% from "macros.html" import app_header, web_button, web_input %}
+<section class="view login-view" data-view="login">
+  {{ app_header(asset_urls) }}
+  <div class="panel">
+    <form id="login-form" class="login-panel">
+      <h1 class="login-panel__title">Remote Control</h1>
+      <p class="login-panel__subtitle">Enter the remote-control password to continue.</p>
+      <div class="input-row">
+        {{ web_input("login-password", placeholder="Password", type="password", autocomplete="current-password") }}
+        {{ web_button("login-button", "Login", variant="accent", icon_url=asset_urls.icons.check, icon_alt="Login") }}
+      </div>
+      <p id="login-status" class="status-text"></p>
+    </form>
+  </div>
+</section>

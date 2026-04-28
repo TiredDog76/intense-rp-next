@@ -1,0 +1,114 @@
+.app-shell {
+  width: min(100%, 640px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.view {
+  width: 100%;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.view.is-active {
+  display: flex;
+}
+
+.login-view {
+  width: min(100%, 560px);
+}
+
+.remote-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  text-align: center;
+}
+
+.remote-header__logo {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.remote-header__wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.remote-header__brand {
+  font-size: clamp(32px, 5vw, 44px);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.remote-header__brand--accent {
+  color: var(--accent);
+}
+
+.panel {
+  width: min(100%, 560px);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.panel--plain {
+  width: min(100%, 560px);
+}
+
+.login-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.login-panel__title,
+.hotswap-view__title,
+.disconnect-view__title {
+  margin: 0;
+  text-align: center;
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.login-panel__subtitle,
+.disconnect-view__copy,
+.helper-text {
+  margin: 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.input-row,
+.controls-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  align-items: stretch;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.panel--plain .controls-row {
+  margin-bottom: 10px;
+}

@@ -1,0 +1,27 @@
+{% from "macros.html" import app_header, web_button %}
+<section class="view" data-view="home">
+  {{ app_header(asset_urls) }}
+  <div class="panel panel--plain">
+    <div class="controls-row">
+      <div class="split-button" id="stop-menu-shell">
+        {{ web_button("stop-button", "Stop", variant="accent", icon_url=asset_urls.icons.stop, icon_alt="Stop", extra_classes="split-button__main") }}
+        {{ web_button("stop-menu-toggle", "More", variant="accent", icon_url=asset_urls.icons.chevron_down, icon_alt="More", extra_classes="split-button__toggle") }}
+        <div id="stop-dropdown" class="dropdown-menu" role="menu" aria-hidden="true">
+          {{ web_button("restart-action", "Restart", variant="secondary", extra_classes="dropdown-menu__item") }}
+          {{ web_button("switch-account-action", "Switch Account", variant="secondary", extra_classes="dropdown-menu__item") }}
+          {{ web_button("hotswap-action", "Hotswap", variant="secondary", extra_classes="dropdown-menu__item") }}
+        </div>
+      </div>
+      {{ web_button("view-logs-button", "View Logs", variant="secondary", icon_url=asset_urls.icons.terminal, icon_alt="Logs") }}
+    </div>
+    <div id="model-switch-row" class="model-switch-row hidden">
+      {{ web_button("model-switch-button", "Switch Models", variant="secondary", icon_url=asset_urls.icons.brain, icon_alt="Models", extra_classes="model-switch-row__button") }}
+      <p id="model-switch-current-model" class="model-switch-current-model hidden"></p>
+    </div>
+    <div id="loadout-switch-row" class="model-switch-row hidden">
+      {{ web_button("loadout-switch-button", "Switch Loadouts", variant="secondary", icon_url=asset_urls.icons.backpack, icon_alt="Loadouts", extra_classes="model-switch-row__button") }}
+      <p id="loadout-switch-current-loadout" class="model-switch-current-model hidden"></p>
+    </div>
+    <p id="home-status" class="status-text"></p>
+  </div>
+</section>

@@ -1,0 +1,9 @@
+{% from "macros.html" import web_button %}
+<section class="view disconnect-view" data-view="disconnected">
+  <div class="disconnect-view__panel">
+    <h1 class="disconnect-view__title">You have been disconnected due to server shutdown.</h1>
+    <p class="disconnect-view__copy">Restart the services and reconnect when you are ready.</p>
+    {{ web_button("reconnect-button", "Reconnect", variant="secondary", icon_url=asset_urls.icons.chevron_right, icon_alt="Reconnect") }}
+    <p id="reconnect-status" class="status-text status-text--error hidden">Failed to reconnect. Start the server up, check the connection, and try again.</p>
+  </div>
+</section>

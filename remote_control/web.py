@@ -30,6 +30,26 @@ PROVIDER_ICON_MAP: dict[str, str] = {
 }
 
 
+REMOTE_STYLE_ASSETS = (
+    "styles/shell.css",
+    "styles/base.css",
+    "styles/layout.css",
+    "styles/controls.css",
+    "styles/views.css",
+    "styles/responsive.css",
+)
+
+REMOTE_SCRIPT_ASSETS = (
+    "scripts/core.js",
+    "scripts/dropdowns.js",
+    "scripts/switchers.js",
+    "scripts/logs.js",
+    "scripts/api.js",
+    "scripts/views.js",
+    "scripts/shell.js",
+)
+
+
 @dataclass
 class RemoteControlActions:
     stop: Callable[[], Awaitable[None]]
@@ -126,6 +146,26 @@ class RemoteControlWeb:
                 "ui", "fonts", "Blinker-ExtraBold.ttf"
             ),
         }
+
+        for asset_path in REMOTE_STYLE_ASSETS:
+            if asset_path == "styles/shell.css":
+                continue
+            assets[asset_path] = resolve_resource_path(
+                "remote_control",
+                "assets",
+                "styles",
+                Path(asset_path).name,
+            )
+
+        for asset_path in REMOTE_SCRIPT_ASSETS:
+            if asset_path == "scripts/shell.js":
+                continue
+            assets[asset_path] = resolve_resource_path(
+                "remote_control",
+                "assets",
+                "scripts",
+                Path(asset_path).name,
+            )
 
         for provider_name, icon_name in PROVIDER_ICON_MAP.items():
             provider = DriverProvider.from_setting(provider_name)
@@ -501,8 +541,12 @@ class RemoteControlWeb:
                 "shell": self.asset_url("styles/shell.css"),
             },
             "scripts": {
-                "shell": self.asset_url("scripts/shell.js"),
+                Path(asset_path).stem: self.asset_url(asset_path)
+                for asset_path in REMOTE_SCRIPT_ASSETS
             },
+            "script_urls": [
+                self.asset_url(asset_path) for asset_path in REMOTE_SCRIPT_ASSETS
+            ],
             "fonts": {
                 "regular": self.asset_url("fonts/Blinker-Regular.ttf"),
                 "semibold": self.asset_url("fonts/Blinker-SemiBold.ttf"),

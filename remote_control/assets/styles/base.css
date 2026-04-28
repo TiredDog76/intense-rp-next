@@ -1,0 +1,88 @@
+@font-face {
+  font-family: "BlinkerWeb";
+  src: url("../fonts/Blinker-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "BlinkerWeb";
+  src: url("../fonts/Blinker-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "BlinkerWeb";
+  src: url("../fonts/Blinker-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "BlinkerWeb";
+  src: url("../fonts/Blinker-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --window-bg: #1e1e1e;
+  --sidebar-bg: #252526;
+  --item-hover: #2a2d2e;
+  --item-selected: #37373d;
+  --item-selected-hover: #404045;
+  --accent: #5895fc;
+  --accent-hover: #4a80e0;
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+  --text-disabled: #555555;
+  --input-bg: #2d2d2d;
+  --input-border: #444444;
+  --console-bg: #0c0c0c;
+  --console-debug: #adb5bd;
+  --console-info: #66d9ef;
+  --console-success: #51cf66;
+  --console-warning: #ffd43b;
+  --console-error: #ff6b6b;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+  --radius-scroll: 5px;
+  --font-sans: "BlinkerWeb", sans-serif;
+  --font-console: "BlinkerWeb", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--window-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+body {
+  min-height: 100vh;
+  padding: 20px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}

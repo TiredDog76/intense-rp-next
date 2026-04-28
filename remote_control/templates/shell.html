@@ -1,4 +1,3 @@
-{% from "macros.html" import app_header, web_button, web_input %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,134 +8,13 @@
 </head>
 <body>
   <main class="app-shell">
-    <section class="view login-view" data-view="login">
-      {{ app_header(asset_urls) }}
-      <div class="panel">
-        <form id="login-form" class="login-panel">
-          <h1 class="login-panel__title">Remote Control</h1>
-          <p class="login-panel__subtitle">Enter the remote-control password to continue.</p>
-          <div class="input-row">
-            {{ web_input("login-password", placeholder="Password", type="password", autocomplete="current-password") }}
-            {{ web_button("login-button", "Login", variant="accent", icon_url=asset_urls.icons.check, icon_alt="Login") }}
-          </div>
-          <p id="login-status" class="status-text"></p>
-        </form>
-      </div>
-    </section>
-
-    <section class="view" data-view="home">
-      {{ app_header(asset_urls) }}
-      <div class="panel panel--plain">
-        <div class="controls-row">
-          <div class="split-button" id="stop-menu-shell">
-            {{ web_button("stop-button", "Stop", variant="accent", icon_url=asset_urls.icons.stop, icon_alt="Stop", extra_classes="split-button__main") }}
-            {{ web_button("stop-menu-toggle", "More", variant="accent", icon_url=asset_urls.icons.chevron_down, icon_alt="More", extra_classes="split-button__toggle") }}
-            <div id="stop-dropdown" class="dropdown-menu" role="menu" aria-hidden="true">
-              {{ web_button("restart-action", "Restart", variant="secondary", extra_classes="dropdown-menu__item") }}
-              {{ web_button("switch-account-action", "Switch Account", variant="secondary", extra_classes="dropdown-menu__item") }}
-              {{ web_button("hotswap-action", "Hotswap", variant="secondary", extra_classes="dropdown-menu__item") }}
-            </div>
-          </div>
-          {{ web_button("view-logs-button", "View Logs", variant="secondary", icon_url=asset_urls.icons.terminal, icon_alt="Logs") }}
-        </div>
-        <div id="model-switch-row" class="model-switch-row hidden">
-          {{ web_button("model-switch-button", "Switch Models", variant="secondary", icon_url=asset_urls.icons.brain, icon_alt="Models", extra_classes="model-switch-row__button") }}
-          <p id="model-switch-current-model" class="model-switch-current-model hidden"></p>
-        </div>
-        <div id="loadout-switch-row" class="model-switch-row hidden">
-          {{ web_button("loadout-switch-button", "Switch Loadouts", variant="secondary", icon_url=asset_urls.icons.backpack, icon_alt="Loadouts", extra_classes="model-switch-row__button") }}
-          <p id="loadout-switch-current-loadout" class="model-switch-current-model hidden"></p>
-        </div>
-        <p id="home-status" class="status-text"></p>
-      </div>
-    </section>
-
-    <section class="view hotswap-view" data-view="hotswap">
-      <div class="hotswap-view__panel">
-        <h1 class="hotswap-view__title">Hotswap to...</h1>
-        <div id="hotswap-grid" class="hotswap-grid"></div>
-        {{ web_button("hotswap-back-button", "Back", variant="secondary") }}
-        <p id="hotswap-status" class="status-text"></p>
-      </div>
-    </section>
-
-    <section class="view hotswap-view" data-view="model-switch">
-      <div class="hotswap-view__panel">
-        <h1 class="hotswap-view__title">Select Model</h1>
-        <div id="model-provider-block" class="loadout-provider-block hidden">
-          <span class="loadout-provider-block__label">Provider</span>
-          <div id="model-provider-dropdown" class="custom-select">
-            <button id="model-provider-button" class="custom-select__button" type="button" aria-haspopup="listbox" aria-expanded="false">
-              <span class="custom-select__value">
-                <span class="custom-select__icon" aria-hidden="true">
-                  <img id="model-provider-button-icon" src="" alt="">
-                </span>
-                <span id="model-provider-button-label" class="custom-select__label"></span>
-              </span>
-              <span class="custom-select__chevron" aria-hidden="true">
-                <img src="{{ asset_urls.icons.chevron_down }}" alt="">
-              </span>
-            </button>
-            <div id="model-provider-menu" class="custom-select__menu" role="listbox" aria-hidden="true"></div>
-          </div>
-        </div>
-        <div id="model-switch-list" class="model-switch-list"></div>
-        <div id="model-switch-footer" class="loadout-switch-footer is-single">
-          {{ web_button("model-switch-back-button", "Back", variant="secondary") }}
-          {{ web_button("model-switch-confirm-button", "Confirm", variant="accent", icon_url=asset_urls.icons.check, icon_alt="Confirm") }}
-        </div>
-        <p id="model-switch-status" class="status-text"></p>
-      </div>
-    </section>
-
-    <section class="view hotswap-view" data-view="loadout-switch">
-      <div class="hotswap-view__panel loadout-switch-panel">
-        <h1 class="hotswap-view__title">Select Loadout</h1>
-        <div id="loadout-provider-block" class="loadout-provider-block hidden">
-          <span class="loadout-provider-block__label">Provider</span>
-          <div id="loadout-provider-dropdown" class="custom-select">
-            <button id="loadout-provider-button" class="custom-select__button" type="button" aria-haspopup="listbox" aria-expanded="false">
-              <span class="custom-select__value">
-                <span class="custom-select__icon" aria-hidden="true">
-                  <img id="loadout-provider-button-icon" src="" alt="">
-                </span>
-                <span id="loadout-provider-button-label" class="custom-select__label"></span>
-              </span>
-              <span class="custom-select__chevron" aria-hidden="true">
-                <img src="{{ asset_urls.icons.chevron_down }}" alt="">
-              </span>
-            </button>
-            <div id="loadout-provider-menu" class="custom-select__menu" role="listbox" aria-hidden="true"></div>
-          </div>
-        </div>
-        <div id="loadout-switch-list" class="model-switch-list loadout-switch-list"></div>
-        <div id="loadout-switch-footer" class="loadout-switch-footer">
-          {{ web_button("loadout-switch-back-button", "Back", variant="secondary") }}
-          {{ web_button("loadout-switch-confirm-button", "Confirm", variant="accent", icon_url=asset_urls.icons.check, icon_alt="Confirm") }}
-        </div>
-        <p id="loadout-switch-status" class="status-text"></p>
-      </div>
-    </section>
-
-    <section class="view logs-view" data-view="logs">
-      {{ app_header(asset_urls) }}
-      <div class="console-card">
-        <div id="console-output" class="console-output" aria-live="polite">
-          <div id="console-placeholder" class="console-output__placeholder">Loading</div>
-        </div>
-      </div>
-      <p id="logs-status" class="status-text"></p>
-      {{ web_button("logs-footer-button", "Back", variant="secondary") }}
-    </section>
-
-    <section class="view disconnect-view" data-view="disconnected">
-      <div class="disconnect-view__panel">
-        <h1 class="disconnect-view__title">You have been disconnected due to server shutdown.</h1>
-        <p class="disconnect-view__copy">Restart the services and reconnect when you are ready.</p>
-        {{ web_button("reconnect-button", "Reconnect", variant="secondary", icon_url=asset_urls.icons.chevron_right, icon_alt="Reconnect") }}
-        <p id="reconnect-status" class="status-text status-text--error hidden">Failed to reconnect. Start the server up, check the connection, and try again.</p>
-      </div>
-    </section>
+    {% include "views/login.html" %}
+    {% include "views/home.html" %}
+    {% include "views/hotswap.html" %}
+    {% include "views/model_switch.html" %}
+    {% include "views/loadout_switch.html" %}
+    {% include "views/logs.html" %}
+    {% include "views/disconnected.html" %}
   </main>
 
   <script>
@@ -146,6 +24,8 @@
       assets: {{ asset_urls_json | safe }}
     };
   </script>
-  <script src="{{ asset_urls.scripts.shell }}"></script>
+  {% for script_url in asset_urls.script_urls %}
+  <script src="{{ script_url }}"></script>
+  {% endfor %}
 </body>
 </html>

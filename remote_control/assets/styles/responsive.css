@@ -1,0 +1,94 @@
+@media (max-width: 720px) {
+  body {
+    padding: 16px 12px;
+  }
+
+  .app-shell,
+  .view {
+    gap: 18px;
+  }
+
+  .app-shell,
+  .view,
+  .panel,
+  .console-card {
+    width: 100%;
+  }
+
+  .hotswap-view__panel,
+  .disconnect-view__panel {
+    width: 100%;
+  }
+
+  .remote-header {
+    gap: 12px;
+  }
+
+  .remote-header__logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .remote-header__wordmark {
+    gap: 6px;
+  }
+
+  .remote-header__brand {
+    font-size: 32px;
+  }
+
+  .web-input__field {
+    font-size: 14px;
+  }
+
+  .web-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .split-button {
+    min-width: 0;
+    max-width: none;
+  }
+
+  .split-button__main {
+    padding-right: 54px;
+  }
+
+  .split-button__toggle {
+    width: 38px;
+    min-width: 38px;
+  }
+
+  .dropdown-menu {
+    left: 0;
+    right: auto;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .hotswap-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .model-switch-row {
+    max-width: none;
+  }
+
+  .model-switch-list {
+    max-height: 280px;
+  }
+
+  .console-output {
+    min-height: 250px;
+    max-height: 250px;
+    padding: 16px 18px;
+    font-size: 13px;
+  }
+
+  .console-output__placeholder,
+  .helper-text,
+  .status-text {
+    font-size: 13px;
+  }
+}
