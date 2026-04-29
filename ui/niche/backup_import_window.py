@@ -141,7 +141,7 @@ class BackupImportWindow(QMainWindow):
         self.config_manager = config_manager
         self.backup_options = ConfigBackupOptions()
         self.setWindowTitle("Backup & Import Settings")
-        self.resize(600, 560)
+        self.resize(600, 500)
         self.setMinimumSize(540, 520)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG};")
 
@@ -162,7 +162,7 @@ class BackupImportWindow(QMainWindow):
         layout.addWidget(title)
 
         self.description_label = Description(
-            "Create a .zip backup of your current config directory, or import a backup to restore it.\n\n"
+            "Create a .zip backup of your current config directory, or import a backup to restore it.\n"
             "Use Customize to include only settings/state, profiles, credentials, or any mix of them."
         )
         self.description_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
