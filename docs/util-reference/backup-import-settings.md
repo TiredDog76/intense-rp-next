@@ -19,14 +19,26 @@ This window is for making a quick `.zip` backup of your current IntenseRP Next v
 
 ## :material-folder: What gets backed up
 
-The backup is made from your **active config directory** (shown at the top of the window). This usually contains things like:
+The backup is made from your **active config directory** (shown at the top of the window). By default, it includes everything useful for restoring the app:
 
 - `settings.json.enc` (your encrypted settings)
 - `settings.key` (the encryption key for your settings)
+- `appflags.json.enc` and other small state files
 - `playwright_profiles/` (used for Persistent Sessions)
+- `accounts/` (Saved Accounts credentials and usage state)
 
 !!! note "Tip: stop services for a cleaner backup"
     If the browser/services are running, some profile files can be in use. For the most complete backup, click **Stop** in the main window first.
+
+### :material-tune: Customize
+
+Click **Customize** to choose what Backup and Import should use:
+
+- **Settings & State** keeps your settings, app state, small caches, and similar config files.
+- **Profiles** keeps browser profile data used by Persistent Sessions.
+- **Credentials** keeps Saved Accounts data. Credentials-only backups still include `settings.key` internally so IntenseRP can safely re-encrypt them during import.
+
+All three are enabled by default. Turning off **Profiles** can make a backup/import much faster when you only want to carry settings or accounts to another install.
 
 ---
 
@@ -46,7 +58,9 @@ If some files are locked, the backup can still succeed, but it may warn that it 
 
 ## :material-archive-arrow-down: Import from .zip
 
-Import restores a backup by **replacing the contents** of your active config directory, and then reloading settings automatically.
+With all Customize options enabled, Import restores a backup by **replacing the contents** of your active config directory, and then reloading settings automatically.
+
+If you turn some options off, Import only updates the selected parts found in the `.zip` and leaves the rest of your active config directory alone.
 
 1. Click **Import from .zip**
 2. Select a backup `.zip`
@@ -61,4 +75,3 @@ Import restores a backup by **replacing the contents** of your active config dir
 ## :material-arrow-left: Back
 
 [:material-arrow-left: Util Reference](../util-reference.md)
-

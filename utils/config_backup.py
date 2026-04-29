@@ -4,13 +4,59 @@ import json
 import shutil
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from cryptography.fernet import Fernet
 
 from config.location import get_local_anchor_dir
 from utils.logger import Logger
+
+
+_BUG_REPORTS_ROOT = "bug_reports"
+_CREDENTIALS_ROOTS = {"accounts", "ece"}
+_PROFILES_ROOT = "playwright_profiles"
+_SETTINGS_KEY_FILENAME = "settings.key"
+
+
+@dataclass(frozen=True)
+class ConfigBackupOptions:
+    settings_state: bool = True
+    profiles: bool = True
+    credentials: bool = True
+
+    def any_enabled(self) -> bool:
+        return bool(self.settings_state or self.profiles or self.credentials)
+
+    def all_enabled(self) -> bool:
+        return bool(self.settings_state and self.profiles and self.credentials)
+
+    def labels(self) -> list[str]:
+        labels: list[str] = []
+        if self.settings_state:
+            labels.append("Settings & State")
+        if self.profiles:
+            labels.append("Profiles")
+        if self.credentials:
+            labels.append("Credentials")
+        return labels
+
+
+def _normalize_options(options: ConfigBackupOptions | None) -> ConfigBackupOptions:
+    if options is None:
+        return ConfigBackupOptions()
+    return ConfigBackupOptions(
+        settings_state=bool(options.settings_state),
+        profiles=bool(options.profiles),
+        credentials=bool(options.credentials),
+    )
+
+
+def _format_options(options: ConfigBackupOptions) -> str:
+    labels = options.labels()
+    return ", ".join(labels) if labels else "None"
 
 
 def _safe_resolve(path: Path) -> Path:
@@ -36,6 +82,8 @@ def _looks_like_config_dir(path: Path) -> bool:
         (path / "settings.json.enc").is_file()
         or (path / "settings.key").is_file()
         or (path / "playwright_profiles").is_dir()
+        or (path / "accounts").is_dir()
+        or (path / "ece").is_dir()
     )
 
 
@@ -79,7 +127,45 @@ def _normalize_zip_path(path: str | Path) -> Path:
     return _safe_resolve(p)
 
 
-def create_config_backup_zip(config_dir: str | Path, output_zip: str | Path) -> tuple[bool, str]:
+def _zip_path_parts(arcname: str | Path) -> tuple[str, ...]:
+    try:
+        return tuple(PurePosixPath(str(arcname).replace("\\", "/")).parts)
+    except Exception:
+        return tuple()
+
+
+def _should_include_backup_member(arcname: str | Path, options: ConfigBackupOptions) -> bool:
+    parts = _zip_path_parts(arcname)
+    if not parts:
+        return False
+
+    root = parts[0]
+    if root == _BUG_REPORTS_ROOT:
+        return False
+
+    if root == _SETTINGS_KEY_FILENAME:
+        # Credentials are encrypted with the same key. Keep the key in
+        # credentials-only backups so selective import can re-encrypt safely
+        return bool(options.settings_state or options.credentials)
+
+    if root == _PROFILES_ROOT:
+        return bool(options.profiles)
+
+    if root in _CREDENTIALS_ROOTS:
+        return bool(options.credentials)
+
+    return bool(options.settings_state)
+
+
+def create_config_backup_zip(
+    config_dir: str | Path,
+    output_zip: str | Path,
+    options: ConfigBackupOptions | None = None,
+) -> tuple[bool, str]:
+    options = _normalize_options(options)
+    if not options.any_enabled():
+        return False, "Select at least one backup category."
+
     src_dir = _safe_resolve(Path(config_dir))
     zip_path = _normalize_zip_path(output_zip)
 
@@ -89,6 +175,7 @@ def create_config_backup_zip(config_dir: str | Path, output_zip: str | Path) -> 
     zip_path.parent.mkdir(parents=True, exist_ok=True)
 
     skipped: list[str] = []
+    added_count = 0
     try:
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for file_path in src_dir.rglob("*"):
@@ -106,16 +193,23 @@ def create_config_backup_zip(config_dir: str | Path, output_zip: str | Path) -> 
                 except Exception:
                     arcname = file_path.name
 
-                arc_parts = Path(arcname).parts
-                if arc_parts and arc_parts[0] == "bug_reports":
+                if not _should_include_backup_member(arcname, options):
                     continue
 
                 try:
                     zf.write(file_path, arcname=arcname)
+                    added_count += 1
                 except Exception as e:
                     skipped.append(f"{arcname} ({e})")
     except Exception as e:
         return False, f"Failed to write zip: {e}"
+
+    if added_count <= 0:
+        try:
+            zip_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False, f"No files matched the selected categories: {_format_options(options)}"
 
     if skipped:
         preview = "\n".join(skipped[:10])
@@ -123,9 +217,13 @@ def create_config_backup_zip(config_dir: str | Path, output_zip: str | Path) -> 
         if len(skipped) > 10:
             suffix = f"\n\n...and {len(skipped) - 10} more." + suffix
         Logger.warning(f"Backup zip created with skipped files ({len(skipped)}).")
-        return True, f"Backup created: {zip_path}\n\nSkipped files:\n{preview}{suffix}"
+        return (
+            True,
+            f"Backup created: {zip_path}\n\nIncluded: {_format_options(options)}\n\n"
+            f"Skipped files:\n{preview}{suffix}",
+        )
 
-    return True, f"Backup created: {zip_path}"
+    return True, f"Backup created: {zip_path}\n\nIncluded: {_format_options(options)}"
 
 
 def _validate_decryptable_settings(root: Path) -> tuple[bool, str]:
@@ -146,6 +244,112 @@ def _validate_decryptable_settings(root: Path) -> tuple[bool, str]:
         return False, f"Backup settings could not be decrypted/parsed: {e}"
 
     return True, ""
+
+
+def _read_key_file(root: Path) -> tuple[bool, str, bytes | None]:
+    key_file = root / _SETTINGS_KEY_FILENAME
+    if not key_file.is_file():
+        return False, "Backup is missing settings.key."
+
+    try:
+        return True, "", key_file.read_bytes()
+    except Exception as e:
+        return False, f"Backup settings.key could not be read: {e}", None
+
+
+def _load_or_create_target_key(target_dir: Path) -> tuple[bool, str, bytes | None]:
+    key_file = target_dir / _SETTINGS_KEY_FILENAME
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return False, f"Failed to create target config directory: {e}", None
+
+    if key_file.exists():
+        try:
+            return True, "", key_file.read_bytes()
+        except Exception as e:
+            return False, f"Failed to read target settings.key: {e}", None
+
+    key = Fernet.generate_key()
+    try:
+        key_file.write_bytes(key)
+    except Exception as e:
+        return False, f"Failed to write target settings.key: {e}", None
+    return True, "", key
+
+
+def _read_encrypted_json(path: Path, key: bytes) -> tuple[bool, str, Any]:
+    try:
+        decrypted = Fernet(key).decrypt(path.read_bytes())
+        return True, "", json.loads(decrypted.decode("utf-8"))
+    except Exception as e:
+        return False, f"Failed to decrypt/parse {path.name}: {e}", None
+
+
+def _write_encrypted_json(path: Path, key: bytes, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    path.write_bytes(Fernet(key).encrypt(raw))
+
+
+def _path_contains_encrypted_json(path: Path) -> bool:
+    if path.is_file():
+        return path.name.endswith(".json.enc")
+    if not path.is_dir():
+        return False
+
+    try:
+        for child in path.rglob("*"):
+            if child.is_file() and child.name.endswith(".json.enc"):
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _copy_path_with_reencrypted_json(
+    src: Path,
+    dst: Path,
+    source_key: bytes | None,
+    target_key: bytes | None,
+) -> None:
+    if src.is_file():
+        if src.name.endswith(".json.enc"):
+            if source_key is None or target_key is None:
+                raise ValueError(f"Cannot import encrypted file without settings.key: {src.name}")
+            ok, reason, payload = _read_encrypted_json(src, source_key)
+            if not ok:
+                raise ValueError(reason)
+            _write_encrypted_json(dst, target_key, payload)
+            return
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        return
+
+    if not src.is_dir():
+        return
+
+    dst.mkdir(parents=True, exist_ok=True)
+    for child in src.rglob("*"):
+        try:
+            rel = child.relative_to(src)
+        except Exception:
+            rel = Path(child.name)
+        out_path = dst / rel
+        if child.is_dir():
+            out_path.mkdir(parents=True, exist_ok=True)
+            continue
+        if child.name.endswith(".json.enc"):
+            if source_key is None or target_key is None:
+                raise ValueError(f"Cannot import encrypted file without settings.key: {child.name}")
+            ok, reason, payload = _read_encrypted_json(child, source_key)
+            if not ok:
+                raise ValueError(reason)
+            _write_encrypted_json(out_path, target_key, payload)
+            continue
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(child, out_path)
 
 
 def _is_unsafe_zip_member(name: str) -> bool:
@@ -211,7 +415,252 @@ def _find_backup_root(extract_dir: Path) -> Path | None:
     return None
 
 
-def import_config_backup_zip(zip_file: str | Path, target_config_dir: str | Path) -> tuple[bool, str]:
+def _make_unique_import_dirs(parent: Path, ts: str, *prefixes: str) -> tuple[Path, ...]:
+    paths = tuple(parent / f"{prefix}_{ts}" for prefix in prefixes)
+    for i in range(2, 1000):
+        if not any(path.exists() for path in paths):
+            return paths
+        paths = tuple(parent / f"{prefix}_{ts}_{i}" for prefix in prefixes)
+    return paths
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+        return
+    path.unlink(missing_ok=True)
+
+
+def _copy_path_raw(src: Path, dst: Path) -> None:
+    if src.is_dir():
+        shutil.copytree(src, dst)
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+
+
+def _replace_entire_config_dir(root: Path, target_dir: Path) -> tuple[bool, str]:
+    parent = target_dir.parent
+    parent.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    staging_dir, old_dir = _make_unique_import_dirs(
+        parent,
+        ts,
+        "__irpnext_config_import_staging",
+        "__irpnext_config_import_old",
+    )
+
+    try:
+        shutil.copytree(root, staging_dir)
+    except Exception as e:
+        try:
+            shutil.rmtree(staging_dir)
+        except Exception:
+            pass
+        return False, f"Failed to stage imported config directory: {e}"
+
+    try:
+        if target_dir.exists():
+            if old_dir.exists():
+                shutil.rmtree(old_dir)
+            target_dir.rename(old_dir)
+        staging_dir.rename(target_dir)
+    except Exception as e:
+        # Roll back best-effort: restore original and remove staging
+        try:
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir)
+        except Exception:
+            pass
+        try:
+            if old_dir.exists() and not target_dir.exists():
+                old_dir.rename(target_dir)
+        except Exception:
+            pass
+        return False, f"Failed to replace config directory contents: {e}"
+
+    # Cleanup old config dir after successful swap
+    try:
+        if old_dir.exists():
+            shutil.rmtree(old_dir)
+    except Exception as e:
+        Logger.warning(f"Imported settings, but failed to delete old config dir '{old_dir}': {e}")
+
+    return True, f"Import complete. Settings restored into: {target_dir}"
+
+
+def _iter_settings_state_entries(root: Path) -> list[Path]:
+    try:
+        entries = [p for p in root.iterdir() if p.exists()]
+    except Exception:
+        return []
+
+    result: list[Path] = []
+    for entry in entries:
+        name = entry.name
+        if name == _BUG_REPORTS_ROOT:
+            continue
+        if name == _PROFILES_ROOT:
+            continue
+        if name == _SETTINGS_KEY_FILENAME:
+            continue
+        if name in _CREDENTIALS_ROOTS:
+            continue
+        result.append(entry)
+    return result
+
+
+def _restore_moved_paths(moved_paths: list[tuple[Path, Path]]) -> None:
+    for target_path, rollback_path in reversed(moved_paths):
+        try:
+            if target_path.exists():
+                _remove_path(target_path)
+            if rollback_path.exists():
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(rollback_path), str(target_path))
+        except Exception as e:
+            Logger.warning(f"Selective import rollback failed for '{target_path}': {e}")
+
+
+def _import_selected_config_data(
+    root: Path,
+    target_dir: Path,
+    options: ConfigBackupOptions,
+) -> tuple[bool, str]:
+    parent = target_dir.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    (rollback_dir,) = _make_unique_import_dirs(
+        parent,
+        ts,
+        "__irpnext_config_import_selected_old",
+    )
+    rollback_dir.mkdir(parents=True, exist_ok=True)
+
+    source_key: bytes | None = None
+    target_key: bytes | None = None
+    moved_paths: list[tuple[Path, Path]] = []
+    used_labels: list[str] = []
+    missing_labels: list[str] = []
+
+    def get_source_key() -> bytes:
+        nonlocal source_key
+        if source_key is not None:
+            return source_key
+        ok, reason, key = _read_key_file(root)
+        if not ok or key is None:
+            raise ValueError(reason)
+        source_key = key
+        return source_key
+
+    def get_target_key() -> bytes:
+        nonlocal target_key
+        if target_key is not None:
+            return target_key
+        ok, reason, key = _load_or_create_target_key(target_dir)
+        if not ok or key is None:
+            raise ValueError(reason)
+        target_key = key
+        return target_key
+
+    def move_existing_to_rollback(rel_path: Path) -> None:
+        target_path = target_dir / rel_path
+        if not target_path.exists():
+            return
+
+        rollback_path = rollback_dir / rel_path
+        if rollback_path.exists():
+            _remove_path(rollback_path)
+        rollback_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(target_path), str(rollback_path))
+        moved_paths.append((target_path, rollback_path))
+
+    def replace_raw(src: Path, rel_path: Path) -> None:
+        move_existing_to_rollback(rel_path)
+        _copy_path_raw(src, target_dir / rel_path)
+
+    def replace_reencrypting(src: Path, rel_path: Path) -> None:
+        source_key_for_path: bytes | None = None
+        target_key_for_path: bytes | None = None
+        if _path_contains_encrypted_json(src):
+            source_key_for_path = get_source_key()
+            target_key_for_path = get_target_key()
+        move_existing_to_rollback(rel_path)
+        _copy_path_with_reencrypted_json(
+            src,
+            target_dir / rel_path,
+            source_key_for_path,
+            target_key_for_path,
+        )
+
+    try:
+        if options.settings_state:
+            settings_entries = _iter_settings_state_entries(root)
+            if settings_entries:
+                for entry in settings_entries:
+                    replace_reencrypting(entry, Path(entry.name))
+                used_labels.append("Settings & State")
+            else:
+                missing_labels.append("Settings & State")
+
+        if options.profiles:
+            profiles_root = root / _PROFILES_ROOT
+            if profiles_root.exists():
+                replace_raw(profiles_root, Path(_PROFILES_ROOT))
+                used_labels.append("Profiles")
+            else:
+                missing_labels.append("Profiles")
+
+        if options.credentials:
+            credentials_found = False
+            for name in sorted(_CREDENTIALS_ROOTS):
+                credentials_root = root / name
+                if not credentials_root.exists():
+                    continue
+                replace_reencrypting(credentials_root, Path(name))
+                credentials_found = True
+            if credentials_found:
+                used_labels.append("Credentials")
+            else:
+                missing_labels.append("Credentials")
+    except Exception as e:
+        _restore_moved_paths(moved_paths)
+        try:
+            shutil.rmtree(rollback_dir)
+        except Exception:
+            pass
+        return False, f"Failed to import selected backup data: {e}"
+
+    if not used_labels:
+        try:
+            shutil.rmtree(rollback_dir)
+        except Exception:
+            pass
+        return False, "No selected data was found in the backup."
+
+    try:
+        shutil.rmtree(rollback_dir)
+    except Exception as e:
+        Logger.warning(f"Selective import completed, but failed to delete rollback dir '{rollback_dir}': {e}")
+
+    message = f"Import complete. Used: {', '.join(used_labels)}.\n\nActive config directory: {target_dir}"
+    if missing_labels:
+        message += f"\n\nNot found in backup: {', '.join(missing_labels)}"
+    return True, message
+
+
+def import_config_backup_zip(
+    zip_file: str | Path,
+    target_config_dir: str | Path,
+    options: ConfigBackupOptions | None = None,
+) -> tuple[bool, str]:
+    options = _normalize_options(options)
+    if not options.any_enabled():
+        return False, "Select at least one import category."
+
     zip_path = _safe_resolve(Path(zip_file))
     target_dir = _safe_resolve(Path(target_config_dir))
 
@@ -233,58 +682,10 @@ def import_config_backup_zip(zip_file: str | Path, target_config_dir: str | Path
         if root is None:
             return False, "Zip does not look like an IntenseRP Next config backup (missing settings/key)."
 
-        ok, reason = _validate_decryptable_settings(root)
-        if not ok:
-            return False, reason
+        if options.all_enabled():
+            ok, reason = _validate_decryptable_settings(root)
+            if not ok:
+                return False, reason
+            return _replace_entire_config_dir(root, target_dir)
 
-        parent = target_dir.parent
-        parent.mkdir(parents=True, exist_ok=True)
-
-        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        staging_dir = parent / f"__irpnext_config_import_staging_{ts}"
-        old_dir = parent / f"__irpnext_config_import_old_{ts}"
-
-        for i in range(2, 1000):
-            if staging_dir.exists() or old_dir.exists():
-                staging_dir = parent / f"__irpnext_config_import_staging_{ts}_{i}"
-                old_dir = parent / f"__irpnext_config_import_old_{ts}_{i}"
-                continue
-            break
-
-        try:
-            shutil.copytree(root, staging_dir)
-        except Exception as e:
-            try:
-                shutil.rmtree(staging_dir)
-            except Exception:
-                pass
-            return False, f"Failed to stage imported config directory: {e}"
-
-        try:
-            if target_dir.exists():
-                if old_dir.exists():
-                    shutil.rmtree(old_dir)
-                target_dir.rename(old_dir)
-            staging_dir.rename(target_dir)
-        except Exception as e:
-            # Roll back best-effort: restore original and remove staging
-            try:
-                if staging_dir.exists():
-                    shutil.rmtree(staging_dir)
-            except Exception:
-                pass
-            try:
-                if old_dir.exists() and not target_dir.exists():
-                    old_dir.rename(target_dir)
-            except Exception:
-                pass
-            return False, f"Failed to replace config directory contents: {e}"
-
-        # Cleanup old config dir after successful swap
-        try:
-            if old_dir.exists():
-                shutil.rmtree(old_dir)
-        except Exception as e:
-            Logger.warning(f"Imported settings, but failed to delete old config dir '{old_dir}': {e}")
-
-    return True, f"Import complete. Settings restored into: {target_dir}"
+        return _import_selected_config_data(root, target_dir, options)
