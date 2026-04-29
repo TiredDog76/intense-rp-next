@@ -1,6 +1,6 @@
 {
-  "version": "2.7.9-rev1",
+  "version": "2.8.0-update",
   "aua": true,
   "severity": 3,
-  "pu": "discord"
+  "pu": "survey"
 }

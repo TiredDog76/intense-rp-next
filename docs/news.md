@@ -8,6 +8,22 @@ icon: material/newspaper-variant-outline
 
 This page is the changelog to view all the latests news and updates about IntenseRP Next.
 
+## April 29, 2026 - Update 2.8.0
+
+IntenseRP Next v2.8.0 is here, and the headline is **Perplexity support**. It works with both free and paid accounts, can stream answer text through the normal OpenAI-compatible API, and includes Perplexity-specific settings for model selection, Thinking, Search, and text-file prompt uploads where the account allows them.
+
+This integration exists thanks to [Yurushia](https://github.com/twgok123), who sponsored Perplexity development and provided access to a paid account for testing. Huge thank you to them for making this one possible!!!
+
+This release also includes some recent power-user and maintenance work: Full Parallelization for provider lanes, selective provider restarts when switching loadouts, AI Studio CAARS options, backup/import polish, and a more maintainable Remote Control frontend.
+
+[Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.8.0-update){ .md-button .md-button--primary }
+[Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
+[Suggest New Features](./vote-for-new-stuff.md){ .md-button }
+[Perplexity Behavior](providers/perplexity-behavior.md){ .md-button }
+[Support the Project](hands/support.md){ .md-button }
+
+---
+
 ## March 28, 2026 - Update 2.6.3
 
 IntenseRP Next v2.6.3 is mostly a quality-of-life update, and the biggest visible change is the **Settings redesign**. The whole thing is meant to feel cleaner, easier to read, and a lot more intuitive to move around in.
