@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Optional
 
@@ -8,7 +9,6 @@ from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QPushButton,
 
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils
-from utils.runtime import is_packaged_app
 
 
 @dataclass(frozen=True)
@@ -20,14 +20,14 @@ class UpdateMethodAvailability:
 
 
 def default_update_method_availability() -> UpdateMethodAvailability:
-    packaged = is_packaged_app()
+    frozen = bool(getattr(sys, "frozen", False))
 
-    # From source runs can be updated via Git; packaged builds do not have a git checkout.
-    git_enabled = not packaged
+    # From source runs can be updated via Git; PyInstaller builds do not have a git checkout.
+    git_enabled = not frozen
     git_reason = "" if git_enabled else "You aren't on a source run."
 
     # Auto-update is available for packaged builds on Windows and Linux.
-    auto_enabled = packaged
+    auto_enabled = frozen
     auto_reason = "" if auto_enabled else "Not available on source runs."
 
     return UpdateMethodAvailability(

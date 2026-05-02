@@ -128,12 +128,12 @@ Symptoms:
 - Persistent Sessions never stick
 - Logs are missing / not written
 - The app works only when run as admin
-- You moved `intenserp-next-v2.exe` out of its extracted app folder (release build)
+- You moved `intenserp-next-v2.exe` out of its folder (release build)
 
 Checklist:
 
 - If you downloaded a release `.zip`, **extract it fully** before running. Do not run from inside the zip viewer.
-- Keep `intenserp-next-v2.exe` inside the extracted app folder with the bundled files around it. Do not rename or separate the executable from that folder.
+- Keep `intenserp-next-v2.exe` next to the `_internal/` folder (release build). Do not rename or separate them.
 - Avoid running from protected folders (like `C:\\Program Files`) if you use **Relative** config storage. Use a normal writable folder instead.
 - If you use cloud-synced folders (OneDrive/Dropbox/network drives), try moving the app/config to a local folder - Persistent Sessions can get weird when files are locked or delayed.
 - Check the active config directory:

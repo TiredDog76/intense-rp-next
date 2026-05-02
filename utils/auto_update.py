@@ -254,6 +254,8 @@ def _looks_like_app_root(path: Path, expected_exe_name: Optional[str]) -> bool:
     except Exception:
         return False
 
+    if "_internal" not in entries:
+        return False
     if "version.json" not in entries:
         return False
 
@@ -276,7 +278,7 @@ def find_extracted_app_root(extract_dir: Path, expected_exe_name: Optional[str])
 
     if not candidates:
         raise AutoUpdateError(
-            "Could not locate the extracted app folder (expected executable and version.json)."
+            "Could not locate the extracted app folder (expected executable, version.json and _internal)."
         )
 
     # Prefer the shallowest match to avoid nested duplicates.
