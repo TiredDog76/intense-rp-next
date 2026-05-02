@@ -39,13 +39,9 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 
 
 <p align="center">
-  <a href="https://intense-rp-next.readthedocs.io/en/latest/hands/support/">
-    <img src=".github/svgs/donate.svg" alt="Support the Project" height="36">
-  </a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/LyubomirT/intense-rp-next/stargazers">
-    <img src=".github/svgs/star.svg" alt="Leave a Star" height="36">
-  </a>
+  <a href="https://intense-rp-next.readthedocs.io/en/latest/hands/support/"><img src=".github/svgs/donate.svg" alt="Support the Project" height="42"></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/LyubomirT/intense-rp-next/stargazers"><img src=".github/svgs/star2.svg" alt="Leave a Star" height="42"></a>
 </p>
 
 
