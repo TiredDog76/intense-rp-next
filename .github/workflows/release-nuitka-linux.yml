@@ -37,11 +37,7 @@ jobs:
                 gzip
               add-apt-repository -y ppa:deadsnakes/ppa
               apt-get update
-              apt-get install -y --no-install-recommends \
-                python3.12 \
-                python3.12-dev \
-                python3.12-venv
-              python3.12 -m venv /tmp/irp-nuitka-venv
+              python3 -m venv /tmp/irp-nuitka-venv
               . /tmp/irp-nuitka-venv/bin/activate
               python -m pip install --upgrade pip
               python -m pip install -r requirements.txt
