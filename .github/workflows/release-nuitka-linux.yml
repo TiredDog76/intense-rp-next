@@ -1,0 +1,58 @@
+name: Build Linux release (Nuitka, Ubuntu 22.04)
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build in Ubuntu 22.04 container
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            -e DEBIAN_FRONTEND=noninteractive \
+            ubuntu:22.04 \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                software-properties-common \
+                ca-certificates \
+                curl \
+                build-essential \
+                gcc \
+                patchelf \
+                file \
+                tar \
+                gzip
+              add-apt-repository -y ppa:deadsnakes/ppa
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                python3.12 \
+                python3.12-dev \
+                python3.12-venv
+              python3.12 -m venv /tmp/irp-nuitka-venv
+              . /tmp/irp-nuitka-venv/bin/activate
+              python -m pip install --upgrade pip
+              python -m pip install -r requirements.txt
+              chmod +x scripts/build_linux.sh
+              bash scripts/build_linux.sh
+            '
+          sudo chown -R "$(id -u):$(id -g)" dist build
+
+      - name: Upload asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/intenserp-next-v2-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

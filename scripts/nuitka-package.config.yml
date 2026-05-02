@@ -1,0 +1,22 @@
+- module-name: 'patchright' # checksum: 435886a0
+  data-files:
+    - patterns:
+        - '**/*.json'
+        - '**/*.js'
+        - '**/*.mjs'
+        - '**/*.ts'
+        - '**/*.html'
+        - '**/*.css'
+        - '**/*.svg'
+        - '**/*.yml'
+        - '**/*.md'
+        - '**/*.txt'
+        - '**/*.ps1'
+        - '**/*.sh'
+
+  dlls:
+    - from_filenames:
+        relative_path: 'driver'
+        prefixes:
+          - 'node'
+        executable: 'yes'

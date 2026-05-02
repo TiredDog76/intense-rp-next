@@ -24,6 +24,7 @@ from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
 from ui.widgets.rounded_progress_bar import RoundedProgressBar
 from utils.auto_update import AutoUpdateError, PreparedUpdate, prepare_update_from_github, DownloadProgress
+from utils.runtime import get_executable_path, is_packaged_app
 
 
 class MissingUpdaterError(RuntimeError):
@@ -298,14 +299,14 @@ class UpdateDownloadDialog(QDialog):
             self.reject()
             return
 
-        if not getattr(sys, "frozen", False):
+        if not is_packaged_app():
             QMessageBox.warning(
-                self, "Auto-Update", "Auto-update is available only in the packaged (PyInstaller) build."
+                self, "Auto-Update", "Auto-update is available only in packaged builds."
             )
             self.reject()
             return
 
-        expected_exe_name = Path(sys.executable).name
+        expected_exe_name = get_executable_path().name
         self._thread = QThread(self)
         self._worker = _AutoUpdateWorker(
             remote_version=self._remote_version, expected_exe_name=expected_exe_name
@@ -332,6 +333,7 @@ class UpdateDownloadDialog(QDialog):
                 thread.wait(1500)
             except Exception:
                 pass
+
     def _on_status(self, text: str) -> None:
         self._status_label.setText(text or "")
 
@@ -400,8 +402,9 @@ class UpdateDownloadDialog(QDialog):
         self._cancel_btn.setEnabled(False)
         self._progress.setRange(0, 0)  # indeterminate spinner
 
-        install_dir = Path(sys.executable).resolve().parent
-        exe_name = Path(sys.executable).name
+        executable_path = get_executable_path()
+        install_dir = executable_path.parent
+        exe_name = executable_path.name
         cmd = [
             str(updater_exe),
             "--install-dir",

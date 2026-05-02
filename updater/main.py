@@ -16,6 +16,8 @@ from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QVBoxLayout, QWidget
 
+from utils.runtime import get_executable_path, is_packaged_app
+
 
 class UpdateFailed(RuntimeError):
     pass
@@ -36,13 +38,13 @@ class UpdateArgs:
     payload_dir: Optional[Path]
 
 
-def _is_frozen() -> bool:
-    return bool(getattr(sys, "frozen", False))
+def _is_packaged() -> bool:
+    return is_packaged_app()
 
 
 def _resolve_updater_exe_path() -> Path:
-    if _is_frozen():
-        return Path(sys.executable).resolve()
+    if _is_packaged():
+        return get_executable_path()
     return Path(__file__).resolve()
 
 
@@ -322,7 +324,7 @@ def _perform_update(args: UpdateArgs, *, status_cb, progress_cb) -> None:
             pass
 
         cmd = [str(exe_path)]
-        if _is_frozen():
+        if _is_packaged():
             # Pass the temp extraction root directory for cleanup (not just the updater.exe path)
             # Structure: .../intenserp-update-extract-xyz/optional/updater.exe
             temp_cleanup_dir = updater_path.parent.parent

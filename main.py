@@ -48,6 +48,7 @@ from utils.providers_in_parallel import (
 from utils.update_checker import check_for_updates
 from utils.version_file import VersionFileInfo, parse_version_file
 from utils.resource_path import resolve_resource_path
+from utils.runtime import get_executable_path, get_packaged_app_dir, is_packaged_app
 from utils.docs_links import DOCS_BASE_URL
 from utils.diagnostics import (
     clear_prompt_snapshots,
@@ -317,10 +318,7 @@ def _release_notes_url_for_version(version: str) -> str:
 
 def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
     try:
-        if getattr(sys, "frozen", False):
-            app_root = Path(sys.executable).resolve().parent
-        else:
-            app_root = Path(__file__).resolve().parent
+        app_root = get_packaged_app_dir() or Path(__file__).resolve().parent
     except Exception:
         return None
 
@@ -2997,8 +2995,8 @@ class MainWindow(QMainWindow):
 
         try:
             # Prefer replacing the current process to avoid orphaned/lingering windows.
-            if getattr(sys, "frozen", False):
-                argv = [sys.executable] + sys.argv[1:]
+            if is_packaged_app():
+                argv = [str(get_executable_path())] + sys.argv[1:]
             else:
                 script = Path(sys.argv[0]).expanduser()
                 try:
@@ -3013,8 +3011,8 @@ class MainWindow(QMainWindow):
 
         # Fallback: spawn a detached process and hard-exit this one.
         try:
-            if getattr(sys, "frozen", False):
-                program = sys.executable
+            if is_packaged_app():
+                program = str(get_executable_path())
                 args = sys.argv[1:]
             else:
                 program = sys.executable
@@ -3699,9 +3697,9 @@ class MainWindow(QMainWindow):
 def main():
     import os
     import signal
-    # If frozen, force Playwright/Patchright to use the global cache directory
-    # instead of looking for bundled browsers in the internal _MEIPASS/package directories.
-    if getattr(sys, "frozen", False):
+    # If packaged, force Playwright/Patchright to use the global cache directory
+    # instead of looking for bundled browsers in the packaged app directories.
+    if is_packaged_app():
         if sys.platform == "win32":
             # Windows: %LOCALAPPDATA%\ms-playwright
             local_app_data = os.environ.get("LOCALAPPDATA")
@@ -3720,7 +3718,7 @@ def main():
             if "PATCHRIGHT_BROWSERS_PATH" not in os.environ:
                 os.environ["PATCHRIGHT_BROWSERS_PATH"] = global_path
 
-    # Handle module execution request (e.g. for patchright subprocesses in frozen app)
+    # Handle module execution request (e.g. for patchright subprocesses in packaged app)
     if len(sys.argv) > 2 and sys.argv[1] == "-m":
         import runpy
         # Remove exe and -m, keeping module name and args
@@ -3751,7 +3749,7 @@ def main():
     from ui.core.app_icon import get_app_icon
     from PySide6.QtWidgets import QStyleFactory
 
-    # Force a consistent style between running-from-source and packaged(PyInstaller) builds. 
+    # Force a consistent style between running-from-source and packaged builds.
     # Style availability can differ when plugins aren't bundled the same way.
     available_styles = {name.lower(): name for name in QStyleFactory.keys()}
     for preferred in ("fusion", "windowsvista", "windows"):
