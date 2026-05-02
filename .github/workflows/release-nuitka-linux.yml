@@ -35,7 +35,6 @@ jobs:
                 file \
                 tar \
                 gzip
-              add-apt-repository -y ppa:deadsnakes/ppa
               apt-get update
               python3 -m venv /tmp/irp-nuitka-venv
               . /tmp/irp-nuitka-venv/bin/activate
