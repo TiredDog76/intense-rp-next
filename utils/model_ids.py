@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Mapping
 
 from drivers.providers import DriverProvider
 
@@ -10,6 +10,19 @@ MODE_CHAT = "chat"
 MODE_REASONER = "reasoner"
 DEEPSEEK_MODEL_TYPE_DEFAULT = "default"
 DEEPSEEK_MODEL_TYPE_EXPERT = "expert"
+
+REAL_MODEL_SUFFIX_MODE_BY_SUFFIX: tuple[tuple[str, str], ...] = (
+    ("-auto", MODE_AUTO),
+    ("-reasoner", MODE_REASONER),
+    ("-chat", MODE_CHAT),
+)
+
+REAL_MODEL_ID_PROVIDERS: set[DriverProvider] = {
+    DriverProvider.GLM_CHAT,
+    DriverProvider.QWEN_LM,
+    DriverProvider.PERPLEXITY,
+    DriverProvider.AI_STUDIO,
+}
 
 UMM_MODEL_IDS: tuple[str, ...] = (
     "intenserp-auto",
@@ -123,16 +136,73 @@ def _get_universal_mode_map(provider: DriverProvider) -> Dict[str, str]:
     return UMM_MODE_BY_MODEL_ID
 
 
+def normalize_real_model_api_base(label: Any) -> str:
+    normalized = str(label or "").strip().lower()
+    if not normalized:
+        return ""
+
+    normalized = re.sub(r"[\s.]+", "-", normalized)
+    normalized = re.sub(r"[^a-z0-9-]+", "", normalized)
+    normalized = re.sub(r"-{2,}", "-", normalized)
+    return normalized.strip("-")
+
+
+def _real_model_label_map(real_model_labels: Iterable[str] | None) -> Dict[str, str]:
+    label_map: Dict[str, str] = {}
+    for raw_label in real_model_labels or ():
+        label = str(raw_label or "").strip()
+        base_id = normalize_real_model_api_base(label)
+        if not label or not base_id:
+            continue
+        for suffix, _mode in REAL_MODEL_SUFFIX_MODE_BY_SUFFIX:
+            label_map.setdefault(f"{base_id}{suffix}", label)
+    return label_map
+
+
+def _real_model_mode_map(real_model_labels: Iterable[str] | None) -> Dict[str, str]:
+    mode_map: Dict[str, str] = {}
+    for raw_label in real_model_labels or ():
+        label = str(raw_label or "").strip()
+        base_id = normalize_real_model_api_base(label)
+        if not label or not base_id:
+            continue
+        for suffix, mode in REAL_MODEL_SUFFIX_MODE_BY_SUFFIX:
+            mode_map.setdefault(f"{base_id}{suffix}", mode)
+    return mode_map
+
+
+def get_real_model_ids_for_labels(real_model_labels: Iterable[str] | None) -> list[str]:
+    return list(_real_model_label_map(real_model_labels).keys())
+
+
+def resolve_real_model_label_from_model_id(
+    provider: DriverProvider,
+    model: Any,
+    real_model_labels: Iterable[str] | None,
+) -> str | None:
+    normalized = str(model or "").strip().lower()
+    if not normalized or provider not in REAL_MODEL_ID_PROVIDERS:
+        return None
+
+    if provider == DriverProvider.AI_STUDIO:
+        normalized = _strip_aistudio_override_suffix(normalized)
+
+    return _real_model_label_map(real_model_labels).get(normalized)
+
+
 def get_model_ids_for_provider(
     provider: DriverProvider,
     config_manager: Any,
     *,
     force_legacy: bool = False,
+    real_model_labels: Iterable[str] | None = None,
 ) -> list[str]:
     if (not force_legacy) and is_umm_enabled(config_manager):
         model_ids = list(UMM_MODEL_IDS)
         if provider == DriverProvider.DEEPSEEK:
             model_ids.extend(DEEPSEEK_UMM_EXPERT_MODEL_IDS)
+        if provider in REAL_MODEL_ID_PROVIDERS:
+            model_ids.extend(get_real_model_ids_for_labels(real_model_labels))
         return model_ids
     return get_legacy_model_ids(provider)
 
@@ -142,13 +212,18 @@ def get_model_ids_for_providers(
     config_manager: Any,
     *,
     force_legacy: bool = False,
+    real_model_labels_by_provider: Mapping[DriverProvider, Iterable[str]] | None = None,
 ) -> list[tuple[DriverProvider, str]]:
     items: list[tuple[DriverProvider, str]] = []
     for provider in providers:
+        real_model_labels = None
+        if real_model_labels_by_provider:
+            real_model_labels = real_model_labels_by_provider.get(provider)
         model_ids = get_model_ids_for_provider(
             provider,
             config_manager,
             force_legacy=force_legacy,
+            real_model_labels=real_model_labels,
         )
         items.extend((provider, model_id) for model_id in model_ids)
     return items
@@ -159,13 +234,26 @@ def _strip_aistudio_override_suffix(model: str) -> str:
     return AISTUDIO_MODEL_OVERRIDE_SUFFIX_RE.sub("", normalized)
 
 
-def is_supported_model_id(provider: DriverProvider, model: Any, config_manager: Any = None) -> bool:
+def is_supported_model_id(
+    provider: DriverProvider,
+    model: Any,
+    config_manager: Any = None,
+    *,
+    real_model_labels: Iterable[str] | None = None,
+) -> bool:
     normalized = str(model or "").strip().lower()
     if not normalized:
         return False
 
     if is_umm_enabled(config_manager) and normalized in _get_universal_mode_map(provider):
         return True
+
+    if is_umm_enabled(config_manager) and provider in REAL_MODEL_ID_PROVIDERS:
+        real_normalized = normalized
+        if provider == DriverProvider.AI_STUDIO:
+            real_normalized = _strip_aistudio_override_suffix(real_normalized)
+        if real_normalized in _real_model_mode_map(real_model_labels):
+            return True
 
     legacy_map = LEGACY_MODE_BY_PROVIDER.get(provider) or {}
     if normalized in legacy_map:
@@ -185,7 +273,12 @@ def resolve_provider_from_model_id(model: Any) -> DriverProvider | None:
     return None
 
 
-def resolve_behavior_mode(model: Any, provider: DriverProvider) -> str:
+def resolve_behavior_mode(
+    model: Any,
+    provider: DriverProvider,
+    *,
+    real_model_labels: Iterable[str] | None = None,
+) -> str:
     """
     Resolve a requested OpenAI-style `model` string into an IntenseRP behavior mode.
 
@@ -204,6 +297,13 @@ def resolve_behavior_mode(model: Any, provider: DriverProvider) -> str:
     universal_mode = _get_universal_mode_map(provider).get(normalized)
     if universal_mode:
         return universal_mode
+
+    real_normalized = normalized
+    if provider == DriverProvider.AI_STUDIO:
+        real_normalized = _strip_aistudio_override_suffix(real_normalized)
+    real_model_mode = _real_model_mode_map(real_model_labels).get(real_normalized)
+    if real_model_mode:
+        return real_model_mode
 
     if provider == DriverProvider.AI_STUDIO:
         normalized = _strip_aistudio_override_suffix(normalized)

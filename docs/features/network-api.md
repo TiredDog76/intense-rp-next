@@ -167,12 +167,12 @@ If you enable **Use Universal Model Names** in **Settings** -> **API Server** ->
 | Model ID | Behavior |
 |----------|----------|
 | `intenserp-auto` | Uses your current provider settings |
-| `intenserp-think` | Forces thinking/reasoning on |
+| `intenserp-reasoner` | Forces thinking/reasoning on |
 | `intenserp-chat` | Forces thinking/reasoning off |
 
 Provider-specific IDs still work either way, and they are still the only valid option in **Providers in Parallel**.
 
-These IDs are behavior presets (modes), not true model selection.
+The `intenserp-*` and provider-prefixed IDs are behavior presets (modes), not true model selection. For GLM Chat, Google AI Studio, QwenLM, and Perplexity, Universal Model Names also exposes real model IDs that override the provider UI model for that request. They are lowercase, with spaces and dots converted to `-`, and use the same `-auto`, `-reasoner`, and `-chat` suffixes.
 
 !!! tip "Want the short version?"
     There is a tiny dedicated page for this here: [:material-tag-text-outline: Universal Model Names](universal-model-names.md)

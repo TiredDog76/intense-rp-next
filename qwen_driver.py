@@ -28,7 +28,12 @@ from drivers.shared_utils import (
 )
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
-from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
+from utils.model_ids import (
+    MODE_CHAT,
+    MODE_REASONER,
+    resolve_behavior_mode,
+    resolve_real_model_label_from_model_id,
+)
 
 load_dotenv()
 
@@ -504,7 +509,11 @@ class QwenLMDriver(BaseDriver):
         enable_deepthink = bool(self.config_manager.get_setting("qwen_behavior", "enable_deepthink"))
         send_deepthink = bool(self.config_manager.get_setting("qwen_behavior", "send_deepthink"))
 
-        mode = resolve_behavior_mode(model, self.provider)
+        mode = resolve_behavior_mode(
+            model,
+            self.provider,
+            real_model_labels=self.api_real_model_labels(),
+        )
         if mode == MODE_CHAT:
             return False, False
         if mode == MODE_REASONER:
@@ -512,13 +521,15 @@ class QwenLMDriver(BaseDriver):
 
         return enable_deepthink, send_deepthink
 
-    def _resolve_qwen_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
+    def _resolve_qwen_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
         resolved_model = (model or "").strip() or "qwen-auto"
+        ui_model_label = self._get_qwen_model_label_for_request(resolved_model)
         deepthink_enabled, send_deepthink = self._resolve_deepthink_flags(resolved_model)
         enable_search = bool(self.config_manager.get_setting("qwen_behavior", "enable_search"))
         send_as_text_file = bool(self.config_manager.get_setting("qwen_behavior", "send_as_text_file"))
 
         settings = {
+            "model_label": ui_model_label,
             "deepthink_enabled": bool(deepthink_enabled),
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(enable_search),
@@ -538,14 +549,14 @@ class QwenLMDriver(BaseDriver):
     def _strip_qwen_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
         return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
-    def _read_clean_regeneration_state(self) -> Optional[Dict[str, bool]]:
+    def _read_clean_regeneration_state(self) -> Optional[Dict[str, Any]]:
         return read_clean_regeneration_state(
             self.cache_manager,
             self.clean_regen_state_cache_key,
             log_label="Clean Regeneration (QwenLM)",
         )
 
-    def _write_clean_regeneration_state(self, state: Dict[str, bool]) -> None:
+    def _write_clean_regeneration_state(self, state: Dict[str, Any]) -> None:
         write_clean_regeneration_state(
             self.cache_manager,
             self.clean_regen_state_cache_key,
@@ -558,12 +569,13 @@ class QwenLMDriver(BaseDriver):
         effective_deepthink: bool,
         enable_search: bool,
         send_as_text_file: bool,
+        ui_model_label: str | None = None,
     ) -> Dict[str, Any]:
         return {
             "deepthink_enabled": bool(effective_deepthink),
             "search_enabled": bool(enable_search),
             "send_as_text_file": bool(send_as_text_file),
-            "ui_model": self._get_configured_qwen_model_label(),
+            "ui_model": str(ui_model_label or self._get_qwen_model_label_for_request(self.current_model)),
         }
 
     def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
@@ -740,7 +752,7 @@ class QwenLMDriver(BaseDriver):
                 return False
 
         try:
-            await self.apply_configured_model()
+            await self.apply_configured_model(model=self.current_model)
             await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
             await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
             await asyncio.sleep(0.25)
@@ -907,8 +919,19 @@ class QwenLMDriver(BaseDriver):
 
         return True
 
-    async def apply_configured_model(self) -> None:
-        desired = self._get_configured_qwen_model_label()
+    def api_real_model_labels(self) -> list[str]:
+        return list(self.MODEL_LABELS)
+
+    def _get_qwen_model_label_for_request(self, model: Any = None) -> str:
+        override = resolve_real_model_label_from_model_id(
+            self.provider,
+            model,
+            self.api_real_model_labels(),
+        )
+        return override or self._get_configured_qwen_model_label()
+
+    async def apply_configured_model(self, model: Any = None) -> None:
+        desired = self._get_qwen_model_label_for_request(model)
         if not desired:
             return
 
@@ -2754,6 +2777,9 @@ class QwenLMDriver(BaseDriver):
         effective_send_deepthink = effective_settings["send_deepthink"]
         enable_search = effective_settings["search_enabled"]
         send_as_text_file = effective_settings["send_as_text_file"]
+        ui_model_label = str(
+            effective_settings.get("model_label") or self._get_qwen_model_label_for_request(resolved_model)
+        )
         self.current_send_deepthink = effective_send_deepthink
 
         formatted_message = self._format_messages(message_for_formatting)
@@ -2772,7 +2798,7 @@ class QwenLMDriver(BaseDriver):
             extra_prompt_texts=qwen_extra_prompt_texts or None,
             metadata={
                 "model": resolved_model,
-                "ui_model": self._get_configured_qwen_model_label(),
+                "ui_model": ui_model_label,
                 "deepthink_enabled": bool(effective_deepthink),
                 "send_deepthink": bool(effective_send_deepthink),
                 "search_enabled": bool(enable_search),
@@ -3080,7 +3106,7 @@ class QwenLMDriver(BaseDriver):
                     "Reuse Matching Chat is enabled."
                 )
             regenerated = False
-            clean_regen_state: Dict[str, bool] | None = None
+            clean_regen_state: Dict[str, Any] | None = None
             multi_slot_state: Dict[str, Any] | None = None
             current_cache_matched = False
             should_record_multi_slot = False
@@ -3090,11 +3116,13 @@ class QwenLMDriver(BaseDriver):
                     "deepthink_enabled": bool(effective_deepthink),
                     "search_enabled": bool(enable_search),
                     "send_as_text_file": bool(send_as_text_file),
+                    "ui_model": ui_model_label,
                 }
                 multi_slot_state = self._build_multi_slot_cache_state(
                     effective_deepthink=bool(effective_deepthink),
                     enable_search=bool(enable_search),
                     send_as_text_file=bool(send_as_text_file),
+                    ui_model_label=ui_model_label,
                 )
 
                 last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
@@ -3155,7 +3183,7 @@ class QwenLMDriver(BaseDriver):
                 await self.click_new_chat(source="auto")
                 await asyncio.sleep(0.35)
 
-                await self.apply_configured_model()
+                await self.apply_configured_model(model=resolved_model)
 
                 await self.set_deepthink_state(effective_deepthink)
                 await self.set_search_state(enable_search)

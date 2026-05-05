@@ -14,7 +14,12 @@ from drivers.shared_utils import (
     strip_macros_from_messages,
 )
 from utils.logger import Logger
-from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
+from utils.model_ids import (
+    MODE_CHAT,
+    MODE_REASONER,
+    resolve_behavior_mode,
+    resolve_real_model_label_from_model_id,
+)
 
 
 PERPLEXITY_MODEL_OPTIONS: list[str] = [
@@ -799,6 +804,17 @@ class PerplexityDriver(BaseDriver):
         value = str(value or "").strip()
         return value or PERPLEXITY_MODEL_OPTIONS[0]
 
+    def api_real_model_labels(self) -> list[str]:
+        return list(PERPLEXITY_MODEL_OPTIONS)
+
+    def _get_model_label_for_request(self, model: Any = None) -> str:
+        override = resolve_real_model_label_from_model_id(
+            self.provider,
+            model,
+            self.api_real_model_labels(),
+        )
+        return override or self._get_configured_model_label()
+
     @staticmethod
     def _canonicalize_model_label(value: str) -> str:
         raw = str(value or "").strip().lower()
@@ -846,8 +862,8 @@ class PerplexityDriver(BaseDriver):
     def should_apply_configured_model_before_request(self) -> bool:
         return False
 
-    async def apply_configured_model(self) -> None:
-        desired = self._get_configured_model_label()
+    async def apply_configured_model(self, model: Any = None) -> None:
+        desired = self._get_model_label_for_request(model)
         if not desired:
             return
         if not self._model_switching_available():
@@ -859,12 +875,12 @@ class PerplexityDriver(BaseDriver):
             enable_thinking = False
         await self._select_model_and_thinking(desired, enable_thinking)
 
-    async def set_deepthink_state(self, state: bool) -> None:
+    async def set_deepthink_state(self, state: bool, model: Any = None) -> None:
         if not self._model_switching_available():
             if state:
                 Logger.warning("Perplexity: Thinking mode cannot be toggled on free accounts.")
             return
-        await self._select_model_and_thinking(self._get_configured_model_label(), bool(state))
+        await self._select_model_and_thinking(self._get_model_label_for_request(model), bool(state))
 
     async def _open_model_picker(self) -> bool:
         if not self.page:
@@ -1398,14 +1414,19 @@ class PerplexityDriver(BaseDriver):
         except Exception:
             send_deepthink = False
 
-        mode = resolve_behavior_mode(model, self.provider)
+        mode = resolve_behavior_mode(
+            model,
+            self.provider,
+            real_model_labels=self.api_real_model_labels(),
+        )
         if mode == MODE_CHAT:
             return False, False
         if mode == MODE_REASONER:
             return True, send_deepthink
         return enable_deepthink, send_deepthink
 
-    def _resolve_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
+    def _resolve_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
+        ui_model_label = self._get_model_label_for_request(model)
         enable_deepthink, send_deepthink = self._resolve_deepthink_flags(model)
         try:
             enable_search = bool(self.config_manager.get_setting("perplexity_behavior", "enable_search"))
@@ -1417,6 +1438,7 @@ class PerplexityDriver(BaseDriver):
             send_as_text_file = False
 
         settings = {
+            "model_label": ui_model_label,
             "deepthink_enabled": bool(enable_deepthink),
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(enable_search),
@@ -1498,6 +1520,9 @@ class PerplexityDriver(BaseDriver):
             Logger.debug(f"Perplexity macros applied: {macros_overrides}")
 
         effective_settings = self._resolve_request_settings(resolved_model, overrides=macros_overrides)
+        ui_model_label = str(
+            effective_settings.get("model_label") or self._get_model_label_for_request(resolved_model)
+        )
         self.current_send_deepthink = bool(effective_settings["send_deepthink"])
         formatted_message = self._format_messages(message_for_formatting)
 
@@ -1518,7 +1543,7 @@ class PerplexityDriver(BaseDriver):
             extra_prompt_texts=perplexity_extra_prompt_texts or None,
             metadata={
                 "model": resolved_model,
-                "ui_model": self._get_configured_model_label(),
+                "ui_model": ui_model_label,
                 "subscription_tier": self.subscription_tier,
                 "deepthink_enabled": bool(effective_settings["deepthink_enabled"]),
                 "send_deepthink": bool(effective_settings["send_deepthink"]),
@@ -1747,7 +1772,10 @@ class PerplexityDriver(BaseDriver):
                 return
 
             await self.click_new_chat(source="auto")
-            await self.set_deepthink_state(bool(effective_settings["deepthink_enabled"]))
+            await self.set_deepthink_state(
+                bool(effective_settings["deepthink_enabled"]),
+                model=resolved_model,
+            )
             await self.set_search_state(bool(effective_settings["search_enabled"]))
             await asyncio.sleep(0.2)
 

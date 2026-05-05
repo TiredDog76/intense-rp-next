@@ -970,16 +970,20 @@ class BaseDriver(ABC):
     async def cleanup_background_tasks(self) -> None:
         return None
 
-    async def apply_configured_model(self) -> None:
+    def api_real_model_labels(self) -> list[str]:
+        """Return real provider model labels that can be exposed as API model IDs."""
+        return []
+
+    async def apply_configured_model(self, model: Any = None) -> None:
         """
         Optional hook: make sure the provider's *real* model selection is applied.
 
         Notes:
         - This is intentionally separate from the OpenAI-compatible request `model` field,
-          which IntenseRP uses as a behavior preset (mode) selector.
-        (NOTE FOR SELF: Might want to make the request `model` field configurable.)
+          which IntenseRP usually uses as a behavior preset (mode) selector.
         - Providers without a model selector can keep the default no-op implementation.
         """
+        _ = model
         return None
 
     def should_apply_configured_model_before_request(self) -> bool:

@@ -582,6 +582,29 @@ class API:
             raise KeyError(f"No runtime driver is registered for provider: {provider.value}")
         return driver
 
+    def _get_api_real_model_labels(self, provider: DriverProvider) -> list[str]:
+        try:
+            driver = self._get_driver_for_provider(provider)
+        except Exception:
+            return []
+
+        getter = getattr(driver, "api_real_model_labels", None)
+        if not callable(getter):
+            return []
+
+        try:
+            labels = getter()
+        except Exception as exc:
+            Logger.debug(f"{provider.value}: failed to read API real model labels: {exc}")
+            return []
+
+        out: list[str] = []
+        for label in labels or []:
+            safe = str(label or "").strip()
+            if safe:
+                out.append(safe)
+        return out
+
     def _get_request_queue_for_provider(self, provider: DriverProvider) -> RequestQueue:
         slots = self._get_execution_slots_for_provider(provider)
         if not slots:
@@ -689,13 +712,20 @@ class API:
     def _ensure_supported_model_id(self, model: Any, provider: DriverProvider) -> None:
         normalized = str(model or "").strip()
         cfg = getattr(self.driver, "config_manager", None)
-        if is_supported_model_id(provider, normalized, cfg):
+        real_model_labels = self._get_api_real_model_labels(provider)
+        if is_supported_model_id(
+            provider,
+            normalized,
+            cfg,
+            real_model_labels=real_model_labels,
+        ):
             return
 
         supported_ids = get_model_ids_for_provider(
             provider,
             cfg,
             force_legacy=self._is_multi_provider_runtime(),
+            real_model_labels=real_model_labels,
         )
         detail = (
             f"Unsupported model `{normalized or '<empty>'}` for provider `{provider.value}`. "
@@ -1023,7 +1053,11 @@ class API:
                 }
 
             effective_provider = runtime_providers[0]
-            model_ids = get_model_ids_for_provider(effective_provider, cfg)
+            model_ids = get_model_ids_for_provider(
+                effective_provider,
+                cfg,
+                real_model_labels=self._get_api_real_model_labels(effective_provider),
+            )
 
             return {
                 "object": "list",
@@ -1464,7 +1498,7 @@ class API:
                     if callable(should_apply_model_before_request):
                         should_apply_model = bool(should_apply_model_before_request())
                     if should_apply_model:
-                        await driver.apply_configured_model()
+                        await driver.apply_configured_model(model=request.model)
                 except Exception as e:
                     provider_label = getattr(driver, "provider_label", None) or provider.value
                     Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")

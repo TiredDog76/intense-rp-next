@@ -27,7 +27,12 @@ from drivers.shared_utils import (
 )
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
-from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
+from utils.model_ids import (
+    MODE_CHAT,
+    MODE_REASONER,
+    resolve_behavior_mode,
+    resolve_real_model_label_from_model_id,
+)
 
 load_dotenv()
 
@@ -1034,6 +1039,17 @@ class AIStudioDriver(BaseDriver):
             value = ""
         return value if value in self.MODEL_CONFIGS else self.DEFAULT_MODEL_LABEL
 
+    def api_real_model_labels(self) -> list[str]:
+        return list(self.MODEL_CONFIGS.keys())
+
+    def _get_model_label_for_request(self, model: Any = None) -> str:
+        override = resolve_real_model_label_from_model_id(
+            self.provider,
+            model,
+            self.api_real_model_labels(),
+        )
+        return override or self._get_configured_model_label()
+
     @classmethod
     def _model_config_for_label(cls, label: str) -> Dict[str, Any]:
         return dict(cls.MODEL_CONFIGS.get(label) or cls.MODEL_CONFIGS[cls.DEFAULT_MODEL_LABEL])
@@ -1214,9 +1230,9 @@ class AIStudioDriver(BaseDriver):
             f"Google AI Studio: clicked model '{desired_label}' but could not confirm the selection."
         )
 
-    async def apply_configured_model(self) -> None:
+    async def apply_configured_model(self, model: Any = None) -> None:
         """Apply the currently configured model label to the AI Studio UI."""
-        desired_label = self._get_configured_model_label()
+        desired_label = self._get_model_label_for_request(model)
         try:
             await self._ensure_model_selected(desired_label)
         except Exception as e:
@@ -1392,10 +1408,19 @@ class AIStudioDriver(BaseDriver):
         if model_suffix_overrides:
             merged_overrides.update(model_suffix_overrides)
 
-        mode = resolve_behavior_mode(requested_model, self.provider)
+        mode = resolve_behavior_mode(
+            requested_model,
+            self.provider,
+            real_model_labels=self.api_real_model_labels(),
+        )
 
         configured_label = self._get_configured_model_label()
-        override_label = str(model_label_override or "").strip()
+        request_label_override = resolve_real_model_label_from_model_id(
+            self.provider,
+            requested_model,
+            self.api_real_model_labels(),
+        )
+        override_label = str(model_label_override or request_label_override or "").strip()
         desired_label = override_label if override_label in self.MODEL_CONFIGS else configured_label
         model_config = self._model_config_for_label(desired_label)
         model_base_id = str(model_config.get("base_id") or "").strip().lower()
@@ -4664,7 +4689,7 @@ class AIStudioDriver(BaseDriver):
                 extra_prompt_texts=aistudio_extra_prompt_texts or None,
                 metadata={
                     "model": self.current_model or "aistudio-auto",
-                    "ui_model": self._get_configured_model_label(),
+                    "ui_model": str(effective_settings.get("model_label") or ""),
                     "deepthink_enabled": bool(effective_settings.get("deepthink_enabled")),
                     "thinking_level": str(effective_settings.get("thinking_level") or ""),
                     "send_deepthink": bool(effective_settings.get("send_deepthink")),

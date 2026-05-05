@@ -2136,8 +2136,10 @@ SCHEMA = [
                     "Show `intenserp-auto`, `intenserp-reasoner`, and `intenserp-chat` from the "
                     "API in normal single-provider mode so you can switch providers without "
                     "changing the model name in your client. DeepSeek also exposes matching "
-                    "`intenserp-expert-*` variants. Provider-prefixed IDs still work. Providers "
-                    "in Parallel keeps using provider-prefixed IDs."
+                    "`intenserp-expert-*` variants. Providers with real model pickers also expose "
+                    "per-model variants that override the selected UI model for that request. "
+                    "Provider-prefixed IDs still work. Providers in Parallel keeps using "
+                    "provider-prefixed IDs."
                 ),
                 docs_path=DOCS_UNIVERSAL_MODEL_NAMES,
             ),

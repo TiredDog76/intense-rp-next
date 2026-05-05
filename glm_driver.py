@@ -24,7 +24,12 @@ from drivers.shared_utils import (
 )
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
-from utils.model_ids import MODE_CHAT, MODE_REASONER, resolve_behavior_mode
+from utils.model_ids import (
+    MODE_CHAT,
+    MODE_REASONER,
+    resolve_behavior_mode,
+    resolve_real_model_label_from_model_id,
+)
 
 load_dotenv()
 
@@ -284,8 +289,23 @@ class GLMDriver(BaseDriver):
         )
         self._refresh_after_generation_task = None
 
-    async def apply_configured_model(self, wait_until_ready: bool = False) -> None:
-        desired_friendly = self._get_configured_glm_model_friendly()
+    def api_real_model_labels(self) -> list[str]:
+        return list(self.MODEL_DATA_VALUE_BY_FRIENDLY.keys())
+
+    def _get_glm_model_label_for_request(self, model: Any = None) -> str:
+        override = resolve_real_model_label_from_model_id(
+            self.provider,
+            model,
+            self.api_real_model_labels(),
+        )
+        return override or self._get_configured_glm_model_friendly()
+
+    async def apply_configured_model(
+        self,
+        model: Any = None,
+        wait_until_ready: bool = False,
+    ) -> None:
+        desired_friendly = self._get_glm_model_label_for_request(model)
         if not desired_friendly:
             return
 
@@ -900,7 +920,11 @@ class GLMDriver(BaseDriver):
         enable_deepthink = bool(self.config_manager.get_setting("glm_behavior", "enable_deepthink"))
         send_deepthink = bool(self.config_manager.get_setting("glm_behavior", "send_deepthink"))
 
-        mode = resolve_behavior_mode(model, self.provider)
+        mode = resolve_behavior_mode(
+            model,
+            self.provider,
+            real_model_labels=self.api_real_model_labels(),
+        )
         if mode == MODE_CHAT:
             return False, False
         if mode == MODE_REASONER:
@@ -915,13 +939,15 @@ class GLMDriver(BaseDriver):
 
     def _resolve_glm_request_settings(self, model: str, overrides: Optional[Dict[str, bool]] = None) -> Dict[str, bool]:
         resolved_model = (model or "").strip() or "glm-auto"
+        ui_model_label = self._get_glm_model_label_for_request(resolved_model)
         deepthink_enabled, send_deepthink = self._resolve_deepthink_flags(resolved_model)
         enable_search = bool(self.config_manager.get_setting("glm_behavior", "enable_search"))
         enable_tools = bool(self.config_manager.get_setting("glm_behavior", "enable_tools"))
         send_as_text_file = bool(self.config_manager.get_setting("glm_behavior", "send_as_text_file"))
-        tools_supported = self._glm_tools_supported_for_model(self._get_configured_glm_model_friendly())
+        tools_supported = self._glm_tools_supported_for_model(ui_model_label)
 
         settings = {
+            "model_label": ui_model_label,
             "deepthink_enabled": bool(deepthink_enabled),
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(enable_search),
@@ -966,13 +992,14 @@ class GLMDriver(BaseDriver):
         enable_search: bool,
         enable_tools: bool,
         send_as_text_file: bool,
+        ui_model_label: str | None = None,
     ) -> Dict[str, Any]:
         return {
             "deepthink_enabled": bool(effective_deepthink),
             "search_enabled": bool(enable_search),
             "tools_enabled": bool(enable_tools),
             "send_as_text_file": bool(send_as_text_file),
-            "ui_model": self._get_configured_glm_model_friendly(),
+            "ui_model": str(ui_model_label or self._get_glm_model_label_for_request(self.current_model)),
         }
 
     async def _prepare_new_chat_request_ui(
@@ -987,7 +1014,7 @@ class GLMDriver(BaseDriver):
         await self.click_new_chat(source="auto")
         await asyncio.sleep(self._post_delay_s)
 
-        await self.apply_configured_model(wait_until_ready=True)
+        await self.apply_configured_model(model=self.current_model, wait_until_ready=True)
         await self.set_tools_state(bool(enable_tools))
         await self.set_deepthink_state(bool(effective_deepthink))
         await self.set_search_state(bool(enable_search))
@@ -2210,6 +2237,9 @@ class GLMDriver(BaseDriver):
         enable_search = effective_settings["search_enabled"]
         enable_tools = effective_settings["tools_enabled"]
         send_as_text_file = effective_settings["send_as_text_file"]
+        ui_model_label = str(
+            effective_settings.get("model_label") or self._get_glm_model_label_for_request(resolved_model)
+        )
         self.current_send_deepthink = effective_send_deepthink
 
         formatted_message = self._format_messages(message_for_formatting)
@@ -2228,7 +2258,7 @@ class GLMDriver(BaseDriver):
             extra_prompt_texts=glm_extra_prompt_texts or None,
             metadata={
                 "model": resolved_model,
-                "ui_model": self._get_configured_glm_model_friendly(),
+                "ui_model": ui_model_label,
                 "deepthink_enabled": bool(effective_deepthink),
                 "send_deepthink": bool(effective_send_deepthink),
                 "search_enabled": bool(enable_search),
@@ -2733,7 +2763,7 @@ class GLMDriver(BaseDriver):
 
         try:
             regenerated = False
-            clean_regen_state: Dict[str, bool] | None = None
+            clean_regen_state: Dict[str, Any] | None = None
             multi_slot_state: Dict[str, Any] | None = None
             current_cache_matched = False
             should_record_multi_slot = False
@@ -2744,13 +2774,14 @@ class GLMDriver(BaseDriver):
                     "search_enabled": bool(enable_search),
                     "tools_enabled": bool(enable_tools),
                     "send_as_text_file": bool(send_as_text_file),
-                    "ui_model": self._get_configured_glm_model_friendly(),
+                    "ui_model": ui_model_label,
                 }
                 multi_slot_state = self._build_multi_slot_cache_state(
                     effective_deepthink=bool(effective_deepthink),
                     enable_search=bool(enable_search),
                     enable_tools=bool(enable_tools),
                     send_as_text_file=bool(send_as_text_file),
+                    ui_model_label=ui_model_label,
                 )
 
                 last_state = self._read_clean_regeneration_state()
