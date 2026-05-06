@@ -648,6 +648,28 @@ class _SettingInfoBubble(QWidget):
         footer_layout.addStretch(1)
         self._layout.addWidget(footer)
 
+    def _resize_to_content_width(self, width: int) -> QSize:
+        margins = self._layout.contentsMargins()
+        content_width = max(1, int(width) - margins.left() - margins.right())
+
+        for label in (self._title, self._body):
+            # Clear the old height first cause otherwise QLabel keeps reporting the
+            # previous tall fixed height when the next message is shorter
+            label.setMinimumHeight(0)
+            label.setMaximumHeight(16777215)
+            label.setFixedWidth(content_width)
+            if label.hasHeightForWidth():
+                label.setFixedHeight(max(0, label.heightForWidth(content_width)))
+            else:
+                label.setFixedHeight(max(0, label.sizeHint().height()))
+            label.updateGeometry()
+
+        self._layout.invalidate()
+        self._layout.activate()
+        height = self._layout.sizeHint().height()
+        self.setFixedSize(int(width), height)
+        return QSize(int(width), height)
+
     def set_anchor(self, anchor_widget: QWidget | None):
         self._current_anchor = anchor_widget
 
@@ -675,14 +697,13 @@ class _SettingInfoBubble(QWidget):
         if not icon.isNull():
             self._footer_icon.setPixmap(icon)
 
-        width = min(360, max(280, self.parentWidget().width() - 24))
-        self.setFixedWidth(width)
-        self._layout.setContentsMargins(16, 14, 16, 14 + self._arrow_size)
-        self.adjustSize()
-
         parent = self.parentWidget()
         if parent is None:
             return
+
+        width = min(360, max(280, parent.width() - 24))
+        self._layout.setContentsMargins(16, 14, 16, 14 + self._arrow_size)
+        bubble_size = self._resize_to_content_width(width)
 
         anchor_rect = QRect(
             parent.mapFromGlobal(anchor_widget.mapToGlobal(QPoint(0, 0))),
@@ -690,7 +711,6 @@ class _SettingInfoBubble(QWidget):
         )
         pointer_local = parent.mapFromGlobal(preferred_global_pos or QCursor.pos())
         spacing = 12
-        bubble_size = self.sizeHint()
 
         place_above = (pointer_local.y() + spacing + bubble_size.height()) > parent.height()
         if place_above:
