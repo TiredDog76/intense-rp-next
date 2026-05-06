@@ -11,6 +11,8 @@ from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
     extract_macro_overrides,
     format_request_messages,
+    resolve_rendered_injection,
+    split_leading_system_messages,
     strip_macros_from_messages,
 )
 from utils.logger import Logger
@@ -302,6 +304,17 @@ class PerplexityDriver(BaseDriver):
     SUBMIT_BUTTON_SELECTOR = "button[type='button'][aria-label='Submit']"
     FILE_INPUT_SELECTOR = "input[type='file']"
     UPLOAD_SPINNER_SELECTOR = "svg.inline-flex.fill-current.shrink-0.animate-spin"
+    SPACES_URL = "https://www.perplexity.ai/spaces"
+    SPACE_TITLE = "IntenseRP Next"
+    SPACE_DESCRIPTION = (
+        "This space is managed by IntenseRP Next, please don't touch or delete it "
+        "if you plan to use IntenseRP Next with Perplexity. It will be "
+        "auto-recreated automatically when you use IRP Next if you delete it, though."
+    )
+    SPACE_INSTRUCTIONS_LIMIT = 8000
+    SPACE_INSTRUCTIONS_TEXTAREA_SELECTOR = (
+        "textarea[aria-label='Input for editing space answer instructions']"
+    )
     REQUEST_MODE_BUTTON_CLASSES = (
         "reset",
         "interactable",
@@ -338,6 +351,8 @@ class PerplexityDriver(BaseDriver):
         self.current_model: Optional[str] = None
         self.current_send_deepthink: Optional[bool] = None
         self._abort_ui_task: asyncio.Task | None = None
+        self._space_id: Optional[str] = None
+        self._last_space_instructions_text: Optional[str] = None
 
     @property
     def required_ui_language_label(self) -> str:
@@ -345,6 +360,25 @@ class PerplexityDriver(BaseDriver):
 
     def get_start_url(self) -> str:
         return self.BASE_URL
+
+    def _spaces_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("perplexity_behavior", "use_spaces"))
+        except Exception:
+            return False
+
+    def _space_instruction_sync_enabled(self) -> bool:
+        if not self._spaces_enabled():
+            return False
+        try:
+            return bool(
+                self.config_manager.get_setting(
+                    "perplexity_behavior",
+                    "paste_system_instructions_into_space",
+                )
+            )
+        except Exception:
+            return False
 
     async def before_initial_navigation(self) -> None:
         if not self.page:
@@ -376,7 +410,12 @@ class PerplexityDriver(BaseDriver):
         except Exception:
             pass
         try:
-            await self._wait_for_chat_ready(timeout_ms=60000)
+            if self._spaces_enabled():
+                if status_callback:
+                    status_callback("Preparing Perplexity Space...")
+                await self._ensure_space_ready()
+            else:
+                await self._wait_for_chat_ready(timeout_ms=60000)
         except Exception as exc:
             Logger.warning(f"Perplexity: chat editor was not ready after startup: {exc}")
 
@@ -792,6 +831,443 @@ class PerplexityDriver(BaseDriver):
             raise RuntimeError("Page is not initialized.")
         await self.page.wait_for_selector(self.CHAT_EDITOR_SELECTOR, timeout=timeout_ms or 0)
 
+    @staticmethod
+    def _extract_space_id_from_url(url: str) -> str | None:
+        match = re.search(r"/spaces/([^/?#]+)", str(url or ""))
+        if not match:
+            return None
+        space_id = match.group(1).strip()
+        return space_id or None
+
+    def _space_url(self, space_id: str) -> str:
+        return f"{self.SPACES_URL}/{str(space_id or '').strip()}"
+
+    async def _wait_for_space_chat_ready(self, timeout_ms: int | None = 60000) -> None:
+        await self._wait_for_chat_ready(timeout_ms=timeout_ms)
+        if not self.page:
+            return
+        space_id = self._extract_space_id_from_url(str(self.page.url or ""))
+        if space_id:
+            self._space_id = space_id
+
+    async def _open_cached_space(self) -> bool:
+        if not self.page or not self._space_id:
+            return False
+
+        try:
+            await self.page.goto(
+                self._space_url(self._space_id),
+                wait_until="domcontentloaded",
+                timeout=45000,
+            )
+            await self._dismiss_onboarding()
+            await self._wait_for_space_chat_ready(timeout_ms=20000)
+            return True
+        except Exception as exc:
+            Logger.warning(
+                "Perplexity Spaces: cached Space URL did not open as a usable "
+                f"chat. It may have been deleted; finding or recreating it now. ({exc})"
+            )
+            self._space_id = None
+            self._last_space_instructions_text = None
+            return False
+
+    async def _current_space_is_ready(self) -> bool:
+        if not self.page or not self._space_id:
+            return False
+        current_id = self._extract_space_id_from_url(str(self.page.url or ""))
+        if current_id != self._space_id:
+            return False
+        try:
+            await self._wait_for_chat_ready(timeout_ms=1000)
+            return True
+        except Exception:
+            return False
+
+    async def _ensure_space_ready(self) -> None:
+        if not self.page or not self._spaces_enabled():
+            return
+
+        if await self._current_space_is_ready():
+            return
+        if self._space_id and await self._open_cached_space():
+            return
+
+        await self._find_or_create_space()
+
+    async def _find_or_create_space(self) -> None:
+        if not self.page:
+            raise RuntimeError("Page is not initialized.")
+
+        Logger.info("Perplexity Spaces: opening Spaces dashboard...")
+        await self.page.goto(self.SPACES_URL, wait_until="domcontentloaded", timeout=45000)
+        await self._dismiss_onboarding()
+        await self.page.wait_for_selector("div[role='table']", timeout=60000)
+
+        if await self._click_existing_space():
+            await self._wait_for_space_chat_ready(timeout_ms=60000)
+            Logger.info(f"Perplexity Spaces: opened '{self.SPACE_TITLE}'.")
+            return
+
+        await self._create_space()
+
+    async def _click_existing_space(self) -> bool:
+        if not self.page:
+            return False
+
+        try:
+            result = await self.page.evaluate(
+                """(title) => {
+                    const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+                    const table = document.querySelector("div[role='table']");
+                    if (!table) return 'missing-table';
+                    const rows = Array.from(table.querySelectorAll("div[class*='group/dashboard-row']"));
+                    for (const row of rows) {
+                        const cell = Array.from(row.children || []).find((child) => (
+                            child && child.getAttribute && child.getAttribute('role') === 'cell'
+                        ));
+                        if (!cell) continue;
+                        const link = cell.firstElementChild;
+                        const firstDiv = link && link.firstElementChild;
+                        const titleDiv = firstDiv && firstDiv.children && firstDiv.children[1];
+                        if (normalize(titleDiv && titleDiv.textContent) !== title) continue;
+                        const target = link || row;
+                        target.dispatchEvent(new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window
+                        }));
+                        return 'clicked';
+                    }
+                    return 'missing';
+                }""",
+                self.SPACE_TITLE,
+            )
+            return result == "clicked"
+        except Exception as exc:
+            Logger.warning(f"Perplexity Spaces: failed to inspect Spaces dashboard: {exc}")
+            return False
+
+    async def _set_text_control_value(
+        self,
+        locator: Any,
+        text: str,
+        *,
+        label: str,
+        timeout_ms: int = 10000,
+    ) -> bool:
+        expected = str(text or "")
+        try:
+            await locator.wait_for(state="visible", timeout=timeout_ms)
+            try:
+                await locator.scroll_into_view_if_needed(timeout=timeout_ms)
+            except Exception:
+                pass
+            try:
+                await locator.click(timeout=timeout_ms)
+                await locator.focus(timeout=1000)
+            except Exception:
+                try:
+                    await locator.evaluate("(el) => el && el.focus && el.focus()")
+                except Exception:
+                    pass
+            await locator.fill(expected, timeout=timeout_ms)
+            try:
+                value = str(await locator.input_value(timeout=1000) or "")
+                if value == expected:
+                    return True
+            except Exception:
+                return True
+        except Exception as exc:
+            Logger.debug(f"Perplexity Spaces: Playwright fill failed for {label}: {exc}")
+
+        try:
+            await locator.evaluate(
+                """(el, value) => {
+                    const text = String(value || '');
+                    const proto = Object.getPrototypeOf(el);
+                    const descriptor = proto && Object.getOwnPropertyDescriptor(proto, 'value');
+                    if (descriptor && descriptor.set) {
+                        descriptor.set.call(el, text);
+                    } else {
+                        el.value = text;
+                    }
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }""",
+                expected,
+            )
+            try:
+                value = str(await locator.input_value(timeout=1000) or "")
+                if value != expected:
+                    Logger.warning(
+                        f"Perplexity Spaces: {label} did not retain the expected text."
+                    )
+                    return False
+            except Exception:
+                pass
+            return True
+        except Exception as exc:
+            Logger.warning(f"Perplexity Spaces: failed to set {label}: {exc}")
+            return False
+
+    async def _click_button_with_first_span_text(
+        self,
+        text: str,
+        *,
+        button_type: str | None = None,
+        timeout_ms: int = 10000,
+    ) -> bool:
+        if not self.page:
+            return False
+
+        deadline = time.monotonic() + max(int(timeout_ms or 0), 0) / 1000.0
+        while True:
+            try:
+                result = await self.page.evaluate(
+                    """({label, buttonType}) => {
+                        const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+                        const isVisible = (el) => {
+                            if (!el || !el.getClientRects || el.getClientRects().length === 0) return false;
+                            const style = window.getComputedStyle(el);
+                            return style && style.display !== 'none' && style.visibility !== 'hidden';
+                        };
+                        const isTopmost = (el) => {
+                            const box = el && el.getBoundingClientRect && el.getBoundingClientRect();
+                            if (!box || box.width <= 0 || box.height <= 0) return false;
+                            const x = box.left + box.width / 2;
+                            const y = box.top + box.height / 2;
+                            const top = document.elementFromPoint(x, y);
+                            return !!top && (top === el || el.contains(top));
+                        };
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const target = buttons.find((button) => {
+                            if (buttonType && (button.getAttribute('type') || '').toLowerCase() !== buttonType) {
+                                return false;
+                            }
+                            if (button.disabled || (button.getAttribute('aria-disabled') || '').toLowerCase() === 'true') {
+                                return false;
+                            }
+                            const first = button.firstElementChild;
+                            if (!first || first.tagName.toLowerCase() !== 'span') return false;
+                            return isVisible(button) && isTopmost(button) && normalize(first.textContent) === label;
+                        });
+                        if (!target) return 'missing';
+                        target.dispatchEvent(new MouseEvent('click', {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window
+                        }));
+                        return 'clicked';
+                    }""",
+                    {
+                        "label": str(text or ""),
+                        "buttonType": str(button_type or "").lower(),
+                    },
+                )
+                if result == "clicked":
+                    return True
+            except Exception:
+                pass
+
+            if timeout_ms <= 0 or time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(0.1)
+
+    async def _create_space(self) -> None:
+        if not self.page:
+            raise RuntimeError("Page is not initialized.")
+
+        Logger.info(f"Perplexity Spaces: creating '{self.SPACE_TITLE}'...")
+        create_new_button = self.page.locator("button[aria-label='Create a new space']").first
+        await create_new_button.wait_for(state="visible", timeout=20000)
+        await create_new_button.click(timeout=5000)
+
+        title_input = self.page.locator("input[aria-label='Space title']").first
+        if not await self._set_text_control_value(
+            title_input,
+            self.SPACE_TITLE,
+            label="Space title",
+        ):
+            raise RuntimeError("Could not set Perplexity Space title.")
+
+        description_input = self.page.locator("textarea[aria-label='Space description']").first
+        if not await self._set_text_control_value(
+            description_input,
+            self.SPACE_DESCRIPTION,
+            label="Space description",
+        ):
+            raise RuntimeError("Could not set Perplexity Space description.")
+
+        instructions_input = self.page.locator("textarea[aria-label='Space instructions']").first
+        try:
+            if await instructions_input.count() > 0:
+                await self._set_text_control_value(
+                    instructions_input,
+                    "",
+                    label="Space instructions",
+                )
+        except Exception:
+            pass
+
+        if not await self._click_button_with_first_span_text("Create", timeout_ms=20000):
+            raise RuntimeError("Could not click the final Perplexity Space Create button.")
+
+        await self._dismiss_space_share_prompt()
+        await self._wait_for_space_chat_ready(timeout_ms=60000)
+        self._last_space_instructions_text = ""
+        Logger.success(f"Perplexity Spaces: created '{self.SPACE_TITLE}'.")
+
+    async def _dismiss_space_share_prompt(self) -> None:
+        clicked = await self._click_button_with_first_span_text("Skip", timeout_ms=15000)
+        if clicked:
+            Logger.info("Perplexity Spaces: dismissed post-create share prompt.")
+
+    async def _read_space_instructions_button_state(self) -> str:
+        if not self.page:
+            return ""
+        try:
+            return str(
+                await self.page.evaluate(
+                    """() => {
+                        const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+                        const buttons = Array.from(document.querySelectorAll("button[role='button'], button"));
+                        for (const button of buttons) {
+                            const children = Array.from(button.children || []);
+                            const divTexts = children
+                                .filter((child) => child.tagName && child.tagName.toLowerCase() === 'div')
+                                .map((child) => normalize(child.textContent));
+                            const fullText = normalize(button.textContent);
+                            if (divTexts[0] === 'Edit instructions' || fullText === 'Edit instructions') {
+                                return 'edit';
+                            }
+                            if (divTexts[1] === 'Add instructions...' || fullText.includes('Add instructions...')) {
+                                return 'add';
+                            }
+                        }
+                        return '';
+                    }"""
+                )
+                or ""
+            ).strip()
+        except Exception:
+            return ""
+
+    async def _click_space_instructions_button(self, state: str) -> bool:
+        if not self.page:
+            return False
+        state = str(state or "").strip().lower()
+        if state not in {"add", "edit"}:
+            return False
+        try:
+            result = await self.page.evaluate(
+                """(wanted) => {
+                    const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+                    const isVisible = (el) => {
+                        if (!el || !el.getClientRects || el.getClientRects().length === 0) return false;
+                        const style = window.getComputedStyle(el);
+                        return style && style.display !== 'none' && style.visibility !== 'hidden';
+                    };
+                    const buttonState = (button) => {
+                        const children = Array.from(button.children || []);
+                        const divTexts = children
+                            .filter((child) => child.tagName && child.tagName.toLowerCase() === 'div')
+                            .map((child) => normalize(child.textContent));
+                        const fullText = normalize(button.textContent);
+                        if (divTexts[0] === 'Edit instructions' || fullText === 'Edit instructions') {
+                            return 'edit';
+                        }
+                        if (divTexts[1] === 'Add instructions...' || fullText.includes('Add instructions...')) {
+                            return 'add';
+                        }
+                        return '';
+                    };
+                    const buttons = Array.from(document.querySelectorAll("button[role='button'], button"));
+                    const target = buttons.find((button) => isVisible(button) && buttonState(button) === wanted);
+                    if (!target) return 'missing';
+                    target.dispatchEvent(new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    }));
+                    return 'clicked';
+                }""",
+                state,
+            )
+            return result == "clicked"
+        except Exception:
+            return False
+
+    async def _sync_space_instructions(self, desired_text: str) -> None:
+        if not self.page or not self._spaces_enabled():
+            return
+
+        desired = str(desired_text or "")
+        if len(desired) > self.SPACE_INSTRUCTIONS_LIMIT:
+            Logger.warning(
+                "Perplexity Spaces: requested Space instructions exceeded 8000 "
+                "characters; trimming to Perplexity's limit."
+            )
+            desired = desired[: self.SPACE_INSTRUCTIONS_LIMIT]
+
+        await self._ensure_space_ready()
+        state = await self._read_space_instructions_button_state()
+        if state == "add" and not desired.strip():
+            self._last_space_instructions_text = ""
+            return
+        if not state:
+            Logger.warning("Perplexity Spaces: instructions button was not found.")
+            return
+        if not await self._click_space_instructions_button(state):
+            Logger.warning("Perplexity Spaces: failed to open instructions editor.")
+            return
+
+        textarea = self.page.locator(self.SPACE_INSTRUCTIONS_TEXTAREA_SELECTOR).first
+        try:
+            await textarea.wait_for(state="visible", timeout=10000)
+            current_value = str(await textarea.input_value(timeout=3000) or "")
+        except Exception as exc:
+            Logger.warning(f"Perplexity Spaces: instructions textarea was not ready: {exc}")
+            return
+
+        if current_value == desired:
+            await self._click_button_with_first_span_text(
+                "Cancel",
+                button_type="button",
+                timeout_ms=5000,
+            )
+            self._last_space_instructions_text = desired
+            return
+
+        if not await self._set_text_control_value(
+            textarea,
+            desired,
+            label="Space answer instructions",
+        ):
+            await self._click_button_with_first_span_text(
+                "Cancel",
+                button_type="button",
+                timeout_ms=5000,
+            )
+            return
+
+        if not await self._click_button_with_first_span_text(
+            "Save",
+            button_type="button",
+            timeout_ms=10000,
+        ):
+            Logger.warning("Perplexity Spaces: failed to save Space instructions.")
+            return
+
+        try:
+            await textarea.wait_for(state="hidden", timeout=5000)
+        except Exception:
+            pass
+        self._last_space_instructions_text = desired
+        Logger.info(
+            f"Perplexity Spaces: synced Space instructions ({len(desired)} chars)."
+        )
+
     async def set_sidebar_status(self, open: bool) -> None:
         _ = open
         return None
@@ -800,9 +1276,12 @@ class PerplexityDriver(BaseDriver):
         _ = source
         if not self.page:
             return
-        await self.page.goto(self.BASE_URL, wait_until="domcontentloaded", timeout=45000)
-        await self._dismiss_onboarding()
-        await self._wait_for_chat_ready(timeout_ms=60000)
+        if self._spaces_enabled():
+            await self._ensure_space_ready()
+        else:
+            await self.page.goto(self.BASE_URL, wait_until="domcontentloaded", timeout=45000)
+            await self._dismiss_onboarding()
+            await self._wait_for_chat_ready(timeout_ms=60000)
 
     def _model_switching_available(self) -> bool:
         tier = str(self.subscription_tier or "free").strip().lower()
@@ -1560,6 +2039,8 @@ class PerplexityDriver(BaseDriver):
             send_as_text_file = bool(self.config_manager.get_setting("perplexity_behavior", "send_as_text_file"))
         except Exception:
             send_as_text_file = False
+        use_spaces = self._spaces_enabled()
+        sync_space_instructions = self._space_instruction_sync_enabled()
 
         settings = {
             "model_label": ui_model_label,
@@ -1567,10 +2048,14 @@ class PerplexityDriver(BaseDriver):
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(enable_search),
             "send_as_text_file": bool(send_as_text_file),
+            "use_spaces": bool(use_spaces),
+            "sync_space_instructions": bool(sync_space_instructions),
         }
         for key, value in (overrides or {}).items():
             if key in settings:
                 settings[key] = bool(value)
+        if not settings["use_spaces"]:
+            settings["sync_space_instructions"] = False
         return settings
 
     async def _enqueue_openai_delta(
@@ -1600,6 +2085,139 @@ class PerplexityDriver(BaseDriver):
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         return format_request_messages(self.config_manager, messages)
+
+    def _message_format_separator(self) -> str:
+        try:
+            apply_formatting = bool(self.config_manager.get_setting("formatting", "apply_formatting"))
+        except Exception:
+            apply_formatting = False
+        if not apply_formatting:
+            return "\n"
+        try:
+            divider = self.config_manager.get_setting("formatting", "formatting_divider") or ""
+        except Exception:
+            divider = ""
+        return str(divider).replace("\\n", "\n")
+
+    @staticmethod
+    def _message_content_as_text(message: Any) -> str:
+        content = None
+        try:
+            content = getattr(message, "content")
+        except Exception:
+            content = None
+        if content is None and isinstance(message, dict):
+            content = message.get("content", "")
+        return "" if content is None else str(content)
+
+    def _strip_leading_rendered_injection(self, text: str, injection_text: str) -> str:
+        if not text or not injection_text:
+            return text
+        if text == injection_text:
+            return ""
+        if text.startswith(injection_text):
+            remainder = text[len(injection_text) :]
+            return remainder[1:] if remainder.startswith("\n") else remainder
+        return text
+
+    def _strip_formatted_prefix(self, text: str, prefix: str) -> str:
+        if not text or not prefix:
+            return text
+        if text == prefix:
+            return ""
+        if not text.startswith(prefix):
+            return text
+
+        remainder = text[len(prefix) :]
+        separator = self._message_format_separator()
+        if separator and remainder.startswith(separator):
+            return remainder[len(separator) :]
+        if remainder.startswith("\n"):
+            return remainder[1:]
+        return remainder
+
+    def _append_space_instruction_part(self, parts: list[str], text: str) -> bool:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return True
+        candidate = "\n\n".join(parts + [normalized])
+        if len(candidate) > self.SPACE_INSTRUCTIONS_LIMIT:
+            return False
+        parts.append(normalized)
+        return True
+
+    def _prepare_space_prompt_payload(
+        self,
+        message_for_formatting: Union[str, List[Any]],
+        *,
+        sync_space_instructions: bool,
+    ) -> tuple[str, str]:
+        formatted_message = self._format_messages(message_for_formatting)
+        if isinstance(message_for_formatting, str) or not sync_space_instructions:
+            return formatted_message, ""
+
+        leading_system_messages, _remaining_messages = split_leading_system_messages(
+            message_for_formatting
+        )
+
+        space_instruction_parts: list[str] = []
+        selected_leading_messages: list[Any] = []
+        for item in leading_system_messages:
+            content = self._message_content_as_text(item).strip()
+            if content and not self._append_space_instruction_part(
+                space_instruction_parts,
+                content,
+            ):
+                break
+            selected_leading_messages.append(item)
+
+        injection_position, rendered_injection = resolve_rendered_injection(
+            self.config_manager,
+            message_for_formatting,
+        )
+        rendered_injection = str(rendered_injection or "").strip()
+        use_before_injection = (
+            bool(rendered_injection)
+            and str(injection_position or "").strip().lower() == "before"
+        )
+        move_injection_to_space = False
+        if use_before_injection:
+            move_injection_to_space = self._append_space_instruction_part(
+                space_instruction_parts,
+                rendered_injection,
+            )
+
+        injection_to_restore = ""
+        if use_before_injection:
+            stripped = self._strip_leading_rendered_injection(
+                formatted_message,
+                rendered_injection,
+            )
+            if stripped != formatted_message:
+                if move_injection_to_space:
+                    formatted_message = stripped
+                else:
+                    injection_to_restore = rendered_injection
+                    formatted_message = stripped
+
+        if selected_leading_messages:
+            leading_prefix = self._format_messages(selected_leading_messages)
+            if use_before_injection:
+                leading_prefix = self._strip_leading_rendered_injection(
+                    leading_prefix,
+                    rendered_injection,
+                )
+            formatted_message = self._strip_formatted_prefix(
+                formatted_message,
+                leading_prefix,
+            )
+
+        if injection_to_restore:
+            formatted_message = (
+                injection_to_restore + ("\n" + formatted_message if formatted_message else "")
+            )
+
+        return formatted_message, "\n\n".join(space_instruction_parts)
 
     async def generate_response(
         self,
@@ -1648,9 +2266,14 @@ class PerplexityDriver(BaseDriver):
             effective_settings.get("model_label") or self._get_model_label_for_request(resolved_model)
         )
         self.current_send_deepthink = bool(effective_settings["send_deepthink"])
-        formatted_message = self._format_messages(message_for_formatting)
+        formatted_message, space_instructions_text = self._prepare_space_prompt_payload(
+            message_for_formatting,
+            sync_space_instructions=bool(effective_settings["sync_space_instructions"]),
+        )
 
         perplexity_extra_prompt_texts: Dict[str, str] = {}
+        if bool(effective_settings["use_spaces"]):
+            perplexity_extra_prompt_texts["space_instructions"] = space_instructions_text
         text_file_message = ""
         if bool(effective_settings["send_as_text_file"]):
             try:
@@ -1673,6 +2296,9 @@ class PerplexityDriver(BaseDriver):
                 "send_deepthink": bool(effective_settings["send_deepthink"]),
                 "search_enabled": bool(effective_settings["search_enabled"]),
                 "send_as_text_file": bool(effective_settings["send_as_text_file"]),
+                "use_spaces": bool(effective_settings["use_spaces"]),
+                "sync_space_instructions": bool(effective_settings["sync_space_instructions"]),
+                "space_instructions_chars": len(space_instructions_text),
             },
         )
 
@@ -1896,6 +2522,8 @@ class PerplexityDriver(BaseDriver):
                 return
 
             await self.click_new_chat(source="auto")
+            if bool(effective_settings["use_spaces"]):
+                await self._sync_space_instructions(space_instructions_text)
             await self.set_deepthink_state(
                 bool(effective_settings["deepthink_enabled"]),
                 model=resolved_model,

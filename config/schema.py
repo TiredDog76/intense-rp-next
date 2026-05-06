@@ -985,6 +985,35 @@ SCHEMA = [
                 hint_variant="info",
             ),
             SettingField(
+                key="use_spaces",
+                label="Use Perplexity Spaces",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Use an IntenseRP-managed Perplexity Space instead of the normal "
+                    "chat page. This is experimental, but usually handles custom "
+                    "instructions better."
+                ),
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="spaces-mode",
+            ),
+            SettingField(
+                key="paste_system_instructions_into_space",
+                label="Paste System Instructions Into Space Instructions",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Move leading system messages into the Space instructions field "
+                    "when Spaces mode is enabled. Perplexity limits that field to "
+                    "8000 characters; anything beyond the limit stays in the prompt."
+                ),
+                depends="perplexity_behavior.use_spaces",
+                visible_depends="perplexity_behavior.use_spaces",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_PERPLEXITY,
+                docs_anchor="space-instructions",
+            ),
+            SettingField(
                 key="enable_deepthink",
                 label="Enable Thinking",
                 type=SettingType.BOOLEAN,
@@ -2493,6 +2522,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
     ],
     "perplexity_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "subscription_note", "enable_deepthink", "send_deepthink", "search_forced_off_note", "enable_search"]},
+        {"title": "Spaces", "icon": "sparkles.svg", "fields": ["use_spaces", "paste_system_instructions_into_space"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
     ],
     "aistudio_behavior": [

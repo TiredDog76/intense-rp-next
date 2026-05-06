@@ -53,6 +53,29 @@ Current options:
 
 ---
 
+## :material-auto-fix: Spaces Mode
+
+Spaces mode makes IntenseRP use an **IntenseRP Next** Space instead of the normal Perplexity chat page.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Perplexity** -> **Use Perplexity Spaces**
+
+When enabled, IntenseRP opens `https://www.perplexity.ai/spaces`, looks for an existing Space named `IntenseRP Next`, and creates it if it isn't there yet. The Space ID is remembered only for the current browser session, so if the Space is deleted IntenseRP will warn in the logs and recreate it next time.
+
+After the Space is ready, prompts, model selection, Thinking, Search, and file uploads keep using the same Perplexity composer flow as normal chat mode.
+
+### Space Instructions
+
+You can also move leading system messages into the Space instructions field:
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Perplexity** -> **Paste System Instructions Into Space Instructions**
+
+Only leading system messages are moved. Once a user or assistant message appears, later system messages stay in the regular prompt. Perplexity caps Space instructions at 8000 characters, so anything that doesn't fit also stays in the prompt.
+
+!!! tip "Loadouts"
+    Both Spaces settings are Perplexity Behavior settings, so Perplexity loadouts can turn Spaces mode and Space-instruction syncing on or off per loadout.
+
+---
+
 ## :material-head-cog: Thinking
 
 ### Enable Thinking
@@ -161,6 +184,8 @@ All macros are stripped from the message before sending it to Perplexity.
 | **Enable Thinking** | Toggles Perplexity Thinking where available | Off |
 | **Send Thinking** | Reserved; no thinking traces are forwarded yet | Off |
 | **Enable Search** | Enables Perplexity Web search | Off |
+| **Use Perplexity Spaces** | Uses an IntenseRP-managed Space instead of normal chat | Off |
+| **Paste System Instructions Into Space Instructions** | Moves leading system messages into Space instructions | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **Text File Message** | Text pasted alongside uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait after upload | 20 |
