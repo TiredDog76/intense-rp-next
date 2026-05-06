@@ -302,6 +302,18 @@ class PerplexityDriver(BaseDriver):
     SUBMIT_BUTTON_SELECTOR = "button[type='button'][aria-label='Submit']"
     FILE_INPUT_SELECTOR = "input[type='file']"
     UPLOAD_SPINNER_SELECTOR = "svg.inline-flex.fill-current.shrink-0.animate-spin"
+    REQUEST_MODE_BUTTON_CLASSES = (
+        "reset",
+        "interactable",
+        "inline-flex",
+        "select-none",
+        "h-8",
+        "max-w-full",
+        "items-center",
+        "border",
+        "text-sm",
+        "transition-colors",
+    )
     SIGN_IN_LABEL_XPATH = (
         "xpath=//div[normalize-space(.)='Sign In' and "
         "contains(concat(' ', normalize-space(@class), ' '), "
@@ -882,17 +894,29 @@ class PerplexityDriver(BaseDriver):
             return
         await self._select_model_and_thinking(self._get_model_label_for_request(model), bool(state))
 
+    async def _find_model_picker_trigger(self):
+        if not self.page:
+            return None
+
+        trigger = self.page.locator("button[aria-label='Model']")
+        if await trigger.count() > 0:
+            return trigger
+
+        for label in PERPLEXITY_MODEL_OPTIONS:
+            trigger = self.page.locator("button").filter(has_text=label)
+            if await trigger.count() > 0:
+                return trigger
+        return None
+
     async def _open_model_picker(self) -> bool:
         if not self.page:
             return False
 
-        trigger = self.page.locator("button[aria-label='Model']")
-        if await trigger.count() == 0:
-            for label in PERPLEXITY_MODEL_OPTIONS:
-                trigger = self.page.locator("button").filter(has_text=label)
-                if await trigger.count() > 0:
-                    break
-        if await trigger.count() == 0:
+        trigger = await self._find_model_picker_trigger()
+        if not trigger:
+            await self._ensure_request_mode_search()
+            trigger = await self._find_model_picker_trigger()
+        if not trigger:
             Logger.warning("Perplexity: model picker button was not found.")
             return False
 
@@ -1106,6 +1130,103 @@ class PerplexityDriver(BaseDriver):
         ok = await self._set_web_search_checkbox(bool(state))
         if not ok:
             Logger.warning(f"Perplexity: could not set Web search to {bool(state)}.")
+
+    async def _ensure_request_mode_search(self) -> bool:
+        if not self.page:
+            return False
+
+        read_mode_js = """(button) => {
+            const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+            const last = button && button.lastElementChild;
+            if (!last || last.tagName.toLowerCase() !== 'span') {
+                return normalize(button && button.textContent);
+            }
+            for (const node of Array.from(last.childNodes || [])) {
+                if (node.nodeType !== Node.TEXT_NODE) continue;
+                const text = normalize(node.textContent);
+                if (text) return text;
+            }
+            return normalize(last.textContent);
+        }"""
+
+        handle = None
+        opened_menu = False
+        try:
+            handle = await self.page.evaluate_handle(
+                """(requiredClasses) => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    return buttons.find((button) => (
+                        requiredClasses.every((className) => button.classList.contains(className))
+                    )) || null;
+                }""",
+                list(self.REQUEST_MODE_BUTTON_CLASSES),
+            )
+            button = handle.as_element() if handle else None
+            if not button:
+                Logger.warning("Perplexity: request mode button was not found.")
+                return False
+
+            current_mode = str(await button.evaluate(read_mode_js) or "").strip()
+            if current_mode == "Search":
+                return True
+
+            await button.click(timeout=5000)
+            opened_menu = True
+            await self.page.wait_for_selector("div[role='menuitemradio']", timeout=5000)
+            await asyncio.sleep(0.1)
+
+            result = await self.page.evaluate(
+                """() => {
+                    const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+                    const isVisible = (el) => {
+                        if (!el || !el.getClientRects || el.getClientRects().length === 0) return false;
+                        const style = window.getComputedStyle(el);
+                        return style && style.display !== 'none' && style.visibility !== 'hidden';
+                    };
+                    const radioLabel = (radio) => {
+                        const first = radio && radio.children && radio.children[0];
+                        const label = first
+                            && first.children
+                            && first.children[1]
+                            && first.children[1].children
+                            && first.children[1].children[0]
+                            && first.children[1].children[0].children
+                            && first.children[1].children[0].children[0];
+                        return normalize(label && label.textContent) || normalize(radio && radio.textContent);
+                    };
+                    const radios = Array.from(document.querySelectorAll("div[role='menuitemradio']"));
+                    const target = radios.find((radio) => isVisible(radio) && radioLabel(radio) === 'Search');
+                    if (!target) return 'missing';
+                    target.click();
+                    return 'clicked';
+                }"""
+            )
+            if result != "clicked":
+                Logger.warning("Perplexity: Search request mode option was not found.")
+                return False
+
+            await asyncio.sleep(0.2)
+            current_mode = str(await button.evaluate(read_mode_js) or "").strip()
+            if current_mode != "Search":
+                Logger.warning(
+                    f"Perplexity: request mode still shows '{current_mode or 'unknown'}' after selecting Search."
+                )
+                return False
+            return True
+        except Exception as exc:
+            Logger.warning(f"Perplexity: failed to ensure request mode Search: {exc}")
+            return False
+        finally:
+            if opened_menu:
+                try:
+                    await self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
+            if handle:
+                try:
+                    await handle.dispose()
+                except Exception:
+                    pass
 
     async def _file_upload_is_capped(self) -> bool:
         if not self.page:
@@ -1365,6 +1486,9 @@ class PerplexityDriver(BaseDriver):
                     aria_disabled = str(await button.first.get_attribute("aria-disabled") or "").lower()
                     enabled = await button.first.is_enabled()
                     if disabled_attr is None and aria_disabled != "true" and enabled:
+                        if not await self._ensure_request_mode_search():
+                            last_error = RuntimeError("Could not confirm Perplexity request mode is Search.")
+                            break
                         await self._remember_send_control_signature(button.first)
                         await button.first.click(timeout=3000)
                         return
