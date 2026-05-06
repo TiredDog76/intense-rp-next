@@ -109,6 +109,42 @@ Google AI Studio model IDs are also behavior presets:
 | `aistudio-chat` | Lowers Thinking Level on supported AI Studio models | Forced off |
 | `aistudio-reasoner` | Uses your configured Thinking Level | Uses your settings |
 
+### Request `reasoning_effort`
+
+If **Settings -> API Server -> Request Controls -> Accept API Reasoning Effort** is enabled (it is off by default), IntenseRP also accepts OpenAI-style per-request reasoning effort fields:
+
+```json
+{
+  "model": "aistudio-auto",
+  "reasoning_effort": "medium"
+}
+```
+
+Nested `reasoning.effort` is accepted too, for clients that use that shape:
+
+```json
+{
+  "model": "aistudio-auto",
+  "reasoning": { "effort": "medium" }
+}
+```
+
+Top-level `reasoning_effort` wins if both are present.
+
+When this compatibility setting is enabled, the resolved effort takes priority over the reasoning part of the `model` ID for that request.
+
+For most providers, effort values are simplified into the existing reasoning toggle:
+
+| Request effort | Effective behavior |
+|---|---|
+| Not sent, `auto`, `minimum`, `minimal`, `low` | Forces chat/off mode |
+| `medium`, `high`, `max`, `xhigh`, and similar higher values | Forces reasoner/on mode |
+
+For Google AI Studio, explicit efforts are mapped to Thinking Level instead: `minimum`/`minimal` -> `Minimal`, `low` -> `Low`, `medium` -> `Medium`, and `high`/`max`/`xhigh` -> `High`. If no effort is sent, IntenseRP still treats that as chat/off mode because clients like SillyTavern use "Auto" by omitting the field.
+
+!!! note "AI Studio rounding"
+    AI Studio models don't expose the same controls. IntenseRP may round to the closest available Thinking Level, or convert the level into a manual thinking budget on Gemini 2.5 models.
+
 !!! info "What these IDs are (and are not)"
     Provider-prefixed and `intenserp-*` IDs are behavior presets. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
@@ -247,9 +283,9 @@ When you set `stream: false`, the server still generates via streaming internall
 - `usage` GLM Chat and QwenLM can populate it when **Count Tokens** is enabled in the provider Behavior settings
 
 !!! note "Compatibility fields"
-    `temperature`, `top_p`, and `max_tokens` are accepted for OpenAI compatibility.
+    `temperature`, `top_p`, `max_tokens`, and `reasoning_effort` are accepted for OpenAI compatibility.
 
-    Right now, Google AI Studio is the only provider that actively applies them in the web UI. Other providers currently ignore them.
+    Right now, Google AI Studio is the only provider that actively applies `temperature`, `top_p`, and `max_tokens` in the web UI. `reasoning_effort` is handled by the API layer before the request reaches a provider.
 
 ---
 

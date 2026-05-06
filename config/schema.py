@@ -2173,6 +2173,21 @@ SCHEMA = [
                 docs_path=DOCS_UNIVERSAL_MODEL_NAMES,
             ),
             SettingField(
+                key="accept_reasoning_effort",
+                label="Accept API Reasoning Effort",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Let OpenAI-compatible requests use `reasoning_effort` (or "
+                    "`reasoning.effort`) to control provider reasoning for that request. "
+                    "No effort, Minimum, and Low map to chat/off for most providers; "
+                    "Medium and above map to reasoning/on. Google AI Studio maps efforts "
+                    "to its Thinking Level controls."
+                ),
+                docs_path=DOCS_NETWORK,
+                docs_anchor="api-reasoning-effort",
+            ),
+            SettingField(
                 key="use_api_keys",
                 label="Require API Keys",
                 type=SettingType.BOOLEAN,
@@ -2242,7 +2257,12 @@ SETTINGS_SECTIONS = [
         key="api_server",
         label="API Server",
         icon="share-2.svg",
-        card_keys=["server_access", "server_model_ids", "server_security"],
+        card_keys=[
+            "server_access",
+            "server_model_ids",
+            "server_request_controls",
+            "server_security",
+        ],
     ),
     SettingSection(
         key="formatting",
@@ -2325,6 +2345,11 @@ SETTINGS_CARDS = {
         key="server_model_ids",
         title="Model IDs",
         field_refs=[("network_settings", "enable_umm")],
+    ),
+    "server_request_controls": SettingCard(
+        key="server_request_controls",
+        title="Request Controls",
+        field_refs=[("network_settings", "accept_reasoning_effort")],
     ),
     "server_security": SettingCard(
         key="server_security",

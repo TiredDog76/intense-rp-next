@@ -111,6 +111,34 @@ Controls the level IntenseRP selects on supported AI Studio models:
 !!! note "Gemma 4 models"
     Gemma 4 models currently expose `Minimal` and `High`. When your configured level lands between those two, IntenseRP picks the nearest available level.
 
+### Per-request reasoning effort
+
+For API clients, the recommended per-request way to control AI Studio thinking is `reasoning_effort`:
+
+```json
+{
+  "model": "aistudio-auto",
+  "reasoning_effort": "medium"
+}
+```
+
+This works when **Settings** -> **API Server** -> **Request Controls** -> **Accept API Reasoning Effort** is enabled. It's enabled by default.
+
+AI Studio maps effort values to Thinking Level:
+
+| API effort | AI Studio Thinking Level |
+|------------|--------------------------|
+| Not sent, `auto` | Chat/off mode |
+| `minimum`, `minimal` | `Minimal` |
+| `low` | `Low` |
+| `medium` | `Medium` |
+| `high`, `max`, `xhigh` | `High` |
+
+This is usually nicer than changing the global IRP setting or adding macros to prompts, especially when the client already has a reasoning-effort control.
+
+!!! note "Model-specific rounding"
+    Some AI Studio models expose fewer levels, so IntenseRP picks the closest supported one. Gemini 2.5 Flash, Flash Lite, and Pro also use manual thinking budgets under the hood, so IntenseRP converts the requested level into the matching budget.
+
 ### Send Thinking
 
 When enabled, AI Studio thinking summaries are included in the API response, wrapped in `<think>` tags.
@@ -356,7 +384,7 @@ All macros are stripped before sending.
 `[[nocaars]]` / `[[nocars]]` only matters when AI Studio Anti-Censorship and CAARS are both enabled. Otherwise it has nothing to turn off.
 
 !!! tip "Model-name suffixes"
-    You can also append a Thinking Level suffix directly to the API model string, for example:
+    `reasoning_effort` is the recommended API-side method now, but you can still append a Thinking Level suffix directly to the API model string, for example:
 
     - `aistudio-auto-high`
     - `aistudio-auto-low`

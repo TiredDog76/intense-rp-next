@@ -18,6 +18,8 @@ from remote_control import RemoteControlActions, RemoteControlWeb
 from utils.ip_utils import is_ip_address_allowed
 from utils.logger import Logger
 from utils.model_ids import (
+    MODE_CHAT,
+    MODE_REASONER,
     build_openai_model_list,
     get_model_ids_for_provider,
     get_model_ids_for_providers,
@@ -43,6 +45,41 @@ API_CORS_ALLOWED_METHODS = ("GET", "POST", "OPTIONS")
 API_CORS_ALLOW_METHODS_HEADER = ", ".join(API_CORS_ALLOWED_METHODS)
 API_CORS_DEFAULT_ALLOW_HEADERS = "Content-Type, Authorization"
 API_CORS_MAX_AGE_SECONDS = "600"
+REASONING_EFFORT_DISABLED_VALUES = {
+    "",
+    "auto",
+    "none",
+    "off",
+    "false",
+    "0",
+    "no",
+    "disable",
+    "disabled",
+    "minimum",
+    "min",
+    "minimal",
+    "low",
+}
+REASONING_EFFORT_AISTUDIO_LEVEL_BY_VALUE = {
+    "minimum": "minimal",
+    "min": "minimal",
+    "minimal": "minimal",
+    "low": "low",
+    "medium": "medium",
+    "med": "medium",
+    "high": "high",
+    "max": "high",
+    "maximum": "high",
+    "xhigh": "high",
+    "x-high": "high",
+    "extra-high": "high",
+    "extra-highest": "high",
+}
+BEHAVIOR_SUFFIX_RE = re.compile(r"-(auto|chat|reasoner)$", flags=re.IGNORECASE)
+AISTUDIO_THINKING_SUFFIX_RE = re.compile(
+    r"-(minimal|low|medium|high|r[0-4])$",
+    flags=re.IGNORECASE,
+)
 QueueStateListener = Callable[[], None]
 
 
@@ -163,6 +200,8 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    reasoning_effort: Optional[Any] = None
+    reasoning: Optional[Any] = None
 
 
 CompletionPromptInput = Union[str, List[str]]
@@ -176,6 +215,8 @@ class TextCompletionRequest(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    reasoning_effort: Optional[Any] = None
+    reasoning: Optional[Any] = None
 
 
 QueuedRequest = Union[ChatCompletionRequest, TextCompletionRequest]
@@ -284,6 +325,51 @@ def _make_text_completion_sse_chunk(parsed: dict, *, default_model: str) -> str 
     }
     return f"data: {json.dumps(completion_chunk)}\n\n"
 
+
+def _normalize_reasoning_effort(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "high" if value else "off"
+    normalized = str(value or "").strip().lower()
+    normalized = re.sub(r"[\s_]+", "-", normalized)
+    normalized = re.sub(r"-{2,}", "-", normalized)
+    return normalized.strip("-")
+
+
+def _extract_reasoning_effort_value(request: Any) -> Any:
+    value = getattr(request, "reasoning_effort", None)
+    fields_set = getattr(request, "model_fields_set", None)
+    if fields_set is None:
+        fields_set = getattr(request, "__fields_set__", None)
+    if isinstance(fields_set, set) and "reasoning_effort" in fields_set:
+        return value
+    if value is not None:
+        return value
+
+    reasoning = getattr(request, "reasoning", None)
+    if isinstance(reasoning, dict):
+        return reasoning.get("effort")
+
+    try:
+        return getattr(reasoning, "effort")
+    except Exception:
+        return None
+
+
+def _set_openai_sse_chunk_model(chunk: Any, model: Any) -> Any:
+    target_model = str(model or "").strip()
+    if not target_model:
+        return chunk
+
+    parsed = _parse_sse_json(chunk)
+    if parsed is None or "error" in parsed:
+        return chunk
+
+    parsed["model"] = target_model
+    return f"data: {json.dumps(parsed)}\n\n"
+
+
 @dataclass
 class QueueEntry:
     id: str
@@ -296,6 +382,7 @@ class QueueEntry:
     target_slot_id: str = ""
     target_slot_label: Optional[str] = None
     api_key_name: Optional[str] = None
+    driver_model: Optional[str] = None
 
 class RequestQueueFullError(Exception):
     def __init__(self, *, max_size: int, current_size: int):
@@ -741,6 +828,76 @@ class API:
 
         raise HTTPException(status_code=400, detail=detail)
 
+    def _accept_api_reasoning_effort(self) -> bool:
+        cfg = getattr(self.driver, "config_manager", None)
+        if cfg is None:
+            return True
+
+        try:
+            value = cfg.get_setting("network_settings", "accept_reasoning_effort")
+        except Exception:
+            return True
+
+        if value is None:
+            return True
+        return bool(value)
+
+    @staticmethod
+    def _replace_behavior_suffix(model: Any, mode: str) -> str:
+        normalized_mode = str(mode or "").strip().lower()
+        current = str(model or "").strip()
+        if not current or normalized_mode not in {MODE_CHAT, MODE_REASONER}:
+            return current
+
+        replaced = BEHAVIOR_SUFFIX_RE.sub(f"-{normalized_mode}", current)
+        return replaced if replaced != current else current
+
+    @staticmethod
+    def _strip_aistudio_thinking_suffix(model: Any) -> str:
+        return AISTUDIO_THINKING_SUFFIX_RE.sub("", str(model or "").strip())
+
+    @staticmethod
+    def _aistudio_level_for_reasoning_effort(effort: str) -> str:
+        if effort in {
+            "",
+            "auto",
+            "none",
+            "off",
+            "false",
+            "0",
+            "no",
+            "disable",
+            "disabled",
+        }:
+            return ""
+        return REASONING_EFFORT_AISTUDIO_LEVEL_BY_VALUE.get(effort, "high")
+
+    @staticmethod
+    def _reasoning_effort_enables_reasoning(effort: str) -> bool:
+        return effort not in REASONING_EFFORT_DISABLED_VALUES
+
+    def _resolve_driver_model_for_request(
+        self,
+        request: QueuedRequest,
+        provider: DriverProvider,
+    ) -> str:
+        requested_model = str(getattr(request, "model", "") or "").strip()
+        if not self._accept_api_reasoning_effort():
+            return requested_model
+
+        effort = _normalize_reasoning_effort(_extract_reasoning_effort_value(request))
+
+        if provider == DriverProvider.AI_STUDIO:
+            base_model = self._strip_aistudio_thinking_suffix(requested_model)
+            level = self._aistudio_level_for_reasoning_effort(effort)
+            if not level:
+                return self._replace_behavior_suffix(base_model, MODE_CHAT)
+            reasoner_model = self._replace_behavior_suffix(base_model, MODE_REASONER)
+            return f"{reasoner_model}-{level}" if reasoner_model else reasoner_model
+
+        mode = MODE_REASONER if self._reasoning_effort_enables_reasoning(effort) else MODE_CHAT
+        return self._replace_behavior_suffix(requested_model, mode)
+
     def _find_processing_slot_id_for_abort_event(
         self, abort_event: asyncio.Event | None
     ) -> str | None:
@@ -1078,6 +1235,7 @@ class API:
             target_slot = self._resolve_request_slot(request.model)
             target_provider = target_slot.provider
             self._ensure_supported_model_id(request.model, target_provider)
+            driver_model = self._resolve_driver_model_for_request(request, target_provider)
 
             # Log incoming request
             msg_count = len(request.messages)
@@ -1107,6 +1265,7 @@ class API:
                 target_slot_id=target_slot.id,
                 target_slot_label=target_slot.label,
                 api_key_name=api_key_name,
+                driver_model=driver_model,
             )
             try:
                 await self._get_request_queue_for_slot(target_slot.id).put(entry)
@@ -1214,6 +1373,7 @@ class API:
 
             normalized_prompt = _normalize_text_completion_prompt(request.prompt)
             normalized_request = request.model_copy(update={"prompt": normalized_prompt})
+            driver_model = self._resolve_driver_model_for_request(normalized_request, target_provider)
 
             prompt_length = len(normalized_prompt)
             stream_mode = "streaming" if normalized_request.stream else "non-streaming"
@@ -1238,6 +1398,7 @@ class API:
                 target_slot_id=target_slot.id,
                 target_slot_label=target_slot.label,
                 api_key_name=api_key_name,
+                driver_model=driver_model,
             )
             try:
                 await self._get_request_queue_for_slot(target_slot.id).put(entry)
@@ -1437,6 +1598,7 @@ class API:
         provider = slot.provider
         request = entry.request
         request_type = getattr(entry, "request_type", "chat")
+        driver_model = str(getattr(entry, "driver_model", None) or getattr(request, "model", "") or "")
         response_queue = entry.response_queue
         abort_event = entry.abort_event
         loadout_name = self._get_active_loadout_name_for_provider(provider)
@@ -1498,7 +1660,7 @@ class API:
                     if callable(should_apply_model_before_request):
                         should_apply_model = bool(should_apply_model_before_request())
                     if should_apply_model:
-                        await driver.apply_configured_model(model=request.model)
+                        await driver.apply_configured_model(model=driver_model)
                 except Exception as e:
                     provider_label = getattr(driver, "provider_label", None) or provider.value
                     Logger.warning(f"{provider_label}: Failed to apply configured model selection: {e}")
@@ -1515,19 +1677,20 @@ class API:
                     )
                     async for chunk in driver.generate_response(
                         message=driver_message,
-                        model=request.model,
+                        model=driver_model,
                         stream=request.stream,
                         temperature=request.temperature,
                         top_p=request.top_p,
                         max_tokens=request.max_tokens,
                         abort_event=abort_event,
                     ):
+                        client_chunk = _set_openai_sse_chunk_model(chunk, request.model)
                         if abort_event.is_set():
                             Logger.debug("Request aborted, stopping chunk forwarding...")
                             break
 
                         if not meaningful_seen:
-                            parsed = _parse_sse_json(chunk)
+                            parsed = _parse_sse_json(client_chunk)
                             if parsed and ("error" in parsed):
                                 early_error_message = _extract_error_message(parsed)
                                 # Don't forward the error yet; we may retry after rotating
@@ -1541,10 +1704,10 @@ class API:
                                 buffered.clear()
 
                         if meaningful_seen:
-                            await response_queue.put(chunk)
+                            await response_queue.put(client_chunk)
                             forwarded_any = True
                         else:
-                            buffered.append(chunk)
+                            buffered.append(client_chunk)
                 except Exception as e:
                     early_error_message = str(e)
 

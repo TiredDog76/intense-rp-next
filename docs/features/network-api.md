@@ -107,6 +107,29 @@ Disable this if you'd rather not have the address logged on every start.
 
 ---
 
+## :material-brain: API Reasoning Effort { #api-reasoning-effort }
+
+OpenAI-compatible clients can send a per-request reasoning effort. This is disabled by default:
+
+:material-arrow-right: **Settings** -> **API Server** -> **Request Controls** -> **Accept API Reasoning Effort**
+
+IntenseRP accepts either top-level `reasoning_effort` or nested `reasoning.effort`. The top-level value wins if both are present.
+
+When this is enabled, the request's effort takes priority over the reasoning part of the `model` ID.
+
+For most providers, this is mapped to the existing on/off reasoning controls:
+
+| API effort | Result |
+|------------|--------|
+| Not sent, `auto`, `minimum`, `minimal`, `low` | Reasoning off |
+| `medium`, `high`, `max`, `xhigh`, and similar higher values | Reasoning on |
+
+Google AI Studio is more granular: `minimum`/`minimal`, `low`, `medium`, and `high` map to AI Studio's Thinking Level controls instead. Very high values like `max` and `xhigh` are rounded to `High`.
+
+Disable this setting if you want API `model` IDs, Provider Behavior settings, and AI Studio macros to be the only things that control reasoning.
+
+---
+
 ## :material-key-variant: Require API Keys
 
 Add an extra layer of security by requiring an API key for all incoming requests. When enabled, clients must include a valid key in the `Authorization` header.
