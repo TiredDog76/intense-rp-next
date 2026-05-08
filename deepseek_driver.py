@@ -38,6 +38,13 @@ class DeepSeekDriver(BaseDriver):
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
     CONVERSATION_URL_RE = re.compile(r"^https://chat\.deepseek\.com/a/chat/s/([^/?#]+)", re.IGNORECASE)
+    MODEL_TYPE_PICKER_NEW = "new-radio"
+    MODEL_TYPE_PICKER_LEGACY = "legacy-inline"
+    MODEL_TYPE_PICKER_ORDER = (MODEL_TYPE_PICKER_NEW, MODEL_TYPE_PICKER_LEGACY)
+    MODEL_TYPE_PICKER_LABELS = {
+        MODEL_TYPE_PICKER_NEW: "new radio picker",
+        MODEL_TYPE_PICKER_LEGACY: "legacy inline picker",
+    }
     FOLLOWUP_REQUEST_HEADER_ALLOWLIST = {
         "accept",
         "accept-language",
@@ -83,6 +90,7 @@ class DeepSeekDriver(BaseDriver):
         self.multi_slot_cache_key = "deepseek_multi_slot_cache.json"
         self._last_generation_censored = False
         self._last_followup_request_headers: Dict[str, str] = {}
+        self._deepseek_model_type_picker_kind: Optional[str] = None
         self._reset_stream_parser()
 
     def _reset_stream_parser(self) -> None:
@@ -108,6 +116,7 @@ class DeepSeekDriver(BaseDriver):
             await self._remember_send_control_signature(self._locate_send_control())
         except Exception:
             pass
+        await self._detect_model_type_picker_kind(log_result=True)
 
     def _locate_send_control(self):
         selector = ", ".join(self.SEND_CONTROL_SELECTORS)
@@ -1550,47 +1559,181 @@ class DeepSeekDriver(BaseDriver):
         else:
             Logger.debug(f"Search is already {state}.")
 
+    def _model_type_picker_label(self, picker_kind: str) -> str:
+        return self.MODEL_TYPE_PICKER_LABELS.get(picker_kind, str(picker_kind or "unknown"))
+
+    @staticmethod
+    def _format_picker_error(exc: Exception) -> str:
+        name = exc.__class__.__name__
+        detail = str(exc or "").strip().splitlines()
+        if not detail:
+            return name
+        return f"{name}: {detail[0][:200]}"
+
+    @staticmethod
+    def _model_type_display_name(model_type: str) -> str:
+        normalized = str(model_type or "").strip().lower()
+        if normalized == DEEPSEEK_MODEL_TYPE_EXPERT:
+            return "Expert"
+        if normalized == "vision":
+            return "Vision"
+        return "Instant"
+
+    def _model_type_option_selector(self, picker_kind: str, model_type: str) -> str:
+        normalized = str(model_type or "").strip().lower()
+        if picker_kind == self.MODEL_TYPE_PICKER_NEW:
+            return f"div[role='radiogroup'] div[role='radio'][data-model-type='{normalized}']"
+        return f"div._9f2341b._7ac2123[data-model-type='{normalized}']"
+
+    async def _has_visible_model_type_option(self, picker_kind: str, model_type: str) -> bool:
+        selector = self._model_type_option_selector(picker_kind, model_type)
+        return await self._has_visible_selector([selector])
+
+    async def _detect_model_type_picker_kind(self, *, log_result: bool = False) -> Optional[str]:
+        if not self.page:
+            return None
+
+        previous_kind = self._deepseek_model_type_picker_kind
+        detected_kind: Optional[str] = None
+        for picker_kind in self.MODEL_TYPE_PICKER_ORDER:
+            required_types = [
+                DEEPSEEK_MODEL_TYPE_DEFAULT,
+                DEEPSEEK_MODEL_TYPE_EXPERT,
+            ]
+            if picker_kind == self.MODEL_TYPE_PICKER_NEW:
+                # Vision identifies the new rollout, but IntenseRP only drives Instant/Expert for now
+                required_types.append("vision")
+
+            has_all_options = True
+            for model_type in required_types:
+                if not await self._has_visible_model_type_option(picker_kind, model_type):
+                    has_all_options = False
+                    break
+            if has_all_options:
+                detected_kind = picker_kind
+                break
+
+        self._deepseek_model_type_picker_kind = detected_kind
+        if log_result:
+            if detected_kind:
+                label = self._model_type_picker_label(detected_kind)
+                if detected_kind != previous_kind:
+                    Logger.debug(f"DeepSeek model type picker detected: {label}.")
+            else:
+                Logger.debug(
+                    "DeepSeek model type picker was not detected at startup. "
+                    "It will be checked again before sending requests."
+                )
+        return detected_kind
+
+    def _model_type_picker_attempt_order(self) -> List[str]:
+        attempts: List[str] = []
+        current = self._deepseek_model_type_picker_kind
+        if current in self.MODEL_TYPE_PICKER_ORDER:
+            attempts.append(current)
+        for picker_kind in self.MODEL_TYPE_PICKER_ORDER:
+            if picker_kind not in attempts:
+                attempts.append(picker_kind)
+        return attempts
+
+    async def _is_model_type_option_selected(self, option) -> bool:
+        aria_checked = await option.get_attribute("aria-checked")
+        if aria_checked is not None:
+            return str(aria_checked or "").strip().lower() == "true"
+
+        class_attr = await option.get_attribute("class") or ""
+        return "_31a22b0" in class_attr
+
+    async def _try_set_model_type_with_picker(
+        self,
+        picker_kind: str,
+        desired_type: str,
+    ) -> tuple[bool, str]:
+        selector = self._model_type_option_selector(picker_kind, desired_type)
+        label = self._model_type_picker_label(picker_kind)
+        option = self.page.locator(selector)
+        display_name = self._model_type_display_name(desired_type)
+
+        try:
+            await option.first.wait_for(state="visible", timeout=4000)
+        except Exception as exc:
+            reason = self._format_picker_error(exc)
+            return False, f"{label}: {display_name} option was not visible ({reason})"
+
+        try:
+            disabled = str(await option.first.get_attribute("aria-disabled") or "").strip().lower()
+            if disabled == "true":
+                return False, f"{label}: {display_name} option was disabled"
+
+            if await self._is_model_type_option_selected(option.first):
+                Logger.debug(f"DeepSeek model type is already '{desired_type}' via {label}.")
+                return True, f"{label}: already selected"
+
+            Logger.debug(f"Switching DeepSeek model type to '{desired_type}' via {label}...")
+            await option.first.click(timeout=2000)
+        except Exception as exc:
+            reason = self._format_picker_error(exc)
+            return False, f"{label}: {display_name} click failed ({reason})"
+
+        try:
+            await self.page.wait_for_function(
+                """
+                ([selector, selectedClass]) => {
+                    const option = document.querySelector(selector);
+                    if (!option) return false;
+                    const ariaChecked = option.getAttribute('aria-checked');
+                    if (ariaChecked !== null) {
+                        return ariaChecked.toLowerCase() === 'true';
+                    }
+                    return option.classList.contains(selectedClass);
+                }
+                """,
+                arg=[selector, "_31a22b0"],
+                timeout=3000,
+            )
+        except Exception as exc:
+            reason = self._format_picker_error(exc)
+            Logger.debug(
+                f"DeepSeek model type '{desired_type}' click completed via {label}, "
+                "but selection confirmation timed out."
+            )
+            return False, f"{label}: {display_name} click did not confirm ({reason})"
+
+        return True, f"{label}: clicked"
+
     async def set_model_type_state(self, model_type: str) -> None:
         desired_type = (
             DEEPSEEK_MODEL_TYPE_EXPERT
             if str(model_type or "").strip().lower() == DEEPSEEK_MODEL_TYPE_EXPERT
             else DEEPSEEK_MODEL_TYPE_DEFAULT
         )
-        option = self.page.locator(
-            f"div._9f2341b._7ac2123[data-model-type='{desired_type}']"
+
+        if not self.page:
+            return
+
+        if self._deepseek_model_type_picker_kind is None:
+            await self._detect_model_type_picker_kind()
+
+        previous_kind = self._deepseek_model_type_picker_kind
+        failures: List[str] = []
+        for picker_kind in self._model_type_picker_attempt_order():
+            success, detail = await self._try_set_model_type_with_picker(picker_kind, desired_type)
+            if success:
+                self._deepseek_model_type_picker_kind = picker_kind
+                if previous_kind and picker_kind != previous_kind:
+                    Logger.warning(
+                        "DeepSeek model type picker recovered with "
+                        f"{self._model_type_picker_label(picker_kind)} after "
+                        f"{self._model_type_picker_label(previous_kind)} failed."
+                    )
+                return
+            failures.append(detail)
+
+        tried = "; ".join(failures) if failures else "no picker attempts were available"
+        Logger.warning(
+            f"DeepSeek model type '{desired_type}' could not be applied. "
+            f"Tried: {tried}. Continuing with the current DeepSeek mode."
         )
-        try:
-            await option.first.wait_for(state="visible", timeout=4000)
-        except Exception:
-            Logger.warning(f"DeepSeek model type option '{desired_type}' not found.")
-            return
-
-        selected_class = "_31a22b0"
-        class_attr = await option.first.get_attribute("class") or ""
-        if selected_class in class_attr:
-            Logger.debug(f"DeepSeek model type is already '{desired_type}'.")
-            return
-
-        Logger.debug(f"Switching DeepSeek model type to '{desired_type}'...")
-        await option.first.click(timeout=2000)
-
-        try:
-            await self.page.wait_for_function(
-                """
-                ([targetType, selectedClass]) => {
-                    const option = document.querySelector(
-                        `div._9f2341b._7ac2123[data-model-type="${targetType}"]`
-                    );
-                    return Boolean(option && option.classList.contains(selectedClass));
-                }
-                """,
-                arg=[desired_type, selected_class],
-                timeout=3000,
-            )
-        except Exception:
-            Logger.debug(
-                f"DeepSeek model type '{desired_type}' click completed, but selection confirmation timed out."
-            )
 
     async def set_sidebar_status(self, open: bool):
         """
