@@ -69,6 +69,7 @@ class SettingField:
     type: SettingType
     default: Any
     tooltip: Optional[str] = None
+    front_tooltip: Optional[str] = None
     validator: Optional[Callable[[Any], None]] = None
     required: bool = False
     nullable: bool = False
@@ -502,6 +503,7 @@ SCHEMA = [
                     "Very heavily recommended to leave this off: GLM's Tools UI is unstable, "
                     "IntenseRP does not support those tools yet, and this only works on GLM-5V-Turbo."
                 ),
+                front_tooltip="Experimental GLM-5V-Turbo-only Tools toggle. Best left off unless needed.",
                 depends="glm_behavior.model==GLM-5V-Turbo",
                 force_when_dep_unmet=False,
                 docs_path=DOCS_GLM,
@@ -1704,6 +1706,7 @@ SCHEMA = [
                     "across different active provider lanes. Requires Providers in Parallel and "
                     "applies on the next browser start."
                 ),
+                front_tooltip="Run queued API requests concurrently across active parallel provider lanes.",
                 visible_depends="experimental.providers_in_parallel",
                 depends="experimental.providers_in_parallel",
                 force_when_dep_unmet=True,
@@ -1732,6 +1735,7 @@ SCHEMA = [
                     "Extremely experimental. Launch multiple account-backed browser "
                     "instances per enabled parallel provider. Requires the parallelized API queue."
                 ),
+                front_tooltip="Launch multiple account-backed browser lanes per enabled parallel provider.",
                 visible_depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
                 depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
                 force_when_dep_unmet=False,
@@ -2178,6 +2182,7 @@ SCHEMA = [
                     "stays disabled, but UMM real-model IDs are available, with provider prefixes "
                     "only when exact IDs would collide."
                 ),
+                front_tooltip="Expose stable IntenseRP aliases and real-model IDs through the API.",
                 docs_path=DOCS_UNIVERSAL_MODEL_NAMES,
             ),
             SettingField(
@@ -2192,6 +2197,7 @@ SCHEMA = [
                     "Medium and above map to reasoning/on. Google AI Studio maps efforts "
                     "to its Thinking Level controls."
                 ),
+                front_tooltip="Allow API requests to set supported providers' reasoning level.",
                 docs_path=DOCS_NETWORK,
                 docs_anchor="api-reasoning-effort",
             ),

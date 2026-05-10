@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ui.core.brand import BrandColors
+from ui.widgets.tooltip_text import render_tooltip_text
 
 
 class RedirectCard(QFrame):
@@ -18,6 +19,7 @@ class RedirectCard(QFrame):
         title: str,
         description: str,
         button_text: str,
+        info_body: str = None,
         docs_url: str = None,
         docs_handler=None,
         parent=None,
@@ -27,6 +29,7 @@ class RedirectCard(QFrame):
         self._docs_url = str(docs_url or "").strip()
         self._title = str(title or "")
         self._description = str(description or "")
+        self._info_body = str(info_body or description or "")
         self.setStyleSheet(
             f"""
             QFrame#redirectCard {{
@@ -66,8 +69,9 @@ class RedirectCard(QFrame):
         title_row_layout.addStretch(1)
         left.addWidget(title_row)
 
-        desc_label = QLabel(str(description or ""))
+        desc_label = QLabel(render_tooltip_text(description))
         desc_label.setWordWrap(True)
+        desc_label.setTextFormat(Qt.RichText)
         desc_label.setStyleSheet(
             f"""
             font-size: {BrandColors.FONT_SIZE_SMALL};
@@ -113,7 +117,7 @@ class RedirectCard(QFrame):
         if widget is None:
             return
         widget.setProperty("settingInfoTitle", self._title)
-        widget.setProperty("settingInfoBody", self._description)
+        widget.setProperty("settingInfoBody", self._info_body)
         if self._docs_url:
             widget.setProperty("docsUrl", self._docs_url)
 

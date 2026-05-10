@@ -7,6 +7,7 @@ from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QIcon, QTextCursor
 from ui.core.brand import BrandColors
 from ui.core.animation_settings import animations_disabled
 from ui.core.icons import IconUtils, IconType
+from ui.widgets.tooltip_text import render_tooltip_text
 
 
 class DocsHelpButton(QToolButton):
@@ -413,8 +414,9 @@ class HintCard(QFrame):
             )
             text_layout.addWidget(title_label)
 
-        body_label = QLabel("" if text is None else str(text))
+        body_label = QLabel(render_tooltip_text(text))
         body_label.setWordWrap(True)
+        body_label.setTextFormat(Qt.RichText)
         body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         body_label.setStyleSheet(
             f"""
@@ -442,8 +444,10 @@ class HintCard(QFrame):
 
 class Description(QLabel):
     def __init__(self, text, parent=None):
-        super().__init__(text, parent)
+        super().__init__("", parent)
         self.setWordWrap(True)
+        self.setTextFormat(Qt.RichText)
+        self.setText(render_tooltip_text(text))
         self.setStyleSheet(f"""
             color: {BrandColors.TEXT_SECONDARY};
             font-size: {BrandColors.FONT_SIZE_REGULAR};
@@ -1179,7 +1183,7 @@ class SettingRow(QWidget):
 
         self._docs_url = str(docs_url or "").strip()
         self._label_text = str(label_text or "")
-        self._description_text = str(description or tooltip or "")
+        self._description_text = str(tooltip or description or "")
         self._is_dirty = False
 
         layout = QVBoxLayout(self)
@@ -1201,8 +1205,9 @@ class SettingRow(QWidget):
 
         self.desc_label = None
         if description:
-            self.desc_label = QLabel(description)
+            self.desc_label = QLabel(render_tooltip_text(description))
             self.desc_label.setWordWrap(True)
+            self.desc_label.setTextFormat(Qt.RichText)
             self.desc_label.setStyleSheet(f"""
                 font-size: {BrandColors.FONT_SIZE_SMALL};
                 color: {BrandColors.TEXT_SOFT};
@@ -1282,7 +1287,7 @@ class ToggleRow(QWidget):
 
         self._docs_url = str(docs_url or "").strip()
         self._label_text = str(label_text or "")
-        self._description_text = str(description or tooltip or "")
+        self._description_text = str(tooltip or description or "")
         self._is_dirty = False
 
         main_layout = QHBoxLayout(self)
@@ -1307,8 +1312,9 @@ class ToggleRow(QWidget):
         left_layout.addWidget(label_row)
 
         if description:
-            self.desc_label = QLabel(description)
+            self.desc_label = QLabel(render_tooltip_text(description))
             self.desc_label.setWordWrap(True)
+            self.desc_label.setTextFormat(Qt.RichText)
             self.desc_label.setStyleSheet(f"""
                 font-size: {BrandColors.FONT_SIZE_SMALL};
                 color: {BrandColors.TEXT_SOFT};

@@ -29,6 +29,7 @@ from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, HintCard, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
 from ui.widgets.marshmallow_dropdown import MarshmallowDropdown, MarshmallowMultiSelectDropdown, MarshmallowOption
 from ui.widgets.redirect_card import RedirectCard
+from ui.widgets.tooltip_text import render_tooltip_text
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
 from ui.core.icons import IconUtils, IconType
@@ -599,6 +600,7 @@ class _SettingInfoBubble(QWidget):
 
         self._title = QLabel("")
         self._title.setWordWrap(True)
+        self._title.setTextFormat(Qt.PlainText)
         self._title.setStyleSheet(
             f"""
             color: {BrandColors.ACCENT};
@@ -612,6 +614,7 @@ class _SettingInfoBubble(QWidget):
 
         self._body = QLabel("")
         self._body.setWordWrap(True)
+        self._body.setTextFormat(Qt.RichText)
         self._body.setStyleSheet(
             f"""
             color: {BrandColors.TEXT_SOFT};
@@ -684,7 +687,7 @@ class _SettingInfoBubble(QWidget):
         self._current_anchor = anchor_widget
         self._docs_url = str(docs_url or "").strip()
         self._title.setText(str(title or ""))
-        self._body.setText(str(body or ""))
+        self._body.setText(render_tooltip_text(body))
         self._footer_text.setVisible(bool(self._docs_url))
         self._footer_icon.setVisible(bool(self._docs_url))
 
@@ -1001,6 +1004,19 @@ class SettingsWindow(QMainWindow):
             return None
         docs_anchor = str(getattr(field, "docs_anchor", "") or "").strip() or None
         return build_docs_url(docs_path, docs_anchor)
+
+    def _get_field_front_tooltip(self, field) -> str:
+        return str(getattr(field, "front_tooltip", "") or "").strip()
+
+    def _get_field_inline_description(self, field, *, fallback_to_tooltip: bool = False) -> str | None:
+        front_tooltip = self._get_field_front_tooltip(field)
+        if front_tooltip:
+            return front_tooltip
+        if fallback_to_tooltip:
+            tooltip = str(getattr(field, "tooltip", "") or "").strip()
+            if tooltip:
+                return tooltip
+        return None
 
     def _tag_docs_widget(self, widget: QWidget | None, docs_url: str | None) -> None:
         if widget is None or not docs_url:
@@ -1335,10 +1351,12 @@ class SettingsWindow(QMainWindow):
 
         elif field.type == SettingType.REDIRECT:
             btn_text = str(field.default) if field.default else "Open"
+            display_description = self._get_field_inline_description(field, fallback_to_tooltip=True) or ""
             widget = RedirectCard(
                 field.label,
-                field.tooltip or "",
+                display_description,
                 btn_text,
+                info_body=field.tooltip or display_description,
                 docs_url=docs_url,
                 docs_handler=self._open_docs_from_sender,
             )
@@ -1582,7 +1600,8 @@ class SettingsWindow(QMainWindow):
                         sub_w = self._create_field_widget(sub, category.key)
                         sub_widgets.append(sub_w)
                 widget = MultiColumnRow(sub_widgets, field.ratios)
-                widget.setToolTip(field.tooltip or "")
+                inline_description = self._get_field_inline_description(field, fallback_to_tooltip=True) or ""
+                widget.setToolTip(render_tooltip_text(inline_description))
                 self._tag_docs_widget(widget, docs_url)
 
                 self.field_widgets[f"{category.key}.{field.key}"] = widget
@@ -1590,6 +1609,7 @@ class SettingsWindow(QMainWindow):
                     field.label,
                     widget,
                     field.tooltip,
+                    description=self._get_field_inline_description(field),
                     docs_url=docs_url,
                     docs_handler=self._open_docs_from_sender,
                 )
@@ -1605,7 +1625,7 @@ class SettingsWindow(QMainWindow):
                         field.label,
                         widget,
                         field.tooltip,
-                        description=field.tooltip,
+                        description=self._get_field_inline_description(field, fallback_to_tooltip=True),
                         docs_url=docs_url,
                         docs_handler=self._open_docs_from_sender,
                     )
@@ -1614,6 +1634,7 @@ class SettingsWindow(QMainWindow):
                         field.label,
                         widget,
                         field.tooltip,
+                        description=self._get_field_inline_description(field),
                         docs_url=docs_url,
                         docs_handler=self._open_docs_from_sender,
                     )
@@ -2661,8 +2682,9 @@ class SettingsWindow(QMainWindow):
         content_layout.setSpacing(6)
 
         if getattr(card_def, "description", None):
-            desc = QLabel(str(card_def.description))
+            desc = QLabel(render_tooltip_text(card_def.description))
             desc.setWordWrap(True)
+            desc.setTextFormat(Qt.RichText)
             desc.setStyleSheet(
                 f"""
                 color: {BrandColors.TEXT_SECONDARY};
@@ -2984,6 +3006,7 @@ class SettingsWindow(QMainWindow):
                 field.label,
                 widget,
                 field.tooltip,
+                description=self._get_field_inline_description(field),
                 docs_url=docs_url,
                 docs_handler=self._open_docs_from_sender,
             )
@@ -3010,7 +3033,7 @@ class SettingsWindow(QMainWindow):
                 field.label,
                 widget,
                 field.tooltip,
-                description=field.tooltip,
+                description=self._get_field_inline_description(field, fallback_to_tooltip=True),
                 docs_url=docs_url,
                 docs_handler=self._open_docs_from_sender,
             )
@@ -3019,6 +3042,7 @@ class SettingsWindow(QMainWindow):
                 field.label,
                 widget,
                 field.tooltip,
+                description=self._get_field_inline_description(field),
                 docs_url=docs_url,
                 docs_handler=self._open_docs_from_sender,
             )
