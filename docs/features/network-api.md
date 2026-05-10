@@ -196,9 +196,11 @@ If you enable **Use Universal Model Names** in **Settings** -> **API Server** ->
 | `intenserp-reasoner` | Forces thinking/reasoning on |
 | `intenserp-chat` | Forces thinking/reasoning off |
 
-Provider-specific IDs still work either way, and they are still the only valid option in **Providers in Parallel**.
+Provider-specific behavior IDs still work either way. In **Providers in Parallel**, `intenserp-*` stays invalid, but UMM real-model IDs can appear when this setting is enabled.
 
 The `intenserp-*` and provider-prefixed IDs are behavior presets (modes), not true model selection. For GLM Chat, Google AI Studio, QwenLM, and Perplexity, Universal Model Names also exposes real model IDs that override the provider UI model for that request. They are lowercase, with spaces and dots converted to `-`, and use the same `-auto`, `-reasoner`, and `-chat` suffixes.
+
+When Providers in Parallel exposes real-model IDs, only exact conflicts get provider prefixes so they can route cleanly. For example, Google AI Studio's **Gemini 3.1 Pro** can appear as `aistudio-gemini-3-1-pro-reasoner` if another active provider also exposes `gemini-3-1-pro-reasoner`.
 
 !!! tip "Want the short version?"
     There is a tiny dedicated page for this here: [:material-tag-text-outline: Universal Model Names](universal-model-names.md)

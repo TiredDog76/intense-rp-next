@@ -22,11 +22,11 @@ from utils.model_ids import (
     MODE_REASONER,
     build_openai_model_list,
     get_model_ids_for_provider,
-    get_model_ids_for_providers,
     get_owned_by_for_provider,
+    get_parallel_model_ids_for_providers,
     is_umm_enabled,
     is_supported_model_id,
-    resolve_provider_from_model_id,
+    resolve_parallel_provider_from_model_id,
 )
 from utils.providers_in_parallel import is_parallel_request_queue_feature_enabled
 
@@ -692,6 +692,16 @@ class API:
                 out.append(safe)
         return out
 
+    def _get_api_real_model_labels_by_provider(
+        self,
+        providers: list[DriverProvider] | None = None,
+    ) -> dict[DriverProvider, list[str]]:
+        runtime_providers = providers or list(self._drivers_by_provider.keys())
+        return {
+            provider: self._get_api_real_model_labels(provider)
+            for provider in runtime_providers
+        }
+
     def _get_request_queue_for_provider(self, provider: DriverProvider) -> RequestQueue:
         slots = self._get_execution_slots_for_provider(provider)
         if not slots:
@@ -773,14 +783,30 @@ class API:
         if not self._is_multi_provider_runtime():
             return self._get_default_provider()
 
-        provider = resolve_provider_from_model_id(model)
+        cfg = getattr(self.driver, "config_manager", None)
+        real_model_labels_by_provider = self._get_api_real_model_labels_by_provider()
+        provider = resolve_parallel_provider_from_model_id(
+            model,
+            list(self._drivers_by_provider.keys()),
+            config_manager=cfg,
+            real_model_labels_by_provider=real_model_labels_by_provider,
+        )
         if provider is None:
+            real_model_detail = ""
+            if is_umm_enabled(cfg):
+                real_model_detail = (
+                    " Universal Model Names can also expose real-model IDs here; "
+                    "only exact conflicts get provider-prefixed forms like "
+                    "`aistudio-gemini-3-1-pro-reasoner`."
+                )
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Providers in Parallel only accepts provider-prefixed model IDs "
+                    "Providers in Parallel requires routable model IDs, such as provider-prefixed "
+                    "behavior IDs "
                     "(for example `deepseek-auto` or `glm-chat`). "
                     "Universal model names like `intenserp-auto` are not valid here."
+                    f"{real_model_detail}"
                 ),
             )
 
@@ -808,12 +834,23 @@ class API:
         ):
             return
 
-        supported_ids = get_model_ids_for_provider(
-            provider,
-            cfg,
-            force_legacy=self._is_multi_provider_runtime(),
-            real_model_labels=real_model_labels,
-        )
+        if self._is_multi_provider_runtime():
+            real_model_labels_by_provider = self._get_api_real_model_labels_by_provider()
+            supported_ids = [
+                model_id
+                for item_provider, model_id in get_parallel_model_ids_for_providers(
+                    list(self._drivers_by_provider.keys()) or [provider],
+                    cfg,
+                    real_model_labels_by_provider=real_model_labels_by_provider,
+                )
+                if item_provider == provider
+            ]
+        else:
+            supported_ids = get_model_ids_for_provider(
+                provider,
+                cfg,
+                real_model_labels=real_model_labels,
+            )
         detail = (
             f"Unsupported model `{normalized or '<empty>'}` for provider `{provider.value}`. "
             f"Supported IDs: {', '.join(f'`{model_id}`' for model_id in supported_ids)}."
@@ -1226,10 +1263,13 @@ class API:
 
             if self._is_multi_provider_runtime():
                 model_data = []
-                for provider, model_id in get_model_ids_for_providers(
+                real_model_labels_by_provider = self._get_api_real_model_labels_by_provider(
+                    runtime_providers,
+                )
+                for provider, model_id in get_parallel_model_ids_for_providers(
                     runtime_providers,
                     cfg,
-                    force_legacy=True,
+                    real_model_labels_by_provider=real_model_labels_by_provider,
                 ):
                     model_data.extend(
                         build_openai_model_list(

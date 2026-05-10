@@ -57,8 +57,10 @@ While this mode is active, routing is done by the **provider-prefixed model IDs*
 
 `GET /v1/models` returns the variants for every enabled provider.
 
-!!! warning "Universal Model Names doesn't work here"
-    If you have **Use Universal Model Names** enabled, it is ignored while **Providers in Parallel** is active. You have to use the provider-prefixed model IDs above, and `intenserp-*` is not valid.
+!!! note "Universal Model Names is partial here"
+    `intenserp-*` is invalid in this mode because it doesn't tell the router which provider should receive the request.
+
+    If **Use Universal Model Names** is enabled, providers with real model pickers can also expose real-model IDs here. Only exact ID conflicts get provider prefixes, like `aistudio-gemini-3-1-pro-reasoner` and `perplexity-gemini-3-1-pro-reasoner`, so overlapping model names can route cleanly.
 
 If you send a model ID that belongs to a provider you did **not** enable, IntenseRP returns an error instead of guessing.
 

@@ -2174,8 +2174,9 @@ SCHEMA = [
                     "changing the model name in your client. DeepSeek also exposes matching "
                     "`intenserp-expert-*` variants. Providers with real model pickers also expose "
                     "per-model variants that override the selected UI model for that request. "
-                    "Provider-prefixed IDs still work. Providers in Parallel keeps using "
-                    "provider-prefixed IDs."
+                    "Provider-prefixed IDs still work. In Providers in Parallel, `intenserp-*` "
+                    "stays disabled, but UMM real-model IDs are available, with provider prefixes "
+                    "only when exact IDs would collide."
                 ),
                 docs_path=DOCS_UNIVERSAL_MODEL_NAMES,
             ),
