@@ -313,7 +313,7 @@ class PerplexityDriver(BaseDriver):
     )
     SPACE_INSTRUCTIONS_LIMIT = 8000
     SPACE_INSTRUCTIONS_TEXTAREA_SELECTOR = (
-        "textarea[aria-label='Input for editing space answer instructions']"
+        "textarea[aria-label='Input for editing Space answer instructions']"
     )
     REQUEST_MODE_BUTTON_CLASSES = (
         "reset",
@@ -895,6 +895,70 @@ class PerplexityDriver(BaseDriver):
 
         await self._find_or_create_space()
 
+    @staticmethod
+    def _spaces_dashboard_state_script() -> str:
+        return (
+            """() => {
+                const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim();
+                const isVisible = (el) => {
+                    if (!el || !el.getClientRects || el.getClientRects().length === 0) return false;
+                    const style = window.getComputedStyle(el);
+                    return style && style.display !== 'none' && style.visibility !== 'hidden';
+                };
+                const linkPathname = (link) => {
+                    const href = (link && link.getAttribute && link.getAttribute('href')) || '';
+                    try {
+                        return new URL(href, window.location.href).pathname;
+                    } catch (_exc) {
+                        return href.split(/[?#]/, 1)[0];
+                    }
+                };
+
+                const table = document.querySelector("div[role='table']");
+                if (isVisible(table)) return 'table';
+
+                const examplesLink = Array.from(document.querySelectorAll('a[href]')).find((link) => {
+                    if (!isVisible(link) || linkPathname(link) !== '/spaces/templates') return false;
+                    const child = link.firstElementChild;
+                    return !!child
+                        && child.tagName.toLowerCase() === 'span'
+                        && normalize(child.textContent) === 'View examples';
+                });
+                return examplesLink ? 'empty' : '';
+            }"""
+        )
+
+    async def _wait_for_spaces_dashboard_state(self, timeout_ms: int | None = 60000) -> str:
+        if not self.page:
+            raise RuntimeError("Page is not initialized.")
+
+        handle = await self.page.wait_for_function(
+            self._spaces_dashboard_state_script(),
+            timeout=timeout_ms or 0,
+        )
+        try:
+            state = await handle.json_value()
+        except Exception:
+            state = ""
+        return str(state or "")
+
+    async def _read_spaces_dashboard_state(self) -> str:
+        if not self.page:
+            return ""
+        try:
+            state = await self.page.evaluate(self._spaces_dashboard_state_script())
+        except Exception:
+            return ""
+        return str(state or "")
+
+    async def _settle_spaces_dashboard_state(self, state: str) -> str:
+        if state not in {"table", "empty"}:
+            return state
+
+        await asyncio.sleep(5.0)
+        refreshed_state = await self._read_spaces_dashboard_state()
+        return refreshed_state or state
+
     async def _find_or_create_space(self) -> None:
         if not self.page:
             raise RuntimeError("Page is not initialized.")
@@ -902,12 +966,16 @@ class PerplexityDriver(BaseDriver):
         Logger.info("Perplexity Spaces: opening Spaces dashboard...")
         await self.page.goto(self.SPACES_URL, wait_until="domcontentloaded", timeout=45000)
         await self._dismiss_onboarding()
-        await self.page.wait_for_selector("div[role='table']", timeout=60000)
+        dashboard_state = await self._wait_for_spaces_dashboard_state(timeout_ms=60000)
+        dashboard_state = await self._settle_spaces_dashboard_state(dashboard_state)
 
-        if await self._click_existing_space():
+        if dashboard_state == "table" and await self._click_existing_space():
             await self._wait_for_space_chat_ready(timeout_ms=60000)
             Logger.info(f"Perplexity Spaces: opened '{self.SPACE_TITLE}'.")
             return
+
+        if dashboard_state == "empty":
+            Logger.info("Perplexity Spaces: no existing Spaces were found; creating one.")
 
         await self._create_space()
 
@@ -1079,7 +1147,7 @@ class PerplexityDriver(BaseDriver):
             raise RuntimeError("Page is not initialized.")
 
         Logger.info(f"Perplexity Spaces: creating '{self.SPACE_TITLE}'...")
-        create_new_button = self.page.locator("button[aria-label='Create a new space']").first
+        create_new_button = self.page.locator("button[aria-label='Create a new Space']").first
         await create_new_button.wait_for(state="visible", timeout=20000)
         await create_new_button.click(timeout=5000)
 
