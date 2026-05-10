@@ -222,13 +222,15 @@ Controls how long IntenseRP waits (in seconds) for the send button to become ava
 
 ## :material-tune: Sampling and output controls
 
-Google AI Studio is currently the only provider in IntenseRP that applies all 3 of these OpenAI-style request controls in the web UI:
+Google AI Studio is currently the only provider in IntenseRP that applies these OpenAI-style request controls in the web UI when the selected model exposes the matching fields:
 
 - `temperature`
 - `top_p`
 - `max_tokens`
 
 You can set defaults in Settings, and request-level API values still win when provided.
+
+Some models don't expose every sampling field. For example, `Gemini 3.1 Flash Lite` currently has no Temperature or Top P inputs, so IntenseRP skips those controls for that model and still applies Max Output Tokens.
 
 ### Temperature
 

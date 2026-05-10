@@ -176,6 +176,7 @@ class AIStudioDriver(BaseDriver):
     )
     THINKING_FORM_FIELD_GRANDPARENT_ARIA_DESCRIBEDBY = "cdk-describedby-message-ng-1-167"
     THINKING_LISTBOX_SELECTOR = "div[role='listbox'] mat-option"
+    THINKING_SELECT_LABELS = ("Thinking Level", "Thinking Effort")
     SEARCH_TOGGLE_LABEL = "Grounding with Google Search"
     URL_CONTEXT_TOGGLE_LABEL = "Browse the url context"
     THINKING_MODE_TOGGLE_LABEL = "Toggle thinking mode"
@@ -318,6 +319,8 @@ class AIStudioDriver(BaseDriver):
         "Gemini 3.1 Flash Lite": {
             "base_id": "gemini-3.1-flash-lite",
             "selector_id": "model-carousel-row-models/gemini-3.1-flash-lite",
+            "supports_temperature": False,
+            "supports_top_p": False,
         },
         "Gemini 3 Flash": {
             "base_id": "gemini-3-flash-preview",
@@ -1068,6 +1071,14 @@ class AIStudioDriver(BaseDriver):
         return bool(model_config.get("supports_url_context", True))
 
     @staticmethod
+    def _model_supports_temperature(model_config: Dict[str, Any]) -> bool:
+        return bool(model_config.get("supports_temperature", True))
+
+    @staticmethod
+    def _model_supports_top_p(model_config: Dict[str, Any]) -> bool:
+        return bool(model_config.get("supports_top_p", True))
+
+    @staticmethod
     def _model_forces_search(model_config: Dict[str, Any]) -> bool:
         return bool(model_config.get("force_search", False))
 
@@ -1426,6 +1437,8 @@ class AIStudioDriver(BaseDriver):
         model_base_id = str(model_config.get("base_id") or "").strip().lower()
         force_search = self._model_forces_search(model_config)
         supports_url_context = self._model_supports_url_context(model_config)
+        supports_temperature = self._model_supports_temperature(model_config)
+        supports_top_p = self._model_supports_top_p(model_config)
         model_max_output_tokens = self._model_max_output_tokens(model_config)
 
         deepthink_enabled = bool(self.config_manager.get_setting("aistudio_behavior", "enable_deepthink"))
@@ -1539,6 +1552,8 @@ class AIStudioDriver(BaseDriver):
             "force_search": bool(force_search),
             "url_context_enabled": bool(url_context_enabled),
             "supports_url_context": bool(supports_url_context),
+            "supports_temperature": bool(supports_temperature),
+            "supports_top_p": bool(supports_top_p),
             "use_system_prompt_field": bool(use_system_prompt_field),
             "send_as_text_file": bool(send_as_text_file),
             "text_file_message": text_file_message,
@@ -2590,9 +2605,12 @@ class AIStudioDriver(BaseDriver):
         target = None
         for item in visible_items:
             try:
-                thinking_select = item.locator("mat-select[aria-label='Thinking Level']")
-                if await thinking_select.count() > 0:
-                    target = item
+                for label in self.THINKING_SELECT_LABELS:
+                    thinking_select = item.locator(f"mat-select[aria-label='{label}']")
+                    if await thinking_select.count() > 0:
+                        target = item
+                        break
+                if target is not None:
                     break
             except Exception:
                 pass
@@ -2603,7 +2621,8 @@ class AIStudioDriver(BaseDriver):
                     label_text = str(await item.inner_text() or "")
                 except Exception:
                     label_text = ""
-                if "thinking level" in label_text.strip().lower():
+                normalized_label_text = label_text.strip().lower()
+                if any(label.lower() in normalized_label_text for label in self.THINKING_SELECT_LABELS):
                     target = item
                     break
 
@@ -2621,10 +2640,8 @@ class AIStudioDriver(BaseDriver):
                     continue
 
         if target is None:
-            try:
-                target = visible_items[1]
-            except Exception:
-                return False
+            return False
+
         clickable = target.locator(".mat-mdc-select-trigger, [role='combobox'], .mat-mdc-text-field-wrapper")
         try:
             if await clickable.count() > 0 and await clickable.first.is_visible():
@@ -2772,10 +2789,18 @@ class AIStudioDriver(BaseDriver):
         if bool(settings.get("supports_url_context", True)):
             await self._set_url_context_state(bool(settings.get("url_context_enabled")))
             await self._ui_settle_pause(0.18)
-        await self._set_temperature_value(float(settings.get("temperature", 1.0)))
-        await self._ui_settle_pause(0.14)
-        await self._set_top_p_value(float(settings.get("top_p", 0.95)))
-        await self._ui_settle_pause(0.18)
+        if bool(settings.get("supports_temperature", True)):
+            await self._set_temperature_value(float(settings.get("temperature", 1.0)))
+            await self._ui_settle_pause(0.14)
+        else:
+            Logger.debug(
+                "Google AI Studio: selected model does not expose temperature; skipping update."
+            )
+        if bool(settings.get("supports_top_p", True)):
+            await self._set_top_p_value(float(settings.get("top_p", 0.95)))
+            await self._ui_settle_pause(0.18)
+        else:
+            Logger.debug("Google AI Studio: selected model does not expose top-p; skipping update.")
         await self._set_max_output_tokens(int(settings.get("max_output_tokens", 65536)))
         await self._ui_settle_pause(0.22)
 
@@ -4034,8 +4059,16 @@ class AIStudioDriver(BaseDriver):
             ),
             "caars_enabled": bool(settings.get("caars_enabled")),
             "caars_savior_model": str(settings.get("caars_savior_model") or ""),
-            "temperature": round(float(settings.get("temperature", 1.0)), 4),
-            "top_p": round(float(settings.get("top_p", 0.95)), 4),
+            "temperature": (
+                round(float(settings.get("temperature", 1.0)), 4)
+                if bool(settings.get("supports_temperature", True))
+                else None
+            ),
+            "top_p": (
+                round(float(settings.get("top_p", 0.95)), 4)
+                if bool(settings.get("supports_top_p", True))
+                else None
+            ),
             "max_output_tokens": int(settings.get("max_output_tokens", 65536)),
             "model_base_id": str(settings.get("model_base_id") or ""),
         }

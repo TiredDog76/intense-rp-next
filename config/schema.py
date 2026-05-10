@@ -1312,7 +1312,10 @@ SCHEMA = [
                 label="Temperature",
                 type=SettingType.STRING,
                 default="1.0",
-                tooltip="Default temperature for AI Studio requests. Request-level overrides still win.",
+                tooltip=(
+                    "Default temperature for AI Studio requests when the selected model exposes it. "
+                    "Request-level overrides still win."
+                ),
                 validator=validate_float_range(0.0, 2.0, label="Temperature"),
                 docs_path=DOCS_AISTUDIO,
                 docs_anchor="temperature",
@@ -1322,7 +1325,10 @@ SCHEMA = [
                 label="Top P",
                 type=SettingType.STRING,
                 default="0.95",
-                tooltip="Default top-p value for AI Studio requests. Request-level overrides still win.",
+                tooltip=(
+                    "Default top-p value for AI Studio requests when the selected model exposes it. "
+                    "Request-level overrides still win."
+                ),
                 validator=validate_float_range(0.0, 1.0, label="Top P"),
                 docs_path=DOCS_AISTUDIO,
                 docs_anchor="top-p",

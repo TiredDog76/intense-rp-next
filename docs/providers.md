@@ -146,7 +146,7 @@ Fine-tune how Google AI Studio processes your requests.
 | **URL Context** | Toggles the URL Context browsing tool |
 | **File Upload Mode** | Uploads prompts through AI Studio's media picker |
 | **Anti-Censorship** | Detects blocked turns and runs the edit + continue workaround |
-| **Temperature / Top P / Max Output Tokens** | Applies AI Studio sampling controls before sending |
+| **Temperature / Top P / Max Output Tokens** | Applies supported AI Studio sampling controls before sending |
 | **Safety Filters** | Lowers AI Studio's safety sliders automatically once per browser session |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts instead of opening a new chat |
 

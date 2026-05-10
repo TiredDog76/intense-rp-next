@@ -288,7 +288,7 @@ When you set `stream: false`, the server still generates via streaming internall
 !!! note "Compatibility fields"
     `temperature`, `top_p`, `max_tokens`, and `reasoning_effort` are accepted for OpenAI compatibility.
 
-    Right now, Google AI Studio is the only provider that actively applies `temperature`, `top_p`, and `max_tokens` in the web UI. `reasoning_effort` is handled by the API layer before the request reaches a selected provider.
+    Right now, Google AI Studio is the only provider that actively applies `temperature`, `top_p`, and `max_tokens` in the web UI, when the selected model exposes those controls. `reasoning_effort` is handled by the API layer before the request reaches a selected provider.
 
 ---
 
