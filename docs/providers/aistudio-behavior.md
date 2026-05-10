@@ -122,7 +122,7 @@ For API clients, the recommended per-request way to control AI Studio thinking i
 }
 ```
 
-This works when **Settings** -> **API Server** -> **Request Controls** -> **Accept API Reasoning Effort** is enabled. It's enabled by default.
+This works when **Settings** -> **API Server** -> **Request Controls** -> **Accept API Reasoning Effort** is enabled and Google AI Studio is selected under **Reasoning Effort Providers**.
 
 AI Studio maps effort values to Thinking Level:
 

@@ -115,7 +115,10 @@ OpenAI-compatible clients can send a per-request reasoning effort. This is disab
 
 IntenseRP accepts either top-level `reasoning_effort` or nested `reasoning.effort`. The top-level value wins if both are present.
 
-When this is enabled, the request's effort takes priority over the reasoning part of the `model` ID.
+When this is enabled, use **Reasoning Effort Providers** to choose which providers honor the request field. For selected providers, the request's effort takes priority over the reasoning part of the `model` ID. Providers left unchecked ignore `reasoning_effort` and keep using the model ID suffix, Provider Behavior settings, or loadout values.
+
+!!! tip "Recommend to leave only AIStudio enabled"
+     AI Studio is the only provider so far with a built-in reasoning effort parameter, so it benefits the most from this setting. For other providers, the API effort is just a toggle that turns reasoning on or off based on the value sent.
 
 For most providers, this is mapped to the existing on/off reasoning controls:
 
@@ -126,7 +129,7 @@ For most providers, this is mapped to the existing on/off reasoning controls:
 
 Google AI Studio is more granular: `minimum`/`minimal`, `low`, `medium`, and `high` map to AI Studio's Thinking Level controls instead. Very high values like `max` and `xhigh` are rounded to `High`.
 
-Disable this setting if you want API `model` IDs, Provider Behavior settings, and AI Studio macros to be the only things that control reasoning.
+Disable this setting, or remove a provider from **Reasoning Effort Providers**, if you want API `model` IDs, Provider Behavior settings, and AI Studio macros to be the only things that control reasoning.
 
 ---
 

@@ -131,7 +131,10 @@ Nested `reasoning.effort` is accepted too, for clients that use that shape:
 
 Top-level `reasoning_effort` wins if both are present.
 
-When this compatibility setting is enabled, the resolved effort takes priority over the reasoning part of the `model` ID for that request.
+When this compatibility setting is enabled, **Reasoning Effort Providers** controls where it applies. For selected providers, the resolved effort takes priority over the reasoning part of the `model` ID for that request. Providers left unchecked ignore the request field and keep using the model ID suffix, Provider Behavior settings, or loadout values.
+
+!!! tip "Recommend to leave only AIStudio enabled"
+     AI Studio is the only provider so far with a built-in reasoning effort parameter, so it benefits the most from this setting. For other providers, the API effort is just a toggle that turns reasoning on or off based on the value sent.
 
 For most providers, effort values are simplified into the existing reasoning toggle:
 
@@ -285,7 +288,7 @@ When you set `stream: false`, the server still generates via streaming internall
 !!! note "Compatibility fields"
     `temperature`, `top_p`, `max_tokens`, and `reasoning_effort` are accepted for OpenAI compatibility.
 
-    Right now, Google AI Studio is the only provider that actively applies `temperature`, `top_p`, and `max_tokens` in the web UI. `reasoning_effort` is handled by the API layer before the request reaches a provider.
+    Right now, Google AI Studio is the only provider that actively applies `temperature`, `top_p`, and `max_tokens` in the web UI. `reasoning_effort` is handled by the API layer before the request reaches a selected provider.
 
 ---
 

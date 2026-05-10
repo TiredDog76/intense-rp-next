@@ -842,6 +842,39 @@ class API:
             return True
         return bool(value)
 
+    def _provider_accepts_api_reasoning_effort(self, provider: DriverProvider) -> bool:
+        if not self._accept_api_reasoning_effort():
+            return False
+
+        cfg = getattr(self.driver, "config_manager", None)
+        if cfg is None:
+            return True
+
+        try:
+            raw_values = cfg.get_setting("network_settings", "accept_reasoning_effort_providers")
+        except Exception:
+            return True
+
+        if raw_values is None:
+            return True
+        if isinstance(raw_values, str):
+            values = [raw_values]
+        elif isinstance(raw_values, (list, tuple, set)):
+            values = list(raw_values)
+        else:
+            return True
+
+        allowed: set[DriverProvider] = set()
+        for raw_value in values:
+            text = str(raw_value or "").strip()
+            if not text:
+                continue
+            resolved = DriverProvider.from_setting(text)
+            if resolved is not None:
+                allowed.add(resolved)
+
+        return provider in allowed
+
     @staticmethod
     def _replace_behavior_suffix(model: Any, mode: str) -> str:
         normalized_mode = str(mode or "").strip().lower()
@@ -882,7 +915,7 @@ class API:
         provider: DriverProvider,
     ) -> str:
         requested_model = str(getattr(request, "model", "") or "").strip()
-        if not self._accept_api_reasoning_effort():
+        if not self._provider_accepts_api_reasoning_effort(provider):
             return requested_model
 
         effort = _normalize_reasoning_effort(_extract_reasoning_effort_value(request))

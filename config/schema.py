@@ -53,6 +53,7 @@ class SettingType(Enum):
     ROW = "row"
     INPUT_PAIR = "input_pair"
     INPUT_LIST = "input_list"
+    MULTI_SELECT_DROPDOWN = "multi_select_dropdown"
     REDIRECT = "redirect"
 
 @dataclass
@@ -2188,6 +2189,22 @@ SCHEMA = [
                 docs_anchor="api-reasoning-effort",
             ),
             SettingField(
+                key="accept_reasoning_effort_providers",
+                label="Reasoning Effort Providers",
+                type=SettingType.MULTI_SELECT_DROPDOWN,
+                default=provider_options(),
+                options=provider_options(),
+                tooltip=(
+                    "Choose which providers may honor OpenAI-compatible `reasoning_effort` "
+                    "requests. Providers left unchecked ignore the request field and keep "
+                    "using the model ID suffix, Provider Behavior settings, or loadout values."
+                ),
+                depends="network_settings.accept_reasoning_effort",
+                visible_depends="network_settings.accept_reasoning_effort",
+                docs_path=DOCS_NETWORK,
+                docs_anchor="api-reasoning-effort",
+            ),
+            SettingField(
                 key="use_api_keys",
                 label="Require API Keys",
                 type=SettingType.BOOLEAN,
@@ -2349,7 +2366,10 @@ SETTINGS_CARDS = {
     "server_request_controls": SettingCard(
         key="server_request_controls",
         title="Request Controls",
-        field_refs=[("network_settings", "accept_reasoning_effort")],
+        field_refs=[
+            ("network_settings", "accept_reasoning_effort"),
+            ("network_settings", "accept_reasoning_effort_providers"),
+        ],
     ),
     "server_security": SettingCard(
         key="server_security",

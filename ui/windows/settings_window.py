@@ -27,7 +27,7 @@ from config.schema import SCHEMA, SettingType, SETTINGS_SECTIONS, SETTINGS_CARDS
 from drivers.providers import DriverProvider
 from ui.core.brand import BrandColors
 from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, HintCard, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
-from ui.widgets.marshmallow_dropdown import MarshmallowDropdown, MarshmallowOption
+from ui.widgets.marshmallow_dropdown import MarshmallowDropdown, MarshmallowMultiSelectDropdown, MarshmallowOption
 from ui.widgets.redirect_card import RedirectCard
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.ece.credential_manager_dialog import CredentialManagerDialog
@@ -1303,6 +1303,36 @@ class SettingsWindow(QMainWindow):
             widget = InputListWidget(placeholder="127.0.0.1")
             widget.itemsChanged.connect(self._on_setting_changed)
 
+        elif field.type == SettingType.MULTI_SELECT_DROPDOWN:
+            options = []
+            for option in field.options or []:
+                option_label = str(option or "").strip()
+                if not option_label:
+                    continue
+                option_key = option_label
+                icon_file = None
+                if (category_key == "network_settings") and (field.key == "accept_reasoning_effort_providers"):
+                    provider = DriverProvider.from_setting(option_label)
+                    if provider is not None:
+                        option_key = provider.value
+                        option_label = provider.value
+                        icon_file = self._provider_icon_file(provider)
+                options.append(MarshmallowOption(key=option_key, label=option_label, icon_file=icon_file))
+
+            if (category_key == "network_settings") and (field.key == "accept_reasoning_effort_providers"):
+                widget = MarshmallowMultiSelectDropdown(
+                    placeholder=self._format_reasoning_effort_provider_summary(0),
+                    button_icon_file="sidebar/brain.svg",
+                    popup_title="Select providers for API reasoning effort",
+                    summary_formatter=self._format_reasoning_effort_provider_summary,
+                )
+            else:
+                widget = MarshmallowMultiSelectDropdown(
+                    placeholder=f"Select {str(field.label or 'items').lower()}",
+                )
+            widget.set_options(options)
+            widget.selectionChanged.connect(self._on_setting_changed)
+
         elif field.type == SettingType.REDIRECT:
             btn_text = str(field.default) if field.default else "Open"
             widget = RedirectCard(
@@ -1453,6 +1483,8 @@ class SettingsWindow(QMainWindow):
                 widget.set_pairs(value or [])
             elif field.type == SettingType.INPUT_LIST:
                 widget.set_items(value or [])
+            elif field.type == SettingType.MULTI_SELECT_DROPDOWN:
+                widget.set_selected_keys(value or [])
         finally:
             widget.blockSignals(False)
 
@@ -2112,6 +2144,10 @@ class SettingsWindow(QMainWindow):
             DriverProvider.PERPLEXITY: "providers/perplexity.svg",
             DriverProvider.AI_STUDIO: "providers/aistudio.svg",
         }.get(provider)
+
+    @staticmethod
+    def _format_reasoning_effort_provider_summary(count: int) -> str:
+        return f"Select providers ({max(0, int(count or 0))} enabled)"
 
     def _clone_loadout(self, loadout: LoadoutDefinition) -> LoadoutDefinition:
         return LoadoutDefinition(
@@ -3320,6 +3356,8 @@ class SettingsWindow(QMainWindow):
                 value.append([left, right])
         elif field_def.type == SettingType.INPUT_LIST:
             value = widget.get_items()
+        elif field_def.type == SettingType.MULTI_SELECT_DROPDOWN:
+            value = widget.selected_keys()
 
         is_enabled = self._is_dependency_met(getattr(field_def, "depends", None)) if getattr(field_def, "depends", None) else True
         if (not is_enabled) and (full_key in self._dep_override_cache):
@@ -3557,6 +3595,8 @@ class SettingsWindow(QMainWindow):
             return widget.get_pairs()
         if isinstance(widget, InputListWidget):
             return widget.get_items()
+        if isinstance(widget, MarshmallowMultiSelectDropdown):
+            return widget.selected_keys()
         return None
 
     def _set_widget_value(self, widget, value):
@@ -3574,6 +3614,8 @@ class SettingsWindow(QMainWindow):
                 widget.set_pairs(value or [])
             elif isinstance(widget, InputListWidget):
                 widget.set_items(value or [])
+            elif isinstance(widget, MarshmallowMultiSelectDropdown):
+                widget.set_selected_keys(value or [])
         finally:
             widget.blockSignals(False)
 
@@ -4488,6 +4530,8 @@ class SettingsWindow(QMainWindow):
                         value = widget.get_pairs()
                     elif field.type == SettingType.INPUT_LIST:
                         value = widget.get_items()
+                    elif field.type == SettingType.MULTI_SELECT_DROPDOWN:
+                        value = widget.selected_keys()
                     elif field.type in [SettingType.BUTTON, SettingType.DIVIDER, SettingType.DESCRIPTION, SettingType.HINT, SettingType.ROW, SettingType.REDIRECT]:
                         continue # These don't have values to save
                         
