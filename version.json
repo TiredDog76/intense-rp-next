@@ -1,6 +1,6 @@
 {
-  "version": "2.8.2-patch",
+  "version": "2.8.2-rev1",
   "aua": true,
-  "severity": 4,
+  "severity": 3,
   "pu": "discord"
 }
