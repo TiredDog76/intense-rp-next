@@ -1535,10 +1535,12 @@ class GLMDriver(BaseDriver):
         button: Any,
         *,
         state_attr: str,
+        fallback_state_attrs: tuple[str, ...] = (),
         enabled_label_prefix: str,
         enabled_class_markers: tuple[str, ...] = (),
     ) -> bool:
         """Read a composer toggle's enabled state across old and compact DOMs."""
+        state_attrs = tuple(dict.fromkeys((state_attr, *fallback_state_attrs)))
         try:
             return bool(
                 await button.evaluate(
@@ -1561,10 +1563,12 @@ class GLMDriver(BaseDriver):
                         }
 
                         for (const node of nodes) {
-                            if (node.hasAttribute?.(options.stateAttr)) {
-                                return String(node.getAttribute(options.stateAttr) || '')
-                                    .trim()
-                                    .toLowerCase() === 'true';
+                            for (const attr of options.stateAttrs || []) {
+                                if (node.hasAttribute?.(attr)) {
+                                    return String(node.getAttribute(attr) || '')
+                                        .trim()
+                                        .toLowerCase() === 'true';
+                                }
                             }
                         }
 
@@ -1599,7 +1603,7 @@ class GLMDriver(BaseDriver):
                         );
                     }""",
                     {
-                        "stateAttr": state_attr,
+                        "stateAttrs": list(state_attrs),
                         "enabledLabelPrefix": enabled_label_prefix,
                         "enabledClassMarkers": list(enabled_class_markers),
                     },
@@ -1608,11 +1612,14 @@ class GLMDriver(BaseDriver):
         except Exception:
             pass
 
-        try:
-            attr = await button.get_attribute(state_attr)
-            return str(attr or "").strip().lower() == "true"
-        except Exception:
-            return False
+        for attr_name in state_attrs:
+            try:
+                attr = await button.get_attribute(attr_name)
+                if attr is not None:
+                    return str(attr or "").strip().lower() == "true"
+            except Exception:
+                continue
+        return False
 
     async def _find_deepthink_button(self):
         """Find the Deep Think button by its aria-label wrapper."""
@@ -1623,6 +1630,9 @@ class GLMDriver(BaseDriver):
         if not self._glm_tools_supported_for_model(self._get_configured_glm_model_friendly()):
             return await self._find_compact_search_button()
 
+        button = await self._find_composer_toggle_button("Web search", state_attr="data-active")
+        if button:
+            return button
         return await self._find_composer_toggle_button("Web search", state_attr="data-selected")
 
     async def _find_tools_button(self):
@@ -1663,7 +1673,8 @@ class GLMDriver(BaseDriver):
 
         is_enabled = await self._read_composer_toggle_enabled(
             button,
-            state_attr="data-selected",
+            state_attr="data-active",
+            fallback_state_attrs=("data-selected",),
             enabled_label_prefix="web search enabled",
             enabled_class_markers=("text-[#0881F0]", "bg-[#F0F7FE]"),
         )
