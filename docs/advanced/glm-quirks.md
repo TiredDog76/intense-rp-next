@@ -54,6 +54,18 @@ How long (in seconds) IntenseRP waits for the send button to become active after
 
 GLM occasionally takes a moment to "process" the pasted text before the send button lights up. If you're getting send-timeout errors, try raising this to 10 or 15.
 
+### Completion Request Timeout
+
+How long (in seconds) IntenseRP waits after clicking **Send** or **Regenerate** for GLM's completion request to actually appear on the network.
+
+| | |
+|---|---|
+| **Setting** | Completion Request Timeout (s) |
+| **Default** | 150 seconds |
+| **Minimum** | 5 seconds |
+
+This covers the "completion request was not observed" case. GLM can sometimes flip the UI into a sending state before the backend request shows up, so this timeout is intentionally much longer than the normal send-button timeout.
+
 ### First Chunk Timeout
 
 How long (in seconds) IntenseRP waits for GLM's response stream to actually begin after the request has already been sent.

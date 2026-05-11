@@ -640,6 +640,15 @@ SCHEMA = [
                 docs_anchor="message-send-timeout",
             ),
             SettingField(
+                key="completion_request_timeout",
+                label="Completion Request Timeout (s)",
+                type=SettingType.INTEGER,
+                default=150,
+                tooltip="Max seconds to wait after clicking Send or Regenerate for GLM's completion request to appear.",
+                docs_path=DOCS_GLM_QUIRKS,
+                docs_anchor="completion-request-timeout",
+            ),
+            SettingField(
                 key="first_chunk_timeout",
                 label="First Chunk Timeout (s)",
                 type=SettingType.INTEGER,
@@ -2565,7 +2574,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_tools"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "repetition_buster", "multi_slot_cache"]},
-        {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "first_chunk_timeout", "refresh_after_generation"]},
+        {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "completion_request_timeout", "first_chunk_timeout", "refresh_after_generation"]},
     ],
     "moonshot_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "search_and_think_note", "enable_search"]},

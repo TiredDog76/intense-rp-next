@@ -61,6 +61,7 @@ class GLMDriver(BaseDriver):
     )
 
     REFRESH_AFTER_GENERATION_DELAY_S = 2.0
+    COMPLETION_REQUEST_TIMEOUT_S = 150.0
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
     MODEL_SELECTOR_READY_TIMEOUT_MS = 20000
@@ -122,6 +123,13 @@ class GLMDriver(BaseDriver):
         except Exception:
             msg_send_timeout = 5
         try:
+            completion_request_timeout = float(
+                self.config_manager.get_setting("glm_behavior", "completion_request_timeout")
+                or self.COMPLETION_REQUEST_TIMEOUT_S
+            )
+        except Exception:
+            completion_request_timeout = self.COMPLETION_REQUEST_TIMEOUT_S
+        try:
             first_chunk_timeout = float(
                 self.config_manager.get_setting("glm_behavior", "first_chunk_timeout") or self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
             )
@@ -137,6 +145,7 @@ class GLMDriver(BaseDriver):
         self._ui_timeout = max(ui_timeout, 500)
         self._post_delay_s = max(post_delay, 0) / 1000.0
         self._msg_send_timeout = max(msg_send_timeout, 1)
+        self._completion_request_timeout_s = max(completion_request_timeout, 5.0)
         self._first_chunk_timeout_s = max(first_chunk_timeout, 5.0)
         self._refresh_after_generation = bool(refresh_after_generation)
 
@@ -1063,7 +1072,11 @@ class GLMDriver(BaseDriver):
             return method == "POST"
 
         try:
-            async with self.page.expect_response(response_matches, timeout=10000) as response_info:
+            completion_timeout_ms = int(self._completion_request_timeout_s * 1000)
+            async with self.page.expect_response(
+                response_matches,
+                timeout=completion_timeout_ms,
+            ) as response_info:
                 await self._send_text_request(
                     message,
                     send_timeout=send_timeout,
@@ -1304,7 +1317,10 @@ class GLMDriver(BaseDriver):
             return False
 
         try:
-            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+            await asyncio.wait_for(
+                completion_started.wait(),
+                timeout=self._completion_request_timeout_s,
+            )
         except asyncio.TimeoutError:
             Logger.warning(
                 "Multi-Slot Cache (GLM): completion request not observed after clicking "
@@ -2819,7 +2835,10 @@ class GLMDriver(BaseDriver):
                     if await self._click_regenerate(timeout_ms=regen_timeout, arm_event=completion_armed):
                         Logger.info("Clean Regeneration (GLM): Regenerate clicked. Regenerating...")
                         try:
-                            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                            await asyncio.wait_for(
+                                completion_started.wait(),
+                                timeout=self._completion_request_timeout_s,
+                            )
                         except asyncio.TimeoutError:
                             Logger.warning(
                                 "Clean Regeneration (GLM): completion request not observed after clicking "
@@ -2913,7 +2932,10 @@ class GLMDriver(BaseDriver):
 
             if not completion_started.is_set():
                 try:
-                    await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                    await asyncio.wait_for(
+                        completion_started.wait(),
+                        timeout=self._completion_request_timeout_s,
+                    )
                 except asyncio.TimeoutError:
                     Logger.error(
                         "GLM Chat: completion request was not observed. "
