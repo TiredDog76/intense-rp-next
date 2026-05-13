@@ -44,6 +44,7 @@ class QwenLMDriver(BaseDriver):
     SETTINGS_URL = "https://chat.qwen.ai/api/v2/users/user/settings"
     SETTINGS_UPDATE_URL = "https://chat.qwen.ai/api/v2/users/user/settings/update"
     CONVERSATION_URL_RE = re.compile(r"^https://chat\.qwen\.ai/c/([^/?#]+)", re.IGNORECASE)
+    COMPLETION_REQUEST_TIMEOUT_S = 150.0
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
 
@@ -121,6 +122,19 @@ class QwenLMDriver(BaseDriver):
         # Best-effort provider settings enforcement (once per session, can be retried)
         self._rp_settings_last_attempt_ts: float = 0.0
         self._abort_ui_task: asyncio.Task | None = None
+        self._refresh_quirks()
+
+    def _refresh_quirks(self) -> None:
+        """Read configurable timing knobs from QwenLM Behavior settings."""
+        try:
+            completion_request_timeout = float(
+                self.config_manager.get_setting("qwen_behavior", "completion_request_timeout")
+                or self.COMPLETION_REQUEST_TIMEOUT_S
+            )
+        except Exception:
+            completion_request_timeout = self.COMPLETION_REQUEST_TIMEOUT_S
+
+        self._completion_request_timeout_s = max(completion_request_timeout, 5.0)
 
     @property
     def required_ui_language_label(self) -> str:
@@ -774,7 +788,10 @@ class QwenLMDriver(BaseDriver):
             return False
 
         try:
-            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+            await asyncio.wait_for(
+                completion_started.wait(),
+                timeout=self._completion_request_timeout_s,
+            )
         except asyncio.TimeoutError:
             Logger.warning(
                 "Multi-Slot Cache (QwenLM): completion request not observed after clicking "
@@ -2751,6 +2768,7 @@ class QwenLMDriver(BaseDriver):
         completion_claimed = False
 
         await self.require_english_ui()
+        self._refresh_quirks()
         try:
             await self._ensure_rp_friendly_settings()
         except Exception:
@@ -3147,7 +3165,10 @@ class QwenLMDriver(BaseDriver):
                     if await self._click_regenerate(arm_event=completion_armed):
                         Logger.info("Clean Regeneration (QwenLM): Regenerate clicked. Regenerating...")
                         try:
-                            await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                            await asyncio.wait_for(
+                                completion_started.wait(),
+                                timeout=self._completion_request_timeout_s,
+                            )
                         except asyncio.TimeoutError:
                             Logger.warning(
                                 "Clean Regeneration (QwenLM): completion request not observed after clicking "
@@ -3226,7 +3247,10 @@ class QwenLMDriver(BaseDriver):
 
             if not completion_started.is_set():
                 try:
-                    await asyncio.wait_for(completion_started.wait(), timeout=20.0)
+                    await asyncio.wait_for(
+                        completion_started.wait(),
+                        timeout=self._completion_request_timeout_s,
+                    )
                 except asyncio.TimeoutError:
                     Logger.error(
                         "QwenLM: completion request was not observed. "

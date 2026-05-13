@@ -913,6 +913,15 @@ SCHEMA = [
                 docs_anchor="message-send-timeout",
             ),
             SettingField(
+                key="completion_request_timeout",
+                label="Completion Request Timeout (s)",
+                type=SettingType.INTEGER,
+                default=150,
+                tooltip="Max seconds to wait after clicking Send or Regenerate for QwenLM's completion request to appear.",
+                docs_path=DOCS_QWEN,
+                docs_anchor="completion-request-timeout",
+            ),
+            SettingField(
                 key="clean_regeneration",
                 label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
@@ -2586,6 +2595,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
+        {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout"]},
     ],
     "perplexity_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "subscription_note", "enable_deepthink", "send_deepthink", "search_forced_off_note", "enable_search"]},

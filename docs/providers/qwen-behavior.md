@@ -108,6 +108,25 @@ QwenLM doesn't render the send button until there's something to send (typed tex
 
 ---
 
+## :material-wrench-clock: Qwen Quirks & Timing
+
+QwenLM's web UI can sometimes show that it's sending before the actual completion request appears on the network. When that happens too slowly, IntenseRP may think the click was swallowed even though Qwen is still waking up.
+
+### Completion Request Timeout
+
+How long (in seconds) IntenseRP waits after clicking **Send** or **Regenerate** for QwenLM's completion request to appear.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Quirks** -> **Completion Request Timeout (s)**
+
+| | |
+|---|---|
+| **Default** | 150 seconds |
+| **Minimum** | 5 seconds |
+
+If you're seeing `QwenLM: completion request not observed`, try raising this. This is different from the stream timeout: it only covers the gap before Qwen's backend request starts.
+
+---
+
 ## :material-shield-check: Provider guardrails (recommended)
 
 QwenLM has a couple of web settings that can silently change how your prompt gets sent (for example, turning big messages into file attachments).
@@ -205,6 +224,7 @@ All macros are stripped from the message before sending it to QwenLM.
 | **Text File Message** | Text pasted alongside uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait after upload | 20 |
 | **Message Send Timeout (s)** | Seconds to wait for send button | 8 |
+| **Completion Request Timeout (s)** | Seconds to wait for Qwen's backend request | 150 |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 | **Delete Chat After Reply** | Deletes the completed Qwen chat after a successful reply | Off |
 
