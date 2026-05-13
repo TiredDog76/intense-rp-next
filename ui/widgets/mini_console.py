@@ -1,15 +1,60 @@
 """
 Mini-console widget for displaying grouped logs in the main window.
 """
+from math import ceil
+
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame, QStackedLayout
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame,
+    QStackedLayout, QPlainTextEdit, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QAbstractAnimation
+from PySide6.QtCore import (
+    Qt, QTimer, QPropertyAnimation, QEasingCurve, QAbstractAnimation, Signal
+)
+from PySide6.QtGui import QColor, QPalette
 
 from ui.core.animation_settings import animations_disabled
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils
 from utils.logger import LogLevel
+
+
+class _LogTextEdit(QPlainTextEdit):
+    """Read-only log text surface that lets the parent scroll area handle wheel input."""
+
+    resized = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.verticalScrollBar().valueChanged.connect(self._reset_vertical_scroll)
+        self.verticalScrollBar().rangeChanged.connect(
+            lambda _minimum, _maximum: self._reset_vertical_scroll()
+        )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.resized.emit()
+
+    def scrollContentsBy(self, dx, dy):
+        if dy:
+            self._reset_vertical_scroll()
+            if dx:
+                super().scrollContentsBy(dx, 0)
+            self.viewport().update()
+            return
+
+        super().scrollContentsBy(dx, dy)
+
+    def wheelEvent(self, event):
+        event.ignore()
+
+    def _reset_vertical_scroll(self, _value: int = 0):
+        scrollbar = self.verticalScrollBar()
+        if scrollbar.value() == 0:
+            return
+
+        old_state = scrollbar.blockSignals(True)
+        scrollbar.setValue(0)
+        scrollbar.blockSignals(old_state)
 
 
 class LogGroup(QWidget):
@@ -39,11 +84,14 @@ class LogGroup(QWidget):
         super().__init__(parent)
         self.level = level
         self.logs = []
+        self._display_logs = []
+        self._display_text = ""
         self.is_expanded = True
         self._loaded_level_icon = False
         self._loaded_chevron_path = None
         self._content_height_anim = None
         self._animating = False
+        self._log_view_text_width = 0
         
         colors = self.LEVEL_COLORS.get(level, self.LEVEL_COLORS["INFO"])
         self.bg_color = colors["bg"]
@@ -53,6 +101,8 @@ class LogGroup(QWidget):
         self._init_ui()
     
     def _init_ui(self):
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
@@ -94,9 +144,46 @@ class LogGroup(QWidget):
         
         # Content area
         self.content_widget = QWidget()
+        self.content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(10, 6, 10, 6)
         self.content_layout.setSpacing(2)
+
+        # A single text document per group keeps populated logs cheap to relayout
+        self.log_view = _LogTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setUndoRedoEnabled(False)
+        self.log_view.setFrameShape(QFrame.NoFrame)
+        self.log_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.log_view.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.log_view.setFocusPolicy(Qt.ClickFocus)
+        self.log_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.log_view.setContentsMargins(0, 0, 0, 0)
+        self.log_view.setViewportMargins(0, 0, 0, 0)
+        self.log_view.document().setDocumentMargin(0)
+        self.log_view.setFixedHeight(1)
+        self.log_view.setStyleSheet(f"""
+            QPlainTextEdit {{
+                border: none;
+                padding: 0;
+                font-family: {BrandColors.FONT_FAMILY};
+                color: {self.text_color};
+                font-size: {BrandColors.FONT_SIZE_SMALL};
+                background-color: transparent;
+                selection-background-color: {BrandColors.ACCENT};
+                selection-color: {BrandColors.TEXT_PRIMARY};
+            }}
+        """)
+        palette = self.log_view.palette()
+        for group in (QPalette.Active, QPalette.Inactive):
+            palette.setColor(group, QPalette.Highlight, QColor(BrandColors.ACCENT))
+            palette.setColor(
+                group, QPalette.HighlightedText, QColor(BrandColors.TEXT_PRIMARY)
+            )
+        self.log_view.setPalette(palette)
+        self.log_view.resized.connect(self._on_log_view_resized)
+        self.content_layout.addWidget(self.log_view)
         
         self.main_layout.addWidget(self.content_widget)
 
@@ -117,7 +204,7 @@ class LogGroup(QWidget):
     def _apply_expanded_state(self, initial: bool = False) -> None:
         if self.is_expanded:
             self.content_widget.setVisible(True)
-            self.content_widget.setMaximumHeight(16777215)
+            self.content_widget.setMaximumHeight(self._get_content_target_height())
         else:
             self.content_widget.setMaximumHeight(0)
             self.content_widget.setVisible(False)
@@ -126,6 +213,10 @@ class LogGroup(QWidget):
             self._update_expand_styles()
 
     def _get_content_target_height(self) -> int:
+        self._sync_log_view_height()
+        return self._get_content_target_height_for_current_layout()
+
+    def _get_content_target_height_for_current_layout(self) -> int:
         layout = self.content_widget.layout()
         if layout is not None and hasattr(layout, "totalSizeHint"):
             try:
@@ -137,10 +228,20 @@ class LogGroup(QWidget):
         except Exception:
             return 0
 
+    def _apply_content_target_height(self) -> None:
+        if self.is_expanded and not self._animating:
+            self.content_widget.setMaximumHeight(
+                self._get_content_target_height_for_current_layout()
+            )
+
+    def _on_log_view_resized(self) -> None:
+        self._sync_log_view_height()
+        self._apply_content_target_height()
+
     def _on_toggle_anim_finished(self) -> None:
         self._animating = False
         if self.is_expanded:
-            self.content_widget.setMaximumHeight(16777215)
+            self.content_widget.setMaximumHeight(self._get_content_target_height())
             self._update_expand_styles()
             return
 
@@ -268,6 +369,37 @@ class LogGroup(QWidget):
             parts.append(word)
         return ' '.join(parts)
 
+    def _sync_log_view_height(self, force: bool = False) -> None:
+        width = int(self.log_view.viewport().width())
+        if width <= 1:
+            margins = self.content_layout.contentsMargins()
+            width = int(self.content_widget.width()) - margins.left() - margins.right()
+
+        width = max(1, width)
+        if force or width != self._log_view_text_width:
+            self.log_view.document().setTextWidth(width)
+            self._log_view_text_width = width
+
+        layout = self.log_view.document().documentLayout()
+        block = self.log_view.document().firstBlock()
+        height = 0
+        while block.isValid():
+            height += ceil(layout.blockBoundingRect(block).height())
+            block = block.next()
+
+        # QPlainTextEdit keeps a one-step internal scroll range when the
+        # viewport exactly matches the document height. That lets selection
+        # autoscroll hide the first line even with scrollbars disabled
+        height = max(1, height + 1)
+        if self.log_view.height() != height:
+            self.log_view.setFixedHeight(height)
+        self.log_view._reset_vertical_scroll()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_log_view_height()
+        self._apply_content_target_height()
+
     def add_log(self, message: str) -> bool:
         """
         Add a log message to this group.
@@ -280,18 +412,11 @@ class LogGroup(QWidget):
             message = message[:253] + "..."
 
         self.logs.append(message)
-
-        # Create label for the log
-        log_label = QLabel(self._break_long_words(message))
-        log_label.setWordWrap(True)
-        log_label.setStyleSheet(f"""
-            color: {self.text_color};
-            font-size: {BrandColors.FONT_SIZE_SMALL};
-            background-color: transparent;
-            padding: 2px 0;
-        """)
-        log_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.content_layout.addWidget(log_label)
+        self._display_logs.append(self._break_long_words(message))
+        self._display_text = "\n".join(self._display_logs)
+        self.log_view.setPlainText(self._display_text)
+        self._sync_log_view_height(force=True)
+        self._apply_content_target_height()
         
         self._update_header()
         return True
@@ -311,6 +436,7 @@ class MiniConsole(QWidget):
         self.groups = []  # List of LogGroup widgets
         self.last_level = None
         self._main_logging_enabled = True
+        self._scroll_to_bottom_pending = False
         
         self._init_ui()
     
@@ -450,11 +576,19 @@ class MiniConsole(QWidget):
         # Add log to current group
         self.groups[-1].add_log(message)
         
-        # Auto-scroll to bottom using QTimer to avoid async conflicts
+        self._schedule_scroll_to_bottom()
+
+    def _schedule_scroll_to_bottom(self):
+        """Defer bottom scrolling once per event-loop pass."""
+        if self._scroll_to_bottom_pending:
+            return
+
+        self._scroll_to_bottom_pending = True
         QTimer.singleShot(0, self._scroll_to_bottom)
     
     def _scroll_to_bottom(self):
         """Scroll the mini-console to the bottom."""
+        self._scroll_to_bottom_pending = False
         scrollbar = self.scroll_area.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
     
@@ -465,6 +599,7 @@ class MiniConsole(QWidget):
             group.deleteLater()
         self.groups.clear()
         self.last_level = None
+        self._scroll_to_bottom_pending = False
 
     def set_main_logging_enabled(self, enabled: bool):
         """Enable/disable Activity Log updates and show a placeholder when disabled."""
