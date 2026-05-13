@@ -1050,13 +1050,20 @@ class DeepSeekDriver(BaseDriver):
                         "mimeType": "text/plain",
                         "buffer": formatted_message.encode("utf-8"),
                     }
-                    await self._upload_file(file_payload)
-                    
-                    # Get timeout from settings
-                    upload_timeout = self.config_manager.get_setting("deepseek_behavior", "file_upload_timeout")
-                    Logger.info("Sending request to DeepSeek...")
-                    completion_armed.set()
-                    await self._send_message(timeout=upload_timeout)
+                    uploaded = await self._upload_file(file_payload)
+
+                    if uploaded:
+                        # Get timeout from settings
+                        upload_timeout = self.config_manager.get_setting("deepseek_behavior", "file_upload_timeout")
+                        Logger.info("Sending request to DeepSeek...")
+                        completion_armed.set()
+                        await self._send_message(timeout=upload_timeout)
+                    else:
+                        Logger.warning("DeepSeek: text-file upload unavailable; falling back to pasted text.")
+                        await self._enter_message(formatted_message)
+                        Logger.info("Sending request to DeepSeek...")
+                        completion_armed.set()
+                        await self._send_message()
                 else:
                     await self._enter_message(formatted_message)
                     Logger.info("Sending request to DeepSeek...")
@@ -2041,12 +2048,15 @@ class DeepSeekDriver(BaseDriver):
         """
         await self._upload_file(file_spec)
 
-    async def _upload_file(self, file_spec: Any):
+    async def _upload_file(self, file_spec: Any) -> bool:
         """
         Uploads a file to the chat.
 
         file_spec can be a path (str/Path) or a file payload dict supported by Playwright
         (e.g. {"name": "...", "mimeType": "...", "buffer": b"..."}).
+
+        Returns True when the file payload was attached, or False when upload is unavailable
+        and the caller should use the regular text path.
         """
         try:
             if isinstance(file_spec, dict):
@@ -2070,5 +2080,7 @@ class DeepSeekDriver(BaseDriver):
             # Wait a bit for the upload to be processed by the UI
             # You might need to wait for a specific indicator that the file is ready
             await asyncio.sleep(1.0) 
+            return True
         else:
             Logger.warning("File input not found.")
+            return False
