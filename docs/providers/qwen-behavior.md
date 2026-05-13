@@ -125,6 +125,19 @@ How long (in seconds) IntenseRP waits after clicking **Send** or **Regenerate** 
 
 If you're seeing `QwenLM: completion request not observed`, try raising this. This is different from the stream timeout: it only covers the gap before Qwen's backend request starts.
 
+### First Chunk Timeout
+
+How long (in seconds) IntenseRP waits for QwenLM's response stream to produce its first chunk after the completion request has started.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Quirks** -> **First Chunk Timeout (s)**
+
+| | |
+|---|---|
+| **Default** | 150 seconds |
+| **Minimum** | 5 seconds |
+
+If you're seeing `timed out waiting for intercepted first chunk` errors on QwenLM, this is the setting to raise.
+
 ---
 
 ## :material-shield-check: Provider guardrails (recommended)
@@ -225,6 +238,7 @@ All macros are stripped from the message before sending it to QwenLM.
 | **File Upload Timeout** | Seconds to wait after upload | 20 |
 | **Message Send Timeout (s)** | Seconds to wait for send button | 8 |
 | **Completion Request Timeout (s)** | Seconds to wait for Qwen's backend request | 150 |
+| **First Chunk Timeout (s)** | Seconds to wait for Qwen's stream to start | 150 |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 | **Delete Chat After Reply** | Deletes the completed Qwen chat after a successful reply | Off |
 

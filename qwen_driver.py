@@ -45,7 +45,7 @@ class QwenLMDriver(BaseDriver):
     SETTINGS_UPDATE_URL = "https://chat.qwen.ai/api/v2/users/user/settings/update"
     CONVERSATION_URL_RE = re.compile(r"^https://chat\.qwen\.ai/c/([^/?#]+)", re.IGNORECASE)
     COMPLETION_REQUEST_TIMEOUT_S = 150.0
-    INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
+    INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 150.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
 
     COMPLETIONS_ROUTE_GLOB = "**/api/v2/chat/completions*"
@@ -133,8 +133,16 @@ class QwenLMDriver(BaseDriver):
             )
         except Exception:
             completion_request_timeout = self.COMPLETION_REQUEST_TIMEOUT_S
+        try:
+            first_chunk_timeout = float(
+                self.config_manager.get_setting("qwen_behavior", "first_chunk_timeout")
+                or self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
+            )
+        except Exception:
+            first_chunk_timeout = self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S
 
         self._completion_request_timeout_s = max(completion_request_timeout, 5.0)
+        self._first_chunk_timeout_s = max(first_chunk_timeout, 5.0)
 
     @property
     def required_ui_language_label(self) -> str:
@@ -3263,7 +3271,7 @@ class QwenLMDriver(BaseDriver):
             async for item in self._iterate_response_queue(
                 response_queue,
                 abort_event=abort_event,
-                first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
+                first_chunk_timeout_s=self._first_chunk_timeout_s,
                 idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
                 on_timeout=self._abort_generation_ui,
             ):
