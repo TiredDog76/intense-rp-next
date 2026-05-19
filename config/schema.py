@@ -1400,8 +1400,24 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip="Regenerate the last message instead of creating a new chat when the prompt is identical.",
+                depends="aistudio_behavior.preflight_next_chat!=true",
+                force_when_dep_unmet=False,
                 docs_path=DOCS_AISTUDIO,
                 docs_anchor="clean-regeneration",
+            ),
+            SettingField(
+                key="preflight_next_chat",
+                label="Preflight Next Chat",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "After a successful AI Studio response, prepare a fresh blank chat with "
+                    "the same controls so the next prompt can send a little faster."
+                ),
+                depends="aistudio_behavior.clean_regeneration!=true",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="preflight-next-chat",
             ),
         ],
     ),
@@ -2618,6 +2634,6 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
-        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "clean_regeneration"]},
+        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "clean_regeneration", "preflight_next_chat"]},
     ],
 }

@@ -302,7 +302,7 @@ When enabled, IntenseRP sends the original prompt to a secondary **Savior Model*
 After that, IntenseRP switches back to your normal AI Studio **Model** and sends your configured **Continue Nudge**. The main model's answer is the one that streams back to the API. If the main model gets hard-censored too, the normal Anti-Censorship edit + continue retry flow still runs.
 
 !!! note "Reuse Matching Chat"
-    CAARS starts a fresh AI Studio chat for the prelude and skips **Reuse Matching Chat** for that request. It needs the savior turn and the main continuation to live in the same fresh chat.
+    CAARS starts from a fresh AI Studio chat for the prelude and skips **Reuse Matching Chat** for that request. It needs the savior turn and the main continuation to live in the same fresh chat.
 
 ### Savior Model
 
@@ -353,6 +353,28 @@ Otherwise it opens a fresh chat.
 
 !!! note "Blocked chats are skipped"
     If AI Studio hard-censors a turn and **Anti-Censorship** kicks in, IntenseRP clears that chat from the clean-regeneration cache instead of reusing it later.
+
+!!! note "Mutually exclusive with Preflight Next Chat"
+    **Reuse Matching Chat** needs to keep the completed chat around so it can press Regenerate later.
+
+    **Preflight Next Chat** immediately moves on to a fresh blank chat after a successful response. Since those two ideas want opposite things from the browser tab, IntenseRP only lets you keep one enabled.
+
+---
+
+## :material-flight-takeoff: Preflight Next Chat
+
+When enabled, IntenseRP starts preparing the next Google AI Studio chat as soon as a successful response finishes.
+
+It opens a fresh temporary chat, reapplies the previous request's AI Studio controls, and leaves the composer empty. The next request can then skip some setup and go straight to filling in the prompt.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Preflight Next Chat**
+
+If the next request changes model, thinking, search, URL Context, sampling, or system prompt settings, IntenseRP adjusts the preflighted blank chat before sending the prompt. So the feature is best-effort speed, not a promise to ignore request-level overrides.
+
+!!! note "CAARS preflights the savior turn"
+    When CAARS is enabled, Preflight Next Chat prepares the blank chat for the **Savior Model** prelude, because that is the first AI Studio request CAARS sends.
+
+    After the savior turn is replaced, IntenseRP still switches back to your main model in that same chat and sends the configured continue nudge.
 
 ---
 
@@ -421,6 +443,7 @@ All macros are stripped before sending.
 | **Max Output Tokens** | Default output token budget | `65536` |
 | **Auto Login Redirect Timeout (s)** | Wait before falling back to manual Google completion | `15` |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
+| **Preflight Next Chat** | Prepares a blank chat after successful responses | Off |
 
 ---
 

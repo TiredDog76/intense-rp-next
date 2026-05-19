@@ -415,6 +415,10 @@ class AIStudioDriver(BaseDriver):
         self.clean_regen_state_cache_key = "aistudio_last_message_state.json"
         self._safety_filters_initialized = False
         self._system_instructions_storage_reset_done = False
+        self._preflight_task: Optional[asyncio.Task] = None
+        self._preflight_ready = False
+        self._preflight_state: Optional[Dict[str, Any]] = None
+        self._preflight_system_prompt_text = ""
 
     @property
     def required_ui_language_label(self) -> str:
@@ -2824,6 +2828,150 @@ class AIStudioDriver(BaseDriver):
         await self._wait_for_chat_ready(timeout_ms=60000)
         await self._ensure_incognito_chat_url(timeout_ms=60000)
 
+    def _preflight_next_chat_enabled(self) -> bool:
+        """Return whether post-response blank-chat preparation is enabled."""
+        try:
+            return bool(self.config_manager.get_setting("aistudio_behavior", "preflight_next_chat"))
+        except Exception:
+            return False
+
+    def _clear_preflight_chat_state(self) -> None:
+        """Forget any prepared blank chat snapshot."""
+        self._preflight_ready = False
+        self._preflight_state = None
+        self._preflight_system_prompt_text = ""
+
+    async def cleanup_background_tasks(self) -> None:
+        await self._cancel_task(
+            self._preflight_task,
+            label="stopping Google AI Studio preflight task",
+        )
+        self._preflight_task = None
+        self._clear_preflight_chat_state()
+
+    async def _await_preflight_task(self) -> None:
+        """Let an in-progress preflight finish before the next UI action."""
+        task = self._preflight_task
+        if task is None:
+            return
+
+        try:
+            if not task.done():
+                Logger.debug("Google AI Studio Preflight: waiting for prepared chat setup to finish...")
+            await task
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            Logger.debug(f"Google AI Studio Preflight: background task ended with an error: {e}")
+        finally:
+            if self._preflight_task is task:
+                self._preflight_task = None
+
+    async def _prepare_preflight_next_chat(
+        self,
+        settings: Dict[str, Any],
+        system_prompt_text: str,
+    ) -> None:
+        """Prepare a blank AI Studio chat using the previous request's settings."""
+        self._clear_preflight_chat_state()
+        if not self.page:
+            return
+
+        try:
+            Logger.info("Google AI Studio Preflight: preparing the next chat session...")
+            await self._wait_for_generation_idle(timeout_ms=10000)
+            await self.click_new_chat(source="preflight")
+            await self._ui_settle_pause(0.2)
+            await self._apply_request_controls(settings)
+            await self._ui_settle_pause(0.2)
+            if bool(settings.get("use_system_prompt_field")):
+                await self._sync_system_prompt_field(system_prompt_text)
+                await self._ui_settle_pause(0.18)
+
+            self._preflight_state = self._build_clean_regeneration_state(
+                settings,
+                system_prompt_text=system_prompt_text,
+            )
+            self._preflight_system_prompt_text = str(system_prompt_text or "")
+            self._preflight_ready = True
+            Logger.info("Google AI Studio Preflight: next chat session is ready.")
+        except asyncio.CancelledError:
+            self._clear_preflight_chat_state()
+            raise
+        except Exception as e:
+            self._clear_preflight_chat_state()
+            Logger.warning(f"Google AI Studio Preflight: failed to prepare next chat session: {e}")
+
+    def _schedule_preflight_next_chat(
+        self,
+        settings: Dict[str, Any],
+        system_prompt_text: str,
+    ) -> None:
+        """Start best-effort blank-chat preparation after a successful request."""
+        if not self._preflight_next_chat_enabled():
+            self._clear_preflight_chat_state()
+            return
+        try:
+            if bool(self.config_manager.get_setting("aistudio_behavior", "clean_regeneration")):
+                self._clear_preflight_chat_state()
+                return
+        except Exception:
+            pass
+
+        task = self._preflight_task
+        if task is not None and not task.done():
+            return
+        if task is not None and task.done():
+            self._preflight_task = None
+
+        settings_snapshot = dict(settings)
+        system_prompt_snapshot = str(system_prompt_text or "")
+        self._clear_preflight_chat_state()
+        self._preflight_task = asyncio.create_task(
+            self._prepare_preflight_next_chat(settings_snapshot, system_prompt_snapshot)
+        )
+
+    async def _consume_preflighted_chat(
+        self,
+        settings: Dict[str, Any],
+        system_prompt_text: str,
+    ) -> bool:
+        """Use the prepared blank chat, adjusting it if this request changed settings."""
+        await self._await_preflight_task()
+        if not self._preflight_ready:
+            return False
+
+        previous_state = self._preflight_state
+        previous_system_prompt_text = self._preflight_system_prompt_text
+        self._clear_preflight_chat_state()
+
+        requested_state = self._build_clean_regeneration_state(
+            settings,
+            system_prompt_text=system_prompt_text,
+        )
+        if previous_state == requested_state:
+            Logger.info("Google AI Studio Preflight: using the prepared chat session.")
+            return True
+
+        Logger.info("Google AI Studio Preflight: adjusting the prepared chat for this request...")
+        await self._apply_request_controls(settings)
+        await self._ui_settle_pause(0.2)
+
+        should_sync_system_prompt = (
+            bool(settings.get("use_system_prompt_field"))
+            or bool((previous_state or {}).get("use_system_prompt_field"))
+            or bool(str(previous_system_prompt_text or "").strip())
+        )
+        if should_sync_system_prompt:
+            next_system_prompt_text = (
+                str(system_prompt_text or "")
+                if bool(settings.get("use_system_prompt_field"))
+                else ""
+            )
+            await self._sync_system_prompt_field(next_system_prompt_text)
+            await self._ui_settle_pause(0.18)
+        return True
+
     async def upload_file(self, file_spec: Any) -> None:
         """Upload media through AI Studio's picker, including acknowledgement handling."""
         if not self.page:
@@ -4173,11 +4321,15 @@ class AIStudioDriver(BaseDriver):
         request, and yields OpenAI-style server-sent event chunks back to the caller.
         """
         _ = stream
+        await self._await_preflight_task()
         response_queue: asyncio.Queue = asyncio.Queue()
         completion_armed = asyncio.Event()
         completion_started = asyncio.Event()
         completion_claim_lock = asyncio.Lock()
         completion_claimed = False
+        preflight_next_chat = self._preflight_next_chat_enabled()
+        preflight_settings_for_next_chat: Dict[str, Any] | None = None
+        preflight_system_prompt_for_next_chat = ""
         current_attempt_meta: Dict[str, Any] = {
             "hard_censorship_hint": False,
             "rate_limit_hint": False,
@@ -4216,6 +4368,26 @@ class AIStudioDriver(BaseDriver):
         self.current_send_deepthink = bool(effective_settings["send_deepthink"])
         anti_censorship_enabled = bool(effective_settings.get("anti_censorship"))
         caars_enabled = bool(effective_settings.get("caars_enabled"))
+
+        def _build_caars_savior_settings() -> Dict[str, Any]:
+            savior_label = str(
+                effective_settings.get("caars_savior_model") or "Gemini 3.1 Flash Lite"
+            )
+            savior_overrides = dict(macros_overrides)
+            savior_overrides.pop("thinking_level_macro", None)
+            savior_overrides["deepthink_enabled"] = False
+            savior_overrides["send_deepthink"] = False
+            savior_settings = self._resolve_ai_studio_request_settings(
+                self.current_model or "aistudio-auto",
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                overrides=savior_overrides,
+                model_label_override=savior_label,
+            )
+            if isinstance(message_for_formatting, str):
+                savior_settings["use_system_prompt_field"] = False
+            return savior_settings
 
         def _reset_attempt_state() -> None:
             nonlocal response_queue, completion_armed, completion_started
@@ -4367,14 +4539,22 @@ class AIStudioDriver(BaseDriver):
             system_prompt_text: str,
         ) -> str | None:
             _reset_attempt_state()
-            Logger.info("Google AI Studio: preparing a new chat session...")
-            await self.click_new_chat(source="auto")
-            await asyncio.sleep(0.2)
-            await self._apply_request_controls(effective_settings)
-            await asyncio.sleep(0.2)
-            if bool(effective_settings.get("use_system_prompt_field")):
-                await self._sync_system_prompt_field(system_prompt_text)
-                await self._ui_settle_pause(0.18)
+            preflight_consumed = False
+            if preflight_next_chat:
+                preflight_consumed = await self._consume_preflighted_chat(
+                    effective_settings,
+                    system_prompt_text,
+                )
+
+            if not preflight_consumed:
+                Logger.info("Google AI Studio: preparing a new chat session...")
+                await self.click_new_chat(source="auto")
+                await asyncio.sleep(0.2)
+                await self._apply_request_controls(effective_settings)
+                await asyncio.sleep(0.2)
+                if bool(effective_settings.get("use_system_prompt_field")):
+                    await self._sync_system_prompt_field(system_prompt_text)
+                    await self._ui_settle_pause(0.18)
 
             prepare_error, send_timeout = await _prepare_formatted_prompt_for_send(
                 effective_settings,
@@ -4437,36 +4617,27 @@ class AIStudioDriver(BaseDriver):
             formatted_message: str,
             system_prompt_text: str,
         ) -> str | None:
-            savior_label = str(
-                effective_settings.get("caars_savior_model") or "Gemini 3.1 Flash Lite"
-            )
-            savior_overrides = dict(macros_overrides)
-            savior_overrides.pop("thinking_level_macro", None)
-            savior_overrides["deepthink_enabled"] = False
-            savior_overrides["send_deepthink"] = False
-            savior_settings = self._resolve_ai_studio_request_settings(
-                self.current_model or "aistudio-auto",
-                temperature=temperature,
-                top_p=top_p,
-                max_tokens=max_tokens,
-                overrides=savior_overrides,
-                model_label_override=savior_label,
-            )
-            if isinstance(message_for_formatting, str):
-                savior_settings["use_system_prompt_field"] = False
-
+            savior_settings = _build_caars_savior_settings()
             _reset_attempt_state()
             Logger.info(
                 "Google AI Studio CAARS: preparing savior prelude "
                 f"with '{savior_settings.get('model_label')}'."
             )
-            await self.click_new_chat(source="caars")
-            await asyncio.sleep(0.2)
-            await self._apply_request_controls(savior_settings)
-            await asyncio.sleep(0.2)
-            if bool(savior_settings.get("use_system_prompt_field")):
-                await self._sync_system_prompt_field(system_prompt_text)
-                await self._ui_settle_pause(0.18)
+            preflight_consumed = False
+            if preflight_next_chat:
+                preflight_consumed = await self._consume_preflighted_chat(
+                    savior_settings,
+                    system_prompt_text,
+                )
+
+            if not preflight_consumed:
+                await self.click_new_chat(source="caars")
+                await asyncio.sleep(0.2)
+                await self._apply_request_controls(savior_settings)
+                await asyncio.sleep(0.2)
+                if bool(savior_settings.get("use_system_prompt_field")):
+                    await self._sync_system_prompt_field(system_prompt_text)
+                    await self._ui_settle_pause(0.18)
 
             prepare_error, send_timeout = await _prepare_formatted_prompt_for_send(
                 savior_settings,
@@ -4744,9 +4915,19 @@ class AIStudioDriver(BaseDriver):
                 },
             )
             await self._ensure_safety_filters_initialized()
-            clean_regeneration = bool(
+            clean_regeneration_requested = bool(
                 self.config_manager.get_setting("aistudio_behavior", "clean_regeneration")
-            ) and not caars_enabled
+            )
+            if clean_regeneration_requested and preflight_next_chat:
+                Logger.warning(
+                    "Google AI Studio Preflight conflicts with Reuse Matching Chat. "
+                    "Preflight is disabled for this request."
+                )
+                preflight_next_chat = False
+            if not preflight_next_chat:
+                self._clear_preflight_chat_state()
+
+            clean_regeneration = clean_regeneration_requested and not caars_enabled
             clean_regen_state = self._build_clean_regeneration_state(
                 effective_settings,
                 system_prompt_text=system_prompt_text,
@@ -4794,6 +4975,7 @@ class AIStudioDriver(BaseDriver):
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
                     self._write_clean_regeneration_state(clean_regen_state)
 
+                stream_error_seen = False
                 async for item in self._iterate_response_queue(
                     response_queue,
                     abort_event=abort_event,
@@ -4801,9 +4983,18 @@ class AIStudioDriver(BaseDriver):
                     idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
                 ):
                     if isinstance(item, dict) and "error" in item:
+                        stream_error_seen = True
                         yield f"data: {json.dumps(item)}\n\n"
                         break
                     yield item
+                if (
+                    preflight_next_chat
+                    and not stream_error_seen
+                    and not self.abort_requested
+                    and not (abort_event and abort_event.is_set())
+                ):
+                    preflight_settings_for_next_chat = dict(effective_settings)
+                    preflight_system_prompt_for_next_chat = str(system_prompt_text or "")
                 return
 
             terminal_stop_chunk: str | None = None
@@ -4933,6 +5124,15 @@ class AIStudioDriver(BaseDriver):
 
             if final_error_message:
                 yield f"data: {json.dumps({'error': final_error_message})}\n\n"
+            elif (
+                preflight_next_chat
+                and not self.abort_requested
+                and not (abort_event and abort_event.is_set())
+            ):
+                preflight_settings_for_next_chat = (
+                    _build_caars_savior_settings() if caars_enabled else dict(effective_settings)
+                )
+                preflight_system_prompt_for_next_chat = str(system_prompt_text or "")
         finally:
             self.current_abort_event = None
             self.abort_requested = False
@@ -4943,3 +5143,8 @@ class AIStudioDriver(BaseDriver):
                 await self.page.unroute(self.GENERATE_ROUTE_GLOB)
             except Exception:
                 pass
+            if preflight_settings_for_next_chat is not None:
+                self._schedule_preflight_next_chat(
+                    preflight_settings_for_next_chat,
+                    preflight_system_prompt_for_next_chat,
+                )
