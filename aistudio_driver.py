@@ -265,6 +265,7 @@ class AIStudioDriver(BaseDriver):
         flags=re.IGNORECASE,
     )
     LOWEST_LEVEL_BY_MODEL: Dict[str, str] = {
+        "gemini-3.5-flash": "Minimal",
         "gemini-3.1-pro-preview": "Low",
         "gemini-3.1-flash-lite": "Minimal",
         "gemini-3-flash-preview": "Minimal",
@@ -275,6 +276,7 @@ class AIStudioDriver(BaseDriver):
         "gemma-4-31b-it": "Minimal",
     }
     THINKING_LEVELS_BY_MODEL: Dict[str, tuple[str, ...]] = {
+        "gemini-3.5-flash": ("Minimal", "Low", "Medium", "High"),
         "gemini-3.1-pro-preview": ("Low", "Medium", "High"),
         "gemini-3.1-flash-lite": ("Minimal", "Low", "Medium", "High"),
         "gemini-3-flash-preview": ("Minimal", "Low", "Medium", "High"),
@@ -312,6 +314,12 @@ class AIStudioDriver(BaseDriver):
         "gemini-2.5-flash-lite": (512, 24576),
     }
     MODEL_CONFIGS: Dict[str, Dict[str, Any]] = {
+        "Gemini 3.5 Flash": {
+            "base_id": "gemini-3.5-flash",
+            "selector_id": "model-carousel-row-models/gemini-3.5-flash",
+            "supports_temperature": False,
+            "supports_top_p": False,
+        },
         "Gemini 3.1 Pro": {
             "base_id": "gemini-3.1-pro-preview",
             "selector_id": "model-carousel-row-models/gemini-3.1-pro-preview",

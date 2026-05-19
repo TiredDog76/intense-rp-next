@@ -1140,6 +1140,7 @@ SCHEMA = [
                 type=SettingType.DROPDOWN,
                 default="Gemini 2.5 Flash",
                 options=[
+                    "Gemini 3.5 Flash",
                     "Gemini 3.1 Pro",
                     "Gemini 3.1 Flash Lite",
                     "Gemini 3 Flash",
@@ -1295,6 +1296,7 @@ SCHEMA = [
                 type=SettingType.DROPDOWN,
                 default="Gemini 3.1 Flash Lite",
                 options=[
+                    "Gemini 3.5 Flash",
                     "Gemini 3.1 Pro",
                     "Gemini 3.1 Flash Lite",
                     "Gemini 3 Flash",
