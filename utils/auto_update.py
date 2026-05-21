@@ -17,6 +17,16 @@ import requests
 GITHUB_OWNER = "LyubomirT"
 GITHUB_REPO = "intense-rp-next"
 USER_AGENT = "IntenseRP-Next-AutoUpdater"
+GITHUB_API_VERSION = "2026-03-10"
+GITHUB_API_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": GITHUB_API_VERSION,
+    "User-Agent": USER_AGENT,
+}
+DOWNLOAD_HEADERS = {
+    "Accept": "application/octet-stream",
+    "User-Agent": USER_AGENT,
+}
 
 
 class AutoUpdateError(RuntimeError):
@@ -72,7 +82,7 @@ def fetch_release_by_tag(
     response = requests.get(
         url,
         timeout=timeout_s,
-        headers={"User-Agent": USER_AGENT},
+        headers=GITHUB_API_HEADERS,
     )
     if response.status_code == 404:
         raise AutoUpdateError(f"Release not found for tag {tag}.")
@@ -81,6 +91,14 @@ def fetch_release_by_tag(
     if not isinstance(data, dict):
         raise AutoUpdateError("Unexpected response from GitHub API.")
     return data
+
+
+def _positive_int_or_none(value: object) -> Optional[int]:
+    try:
+        parsed = int(value or 0)
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _asset_name_tokens(name: str) -> set[str]:
@@ -144,7 +162,7 @@ def select_platform_asset(release: dict, platform: Optional[str] = None) -> dict
         if not name or not url:
             continue
         score = _score_asset_name(name, platform)
-        size = int(asset.get("size") or 0)
+        size = _positive_int_or_none(asset.get("size")) or 0
         if score > best_score or (score == best_score and size > best_size):
             best = asset
             best_score = score
@@ -174,8 +192,7 @@ def download_with_progress(
 ) -> None:
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     part_path = dest_path.with_name(f"{dest_path.name}.part")
-    if expected_bytes is not None and expected_bytes <= 0:
-        expected_bytes = None
+    expected_bytes = _positive_int_or_none(expected_bytes)
     try:
         part_path.unlink(missing_ok=True)
     except Exception:
@@ -193,15 +210,15 @@ def download_with_progress(
             url,
             stream=True,
             timeout=timeout_s,
-            headers={"User-Agent": USER_AGENT},
+            headers=DOWNLOAD_HEADERS,
+            allow_redirects=True,
         ) as response:
             response.raise_for_status()
             try:
-                total_bytes = int(response.headers.get("Content-Length") or 0) or None
+                header_bytes = _positive_int_or_none(response.headers.get("Content-Length"))
             except Exception:
-                total_bytes = None
-            if total_bytes is None:
-                total_bytes = expected_bytes
+                header_bytes = None
+            total_bytes = expected_bytes or header_bytes
 
             with open(part_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=chunk_size):
@@ -230,14 +247,14 @@ def download_with_progress(
                                 )
                             )
 
-        if total_bytes is not None and bytes_downloaded != total_bytes:
-            raise AutoUpdateError(
-                f"Downloaded file is incomplete ({bytes_downloaded} of {total_bytes} bytes)."
-            )
         if expected_bytes is not None and bytes_downloaded != expected_bytes:
             raise AutoUpdateError(
                 f"Downloaded file size does not match the GitHub asset metadata "
                 f"({bytes_downloaded} of {expected_bytes} bytes)."
+            )
+        if expected_bytes is None and total_bytes is not None and bytes_downloaded != total_bytes:
+            raise AutoUpdateError(
+                f"Downloaded file is incomplete ({bytes_downloaded} of {total_bytes} bytes)."
             )
         part_path.replace(dest_path)
     except Exception:
@@ -418,10 +435,7 @@ def prepare_update_from_github(
     asset_download_url = str(asset.get("browser_download_url") or "")
     if not asset_name or not asset_download_url:
         raise AutoUpdateError("Release asset is missing a download URL.")
-    try:
-        expected_bytes = int(asset.get("size") or 0) or None
-    except Exception:
-        expected_bytes = None
+    expected_bytes = _positive_int_or_none(asset.get("size"))
 
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", asset_name) or "update.archive"
     archive_path = (download_dir / safe_name).resolve()
