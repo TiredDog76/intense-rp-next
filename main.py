@@ -432,6 +432,7 @@ class MainWindow(QMainWindow):
 
         # 2. Mini-Console Area
         self.mini_console = MiniConsole()
+        self.mini_console.logging_level_selected.connect(self._on_mini_console_log_level_selected)
         self.mini_console.setMinimumHeight(250)
         self.mini_console.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout.addWidget(self.mini_console)
@@ -1649,11 +1650,53 @@ class MainWindow(QMainWindow):
         console_lvl = self.config_manager.get_setting("system_settings", "console_log_level") or "Debug"
         mini_lvl = self.config_manager.get_setting("system_settings", "mini_console_log_level") or "Success"
         file_lvl = self.config_manager.get_setting("system_settings", "logfile_log_level") or "Debug"
+        if mini_lvl not in LEVEL_NAME_MAP:
+            mini_lvl = "Success"
 
         Logger.set_stdout_level(LEVEL_NAME_MAP.get(stdout_lvl, LogLevel.DEBUG))
         Logger.set_file_level(LEVEL_NAME_MAP.get(file_lvl, LogLevel.DEBUG))
         self._console_log_level = LEVEL_NAME_MAP.get(console_lvl, LogLevel.DEBUG)
         self._mini_console_log_level = LEVEL_NAME_MAP.get(mini_lvl, LogLevel.SUCCESS)
+        if hasattr(self, "mini_console"):
+            self.mini_console.set_logging_level(mini_lvl)
+
+    def _on_mini_console_log_level_selected(self, level_name: str):
+        level_name = str(level_name or "").strip()
+        if level_name not in LEVEL_NAME_MAP:
+            return
+
+        current_level = (
+            self.config_manager.get_setting("system_settings", "mini_console_log_level")
+            or "Success"
+        )
+        if level_name == current_level:
+            self.mini_console.set_logging_level(level_name)
+            return
+
+        self.config_manager.set_setting("system_settings", "mini_console_log_level", level_name)
+        self.config_manager.save_settings()
+        self._setup_logging()
+        self._sync_settings_window_mini_console_log_level(level_name)
+
+    def _sync_settings_window_mini_console_log_level(self, level_name: str):
+        settings_window = getattr(self, "settings_window", None)
+        if not settings_window:
+            return
+
+        field_widgets = getattr(settings_window, "field_widgets", {})
+        widget = field_widgets.get("system_settings.mini_console_log_level")
+        if widget is None or not hasattr(widget, "setCurrentText"):
+            return
+
+        previous_state = widget.blockSignals(True)
+        try:
+            widget.setCurrentText(level_name)
+        finally:
+            widget.blockSignals(previous_state)
+
+        update_dirty_markers = getattr(settings_window, "_update_dirty_markers", None)
+        if callable(update_dirty_markers):
+            update_dirty_markers()
     
     def _show_console(self):
         """Show the console window."""

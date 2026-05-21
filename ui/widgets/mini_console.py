@@ -5,17 +5,19 @@ from math import ceil
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QFrame,
-    QStackedLayout, QPlainTextEdit, QSizePolicy
+    QStackedLayout, QPlainTextEdit, QSizePolicy, QPushButton, QMenu,
+    QWidgetAction
 )
 from PySide6.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QAbstractAnimation, Signal
+    Qt, QTimer, QPropertyAnimation, QEasingCurve, QAbstractAnimation, Signal,
+    QPoint, QSize
 )
 from PySide6.QtGui import QColor, QPalette
 
 from ui.core.animation_settings import animations_disabled
 from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils
-from utils.logger import LogLevel
+from utils.logger import LogLevel, LEVEL_NAME_MAP
 
 
 class _LogTextEdit(QPlainTextEdit):
@@ -426,10 +428,77 @@ class LogGroup(QWidget):
         return len(self.logs) >= self.MAX_LOGS_PER_GROUP
 
 
+class _LoggingLevelMenuRow(QFrame):
+    """Custom menu row so the checkmark spacing is not controlled by the OS style."""
+
+    triggered = Signal(str)
+
+    def __init__(self, level_name: str, parent=None):
+        super().__init__(parent)
+        self._level_name = level_name
+        self.setObjectName("loggingLevelMenuRow")
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumWidth(158)
+        self.setFixedHeight(36)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 4, 20, 4)
+        layout.setSpacing(12)
+
+        self._check_label = QLabel()
+        self._check_label.setFixedSize(16, 16)
+        self._check_label.setStyleSheet("background-color: transparent;")
+        layout.addWidget(self._check_label, 0, Qt.AlignVCenter)
+
+        self._text_label = QLabel(level_name)
+        self._text_label.setStyleSheet(f"""
+            color: {BrandColors.TEXT_PRIMARY};
+            background-color: transparent;
+            font-size: {BrandColors.FONT_SIZE_REGULAR};
+            font-family: {BrandColors.FONT_FAMILY};
+        """)
+        layout.addWidget(self._text_label, 1, Qt.AlignVCenter)
+
+        self.setStyleSheet(f"""
+            QFrame#loggingLevelMenuRow {{
+                background-color: transparent;
+                border: none;
+            }}
+            QFrame#loggingLevelMenuRow:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+            }}
+        """)
+
+    def set_selected(self, selected: bool):
+        if selected:
+            pixmap = IconUtils.get_pixmap(
+                "check.svg",
+                color=BrandColors.TEXT_PRIMARY,
+                size=15,
+                dpr=self.devicePixelRatioF(),
+            )
+            if not pixmap.isNull():
+                self._check_label.setPixmap(pixmap)
+            return
+
+        self._check_label.clear()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.triggered.emit(self._level_name)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class MiniConsole(QWidget):
     """A mini-console widget that displays grouped logs."""
+
+    logging_level_selected = Signal(str)
     
     MAX_GROUPS = 35
+    LOG_LEVEL_OPTIONS = tuple(LEVEL_NAME_MAP.keys())
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -437,6 +506,8 @@ class MiniConsole(QWidget):
         self.last_level = None
         self._main_logging_enabled = True
         self._scroll_to_bottom_pending = False
+        self._logging_level = "Success"
+        self._logging_level_rows = {}
         
         self._init_ui()
     
@@ -459,21 +530,66 @@ class MiniConsole(QWidget):
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
         
-        # Integrated header label
+        # Integrated header label + logging-level shortcut
+        header_widget = QFrame()
+        header_widget.setObjectName("miniConsoleHeader")
+        header_widget.setStyleSheet(f"""
+            QFrame#miniConsoleHeader {{
+                background-color: #222222;
+                border-bottom: 1px solid {BrandColors.INPUT_BORDER};
+                border-top-left-radius: 7px;
+                border-top-right-radius: 7px;
+                border-bottom-left-radius: 0px;
+                border-bottom-right-radius: 0px;
+            }}
+        """)
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(12, 10, 12, 8)
+        header_layout.setSpacing(4)
+
         header_label = QLabel("Activity Log")
         header_label.setStyleSheet(f"""
             font-size: {BrandColors.FONT_SIZE_REGULAR};
             font-weight: bold;
             color: {BrandColors.TEXT_SECONDARY};
-            padding: 10px 12px 8px 12px;
-            background-color: #222222;
-            border-bottom: 1px solid {BrandColors.INPUT_BORDER};
-            border-top-left-radius: 7px;
-            border-top-right-radius: 7px;
-            border-bottom-left-radius: 0px;
-            border-bottom-right-radius: 0px;
+            background-color: transparent;
         """)
-        container_layout.addWidget(header_label)
+        header_layout.addWidget(header_label, 0, Qt.AlignVCenter)
+
+        self.log_level_button = QPushButton()
+        self.log_level_button.setObjectName("miniConsoleLogLevelButton")
+        self.log_level_button.setCursor(Qt.PointingHandCursor)
+        self.log_level_button.setToolTip("Select how much to log.")
+        self.log_level_button.setFixedSize(22, 22)
+        self.log_level_button.setIconSize(QSize(14, 14))
+        self.log_level_button.setStyleSheet(f"""
+            QPushButton#miniConsoleLogLevelButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
+                padding: 0px;
+            }}
+            QPushButton#miniConsoleLogLevelButton:hover {{
+                background-color: {BrandColors.ITEM_HOVER};
+            }}
+            QPushButton#miniConsoleLogLevelButton:pressed {{
+                background-color: rgba(255, 255, 255, 0.14);
+            }}
+        """)
+        chevron_icon = IconUtils.get_icon(
+            "chevron-down.svg",
+            color=BrandColors.TEXT_SECONDARY,
+            size=14,
+            widget=self.log_level_button,
+        )
+        if not chevron_icon.isNull():
+            self.log_level_button.setIcon(chevron_icon)
+        self.log_level_button.clicked.connect(self._show_logging_level_menu)
+        header_layout.addWidget(self.log_level_button, 0, Qt.AlignVCenter)
+        header_layout.addStretch(1)
+
+        self._init_logging_level_menu()
+        container_layout.addWidget(header_widget)
         
         # Scroll area for log groups
         self.scroll_area = QScrollArea()
@@ -545,6 +661,73 @@ class MiniConsole(QWidget):
         self.scroll_area.setWidget(self.stacked_widget)
         container_layout.addWidget(self.scroll_area)
         main_layout.addWidget(container)
+
+    def _init_logging_level_menu(self):
+        self.logging_level_menu = QMenu(self)
+        self.logging_level_menu.setWindowFlags(
+            self.logging_level_menu.windowFlags()
+            | Qt.FramelessWindowHint
+            | Qt.NoDropShadowWindowHint
+        )
+        self.logging_level_menu.setAttribute(Qt.WA_TranslucentBackground)
+        self.logging_level_menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {BrandColors.SIDEBAR_BG};
+                border: 1px solid {BrandColors.INPUT_BORDER};
+                border-radius: 6px;
+                padding: 4px 0;
+                font-family: {BrandColors.FONT_FAMILY};
+            }}
+            QMenu::item {{
+                color: {BrandColors.TEXT_PRIMARY};
+                padding: 8px 20px;
+                font-size: {BrandColors.FONT_SIZE_REGULAR};
+            }}
+            QMenu::item:selected {{
+                background-color: {BrandColors.ITEM_HOVER};
+            }}
+            QMenu::item:disabled {{
+                color: {BrandColors.TEXT_DISABLED};
+            }}
+        """)
+
+        for level_name in self.LOG_LEVEL_OPTIONS:
+            row = _LoggingLevelMenuRow(level_name, self.logging_level_menu)
+            row.triggered.connect(self._select_logging_level)
+            action = QWidgetAction(self.logging_level_menu)
+            action.setDefaultWidget(row)
+            self.logging_level_menu.addAction(action)
+            self._logging_level_rows[level_name] = row
+
+        self._update_logging_level_actions()
+
+    def _show_logging_level_menu(self):
+        self._update_logging_level_actions()
+        pos = self.log_level_button.mapToGlobal(QPoint(0, self.log_level_button.height()))
+        self.logging_level_menu.popup(pos)
+
+    def _select_logging_level(self, level_name: str):
+        if level_name not in self.LOG_LEVEL_OPTIONS:
+            self._update_logging_level_actions()
+            return
+
+        if level_name != self._logging_level:
+            self._logging_level = level_name
+            self.logging_level_selected.emit(level_name)
+
+        self._update_logging_level_actions()
+        self.logging_level_menu.hide()
+
+    def _update_logging_level_actions(self):
+        for level_name, row in self._logging_level_rows.items():
+            row.set_selected(level_name == self._logging_level)
+
+    def set_logging_level(self, level_name: str):
+        if level_name not in self.LOG_LEVEL_OPTIONS:
+            return
+
+        self._logging_level = level_name
+        self._update_logging_level_actions()
     
     def add_log(self, level: LogLevel, message: str):
         """Add a log message to the mini-console."""
