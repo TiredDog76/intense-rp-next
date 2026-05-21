@@ -35,6 +35,7 @@ class UpdateInstalledInfo:
     version: str
     release_notes_url: str
     post_update: str = "survey"
+    post_update_function_ref: str = "none"
 
 
 class UpdateInstalledDialog(QDialog):

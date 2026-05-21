@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 DEFAULT_POST_UPDATE_ACTION = "survey"
+DEFAULT_POST_UPDATE_FUNCTION_REF = "none"
 _POST_UPDATE_ACTIONS = {"discord", "survey", "none"}
 
 
@@ -14,6 +15,7 @@ class VersionFileInfo:
     auto_updateable: bool
     severity: int  # 1-4
     post_update: str  # discord | survey | none
+    post_update_function_ref: str = DEFAULT_POST_UPDATE_FUNCTION_REF
 
 
 def parse_version_file(
@@ -23,6 +25,7 @@ def parse_version_file(
     default_auto_updateable: bool = True,
     default_severity: int = 2,
     default_post_update: str = DEFAULT_POST_UPDATE_ACTION,
+    default_post_update_function_ref: str = DEFAULT_POST_UPDATE_FUNCTION_REF,
     strict: bool = False,
 ) -> VersionFileInfo:
     """
@@ -34,6 +37,7 @@ def parse_version_file(
     - aua: boolean (auto-updateable?)
     - severity: integer 1-4
     - pu: post-update action (discord, survey, none)
+    - pufref: post-update function reference (none, or a registered function key)
     """
 
     value = (text or "").strip()
@@ -45,6 +49,10 @@ def parse_version_file(
             auto_updateable=default_auto_updateable,
             severity=_clamp_severity(default_severity, default=default_severity),
             post_update=_coerce_post_update(default_post_update, default=default_post_update),
+            post_update_function_ref=_coerce_post_update_function_ref(
+                default_post_update_function_ref,
+                default=default_post_update_function_ref,
+            ),
         )
 
     try:
@@ -71,11 +79,21 @@ def parse_version_file(
     post_update_raw = payload.get("pu", payload.get("post_update", default_post_update))
     post_update = _coerce_post_update(post_update_raw, default=default_post_update)
 
+    pufref_raw = payload.get(
+        "pufref",
+        payload.get("post_update_function_ref", default_post_update_function_ref),
+    )
+    post_update_function_ref = _coerce_post_update_function_ref(
+        pufref_raw,
+        default=default_post_update_function_ref,
+    )
+
     return VersionFileInfo(
         version=version_str,
         auto_updateable=aua,
         severity=severity,
         post_update=post_update,
+        post_update_function_ref=post_update_function_ref,
     )
 
 
@@ -119,5 +137,16 @@ def _coerce_post_update(value: Any, *, default: str) -> str:
 
     normalized = str(value or "").strip().lower()
     if normalized in _POST_UPDATE_ACTIONS:
+        return normalized
+    return normalized_default
+
+
+def _coerce_post_update_function_ref(value: Any, *, default: str) -> str:
+    normalized_default = str(default or DEFAULT_POST_UPDATE_FUNCTION_REF).strip().lower()
+    if not normalized_default:
+        normalized_default = DEFAULT_POST_UPDATE_FUNCTION_REF
+
+    normalized = str(value or "").strip().lower()
+    if normalized:
         return normalized
     return normalized_default

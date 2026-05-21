@@ -2,5 +2,6 @@
   "version": "2.8.2-rev3",
   "aua": true,
   "severity": 3,
-  "pu": "discord"
+  "pu": "discord",
+  "pufref": "none"
 }

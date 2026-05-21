@@ -35,6 +35,7 @@ from ui.core.brand import BrandColors
 from ui.core.icons import IconUtils, IconType
 from ui.niche.hotswap_dialog import HotswapDialog, PROVIDER_ICON_MAP
 from ui.niche.loadout_switch_dialog import LoadoutSwitchDialog
+from ui.niche.post_update_functions import PostUpdateFunctionContext, run_post_update_function
 from ui.niche.update_available_dialog import UpdateAvailableDialog, UpdateAvailableInfo
 from ui.niche.update_installed_dialog import UpdateInstalledDialog, UpdateInstalledInfo
 from drivers.parallel_manager import ParallelDriversManager
@@ -59,7 +60,7 @@ import time
 import traceback
 
 
-def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool, bool, bool]:
+def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool, str | None, bool, bool]:
     """
     Parse and remove internal startup args from argv.
 
@@ -77,6 +78,7 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
     updater_path: str | None = None
     clear_flags = False
     fake_update = False
+    fake_pufref: str | None = None
     debug_widget_shows = False
     extra_debug_logs = False
 
@@ -111,6 +113,21 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
             i += 1
             continue
 
+        if arg.lower() == "--fakepufref":
+            fake_update = True
+            if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+                fake_pufref = argv[i + 1]
+                i += 2
+                continue
+            i += 1
+            continue
+
+        if arg.lower().startswith("--fakepufref="):
+            fake_pufref = arg.split("=", 1)[1] or None
+            fake_update = True
+            i += 1
+            continue
+
         if arg.lower() == "--debugwidgetshows":
             debug_widget_shows = True
             i += 1
@@ -124,7 +141,16 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
         remaining.append(arg)
         i += 1
 
-    return remaining, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows, extra_debug_logs
+    return (
+        remaining,
+        delete_updater,
+        updater_path,
+        clear_flags,
+        fake_update,
+        fake_pufref,
+        debug_widget_shows,
+        extra_debug_logs,
+    )
 
 
 def _delete_updater_best_effort(cleanup_path: Path) -> None:
@@ -357,6 +383,7 @@ def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
         version=version,
         release_notes_url=release_notes_url,
         post_update=version_info.post_update,
+        post_update_function_ref=version_info.post_update_function_ref,
     )
 
 
@@ -365,7 +392,7 @@ class MainWindow(QMainWindow):
     DEFAULT_WINDOW_WIDTH = 450
     DEFAULT_WINDOW_HEIGHT = 520
 
-    def __init__(self, *, fake_update: bool = False):
+    def __init__(self, *, fake_update: bool = False, fake_pufref: str | None = None):
         super().__init__()
         self.setWindowTitle("IntenseRP Next")
         self.resize(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT)
@@ -627,6 +654,7 @@ class MainWindow(QMainWindow):
                 version=str(version or "unknown"),
                 release_notes_url=str(release_notes_url or ""),
                 post_update=version_info.post_update,
+                post_update_function_ref=fake_pufref or version_info.post_update_function_ref,
             )
         self._maybe_show_update_installed_dialog()
 
@@ -1518,7 +1546,17 @@ class MainWindow(QMainWindow):
                 self._post_update_dialog_open = False
                 self._post_update_info = None
 
+            QTimer.singleShot(0, lambda info=info: self._run_post_update_function(info))
+
         QTimer.singleShot(0, show)
+
+    def _run_post_update_function(self, info: UpdateInstalledInfo) -> None:
+        context = PostUpdateFunctionContext(
+            parent=self,
+            version=str(getattr(info, "version", "unknown") or "unknown"),
+            open_browser_manager=self.open_browser_manager,
+        )
+        run_post_update_function(getattr(info, "post_update_function_ref", "none"), context)
 
     @Slot(object)
     def _show_update_available_dialog(self, info: UpdateAvailableInfo):
@@ -2224,6 +2262,12 @@ class MainWindow(QMainWindow):
             self.help_window.settings_reloaded.connect(self.on_settings_reloaded)
         self.help_window.show()
         self.help_window.activateWindow()
+
+    def open_browser_manager(self) -> None:
+        self.open_help()
+        help_window = getattr(self, "help_window", None)
+        if help_window is not None:
+            help_window.show_browser_manager()
 
     def _open_docs_home(self) -> bool:
         return bool(QDesktopServices.openUrl(QUrl(DOCS_BASE_URL)))
@@ -3780,7 +3824,16 @@ def main():
             print(f"Failed to run module {module_name}: {e}")
             sys.exit(1)
 
-    remaining_args, delete_updater, updater_path, clear_flags, fake_update, debug_widget_shows, extra_debug_logs = _parse_update_cleanup_args(sys.argv[1:])
+    (
+        remaining_args,
+        delete_updater,
+        updater_path,
+        clear_flags,
+        fake_update,
+        fake_pufref,
+        debug_widget_shows,
+        extra_debug_logs,
+    ) = _parse_update_cleanup_args(sys.argv[1:])
     sys.argv = [sys.argv[0]] + remaining_args
     Logger.set_extra_debug_logs_enabled(extra_debug_logs)
 
@@ -3833,7 +3886,7 @@ def main():
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    window = MainWindow(fake_update=fake_update)
+    window = MainWindow(fake_update=fake_update, fake_pufref=fake_pufref)
     window.show()
 
     def _request_quit() -> None:
