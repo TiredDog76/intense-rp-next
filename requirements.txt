@@ -28,7 +28,7 @@ MarkupSafe==3.0.3
 mergedeep==1.3.4
 packaging==25.0
 paginate==0.5.7
-patchright==1.59.1
+patchright==1.60.0
 pathspec==0.12.1
 pefile==2024.8.26
 platformdirs==4.5.1
