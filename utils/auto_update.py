@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
 import tarfile
 import time
@@ -15,6 +16,7 @@ import requests
 
 GITHUB_OWNER = "LyubomirT"
 GITHUB_REPO = "intense-rp-next"
+USER_AGENT = "IntenseRP-Next-AutoUpdater"
 
 
 class AutoUpdateError(RuntimeError):
@@ -35,6 +37,7 @@ class PreparedUpdate:
     release_html_url: str
     asset_name: str
     asset_download_url: str
+    staging_dir: Path
     extracted_app_root: Path
 
 
@@ -69,7 +72,7 @@ def fetch_release_by_tag(
     response = requests.get(
         url,
         timeout=timeout_s,
-        headers={"User-Agent": "IntenseRP-Next-AutoUpdater"},
+        headers={"User-Agent": USER_AGENT},
     )
     if response.status_code == 404:
         raise AutoUpdateError(f"Release not found for tag {tag}.")
@@ -80,9 +83,14 @@ def fetch_release_by_tag(
     return data
 
 
+def _asset_name_tokens(name: str) -> set[str]:
+    return {token for token in re.split(r"[^a-z0-9]+", (name or "").lower()) if token}
+
+
 def _score_asset_name(name: str, platform: str) -> int:
     """Score an asset name based on how well it matches the target platform."""
     lowered = (name or "").lower()
+    tokens = _asset_name_tokens(lowered)
     score = 0
 
     # Archive format scoring
@@ -97,13 +105,16 @@ def _score_asset_name(name: str, platform: str) -> int:
 
     # Platform keyword scoring
     if platform == "windows":
-        if "win" in lowered or "windows" in lowered:
+        if tokens.intersection({"win", "win32", "win64", "windows"}):
             score += 40
-        if "win32" in lowered:
-            score += 10
+        if tokens.intersection({"linux", "darwin", "mac", "macos", "osx"}):
+            score -= 100
     else:  # linux
-        if "linux" in lowered:
+        if "linux" in tokens:
             score += 40
+        mismatched_tokens = {"win", "win32", "win64", "windows", "darwin", "mac", "macos", "osx"}
+        if tokens.intersection(mismatched_tokens):
+            score -= 100
 
     # Architecture scoring (common to both)
     if "x64" in lowered or "amd64" in lowered or "x86_64" in lowered:
@@ -155,12 +166,20 @@ def download_with_progress(
     *,
     url: str,
     dest_path: Path,
+    expected_bytes: Optional[int] = None,
     timeout_s: float = 30.0,
     chunk_size: int = 1024 * 256,
     progress_cb: Optional[Callable[[DownloadProgress], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
 ) -> None:
     dest_path.parent.mkdir(parents=True, exist_ok=True)
+    part_path = dest_path.with_name(f"{dest_path.name}.part")
+    if expected_bytes is not None and expected_bytes <= 0:
+        expected_bytes = None
+    try:
+        part_path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
     bytes_downloaded = 0
     total_bytes: Optional[int] = None
@@ -169,44 +188,64 @@ def download_with_progress(
     last_bytes = 0
     speed_bps = 0.0
 
-    with requests.get(
-        url,
-        stream=True,
-        timeout=timeout_s,
-        headers={"User-Agent": "IntenseRP-Next-AutoUpdater"},
-    ) as response:
-        response.raise_for_status()
-        try:
-            total_bytes = int(response.headers.get("Content-Length") or 0) or None
-        except Exception:
-            total_bytes = None
+    try:
+        with requests.get(
+            url,
+            stream=True,
+            timeout=timeout_s,
+            headers={"User-Agent": USER_AGENT},
+        ) as response:
+            response.raise_for_status()
+            try:
+                total_bytes = int(response.headers.get("Content-Length") or 0) or None
+            except Exception:
+                total_bytes = None
+            if total_bytes is None:
+                total_bytes = expected_bytes
 
-        with open(dest_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if should_cancel is not None and should_cancel():
-                    raise AutoUpdateError("Download canceled.")
-                if not chunk:
-                    continue
-                f.write(chunk)
-                bytes_downloaded += len(chunk)
+            with open(part_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if should_cancel is not None and should_cancel():
+                        raise AutoUpdateError("Download canceled.")
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    bytes_downloaded += len(chunk)
 
-                now = time.monotonic()
-                if now - last_tick >= 0.25:
-                    dt = max(now - last_tick, 1e-6)
-                    db = bytes_downloaded - last_bytes
-                    inst = db / dt
-                    # Smooth speed to avoid jitter.
-                    speed_bps = (speed_bps * 0.8) + (inst * 0.2) if speed_bps else inst
-                    last_tick = now
-                    last_bytes = bytes_downloaded
-                    if progress_cb is not None:
-                        progress_cb(
-                            DownloadProgress(
-                                bytes_downloaded=bytes_downloaded,
-                                total_bytes=total_bytes,
-                                speed_bytes_per_s=speed_bps,
+                    now = time.monotonic()
+                    if now - last_tick >= 0.25:
+                        dt = max(now - last_tick, 1e-6)
+                        db = bytes_downloaded - last_bytes
+                        inst = db / dt
+                        # Smooth speed to avoid jitter.
+                        speed_bps = (speed_bps * 0.8) + (inst * 0.2) if speed_bps else inst
+                        last_tick = now
+                        last_bytes = bytes_downloaded
+                        if progress_cb is not None:
+                            progress_cb(
+                                DownloadProgress(
+                                    bytes_downloaded=bytes_downloaded,
+                                    total_bytes=total_bytes,
+                                    speed_bytes_per_s=speed_bps,
+                                )
                             )
-                        )
+
+        if total_bytes is not None and bytes_downloaded != total_bytes:
+            raise AutoUpdateError(
+                f"Downloaded file is incomplete ({bytes_downloaded} of {total_bytes} bytes)."
+            )
+        if expected_bytes is not None and bytes_downloaded != expected_bytes:
+            raise AutoUpdateError(
+                f"Downloaded file size does not match the GitHub asset metadata "
+                f"({bytes_downloaded} of {expected_bytes} bytes)."
+            )
+        part_path.replace(dest_path)
+    except Exception:
+        try:
+            part_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
 
     # Final callback.
     elapsed = max(time.monotonic() - started_at, 1e-6)
@@ -220,6 +259,81 @@ def download_with_progress(
         )
 
 
+def _safe_archive_destination(extract_dir: Path, member_name: str) -> Path:
+    normalized = (member_name or "").replace("\\", "/").strip()
+    if not normalized:
+        raise AutoUpdateError("Archive contains an empty member path.")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
+        raise AutoUpdateError(f"Archive contains an unsafe path: {member_name}")
+
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        raise AutoUpdateError(f"Archive contains an unsafe path: {member_name}")
+
+    root = extract_dir.resolve()
+    destination = root.joinpath(*parts).resolve()
+    try:
+        destination.relative_to(root)
+    except ValueError as exc:
+        raise AutoUpdateError(f"Archive contains an unsafe path: {member_name}") from exc
+    return destination
+
+
+def _safe_link_target(extract_dir: Path, link_path: Path, link_name: str) -> None:
+    normalized = (link_name or "").replace("\\", "/").strip()
+    if not normalized:
+        raise AutoUpdateError(f"Archive contains an unsafe link target: {link_name}")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
+        raise AutoUpdateError(f"Archive contains an unsafe link target: {link_name}")
+
+    root = extract_dir.resolve()
+    target = link_path.parent.joinpath(*normalized.split("/")).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise AutoUpdateError(f"Archive contains an unsafe link target: {link_name}") from exc
+
+
+def _extract_zip_safely(archive_path: Path, extract_dir: Path) -> None:
+    with zipfile.ZipFile(archive_path, "r") as zf:
+        infos = zf.infolist()
+        for info in infos:
+            _safe_archive_destination(extract_dir, info.filename)
+
+        for info in infos:
+            destination = _safe_archive_destination(extract_dir, info.filename)
+            if info.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info, "r") as src, open(destination, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+            mode = (info.external_attr >> 16) & 0o777
+            if mode:
+                try:
+                    destination.chmod(mode)
+                except Exception:
+                    pass
+
+
+def _validated_tar_members(tf: tarfile.TarFile, extract_dir: Path) -> list[tarfile.TarInfo]:
+    members = tf.getmembers()
+    for member in members:
+        destination = _safe_archive_destination(extract_dir, member.name)
+        if member.isdir() or member.isfile():
+            continue
+        if member.issym():
+            _safe_link_target(extract_dir, destination, member.linkname)
+            continue
+        if member.islnk():
+            _safe_archive_destination(extract_dir, member.linkname)
+            continue
+        raise AutoUpdateError(f"Archive contains an unsupported member: {member.name}")
+    return members
+
+
 def extract_archive(archive_path: Path, extract_dir: Path) -> None:
     """Extract .zip or .tar.gz archives."""
     if not archive_path.exists():
@@ -229,11 +343,10 @@ def extract_archive(archive_path: Path, extract_dir: Path) -> None:
     name_lower = archive_path.name.lower()
     try:
         if name_lower.endswith(".zip"):
-            with zipfile.ZipFile(archive_path, "r") as zf:
-                zf.extractall(extract_dir)
+            _extract_zip_safely(archive_path, extract_dir)
         elif name_lower.endswith((".tar.gz", ".tgz")):
             with tarfile.open(archive_path, "r:gz") as tf:
-                tf.extractall(extract_dir)
+                tf.extractall(extract_dir, members=_validated_tar_members(tf, extract_dir))
         else:
             raise AutoUpdateError(f"Unsupported archive format: {archive_path.name}")
     except (zipfile.BadZipFile, tarfile.TarError) as exc:
@@ -305,6 +418,10 @@ def prepare_update_from_github(
     asset_download_url = str(asset.get("browser_download_url") or "")
     if not asset_name or not asset_download_url:
         raise AutoUpdateError("Release asset is missing a download URL.")
+    try:
+        expected_bytes = int(asset.get("size") or 0) or None
+    except Exception:
+        expected_bytes = None
 
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", asset_name) or "update.archive"
     archive_path = (download_dir / safe_name).resolve()
@@ -312,6 +429,7 @@ def prepare_update_from_github(
     download_with_progress(
         url=asset_download_url,
         dest_path=archive_path,
+        expected_bytes=expected_bytes,
         progress_cb=progress_cb,
         should_cancel=should_cancel,
     )
@@ -330,5 +448,6 @@ def prepare_update_from_github(
         release_html_url=release_html_url,
         asset_name=asset_name,
         asset_download_url=asset_download_url,
+        staging_dir=extract_dir.resolve(),
         extracted_app_root=app_root,
     )

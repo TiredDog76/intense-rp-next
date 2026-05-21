@@ -129,13 +129,22 @@ def _retry(
         raise last_exc
 
 
+def _path_is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path_s = os.path.normcase(str(path.resolve()))
+        parent_s = os.path.normcase(str(parent.resolve()))
+        return os.path.commonpath([path_s, parent_s]) == parent_s
+    except Exception:
+        return False
+
+
 def _stop_processes_under_dir(install_dir: Path) -> None:
     try:
         import psutil  # type: ignore
     except Exception:
         return
 
-    prefix = str(install_dir.resolve()).lower()
+    install_root = install_dir.resolve()
     me = os.getpid()
 
     procs = []
@@ -147,7 +156,7 @@ def _stop_processes_under_dir(install_dir: Path) -> None:
             exe = p.info.get("exe") or ""
             if not exe:
                 continue
-            if str(exe).lower().startswith(prefix):
+            if _path_is_relative_to(Path(str(exe)), install_root):
                 procs.append(p)
         except Exception:
             continue

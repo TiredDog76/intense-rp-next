@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import os
+import shutil
 from pathlib import Path
 from typing import Optional, List
 
@@ -34,7 +35,7 @@ class _UpdaterLauncher(QObject):
     """Launches the updater executable off the main thread so the UI stays responsive."""
 
     succeeded = Signal()
-    failed = Signal()
+    failed = Signal(str)
 
     def __init__(self, cmd: List[str], cwd: str, parent=None):
         super().__init__(parent)
@@ -43,7 +44,12 @@ class _UpdaterLauncher(QObject):
 
     def run(self) -> None:
         try:
-            kwargs: dict = {"cwd": self._cwd}
+            kwargs: dict = {
+                "cwd": self._cwd,
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            }
             if sys.platform.startswith("win"):
                 kwargs["creationflags"] = (
                     subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
@@ -52,8 +58,8 @@ class _UpdaterLauncher(QObject):
                 kwargs["start_new_session"] = True
             subprocess.Popen(self._cmd, **kwargs)
             self.succeeded.emit()
-        except Exception:
-            self.failed.emit()
+        except Exception as exc:
+            self.failed.emit(str(exc))
 
 
 def _find_staged_updater(prepared: PreparedUpdate) -> Path:
@@ -67,6 +73,14 @@ def _find_staged_updater(prepared: PreparedUpdate) -> Path:
     if updater_path.exists():
         return updater_path
     raise MissingUpdaterError(f"Update package does not contain {updater_path}")
+
+
+def _cleanup_prepared_update(prepared: PreparedUpdate) -> None:
+    """Remove a staged update that will not be handed to the standalone updater."""
+    try:
+        shutil.rmtree(prepared.staging_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 
 def _format_bytes(n: Optional[int]) -> str:
@@ -98,13 +112,15 @@ class _AutoUpdateWorker(QObject):
         self._expected_exe_name = expected_exe_name
         self._cancelled = False
 
-        self._download_dir = Path(tempfile.mkdtemp(prefix="intenserp-update-dl-"))
-        self._extract_dir = Path(tempfile.mkdtemp(prefix="intenserp-update-extract-"))
+        self._staging_dir = Path(tempfile.mkdtemp(prefix="intenserp-update-extract-"))
+        self._download_dir = self._staging_dir
+        self._extract_dir = self._staging_dir
 
     def cancel(self) -> None:
         self._cancelled = True
 
     def run(self) -> None:
+        succeeded = False
         try:
             self.status.emit("Contacting GitHub…")
 
@@ -126,11 +142,18 @@ class _AutoUpdateWorker(QObject):
             )
 
             self.status.emit("Download complete.")
+            succeeded = True
             self.finished.emit(prepared)
         except AutoUpdateError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc))
+        finally:
+            if not succeeded:
+                try:
+                    shutil.rmtree(self._staging_dir, ignore_errors=True)
+                except Exception:
+                    pass
 
 
 class UpdateDownloadDialog(QDialog):
@@ -144,6 +167,8 @@ class UpdateDownloadDialog(QDialog):
         super().__init__(parent)
         self._remote_version = remote_version
         self.prepared_update: Optional[PreparedUpdate] = None
+        self._cancel_requested = False
+        self._install_started = False
 
         self.setWindowTitle("Downloading Update")
         self.setModal(True)
@@ -228,7 +253,13 @@ class UpdateDownloadDialog(QDialog):
 
     def closeEvent(self, event):
         # Best-effort cancellation when the user closes the dialog.
+        self._cancel_requested = True
+        if self.prepared_update is None and self._worker_thread_is_running():
+            self._request_worker_cancel()
+            event.ignore()
+            return
         self._cancel_worker()
+        self._discard_prepared_update()
         super().closeEvent(event)
 
     def _build_button_row(self) -> QFrame:
@@ -332,6 +363,33 @@ class UpdateDownloadDialog(QDialog):
                 thread.wait(1500)
             except Exception:
                 pass
+
+    def _worker_thread_is_running(self) -> bool:
+        thread = getattr(self, "_thread", None)
+        try:
+            return bool(thread is not None and thread.isRunning())
+        except Exception:
+            return False
+
+    def _request_worker_cancel(self) -> None:
+        worker = getattr(self, "_worker", None)
+        if worker is not None:
+            try:
+                worker.cancel()
+            except Exception:
+                pass
+        self._status_label.setText("Canceling...")
+        self._cancel_btn.setEnabled(False)
+        self._install_btn.setEnabled(False)
+        self._progress.setRange(0, 0)
+
+    def _discard_prepared_update(self) -> None:
+        prepared = self.prepared_update
+        if prepared is None or self._install_started:
+            return
+        _cleanup_prepared_update(prepared)
+        self.prepared_update = None
+
     def _on_status(self, text: str) -> None:
         self._status_label.setText(text or "")
 
@@ -349,6 +407,13 @@ class UpdateDownloadDialog(QDialog):
         self._progress.setValue(max(0, min(100, pct)))
 
     def _on_finished(self, prepared: PreparedUpdate) -> None:
+        if self._cancel_requested:
+            self.prepared_update = prepared
+            self._cancel_worker()
+            self._discard_prepared_update()
+            self.reject()
+            return
+        self._cancel_requested = False
         self.prepared_update = prepared
         self._cancel_btn.setText("Close")
         self._status_label.setText("Ready to install.")
@@ -358,6 +423,9 @@ class UpdateDownloadDialog(QDialog):
 
     def _on_failed(self, message: str) -> None:
         self._cancel_worker()
+        if self._cancel_requested:
+            self.reject()
+            return
         QMessageBox.warning(
             self,
             "Auto-Update",
@@ -368,10 +436,11 @@ class UpdateDownloadDialog(QDialog):
 
     def _on_cancel_clicked(self) -> None:
         if self.prepared_update is not None:
+            self._discard_prepared_update()
             self.accept()
             return
-        self._cancel_worker()
-        self.reject()
+        self._cancel_requested = True
+        self._request_worker_cancel()
 
     def _on_install_clicked(self) -> None:
         prepared = self.prepared_update
@@ -395,6 +464,7 @@ class UpdateDownloadDialog(QDialog):
             return
 
         # lock ui and launch the updater off the main thread so the UI stays responsive while the updater starts
+        self._install_started = True
         self._status_label.setText("Launching Updater...")
         self._install_btn.setEnabled(False)
         self._cancel_btn.setEnabled(False)
@@ -420,7 +490,7 @@ class UpdateDownloadDialog(QDialog):
         self._launcher_thread.started.connect(self._launcher_worker.run)
         self._launcher_worker.succeeded.connect(self._on_updater_started)
         self._launcher_worker.failed.connect(
-            lambda: self._on_updater_start_failed(prepared)
+            lambda message: self._on_updater_start_failed(prepared, message)
         )
         self._launcher_thread.start()
 
@@ -433,8 +503,9 @@ class UpdateDownloadDialog(QDialog):
 
         QTimer.singleShot(500, force_exit)
 
-    def _on_updater_start_failed(self, prepared: PreparedUpdate) -> None:
+    def _on_updater_start_failed(self, prepared: PreparedUpdate, message: str = "") -> None:
         """Called on the main thread if the updater failed to launch."""
+        self._install_started = False
         self._status_label.setText("Ready to install.")
         self._install_btn.setEnabled(True)
         self._cancel_btn.setEnabled(True)
@@ -444,6 +515,7 @@ class UpdateDownloadDialog(QDialog):
             self,
             "Auto-Update",
             "Failed to start the updater.\n\n"
+            f"{message}\n\n"
             "You can still download manually from the release page.",
         )
         from PySide6.QtCore import QUrl
