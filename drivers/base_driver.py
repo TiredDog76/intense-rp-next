@@ -56,8 +56,11 @@ class BaseDriver(ABC):
         self.abort_requested = False
         self._send_control_signature: str | None = None
 
-        # Optional provider UI language detection (providers may opt in)
+        # Provider UI language detection shared by browser drivers.
         self.last_document_lang: Optional[str] = None
+        self.ui_language_ok: Optional[bool] = None
+        self._non_english_ui_warned = False
+        self._non_english_ui_warned_lang: Optional[str] = None
 
         # Account selection state (set during start(), used by login() and re-auth rotation)
         self._ece_manager: EceManager | None = None
@@ -767,22 +770,89 @@ class BaseDriver(ABC):
         """
         Human-friendly UI language requirement for providers that enforce one.
 
-        Providers that do not enforce a specific UI language should simply leave
-        the default `check_ui_language()` implementation in place.
+        Override this when a provider accepts a different English-language label.
         """
         return "English (en-US)"
+
+    @property
+    def ui_language_change_target_label(self) -> str:
+        return f"{self.provider_label} language"
+
+    async def _get_document_lang(self) -> str:
+        if not self.page:
+            return ""
+
+        try:
+            lang = await self.page.evaluate(
+                "() => {"
+                "  const el = document.documentElement;"
+                "  if (!el) return '';"
+                "  return (el.getAttribute('lang') || el.lang || '').toString();"
+                "}"
+            )
+        except Exception as e:
+            Logger.debug(f"{self.provider_label}: failed to read document language: {e}")
+            return ""
+
+        return str(lang or "").strip()
+
+    def _is_required_ui_language(self, lang: str) -> bool:
+        normalized = str(lang or "").strip().lower()
+        if not normalized:
+            return False
+        return normalized == "en" or normalized == "en-us" or normalized.startswith("en-")
 
     async def check_ui_language(
         self, status_callback: Optional[Callable[[str], None]] = None
     ) -> bool:
         """
-        Optional UI language check.
+        Detect and enforce the provider UI language expected by browser automation.
 
-        Default behavior is to opt out (returns True), since many providers either:
-        - do not rely on visible UI text, or
-        - do not allow changing UI language.
+        Several provider drivers depend on English UI labels/placeholders for stable
+        automation. Keep the check here so providers only override unusual cases.
         """
-        return True
+        lang = await self._get_document_lang()
+        self.last_document_lang = lang or None
+
+        ok = self._is_required_ui_language(lang)
+        self.ui_language_ok = ok
+
+        if ok:
+            self._non_english_ui_warned = False
+            self._non_english_ui_warned_lang = None
+            return True
+
+        if (not self._non_english_ui_warned) or (self._non_english_ui_warned_lang != lang):
+            self._non_english_ui_warned = True
+            self._non_english_ui_warned_lang = lang
+
+            detected = lang or "<unset>"
+            required = self.required_ui_language_label
+            Logger.warning(
+                f"{self.provider_label} UI language detected as '{detected}'. "
+                f"IntenseRP currently expects {self.provider_label} UI language to be {required}. "
+                f"Please change {self.ui_language_change_target_label} to {required}, then reload the page."
+            )
+            if status_callback:
+                status_callback(
+                    f"{self.provider_label} UI language is not {required}. "
+                    f"Please change it to {required}."
+                )
+
+        return False
+
+    async def require_english_ui(self) -> None:
+        ok = await self.check_ui_language()
+        if ok:
+            return
+
+        detected = self.last_document_lang or "<unset>"
+        required = self.required_ui_language_label
+        raise RuntimeError(
+            f"{self.provider_label} UI language is not {required} (detected: {detected}). "
+            f"IntenseRP currently requires {self.provider_label} UI language to be {required}. "
+            f"Please change {self.ui_language_change_target_label} to {required} and reload the page."
+        )
 
     def _get_browser_context_options(self) -> dict[str, Any]:
         """

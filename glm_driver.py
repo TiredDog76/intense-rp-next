@@ -11,10 +11,13 @@ from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
+    build_prompt_text_file_payload,
     clear_clean_regeneration_cache,
     extract_macro_overrides,
     find_multi_slot_cache_entry,
     format_request_messages,
+    make_openai_delta_sse,
+    make_openai_usage_sse,
     read_clean_regeneration_state,
     read_multi_slot_cache_payload,
     remove_multi_slot_cache_entry,
@@ -87,12 +90,6 @@ class GLMDriver(BaseDriver):
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.GLM_CHAT)
         self.cache_manager = CacheManager()
-
-        # GLM UI language detection (we refuse to operate unless the UI is English)
-        self.last_document_lang: Optional[str] = None
-        self.ui_language_ok: Optional[bool] = None
-        self._non_english_ui_warned = False
-        self._non_english_ui_warned_lang: Optional[str] = None
 
         self.current_model: Optional[str] = None
         self.current_send_deepthink: Optional[bool] = None
@@ -275,10 +272,6 @@ class GLMDriver(BaseDriver):
         self.current_model = None
         self.current_send_deepthink = None
         self.thinking_active = False
-
-    @property
-    def required_ui_language_label(self) -> str:
-        return "English (en-US)"
 
     def get_start_url(self) -> str:
         return self.CHAT_URL
@@ -678,81 +671,6 @@ class GLMDriver(BaseDriver):
                     Logger.warning(f"GLM Chat: selected fallback model data-value '{fallback_value}'.")
         finally:
             await self._close_glm_model_dropdown()
-
-    async def _get_document_lang(self) -> str:
-        if not self.page:
-            return ""
-
-        try:
-            lang = await self.page.evaluate(
-                "() => {"
-                "  const el = document.documentElement;"
-                "  if (!el) return '';"
-                "  return (el.getAttribute('lang') || el.lang || '').toString();"
-                "}"
-            )
-        except Exception as e:
-            Logger.debug(f"Failed to read GLM document language: {e}")
-            return ""
-
-        if not isinstance(lang, str):
-            try:
-                lang = str(lang)
-            except Exception:
-                return ""
-
-        return lang.strip()
-
-    @staticmethod
-    def _is_english_lang(lang: str) -> bool:
-        normalized = (lang or "").strip().lower()
-        if not normalized:
-            return False
-        if normalized == "en-us":
-            return True
-        if normalized == "en" or normalized.startswith("en-"):
-            return True
-        return False
-
-    async def check_ui_language(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        lang = await self._get_document_lang()
-        self.last_document_lang = lang or None
-
-        ok = self._is_english_lang(lang)
-        self.ui_language_ok = ok
-
-        if ok:
-            self._non_english_ui_warned = False
-            self._non_english_ui_warned_lang = None
-            return True
-
-        # Warn only once per detected language value to avoid log spam
-        if (not self._non_english_ui_warned) or (self._non_english_ui_warned_lang != lang):
-            self._non_english_ui_warned = True
-            self._non_english_ui_warned_lang = lang
-
-            detected = lang or "<unset>"
-            Logger.warning(
-                f"GLM Chat UI language detected as '{detected}'. "
-                "IntenseRP currently expects English UI (en-US). "
-                "Please change GLM Chat language to English in the browser window, then refresh/reload."
-            )
-            if status_callback:
-                status_callback("GLM Chat UI language is not English. Please change it to English (en-US).")
-
-        return False
-
-    async def require_english_ui(self) -> None:
-        ok = await self.check_ui_language()
-        if ok:
-            return
-
-        detected = self.last_document_lang or "<unset>"
-        raise RuntimeError(
-            f"GLM Chat UI language is not English (detected: {detected}). "
-            "IntenseRP currently requires GLM Chat UI language to be English (en-US). "
-            "Please change GLM Chat language to English and reload the page."
-        )
 
     async def _chat_page_contains_sign_in(self) -> bool:
         if not self.page:
@@ -2460,20 +2378,13 @@ class GLMDriver(BaseDriver):
                 if (not content) and (not finish_reason):
                     return
                 model_name = self.current_model or "glm-auto"
-                openai_chunk = {
-                    "id": "chatcmpl-custom",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model_name,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": content} if content else {},
-                            "finish_reason": finish_reason,
-                        }
-                    ],
-                }
-                response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
+                response_queue.put_nowait(
+                    make_openai_delta_sse(
+                        model_name,
+                        content,
+                        finish_reason=finish_reason,
+                    )
+                )
                 emitted_openai_chunk = True
 
             def enqueue_openai_usage(usage: dict[str, Any]) -> None:
@@ -2482,15 +2393,7 @@ class GLMDriver(BaseDriver):
                     return
 
                 model_name = self.current_model or "glm-auto"
-                openai_chunk = {
-                    "id": "chatcmpl-custom",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model_name,
-                    "choices": [],
-                    "usage": usage,
-                }
-                response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
+                response_queue.put_nowait(make_openai_usage_sse(model_name, usage))
                 emitted_openai_chunk = True
                 openai_usage_emitted = True
 
@@ -2892,11 +2795,7 @@ class GLMDriver(BaseDriver):
 
                 if send_as_text_file:
                     Logger.info("GLM Chat: sending message as text file...")
-                    file_payload = {
-                        "name": "prompt.txt",
-                        "mimeType": "text/plain",
-                        "buffer": formatted_message.encode("utf-8"),
-                    }
+                    file_payload = build_prompt_text_file_payload(formatted_message)
                     await self._upload_file(file_payload)
 
                     # GLM requires some text alongside the file to enable the send button

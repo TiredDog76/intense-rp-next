@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from config.manager import ConfigManager
+from config.loadouts import get_behavior_category_for_provider
 from config.validators import validate_email, validate_port
 from drivers.providers import DriverProvider
 from ece.manager import EceManager
@@ -993,17 +994,7 @@ class WelcomeWindow(QDialog):
 
     @staticmethod
     def _behavior_category_for_provider(provider: DriverProvider) -> str:
-        if provider == DriverProvider.GLM_CHAT:
-            return "glm_behavior"
-        if provider == DriverProvider.MOONSHOT:
-            return "moonshot_behavior"
-        if provider == DriverProvider.QWEN_LM:
-            return "qwen_behavior"
-        if provider == DriverProvider.PERPLEXITY:
-            return "perplexity_behavior"
-        if provider == DriverProvider.AI_STUDIO:
-            return "aistudio_behavior"
-        return "deepseek_behavior"
+        return get_behavior_category_for_provider(provider) or "deepseek_behavior"
 
     def _resize_to_at_least(self, width: int, height: int) -> None:
         try:

@@ -18,9 +18,11 @@ from dotenv import load_dotenv
 from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from drivers.shared_utils import (
+    build_prompt_text_file_payload,
     clear_clean_regeneration_cache,
     extract_macro_overrides,
     format_request_messages,
+    make_openai_delta_sse,
     resolve_rendered_injection,
     split_leading_system_messages,
     strip_macros_from_messages,
@@ -422,10 +424,6 @@ class AIStudioDriver(BaseDriver):
         self._preflight_ready = False
         self._preflight_state: Optional[Dict[str, Any]] = None
         self._preflight_system_prompt_text = ""
-
-    @property
-    def required_ui_language_label(self) -> str:
-        return "English (en / en-US)"
 
     def get_start_url(self) -> str:
         return self.START_URL
@@ -1000,58 +998,13 @@ class AIStudioDriver(BaseDriver):
 
         return str(lang or "").strip()
 
-    @staticmethod
-    def _is_english_lang(lang: str) -> bool:
-        normalized = (lang or "").strip().lower()
-        if not normalized:
-            return False
-        return normalized == "en" or normalized == "en-us" or normalized.startswith("en-")
+    @property
+    def required_ui_language_label(self) -> str:
+        return "English (en / en-US)"
 
-    async def check_ui_language(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        """Warn once per detected language when AI Studio is not using English."""
-        lang = await self._get_document_lang()
-        self.last_document_lang = lang or None
-
-        ok = self._is_english_lang(lang)
-        self.ui_language_ok = ok
-
-        if ok:
-            self._non_english_ui_warned = False
-            self._non_english_ui_warned_lang = None
-            return True
-
-        if (not getattr(self, "_non_english_ui_warned", False)) or (
-            getattr(self, "_non_english_ui_warned_lang", None) != lang
-        ):
-            self._non_english_ui_warned = True
-            self._non_english_ui_warned_lang = lang
-
-            detected = lang or "<unset>"
-            Logger.warning(
-                f"Google AI Studio UI language detected as '{detected}'. "
-                "IntenseRP currently expects English UI (en / en-US). "
-                "Please switch your Google account language to English, then reload the page."
-            )
-            if status_callback:
-                status_callback(
-                    "Google AI Studio UI language is not English. "
-                    "Please switch it to English (en / en-US)."
-                )
-
-        return False
-
-    async def require_english_ui(self) -> None:
-        """Raise if AI Studio is currently using a non-English UI language."""
-        ok = await self.check_ui_language()
-        if ok:
-            return
-
-        detected = self.last_document_lang or "<unset>"
-        raise RuntimeError(
-            f"Google AI Studio UI language is not English (detected: {detected}). "
-            "IntenseRP currently requires Google AI Studio to use English (en / en-US). "
-            "Please switch your Google account language to English and reload the page."
-        )
+    @property
+    def ui_language_change_target_label(self) -> str:
+        return "your Google account language"
 
     def _get_configured_model_label(self) -> str:
         try:
@@ -4322,20 +4275,13 @@ class AIStudioDriver(BaseDriver):
             return
 
         model_name = self.current_model or "aistudio-auto"
-        openai_chunk = {
-            "id": "chatcmpl-custom",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": model_name,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": content} if content else {},
-                    "finish_reason": finish_reason,
-                }
-            ],
-        }
-        await queue.put(f"data: {json.dumps(openai_chunk)}\n\n")
+        await queue.put(
+            make_openai_delta_sse(
+                model_name,
+                content,
+                finish_reason=finish_reason,
+            )
+        )
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         """Render messages through the shared prompt-formatting pipeline."""
@@ -4550,11 +4496,7 @@ class AIStudioDriver(BaseDriver):
             formatted_message: str,
         ) -> tuple[str | None, int | None]:
             if bool(settings.get("send_as_text_file")):
-                file_payload = {
-                    "name": "prompt.txt",
-                    "mimeType": "text/plain",
-                    "buffer": formatted_message.encode("utf-8"),
-                }
+                file_payload = build_prompt_text_file_payload(formatted_message)
                 try:
                     await self.upload_file(file_payload)
                 except Exception as e:

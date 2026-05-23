@@ -12,10 +12,12 @@ from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
+    build_prompt_text_file_payload,
     clear_clean_regeneration_cache,
     extract_macro_overrides,
     find_multi_slot_cache_entry,
     format_request_messages,
+    make_openai_delta_sse,
     read_clean_regeneration_state,
     read_multi_slot_cache_payload,
     remove_multi_slot_cache_entry,
@@ -88,11 +90,6 @@ class MoonshotDriver(BaseDriver):
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.MOONSHOT)
         self.cache_manager = CacheManager()
-
-        self.last_document_lang: Optional[str] = None
-        self.ui_language_ok: Optional[bool] = None
-        self._non_english_ui_warned = False
-        self._non_english_ui_warned_lang: Optional[str] = None
 
         self.current_model = None
         self.current_send_deepthink = None
@@ -1050,80 +1047,6 @@ class MoonshotDriver(BaseDriver):
         Logger.success("Moonshot: login detected.")
         self._mark_active_ece_pair_used()
 
-    async def _get_document_lang(self) -> str:
-        if not self.page:
-            return ""
-
-        try:
-            lang = await self.page.evaluate(
-                "() => {"
-                "  const el = document.documentElement;"
-                "  if (!el) return '';"
-                "  return (el.getAttribute('lang') || el.lang || '').toString();"
-                "}"
-            )
-        except Exception as e:
-            Logger.debug(f"Failed to read Moonshot document language: {e}")
-            return ""
-
-        if not isinstance(lang, str):
-            try:
-                lang = str(lang)
-            except Exception:
-                return ""
-
-        return lang.strip()
-
-    @staticmethod
-    def _is_english_lang(lang: str) -> bool:
-        normalized = (lang or "").strip().lower()
-        if not normalized:
-            return False
-        if normalized == "en-us":
-            return True
-        if normalized == "en" or normalized.startswith("en-"):
-            return True
-        return False
-
-    async def check_ui_language(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        lang = await self._get_document_lang()
-        self.last_document_lang = lang or None
-
-        ok = self._is_english_lang(lang)
-        self.ui_language_ok = ok
-
-        if ok:
-            self._non_english_ui_warned = False
-            self._non_english_ui_warned_lang = None
-            return True
-
-        if (not self._non_english_ui_warned) or (self._non_english_ui_warned_lang != lang):
-            self._non_english_ui_warned = True
-            self._non_english_ui_warned_lang = lang
-
-            detected = lang or "<unset>"
-            Logger.warning(
-                f"Moonshot UI language detected as '{detected}'. "
-                "IntenseRP currently expects English UI (en-US). "
-                "Please change Kimi language to English in the browser window, then refresh/reload."
-            )
-            if status_callback:
-                status_callback("Moonshot UI language is not English. Please change it to English (en-US).")
-
-        return False
-
-    async def require_english_ui(self) -> None:
-        ok = await self.check_ui_language()
-        if ok:
-            return
-
-        detected = self.last_document_lang or "<unset>"
-        raise RuntimeError(
-            f"Moonshot UI language is not English (detected: {detected}). "
-            "IntenseRP currently requires Moonshot UI language to be English (en-US). "
-            "Please change Kimi language to English and reload the page."
-        )
-
     def _resolve_deepthink_flags(self, model: str) -> tuple[bool, bool]:
         enable_deepthink = bool(self.config_manager.get_setting("moonshot_behavior", "enable_deepthink"))
         send_deepthink = bool(self.config_manager.get_setting("moonshot_behavior", "send_deepthink"))
@@ -1672,11 +1595,7 @@ class MoonshotDriver(BaseDriver):
 
                 if send_as_text_file:
                     Logger.info("Moonshot: sending message as text file...")
-                    file_payload = {
-                        "name": "prompt.txt",
-                        "mimeType": "text/plain",
-                        "buffer": formatted_message.encode("utf-8"),
-                    }
+                    file_payload = build_prompt_text_file_payload(formatted_message)
                     await self._upload_file(file_payload)
                     filler = self.config_manager.get_setting("moonshot_behavior", "text_file_filler") or "."
                     await self._enter_message(str(filler))
@@ -1946,20 +1865,13 @@ class MoonshotDriver(BaseDriver):
             content = "".join(content_parts)
             if content or finish_reason:
                 model_name = self.current_model or "moonshot-auto"
-                openai_chunk = {
-                    "id": "chatcmpl-custom",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model_name,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": content} if content else {},
-                            "finish_reason": finish_reason,
-                        }
-                    ],
-                }
-                await queue.put(f"data: {json.dumps(openai_chunk)}\n\n")
+                await queue.put(
+                    make_openai_delta_sse(
+                        model_name,
+                        content,
+                        finish_reason=finish_reason,
+                    )
+                )
 
     async def _read_current_model_name(self) -> str:
         selectors = [

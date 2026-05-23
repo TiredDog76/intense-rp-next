@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, Dict, List, Optional, Union
 
 from utils.logger import Logger
@@ -40,6 +41,61 @@ _CLEAN_REGEN_MULTI_SLOT_MAX_ITEMS = 7
 _MACRO_PATTERN = re.compile(r"\[\[\s*([a-zA-Z0-9_-]+)\s*\]\]")
 _IR2_PATTERN = re.compile(r"\[\[IR2u\]\](.*?)\[\[/IR2u\]\]-\[\[IR2a\]\](.*?)\[\[/IR2a\]\]")
 _CLASSIC_PATTERN = re.compile(r'DATA1: "(.*?)"\s*DATA2: "(.*?)"')
+
+
+def make_openai_delta_sse(
+    model_name: str,
+    content: str,
+    *,
+    finish_reason: str | None = None,
+    chunk_id: str = "chatcmpl-custom",
+) -> str:
+    """Build an OpenAI-compatible chat completion delta SSE chunk."""
+    openai_chunk = {
+        "id": chunk_id,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model_name,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": content} if content else {},
+                "finish_reason": finish_reason,
+            }
+        ],
+    }
+    return f"data: {json.dumps(openai_chunk)}\n\n"
+
+
+def make_openai_usage_sse(
+    model_name: str,
+    usage: dict[str, Any],
+    *,
+    chunk_id: str = "chatcmpl-custom",
+) -> str:
+    """Build an OpenAI-compatible chat completion usage SSE chunk."""
+    openai_chunk = {
+        "id": chunk_id,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model_name,
+        "choices": [],
+        "usage": usage,
+    }
+    return f"data: {json.dumps(openai_chunk)}\n\n"
+
+
+def build_prompt_text_file_payload(
+    formatted_message: str,
+    *,
+    filename: str = "prompt.txt",
+) -> dict[str, Any]:
+    """Return the shared text-file upload payload used by provider drivers."""
+    return {
+        "name": filename,
+        "mimeType": "text/plain",
+        "buffer": str(formatted_message or "").encode("utf-8"),
+    }
 
 
 def clear_clean_regeneration_cache(

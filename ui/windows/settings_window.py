@@ -18,6 +18,7 @@ from config.formatting_presets import FORMATTING_PRESET_TEMPLATES
 from config.loadouts import (
     LoadoutDefinition,
     build_visual_loadout_settings,
+    get_behavior_category_for_provider,
     get_loadout_field_bindings,
     serialize_settings_loadouts,
 )
@@ -839,12 +840,9 @@ class SettingsWindow(QMainWindow):
     }
 
     BEHAVIOR_CATEGORY_BY_PROVIDER = {
-        DriverProvider.DEEPSEEK: "deepseek_behavior",
-        DriverProvider.GLM_CHAT: "glm_behavior",
-        DriverProvider.MOONSHOT: "moonshot_behavior",
-        DriverProvider.QWEN_LM: "qwen_behavior",
-        DriverProvider.PERPLEXITY: "perplexity_behavior",
-        DriverProvider.AI_STUDIO: "aistudio_behavior",
+        provider: get_behavior_category_for_provider(provider)
+        for provider in DriverProvider
+        if get_behavior_category_for_provider(provider)
     }
     PROVIDER_BY_BEHAVIOR_CATEGORY = {
         behavior_key: provider

@@ -15,10 +15,13 @@ from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
+    build_prompt_text_file_payload,
     clear_clean_regeneration_cache,
     extract_macro_overrides,
     find_multi_slot_cache_entry,
     format_request_messages,
+    make_openai_delta_sse,
+    make_openai_usage_sse,
     read_clean_regeneration_state,
     read_multi_slot_cache_payload,
     remove_multi_slot_cache_entry,
@@ -113,12 +116,6 @@ class QwenLMDriver(BaseDriver):
         super().__init__(config_manager=config_manager, provider=DriverProvider.QWEN_LM)
         self.cache_manager = CacheManager()
 
-        # Qwen UI language detection (we refuse to operate unless the UI is English)
-        self.last_document_lang: Optional[str] = None
-        self.ui_language_ok: Optional[bool] = None
-        self._non_english_ui_warned = False
-        self._non_english_ui_warned_lang: Optional[str] = None
-
         self.current_model: Optional[str] = None
         self.current_send_deepthink: Optional[bool] = None
         self.thinking_active = False
@@ -151,10 +148,6 @@ class QwenLMDriver(BaseDriver):
 
         self._completion_request_timeout_s = max(completion_request_timeout, 5.0)
         self._first_chunk_timeout_s = max(first_chunk_timeout, 5.0)
-
-    @property
-    def required_ui_language_label(self) -> str:
-        return "English (en-US)"
 
     def get_start_url(self) -> str:
         return self.CHAT_URL
@@ -322,74 +315,6 @@ class QwenLMDriver(BaseDriver):
             raise RuntimeError("Page is not initialized.")
 
         await self.page.wait_for_selector(self.CHAT_TEXTAREA_SELECTOR, timeout=timeout_ms or 0)
-
-    async def _get_document_lang(self) -> str:
-        if not self.page:
-            return ""
-
-        try:
-            lang = await self.page.evaluate(
-                "() => {"
-                "  const el = document.documentElement;"
-                "  if (!el) return '';"
-                "  return (el.getAttribute('lang') || el.lang || '').toString();"
-                "}"
-            )
-        except Exception as e:
-            Logger.debug(f"QwenLM: failed to read document language: {e}")
-            return ""
-
-        return str(lang or "").strip()
-
-    @staticmethod
-    def _is_english_lang(lang: str) -> bool:
-        normalized = (lang or "").strip().lower()
-        if not normalized:
-            return False
-        if normalized == "en-us":
-            return True
-        if normalized == "en" or normalized.startswith("en-"):
-            return True
-        return False
-
-    async def check_ui_language(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        lang = await self._get_document_lang()
-        self.last_document_lang = lang or None
-
-        ok = self._is_english_lang(lang)
-        self.ui_language_ok = ok
-
-        if ok:
-            self._non_english_ui_warned = False
-            self._non_english_ui_warned_lang = None
-            return True
-
-        if (not self._non_english_ui_warned) or (self._non_english_ui_warned_lang != lang):
-            self._non_english_ui_warned = True
-            self._non_english_ui_warned_lang = lang
-
-            detected = lang or "<unset>"
-            Logger.warning(
-                f"QwenLM UI language detected as '{detected}'. "
-                "IntenseRP currently requires QwenLM UI language to be English (en-US). "
-                "Please change QwenLM language to English and reload the page."
-            )
-            if status_callback:
-                status_callback("QwenLM UI language is not English. Please change it to English (en-US).")
-
-        return False
-
-    async def require_english_ui(self) -> None:
-        ok = await self.check_ui_language()
-        if ok:
-            return
-
-        detected = self.last_document_lang or "<unset>"
-        raise RuntimeError(
-            f"QwenLM UI language is not English (detected: {detected}). "
-            "IntenseRP currently requires QwenLM UI language to be English (en-US). "
-            "Please change QwenLM language to English and reload the page."
-        )
 
     async def _has_token_cookie(self) -> bool:
         context = getattr(self, "context", None)
@@ -2935,35 +2860,20 @@ class QwenLMDriver(BaseDriver):
                 if (not content) and (not finish_reason):
                     return
                 model_name = self.current_model or "qwen-auto"
-                openai_chunk = {
-                    "id": "chatcmpl-custom",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model_name,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": content} if content else {},
-                            "finish_reason": finish_reason,
-                        }
-                    ],
-                }
-                response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
+                response_queue.put_nowait(
+                    make_openai_delta_sse(
+                        model_name,
+                        content,
+                        finish_reason=finish_reason,
+                    )
+                )
 
             def enqueue_openai_usage(usage: dict[str, Any]) -> None:
                 nonlocal openai_usage_emitted
                 if openai_usage_emitted:
                     return
                 model_name = self.current_model or "qwen-auto"
-                openai_chunk = {
-                    "id": "chatcmpl-custom",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model_name,
-                    "choices": [],
-                    "usage": usage,
-                }
-                response_queue.put_nowait(f"data: {json.dumps(openai_chunk)}\n\n")
+                response_queue.put_nowait(make_openai_usage_sse(model_name, usage))
                 openai_usage_emitted = True
 
             def process_sse_line(line: str) -> None:
@@ -3228,11 +3138,7 @@ class QwenLMDriver(BaseDriver):
 
                 if send_as_text_file:
                     Logger.info("QwenLM: sending message as text file...")
-                    file_payload = {
-                        "name": "prompt.txt",
-                        "mimeType": "text/plain",
-                        "buffer": formatted_message.encode("utf-8"),
-                    }
+                    file_payload = build_prompt_text_file_payload(formatted_message)
                     await self._upload_file(file_payload)
 
                     try:

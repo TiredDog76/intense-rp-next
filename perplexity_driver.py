@@ -9,8 +9,10 @@ from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
+    build_prompt_text_file_payload,
     extract_macro_overrides,
     format_request_messages,
+    make_openai_delta_sse,
     resolve_rendered_injection,
     split_leading_system_messages,
     strip_macros_from_messages,
@@ -344,19 +346,12 @@ class PerplexityDriver(BaseDriver):
 
     def __init__(self, config_manager):
         super().__init__(config_manager=config_manager, provider=DriverProvider.PERPLEXITY)
-        self.ui_language_ok: Optional[bool] = None
-        self._non_english_ui_warned = False
-        self._non_english_ui_warned_lang: Optional[str] = None
         self.subscription_tier = "free"
         self.current_model: Optional[str] = None
         self.current_send_deepthink: Optional[bool] = None
         self._abort_ui_task: asyncio.Task | None = None
         self._space_id: Optional[str] = None
         self._last_space_instructions_text: Optional[str] = None
-
-    @property
-    def required_ui_language_label(self) -> str:
-        return "English (en-US)"
 
     def get_start_url(self) -> str:
         return self.BASE_URL
@@ -475,57 +470,6 @@ class PerplexityDriver(BaseDriver):
         except Exception:
             return
         self._update_subscription_tier(payload)
-
-    async def _get_document_lang(self) -> str:
-        if not self.page:
-            return ""
-        try:
-            lang = await self.page.evaluate(
-                "() => (document.documentElement && "
-                "(document.documentElement.getAttribute('lang') || document.documentElement.lang || '')) || ''"
-            )
-        except Exception as exc:
-            Logger.debug(f"Perplexity: failed to read document language: {exc}")
-            return ""
-        return str(lang or "").strip()
-
-    @staticmethod
-    def _is_english_lang(lang: str) -> bool:
-        normalized = str(lang or "").strip().lower()
-        return normalized == "en" or normalized == "en-us"
-
-    async def check_ui_language(self, status_callback=None) -> bool:
-        lang = await self._get_document_lang()
-        self.last_document_lang = lang or None
-        ok = self._is_english_lang(lang)
-        self.ui_language_ok = ok
-        if ok:
-            self._non_english_ui_warned = False
-            self._non_english_ui_warned_lang = None
-            return True
-
-        if (not self._non_english_ui_warned) or self._non_english_ui_warned_lang != lang:
-            self._non_english_ui_warned = True
-            self._non_english_ui_warned_lang = lang
-            detected = lang or "<unset>"
-            message = (
-                f"Perplexity UI language detected as '{detected}'. "
-                "IntenseRP currently requires Perplexity UI language to be English (en-US)."
-            )
-            Logger.warning(message)
-            if status_callback:
-                status_callback("Perplexity UI language is not English. Please change it to English (en-US).")
-
-        return False
-
-    async def require_english_ui(self) -> None:
-        if await self.check_ui_language():
-            return
-        detected = self.last_document_lang or "<unset>"
-        raise RuntimeError(
-            f"Perplexity UI language is not English (detected: {detected}). "
-            "Please change Perplexity language to English (en-US) and reload the page."
-        )
 
     async def _dismiss_onboarding(self) -> None:
         if not self.page:
@@ -2136,20 +2080,13 @@ class PerplexityDriver(BaseDriver):
         if not content and not finish_reason:
             return
         model_name = self.current_model or "perplexity-auto"
-        chunk = {
-            "id": "chatcmpl-custom",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": model_name,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": content} if content else {},
-                    "finish_reason": finish_reason,
-                }
-            ],
-        }
-        await response_queue.put(f"data: {json.dumps(chunk)}\n\n")
+        await response_queue.put(
+            make_openai_delta_sse(
+                model_name,
+                content,
+                finish_reason=finish_reason,
+            )
+        )
 
     def _format_messages(self, messages: Union[str, List[Any]]) -> str:
         return format_request_messages(self.config_manager, messages)
@@ -2600,11 +2537,7 @@ class PerplexityDriver(BaseDriver):
             await asyncio.sleep(0.2)
 
             if bool(effective_settings["send_as_text_file"]):
-                file_payload = {
-                    "name": "prompt.txt",
-                    "mimeType": "text/plain",
-                    "buffer": formatted_message.encode("utf-8"),
-                }
+                file_payload = build_prompt_text_file_payload(formatted_message)
                 uploaded = await self._upload_file(file_payload)
                 if uploaded:
                     if text_file_message.strip():

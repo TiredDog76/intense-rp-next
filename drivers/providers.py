@@ -93,6 +93,20 @@ class DriverProvider(str, Enum):
         return re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
 
 
+PROVIDER_BEHAVIOR_CATEGORY_KEYS: dict[DriverProvider, str] = {
+    DriverProvider.DEEPSEEK: "deepseek_behavior",
+    DriverProvider.GLM_CHAT: "glm_behavior",
+    DriverProvider.MOONSHOT: "moonshot_behavior",
+    DriverProvider.QWEN_LM: "qwen_behavior",
+    DriverProvider.PERPLEXITY: "perplexity_behavior",
+    DriverProvider.AI_STUDIO: "aistudio_behavior",
+}
+
+
+def get_provider_behavior_category_key(provider: DriverProvider) -> str | None:
+    return PROVIDER_BEHAVIOR_CATEGORY_KEYS.get(provider)
+
+
 def provider_options() -> list[str]:
     return [provider.value for provider in DriverProvider]
 
