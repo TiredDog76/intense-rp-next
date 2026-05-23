@@ -56,6 +56,11 @@ class QuickSetupState:
     enable_reasoning: bool = False
     send_reasoning: bool = False
     enable_search: bool = False
+    send_as_text_file: bool = False
+    use_perplexity_spaces: bool = False
+    paste_system_instructions_into_space: bool = False
+    enable_url_context: bool = False
+    use_system_prompt_field: bool = False
 
 
 class ProviderChoiceCard(QFrame):
@@ -262,7 +267,9 @@ class WelcomeWindow(QDialog):
         state.provider = provider_enum.value
 
         state.auto_login = bool(config.get_setting("providers_credentials", "auto_login"))
-        if bool(getattr(config, "is_first_run", False)) and provider_enum in {
+        is_first_run = bool(getattr(config, "is_first_run", False))
+
+        if is_first_run and provider_enum in {
             DriverProvider.DEEPSEEK,
             DriverProvider.GLM_CHAT,
         }:
@@ -282,10 +289,7 @@ class WelcomeWindow(QDialog):
         state.persistent_sessions = bool(config.get_setting("system_settings", "persistent_sessions"))
 
         provider = DriverProvider.from_setting(state.provider)
-        behavior_key = WelcomeWindow._behavior_category_for_provider(provider)
-        state.enable_reasoning = bool(config.get_setting(behavior_key, "enable_deepthink"))
-        state.send_reasoning = bool(config.get_setting(behavior_key, "send_deepthink"))
-        state.enable_search = bool(config.get_setting(behavior_key, "enable_search"))
+        WelcomeWindow._populate_provider_feature_state(config, state, provider)
 
         # API keys (best-effort read the first one for display)
         pairs = config.get_setting("network_settings", "api_keys") or []
@@ -299,6 +303,38 @@ class WelcomeWindow(QDialog):
                 state.api_key_value = str(first[1] or "")
 
         return state
+
+    @staticmethod
+    def _populate_provider_feature_state(
+        config: ConfigManager,
+        state: QuickSetupState,
+        provider: DriverProvider,
+    ) -> None:
+        behavior_key = WelcomeWindow._behavior_category_for_provider(provider)
+        is_first_run = bool(getattr(config, "is_first_run", False))
+
+        state.enable_reasoning = bool(config.get_setting(behavior_key, "enable_deepthink"))
+        state.send_reasoning = bool(config.get_setting(behavior_key, "send_deepthink"))
+        state.enable_search = bool(config.get_setting(behavior_key, "enable_search"))
+        state.send_as_text_file = bool(config.get_setting(behavior_key, "send_as_text_file"))
+        state.use_perplexity_spaces = False
+        state.paste_system_instructions_into_space = False
+        state.enable_url_context = False
+        state.use_system_prompt_field = False
+
+        if provider == DriverProvider.PERPLEXITY:
+            state.use_perplexity_spaces = bool(config.get_setting("perplexity_behavior", "use_spaces"))
+            state.paste_system_instructions_into_space = bool(
+                config.get_setting("perplexity_behavior", "paste_system_instructions_into_space")
+            )
+            if is_first_run:
+                state.use_perplexity_spaces = True
+                state.paste_system_instructions_into_space = True
+        elif provider == DriverProvider.AI_STUDIO:
+            state.enable_url_context = bool(config.get_setting("aistudio_behavior", "enable_url_context"))
+            state.use_system_prompt_field = bool(
+                config.get_setting("aistudio_behavior", "use_system_prompt_field")
+            )
 
     def _build_card(self) -> QFrame:
         card = QFrame()
@@ -847,7 +883,7 @@ class WelcomeWindow(QDialog):
         frame = self._build_step_container()
         layout = frame._content_layout  # type: ignore[attr-defined]
 
-        intro = QLabel("Optional tweaks. You can change everything later in Settings.")
+        intro = QLabel("Helpful defaults. You can change everything later in Settings.")
         intro.setWordWrap(True)
         intro.setAlignment(Qt.AlignCenter)
         intro.setStyleSheet(
@@ -859,12 +895,48 @@ class WelcomeWindow(QDialog):
         self._persistent_sessions.setChecked(bool(self._state.persistent_sessions))
         layout.addWidget(
             ToggleRow(
-                "Persistent Sessions",
+                "Keep Provider Sessions Signed In",
                 self._persistent_sessions,
-                description="Reuse a browser profile so you stay logged in between restarts.",
+                description="Recommended. Reuse a browser profile so provider logins survive restarts.",
             ),
             0,
         )
+
+        self._perplexity_spaces = Tumbler()
+        self._perplexity_spaces.setChecked(bool(self._state.use_perplexity_spaces))
+        self._perplexity_spaces.stateChanged.connect(lambda *_: self._on_perplexity_spaces_changed())
+        self._perplexity_spaces_row = ToggleRow(
+            "Use a Perplexity Space",
+            self._perplexity_spaces,
+            description=(
+                "Recommended for Perplexity. Uses an IntenseRP-managed Space instead of a plain chat. (also acts as a bit of a jailbreak against Perplexity's weirdness around system prompts and instructions)"
+            ),
+        )
+        layout.addWidget(self._perplexity_spaces_row, 0)
+
+        self._perplexity_space_instructions = Tumbler()
+        self._perplexity_space_instructions.setChecked(
+            bool(self._state.paste_system_instructions_into_space)
+        )
+        self._perplexity_space_instructions_row = ToggleRow(
+            "Put System Prompt in Space Instructions",
+            self._perplexity_space_instructions,
+            description=(
+                "Moves leading system messages into the Space instructions box when they fit."
+            ),
+        )
+        layout.addWidget(self._perplexity_space_instructions_row, 0)
+
+        self._use_system_prompt_field = Tumbler()
+        self._use_system_prompt_field.setChecked(bool(self._state.use_system_prompt_field))
+        self._use_system_prompt_field_row = ToggleRow(
+            "Use AI Studio System Instructions",
+            self._use_system_prompt_field,
+            description=(
+                "Moves leading system messages into AI Studio's native System Instructions field."
+            ),
+        )
+        layout.addWidget(self._use_system_prompt_field_row, 0)
 
         self._enable_reasoning = Tumbler()
         self._enable_reasoning.setChecked(bool(self._state.enable_reasoning))
@@ -890,9 +962,27 @@ class WelcomeWindow(QDialog):
         self._enable_search_row = ToggleRow(
             "Enable Search",
             self._enable_search,
-            description="Toggle the provider's web search tool in the UI.",
+            description="Let the provider use web search. Extra source metadata is filtered from API responses.",
         )
         layout.addWidget(self._enable_search_row, 0)
+
+        self._enable_url_context = Tumbler()
+        self._enable_url_context.setChecked(bool(self._state.enable_url_context))
+        self._enable_url_context_row = ToggleRow(
+            "Let AI Studio Read URLs",
+            self._enable_url_context,
+            description="Enables AI Studio's URL Context tool for prompts that include links.",
+        )
+        layout.addWidget(self._enable_url_context_row, 0)
+
+        self._send_as_text_file = Tumbler()
+        self._send_as_text_file.setChecked(bool(self._state.send_as_text_file))
+        self._send_as_text_file_row = ToggleRow(
+            "Upload Prompt as Text File",
+            self._send_as_text_file,
+            description="Useful for very long prompts. Normal pasting is simpler for everyday use.",
+        )
+        layout.addWidget(self._send_as_text_file_row, 0)
 
         layout.addStretch(1)
         return frame
@@ -1015,6 +1105,8 @@ class WelcomeWindow(QDialog):
         provider_enum = DriverProvider.from_setting(provider_value)
         provider_label = provider_enum.value
         self._state.provider = provider_label
+        self._load_provider_feature_state(provider_enum)
+        self._sync_feature_widgets_from_state()
 
         for name, card in (self._provider_cards or {}).items():
             try:
@@ -1092,21 +1184,136 @@ class WelcomeWindow(QDialog):
             self._auto_login.blockSignals(False)
 
         self._on_auto_login_changed()
+        self._sync_provider_feature_visibility(provider)
         self._sync_feature_labels(provider)
+        self._on_perplexity_spaces_changed()
         self._on_reasoning_toggles_changed()
 
+    @staticmethod
+    def _set_tumbler_checked(widget: QWidget, checked: bool) -> None:
+        try:
+            widget.blockSignals(True)
+            widget.setChecked(bool(checked))
+        finally:
+            widget.blockSignals(False)
+
+    def _load_provider_feature_state(self, provider: DriverProvider) -> None:
+        self._populate_provider_feature_state(self._config, self._state, provider)
+
+    def _sync_feature_widgets_from_state(self) -> None:
+        if not hasattr(self, "_enable_reasoning"):
+            return
+
+        self._set_tumbler_checked(self._enable_reasoning, self._state.enable_reasoning)
+        self._set_tumbler_checked(self._send_reasoning, self._state.send_reasoning)
+        self._set_tumbler_checked(self._enable_search, self._state.enable_search)
+        self._set_tumbler_checked(self._send_as_text_file, self._state.send_as_text_file)
+        self._set_tumbler_checked(self._perplexity_spaces, self._state.use_perplexity_spaces)
+        self._set_tumbler_checked(
+            self._perplexity_space_instructions,
+            self._state.paste_system_instructions_into_space,
+        )
+        self._set_tumbler_checked(self._enable_url_context, self._state.enable_url_context)
+        self._set_tumbler_checked(
+            self._use_system_prompt_field,
+            self._state.use_system_prompt_field,
+        )
+
+    def _sync_provider_feature_visibility(self, provider: DriverProvider) -> None:
+        is_perplexity = provider == DriverProvider.PERPLEXITY
+        is_ai_studio = provider == DriverProvider.AI_STUDIO
+
+        self._perplexity_spaces_row.setVisible(is_perplexity)
+        self._perplexity_space_instructions_row.setVisible(is_perplexity)
+        self._enable_url_context_row.setVisible(is_ai_studio)
+        self._use_system_prompt_field_row.setVisible(is_ai_studio)
+
+        # Perplexity doesn't expose usable thinking traces in the stream yet, so
+        # showing "Send Thinking" in first-run setup is mostly useless and just weird
+        self._send_reasoning_row.setVisible(not is_perplexity)
+        if is_perplexity:
+            self._set_tumbler_checked(self._send_reasoning, False)
+
+    def _set_toggle_row_text(
+        self,
+        row: ToggleRow,
+        label: str,
+        description: str | None = None,
+    ) -> None:
+        row._label_text = str(label or "")  # type: ignore[attr-defined]
+        row._description_text = str(description or "")  # type: ignore[attr-defined]
+        row._update_label_style(row.isEnabled())  # type: ignore[attr-defined]
+        if row.desc_label is not None:
+            row.desc_label.setText(str(description or ""))
+        for widget in (row, row.label, row.control):
+            widget.setProperty("settingInfoTitle", str(label or ""))
+            widget.setProperty("settingInfoBody", str(description or ""))
+
     def _sync_feature_labels(self, provider: DriverProvider) -> None:
-        if provider in {
-            DriverProvider.MOONSHOT,
-            DriverProvider.QWEN_LM,
-            DriverProvider.PERPLEXITY,
-            DriverProvider.AI_STUDIO,
-        }:
-            self._enable_reasoning_row.label.setText("Enable Thinking")
-            self._send_reasoning_row.label.setText("Send Thinking")
+        if provider == DriverProvider.AI_STUDIO:
+            self._set_toggle_row_text(
+                self._enable_reasoning_row,
+                "Use AI Studio Thinking Level",
+                "Uses the configured Thinking Level for supported AI Studio models.",
+            )
+            self._set_toggle_row_text(
+                self._send_reasoning_row,
+                "Send Thinking",
+                "Include AI Studio thinking summaries in API responses.",
+            )
+            self._set_toggle_row_text(
+                self._enable_search_row,
+                "Enable Google Search",
+                "Let AI Studio use Google Search grounding. Source metadata is filtered from API responses.",
+            )
+        elif provider == DriverProvider.PERPLEXITY:
+            self._set_toggle_row_text(
+                self._enable_reasoning_row,
+                "Enable Perplexity Thinking",
+                "Uses Perplexity's Thinking control when your account and selected model expose it.",
+            )
+            self._set_toggle_row_text(
+                self._send_reasoning_row,
+                "Send Thinking",
+                "Perplexity does not currently expose usable thinking text to forward.",
+            )
+            self._set_toggle_row_text(
+                self._enable_search_row,
+                "Enable Web Search",
+                "Let Perplexity search the web. Source metadata is filtered from API responses.",
+            )
+        elif provider in {DriverProvider.MOONSHOT, DriverProvider.QWEN_LM}:
+            self._set_toggle_row_text(
+                self._enable_reasoning_row,
+                "Enable Thinking",
+                "Turns on the provider's Thinking mode before sending.",
+            )
+            self._set_toggle_row_text(
+                self._send_reasoning_row,
+                "Send Thinking",
+                "Include thinking content in API responses.",
+            )
+            self._set_toggle_row_text(
+                self._enable_search_row,
+                "Enable Search",
+                "Let the provider use web search. Extra source metadata is filtered from API responses.",
+            )
         else:
-            self._enable_reasoning_row.label.setText("Enable DeepThink")
-            self._send_reasoning_row.label.setText("Send DeepThink")
+            self._set_toggle_row_text(
+                self._enable_reasoning_row,
+                "Enable DeepThink",
+                "Turns on the provider's DeepThink mode before sending.",
+            )
+            self._set_toggle_row_text(
+                self._send_reasoning_row,
+                "Send DeepThink",
+                "Include DeepThink content in API responses.",
+            )
+            self._set_toggle_row_text(
+                self._enable_search_row,
+                "Enable Search",
+                "Let the provider use web search. Extra source metadata is filtered from API responses.",
+            )
 
     def _on_auto_login_changed(self) -> None:
         enabled = bool(self._auto_login.isChecked())
@@ -1126,6 +1333,14 @@ class WelcomeWindow(QDialog):
         self._send_reasoning_row.setEnabled(enabled)
         if not enabled:
             self._send_reasoning.setChecked(False)
+
+    def _on_perplexity_spaces_changed(self) -> None:
+        if not hasattr(self, "_perplexity_spaces"):
+            return
+        enabled = bool(self._perplexity_spaces.isChecked())
+        self._perplexity_space_instructions_row.setEnabled(enabled)
+        if not enabled:
+            self._perplexity_space_instructions.setChecked(False)
 
     def _on_server_setting_changed(self) -> None:
         self._sync_sillytavern_instructions()
@@ -1320,6 +1535,13 @@ class WelcomeWindow(QDialog):
         self._state.enable_reasoning = bool(self._enable_reasoning.isChecked())
         self._state.send_reasoning = bool(self._send_reasoning.isChecked())
         self._state.enable_search = bool(self._enable_search.isChecked())
+        self._state.send_as_text_file = bool(self._send_as_text_file.isChecked())
+        self._state.use_perplexity_spaces = bool(self._perplexity_spaces.isChecked())
+        self._state.paste_system_instructions_into_space = bool(
+            self._perplexity_space_instructions.isChecked()
+        )
+        self._state.enable_url_context = bool(self._enable_url_context.isChecked())
+        self._state.use_system_prompt_field = bool(self._use_system_prompt_field.isChecked())
 
         ok, error = self._apply_state()
         if not ok:
@@ -1359,6 +1581,33 @@ class WelcomeWindow(QDialog):
         cfg.set_setting(behavior_key, "enable_deepthink", bool(self._state.enable_reasoning))
         cfg.set_setting(behavior_key, "send_deepthink", bool(self._state.send_reasoning))
         cfg.set_setting(behavior_key, "enable_search", bool(self._state.enable_search))
+        cfg.set_setting(behavior_key, "send_as_text_file", bool(self._state.send_as_text_file))
+
+        if provider_enum == DriverProvider.PERPLEXITY:
+            cfg.set_setting(
+                "perplexity_behavior",
+                "use_spaces",
+                bool(self._state.use_perplexity_spaces),
+            )
+            cfg.set_setting(
+                "perplexity_behavior",
+                "paste_system_instructions_into_space",
+                bool(
+                    self._state.use_perplexity_spaces
+                    and self._state.paste_system_instructions_into_space
+                ),
+            )
+        elif provider_enum == DriverProvider.AI_STUDIO:
+            cfg.set_setting(
+                "aistudio_behavior",
+                "enable_url_context",
+                bool(self._state.enable_url_context),
+            )
+            cfg.set_setting(
+                "aistudio_behavior",
+                "use_system_prompt_field",
+                bool(self._state.use_system_prompt_field),
+            )
 
         # Credential Manager (first-run helper)
         supports_auto_login = provider_enum in {
