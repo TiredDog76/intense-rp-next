@@ -6,6 +6,7 @@ import os
 import threading
 import errno
 from pathlib import Path
+from typing import Callable
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, 
     QHBoxLayout, QSizePolicy, QSplitter, QMessageBox, QSystemTrayIcon, QMenu,
@@ -3234,24 +3235,52 @@ class MainWindow(QMainWindow):
 
         return True, ""
 
-    def _open_settings_to_network_port(self) -> None:
+    def _open_settings_to(
+        self,
+        category_key: str,
+        field_key: str,
+        *,
+        configure: Callable[[object], None] | None = None,
+        attempts: int = 8,
+    ) -> None:
         try:
             self.open_settings()
         except Exception:
             return
 
-        settings_window = getattr(self, "settings_window", None)
-        if settings_window is None:
+        category_key = str(category_key or "").strip()
+        field_key = str(field_key or "").strip()
+        if not category_key or not field_key:
             return
 
-        def focus() -> None:
+        def focus(attempt: int = 0) -> None:
+            settings_window = getattr(self, "settings_window", None)
+            if settings_window is None:
+                if attempt < attempts:
+                    QTimer.singleShot(80, lambda: focus(attempt + 1))
+                return
+
             try:
-                if hasattr(settings_window, "focus_setting"):
-                    settings_window.focus_setting("network_settings", "port")
+                settings_window.present()
             except Exception:
                 pass
 
-        QTimer.singleShot(0, focus)
+            if callable(configure):
+                try:
+                    configure(settings_window)
+                except Exception:
+                    pass
+
+            try:
+                if hasattr(settings_window, "focus_setting"):
+                    settings_window.focus_setting(category_key, field_key)
+            except Exception:
+                pass
+
+        QTimer.singleShot(0, lambda: focus(0))
+
+    def _open_settings_to_network_port(self) -> None:
+        self._open_settings_to("network_settings", "port")
 
     def _warn_port_in_use(self, port: int) -> None:
         title = "Port In Use"
@@ -3274,6 +3303,94 @@ class MainWindow(QMainWindow):
         def on_clicked(button) -> None:
             if button is open_settings:
                 self._open_settings_to_network_port()
+
+        dialog.buttonClicked.connect(on_clicked)
+        dialog.open()
+
+    def _open_settings_to_saved_sessions(self, provider_key: str | None = None) -> None:
+        provider_key = str(provider_key or "").strip()
+
+        def configure(settings_window: object) -> None:
+            if provider_key and hasattr(settings_window, "set_profile_clear_provider_selection"):
+                settings_window.set_profile_clear_provider_selection([provider_key])
+
+        self._open_settings_to(
+            "system_settings",
+            "clear_persistent_profiles_row",
+            configure=configure,
+        )
+
+    def _disable_profile_compatibility_warnings(self) -> None:
+        try:
+            self.config_manager.set_setting("system_settings", "profile_compatibility_warnings", False)
+            self.config_manager.save_settings()
+        except Exception as exc:
+            Logger.warning(f"Failed to disable profile compatibility warnings: {exc}")
+            return
+
+        settings_window = getattr(self, "settings_window", None)
+        if settings_window is not None and settings_window.isVisible():
+            try:
+                settings_window.refresh_from_config(force=False)
+            except Exception:
+                pass
+
+    def _show_profile_compatibility_warning(self, payload: dict) -> None:
+        try:
+            warnings_enabled = bool(
+                self.config_manager.get_setting("system_settings", "profile_compatibility_warnings")
+            )
+        except Exception:
+            warnings_enabled = True
+        if not warnings_enabled:
+            return
+
+        provider_label = str(payload.get("provider_label") or "this provider").strip()
+        provider_key = str(payload.get("provider_key") or "").strip()
+        created_version = str(payload.get("profile_created_by_version") or "unknown").strip() or "unknown"
+        last_version = str(payload.get("profile_last_chrome_version") or "unknown").strip() or "unknown"
+        current_title = str(payload.get("current_browser_title") or "Chromium").strip() or "Chromium"
+        current_version = str(payload.get("current_browser_version") or "unknown").strip() or "unknown"
+        auth_error = str(payload.get("auth_error") or "").strip()
+
+        title = "Saved Profile May Need Reset"
+        text = f"{provider_label} login failed while using a saved profile from a different browser version."
+        details = (
+            f"The saved profile was created with browser version {created_version} "
+            f"(last used with {last_version}), but IntenseRP is now using "
+            f"{current_title} {current_version}.\n\n"
+            "If the provider keeps returning to login, delete that provider's saved profile and start again. "
+            "Auto Login can then create a fresh browser profile."
+        )
+        if auth_error:
+            details = f"{details}\n\nLogin error: {auth_error}"
+
+        is_focused = bool(self.isVisible() and self.isActiveWindow())
+        if not is_focused:
+            notification_text = (
+                f"{provider_label} login failed with a saved profile from a different browser version. "
+                "Open Settings -> Provider and Login -> Saved Sessions to clear it."
+            )
+            if not self._schedule_desktop_notification(title, notification_text, "warning"):
+                if not self._show_tray_message(title, notification_text, "warning"):
+                    Logger.warning(f"{title}: {notification_text}")
+            self._flash_attention_window(self)
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Warning)
+        dialog.setWindowTitle(title)
+        dialog.setText(text)
+        dialog.setInformativeText(details)
+
+        take_me_there = dialog.addButton("Take Me There", QMessageBox.ActionRole)
+        dont_show_again = dialog.addButton("Don't Show Again", QMessageBox.DestructiveRole)
+        dialog.addButton(QMessageBox.Ok)
+
+        def on_clicked(button) -> None:
+            if button is take_me_there:
+                self._open_settings_to_saved_sessions(provider_key)
+            elif button is dont_show_again:
+                self._disable_profile_compatibility_warnings()
 
         dialog.buttonClicked.connect(on_clicked)
         dialog.open()
@@ -3347,6 +3464,7 @@ class MainWindow(QMainWindow):
                 self.driver = create_driver(self.config_manager)
             self.driver.notify_user_callback = self._notify_user
             self.driver.request_user_text_callback = self._request_user_text
+            self.driver.profile_compatibility_warning_callback = self._show_profile_compatibility_warning
             self.driver.on_crash_callback = self.on_browser_crashed
 
             # Silence uvicorn loggers to avoid noisy console output.

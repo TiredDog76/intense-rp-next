@@ -943,6 +943,9 @@ class AIStudioDriver(BaseDriver):
                     "Google AI Studio: Auto Login could not complete cleanly. "
                     "Falling back to manual completion in the browser."
                 )
+                self._warn_profile_compatibility_after_auth_failure(
+                    "Google AI Studio Auto Login could not complete cleanly."
+                )
                 self.notify_user(
                     "Google AI Studio Login",
                     "Auto Login filled what it could, but Google still needs manual completion. "

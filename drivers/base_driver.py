@@ -16,6 +16,11 @@ from ece.models import CredentialPair
 from utils.browser_manager import install_chromium_browser, probe_browser_executable_path
 from utils.diagnostics import capture_prompt_snapshot
 from utils.logger import Logger
+from utils.profile_compatibility import (
+    ProfileCompatibilityAssessment,
+    assess_profile_compatibility,
+    mark_profile_auth_success,
+)
 
 
 class BaseDriver(ABC):
@@ -44,6 +49,7 @@ class BaseDriver(ABC):
         self._monitor_task: Optional[asyncio.Task] = None
         self.notify_user_callback: Optional[Callable[[str, str, str], None]] = None
         self.request_user_text_callback: Optional[Callable[..., Any]] = None
+        self.profile_compatibility_warning_callback: Optional[Callable[[dict[str, Any]], None]] = None
 
         # Abort handling (provider-specific use; common surface)
         self.current_abort_event: asyncio.Event | None = None
@@ -63,6 +69,8 @@ class BaseDriver(ABC):
         self._ece_disable_profile_slot_rotation: bool = False
         self._ece_die_on_failed_rotation: bool = False
         self._ece_rotation_exclude_emails_callback: Optional[Callable[[], Iterable[str]]] = None
+        self._profile_compatibility_assessment: ProfileCompatibilityAssessment | None = None
+        self._profile_compatibility_warning_sent = False
 
     def _ece_select_least_used(self) -> bool:
         try:
@@ -661,6 +669,54 @@ class BaseDriver(ABC):
         except Exception:
             return
 
+    def _profile_compatibility_warnings_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("system_settings", "profile_compatibility_warnings"))
+        except Exception:
+            return True
+
+    def _capture_profile_compatibility_assessment(self, profile_dir: str | Path) -> None:
+        self._profile_compatibility_assessment = None
+        self._profile_compatibility_warning_sent = False
+
+        try:
+            self._profile_compatibility_assessment = assess_profile_compatibility(
+                profile_dir,
+                self.provider,
+            )
+        except Exception as exc:
+            Logger.debug(f"{self.provider_label}: profile compatibility check failed: {exc}")
+
+    def _mark_profile_auth_success(self) -> None:
+        assessment = getattr(self, "_profile_compatibility_assessment", None)
+        if assessment is None:
+            return
+
+        try:
+            mark_profile_auth_success(assessment.profile_dir)
+        except Exception as exc:
+            Logger.debug(f"{self.provider_label}: profile compatibility success marker failed: {exc}")
+
+    def _warn_profile_compatibility_after_auth_failure(self, auth_error: Exception | str | None = None) -> None:
+        if getattr(self, "_profile_compatibility_warning_sent", False):
+            return
+        if not self._profile_compatibility_warnings_enabled():
+            return
+
+        assessment = getattr(self, "_profile_compatibility_assessment", None)
+        if assessment is None or not assessment.should_warn:
+            return
+
+        cb = getattr(self, "profile_compatibility_warning_callback", None)
+        if not cb:
+            return
+
+        self._profile_compatibility_warning_sent = True
+        try:
+            cb(assessment.to_payload(auth_error=str(auth_error or "")))
+        except Exception as exc:
+            Logger.debug(f"{self.provider_label}: profile compatibility warning callback failed: {exc}")
+
     async def request_user_text(
         self,
         title: str,
@@ -1081,6 +1137,8 @@ class BaseDriver(ABC):
 
         self._ece_prepare_for_start()
         self._log_selected_startup_profile()
+        self._profile_compatibility_assessment = None
+        self._profile_compatibility_warning_sent = False
 
         await self.ensure_browser_installed(status_callback)
 
@@ -1108,6 +1166,7 @@ class BaseDriver(ABC):
                 user_data_dir = self._get_persistent_profile_dir()
                 Logger.info("Launching Chromium (Persistent Sessions enabled)...")
                 Logger.debug(f"Persistent profile dir: {user_data_dir}")
+                self._capture_profile_compatibility_assessment(user_data_dir)
 
                 try:
                     import os
@@ -1123,6 +1182,7 @@ class BaseDriver(ABC):
                 except Exception as e:
                     Logger.error(f"Failed to launch persistent context: {e}")
                     Logger.warning("Falling back to non-persistent session...")
+                    self._profile_compatibility_assessment = None
                     self.browser = await self.playwright.chromium.launch(headless=False)
                     self.context = await self.browser.new_context(**browser_context_options)
             else:
@@ -1142,7 +1202,12 @@ class BaseDriver(ABC):
             Logger.info(f"Navigating to {start_url} ...")
             await self._navigate_to_start_url(start_url)
 
-            await self.login()
+            try:
+                await self.login()
+            except Exception as login_error:
+                self._warn_profile_compatibility_after_auth_failure(login_error)
+                raise
+            self._mark_profile_auth_success()
             await self.after_start(status_callback=status_callback)
 
             self.is_running = True

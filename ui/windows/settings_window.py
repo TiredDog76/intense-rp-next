@@ -863,6 +863,14 @@ class SettingsWindow(QMainWindow):
         self.unsaved_changes = False
         self.field_widgets = {} # Map "category.key" -> widget
         self.setting_rows = {} # Map "category.key" -> SettingRow (for dependency toggling)
+        self.category_widgets = {}
+        self.category_widgets_by_key = {}
+        self.category_items_by_key = {}
+        self._built_category_keys = set()
+        self._pending_category_build_keys = []
+        self._category_build_timer = QTimer(self)
+        self._category_build_timer.setSingleShot(True)
+        self._category_build_timer.timeout.connect(self._build_next_queued_category)
         self._category_defs_by_key = {category.key: category for category in SCHEMA}
         self._category_order = [category.key for category in SCHEMA]
         self._section_defs = list(SETTINGS_SECTIONS)
@@ -1327,7 +1335,17 @@ class SettingsWindow(QMainWindow):
                     continue
                 option_key = option_label
                 icon_file = None
-                if (category_key == "network_settings") and (field.key == "accept_reasoning_effort_providers"):
+                is_provider_selector = (
+                    (
+                        category_key == "network_settings"
+                        and field.key == "accept_reasoning_effort_providers"
+                    )
+                    or (
+                        category_key == "system_settings"
+                        and field.key == "clear_persistent_profile_providers"
+                    )
+                )
+                if is_provider_selector:
                     provider = DriverProvider.from_setting(option_label)
                     if provider is not None:
                         option_key = provider.value
@@ -1342,11 +1360,22 @@ class SettingsWindow(QMainWindow):
                     popup_title="Select providers for API reasoning effort",
                     summary_formatter=self._format_reasoning_effort_provider_summary,
                 )
+            elif (category_key == "system_settings") and (field.key == "clear_persistent_profile_providers"):
+                widget = MarshmallowMultiSelectDropdown(
+                    placeholder=self._format_profile_clear_provider_summary(0),
+                    button_icon_file="trash-2.svg",
+                    popup_title="Select providers to clear",
+                    summary_formatter=self._format_profile_clear_provider_summary,
+                )
             else:
                 widget = MarshmallowMultiSelectDropdown(
                     placeholder=f"Select {str(field.label or 'items').lower()}",
                 )
             widget.set_options(options)
+            if getattr(field, "transient", False):
+                widget.set_selected_keys(field.default or [])
+            if (category_key == "system_settings") and (field.key == "clear_persistent_profile_providers"):
+                widget.selectionChanged.connect(lambda *_: self._sync_profile_clear_button_label())
             widget.selectionChanged.connect(self._on_setting_changed)
 
         elif field.type == SettingType.REDIRECT:
@@ -1368,6 +1397,8 @@ class SettingsWindow(QMainWindow):
             # use the default value as button text if provided, else label
             btn_text = str(field.default) if field.default else field.label
             widget.setText(btn_text)
+            if str(getattr(field, "button_height", "") or "").strip().lower() == "row":
+                widget.setProperty("matchRowHeight", True)
             
             if field.action == "reset_injection":
                 widget.clicked.connect(self._reset_injection)
@@ -1378,6 +1409,8 @@ class SettingsWindow(QMainWindow):
                 widget.setEnabled(self._persistent_profile_options_loaded)
             elif field.action == "clear_all_persistent_profiles":
                 widget.clicked.connect(self._clear_all_persistent_profiles)
+            elif field.action == "clear_selected_persistent_profiles":
+                widget.clicked.connect(self._clear_selected_persistent_profiles)
             elif field.action == "check_for_updates":
                 widget.clicked.connect(self._check_for_updates)
         
@@ -2169,6 +2202,10 @@ class SettingsWindow(QMainWindow):
     @staticmethod
     def _format_reasoning_effort_provider_summary(count: int) -> str:
         return f"Select providers ({max(0, int(count or 0))} enabled)"
+
+    @staticmethod
+    def _format_profile_clear_provider_summary(count: int) -> str:
+        return f"Select Providers ({max(0, int(count or 0))} selected)"
 
     def _clone_loadout(self, loadout: LoadoutDefinition) -> LoadoutDefinition:
         return LoadoutDefinition(
@@ -3481,6 +3518,7 @@ class SettingsWindow(QMainWindow):
             delete_btn = self.field_widgets.get("system_settings.delete_persistent_profile_btn")
             if isinstance(delete_btn, QPushButton):
                 delete_btn.setEnabled(False)
+            self._sync_profile_clear_button_label()
         finally:
             self._suppress_dirty_tracking = previous_suppress
             self.unsaved_changes = False
@@ -4431,7 +4469,95 @@ class SettingsWindow(QMainWindow):
         finally:
             self._refresh_persistent_profile_options()
 
+    def _profile_clear_provider_options(self) -> list[DriverProvider]:
+        return list(DriverProvider)
+
+    def _selected_profile_clear_providers(self) -> list[DriverProvider]:
+        widget = self.field_widgets.get("system_settings.clear_persistent_profile_providers")
+        if not isinstance(widget, MarshmallowMultiSelectDropdown):
+            return self._profile_clear_provider_options()
+
+        selected: list[DriverProvider] = []
+        seen: set[DriverProvider] = set()
+        for key in widget.selected_keys():
+            provider = DriverProvider.from_setting(key)
+            if provider is None or provider in seen:
+                continue
+            selected.append(provider)
+            seen.add(provider)
+        return selected
+
+    def _sync_profile_clear_button_label(self) -> None:
+        button = self.field_widgets.get("system_settings.clear_persistent_profiles_btn")
+        if not isinstance(button, QPushButton):
+            return
+
+        providers = self._selected_profile_clear_providers()
+        total_count = len(self._profile_clear_provider_options())
+        selected_count = len(providers)
+
+        if selected_count <= 0:
+            button.setText("Select Providers")
+            button.setEnabled(False)
+        elif selected_count == total_count:
+            button.setText("Clear All")
+            button.setEnabled(True)
+        elif selected_count == 1:
+            button.setText(f"Clear {providers[0].value}")
+            button.setEnabled(True)
+        else:
+            button.setText(f"Clear {selected_count} Providers")
+            button.setEnabled(True)
+
+    def set_profile_clear_provider_selection(self, providers: list[str] | tuple[str, ...] | set[str]) -> bool:
+        self._ensure_category_built("system_settings", refresh_profiles=True)
+        widget = self.field_widgets.get("system_settings.clear_persistent_profile_providers")
+        if not isinstance(widget, MarshmallowMultiSelectDropdown):
+            return False
+
+        selected_values: list[str] = []
+        for value in providers or []:
+            provider = DriverProvider.from_setting(str(value or ""))
+            if provider is not None:
+                selected_values.append(provider.value)
+
+        widget.set_selected_keys(selected_values)
+        self._sync_profile_clear_button_label()
+        return True
+
+    def _persistent_profile_dirs_for_providers(self, providers: list[DriverProvider]) -> list[Path]:
+        profiles_root = self._get_profiles_root_dir()
+        candidates: list[Path] = []
+        seen: set[str] = set()
+
+        for provider in providers:
+            for candidate in (
+                profiles_root / "accounts" / provider.key,
+                profiles_root / "ece" / provider.key,
+                profiles_root / provider.key,
+            ):
+                try:
+                    resolved = str(candidate.resolve())
+                except Exception:
+                    resolved = str(candidate)
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                candidates.append(candidate)
+
+        return [path for path in candidates if path.exists()]
+
+    def _clear_selected_persistent_profiles(self):
+        providers = self._selected_profile_clear_providers()
+        if not providers:
+            QMessageBox.information(self, "Clear Profiles", "Select at least one provider to clear.")
+            return
+        self._clear_persistent_profiles_for_providers(providers)
+
     def _clear_all_persistent_profiles(self):
+        self._clear_persistent_profiles_for_providers(self._profile_clear_provider_options())
+
+    def _clear_persistent_profiles_for_providers(self, providers: list[DriverProvider]) -> None:
         profiles_root = self._get_profiles_root_dir()
         base_dir = Path(getattr(self.config_manager, "config_dir", "config_data")).resolve()
 
@@ -4440,21 +4566,36 @@ class SettingsWindow(QMainWindow):
         except Exception:
             QMessageBox.warning(
                 self,
-                "Clear All Profiles",
+                "Clear Profiles",
                 "Refusing to clear profiles: resolved path is outside the config directory.",
             )
             return
 
         if not profiles_root.exists():
-            QMessageBox.information(self, "Clear All Profiles", "No saved browser profiles were found.")
+            QMessageBox.information(self, "Clear Profiles", "No saved browser profiles were found.")
             self._refresh_persistent_profile_options()
             return
 
+        profile_dirs = self._persistent_profile_dirs_for_providers(providers)
+        if not profile_dirs:
+            QMessageBox.information(self, "Clear Profiles", "No saved profiles were found for the selected providers.")
+            self._refresh_persistent_profile_options()
+            return
+
+        total_count = len(self._profile_clear_provider_options())
+        provider_names = ", ".join(provider.value for provider in providers)
+        title = "Clear All Profiles" if len(providers) == total_count else "Clear Provider Profiles"
+        scope_text = (
+            "ALL saved browser profiles"
+            if len(providers) == total_count
+            else f"saved browser profiles for: {provider_names}"
+        )
+
         reply = QMessageBox.question(
             self,
-            "Clear All Profiles",
-            "This will delete ALL saved browser profiles used for Persistent Sessions.\n\n"
-            "This removes cookies/local storage and will log you out of all providers and saved accounts.\n\n"
+            title,
+            f"This will delete {scope_text} used for Persistent Sessions.\n\n"
+            "This removes cookies/local storage and will log you out of the selected providers and saved accounts.\n\n"
             "Continue?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -4463,15 +4604,24 @@ class SettingsWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return
 
+        deleted_count = 0
         try:
-            shutil.rmtree(profiles_root)
-            Logger.success("Cleared all persistent profiles.")
-            QMessageBox.information(self, "Clear All Profiles", "All profiles cleared successfully.")
+            for profile_dir in profile_dirs:
+                try:
+                    profile_dir.resolve().relative_to(base_dir)
+                except Exception:
+                    raise RuntimeError(f"Refusing to delete profile path outside the config directory: {profile_dir}")
+                shutil.rmtree(profile_dir)
+                deleted_count += 1
+
+            Logger.success(f"Cleared {deleted_count} persistent profile folder(s).")
+            QMessageBox.information(self, "Clear Profiles", "Selected profiles cleared successfully.")
         except Exception as e:
-            Logger.error(f"Error clearing all persistent profiles: {e}")
-            QMessageBox.warning(self, "Clear All Profiles", f"Failed to clear profiles:\n\n{e}")
+            Logger.error(f"Error clearing persistent profiles: {e}")
+            QMessageBox.warning(self, "Clear Profiles", f"Failed to clear profiles:\n\n{e}")
         finally:
             self._refresh_persistent_profile_options()
+            self._sync_profile_clear_button_label()
 
     def save_settings(self):
         validation_errors = []

@@ -1082,6 +1082,8 @@ class MarshmallowMultiSelectDropdown(QFrame):
         layout.addWidget(self._icon_label, 0, Qt.AlignVCenter)
 
         self._text_label = QLabel(self._placeholder)
+        self._text_label.setMinimumWidth(0)
+        self._text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._text_label.setStyleSheet(
             f"""
             color: {BrandColors.TEXT_SECONDARY};

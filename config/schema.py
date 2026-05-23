@@ -86,6 +86,7 @@ class SettingField:
     docs_path: Optional[str] = None
     docs_anchor: Optional[str] = None
     hint_variant: Optional[str] = None
+    button_height: Optional[str] = None
 
 @dataclass
 class SettingCategory:
@@ -1545,6 +1546,18 @@ SCHEMA = [
                 docs_anchor="persistent-sessions",
             ),
             SettingField(
+                key="profile_compatibility_warnings",
+                label="Profile Compatibility Warnings",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip=(
+                    "Warn after login failures when a saved browser profile was created "
+                    "with a different Chromium/Chrome for Testing major version."
+                ),
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="profile-compatibility-warnings",
+            ),
+            SettingField(
                 key="browser_locale",
                 label="Preferred Browser Locale",
                 type=SettingType.DROPDOWN,
@@ -1601,14 +1614,34 @@ SCHEMA = [
                 ],
             ),
             SettingField(
-                key="clear_all_persistent_profiles",
-                label="Clear All Profiles",
-                type=SettingType.BUTTON,
-                default="Clear All",
-                action="clear_all_persistent_profiles",
-                tooltip="Delete all saved browser profiles used for Persistent Sessions (Accounts + Legacy).",
+                key="clear_persistent_profiles_row",
+                label="Clear Profiles",
+                type=SettingType.ROW,
+                default=None,
+                ratios=[64, 36],
+                tooltip="Delete saved browser profiles for selected providers (logs you out).",
                 docs_path=DOCS_SYSTEM,
-                docs_anchor="clear-all-profiles",
+                docs_anchor="clear-profiles",
+                sub_fields=[
+                    SettingField(
+                        key="clear_persistent_profiles_btn",
+                        label="Clear All",
+                        type=SettingType.BUTTON,
+                        default="Clear All",
+                        action="clear_selected_persistent_profiles",
+                        tooltip="Delete saved browser profiles for the selected providers.",
+                        button_height="row",
+                    ),
+                    SettingField(
+                        key="clear_persistent_profile_providers",
+                        label="Providers",
+                        type=SettingType.MULTI_SELECT_DROPDOWN,
+                        default=provider_options(),
+                        options=provider_options(),
+                        transient=True,
+                        tooltip="Choose which providers should have saved browser profiles cleared.",
+                    ),
+                ],
             ),
             SettingField(
                 key="notify_on_driver_crash",
@@ -2395,8 +2428,9 @@ SETTINGS_CARDS = {
         title="Saved Sessions",
         field_refs=[
             ("system_settings", "persistent_sessions"),
+            ("system_settings", "profile_compatibility_warnings"),
             ("system_settings", "delete_persistent_profile_row"),
-            ("system_settings", "clear_all_persistent_profiles"),
+            ("system_settings", "clear_persistent_profiles_row"),
         ],
     ),
     "browser_environment": SettingCard(

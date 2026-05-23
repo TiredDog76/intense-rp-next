@@ -36,6 +36,7 @@ class ParallelDriversManager:
         self.is_running = False
         self.notify_user_callback = None
         self.request_user_text_callback = None
+        self.profile_compatibility_warning_callback = None
         self.on_crash_callback = None
         self._crash_notified = False
 
@@ -168,6 +169,7 @@ class ParallelDriversManager:
         for provider, driver in self._driver_entries:
             driver.notify_user_callback = self.notify_user_callback
             driver.request_user_text_callback = self.request_user_text_callback
+            driver.profile_compatibility_warning_callback = self.profile_compatibility_warning_callback
 
             async def _handle_provider_crash(current_provider: DriverProvider = provider) -> None:
                 await self._handle_driver_crash(current_provider)

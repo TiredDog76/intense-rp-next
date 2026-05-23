@@ -98,6 +98,20 @@ class MultiColumnRow(QWidget):
             ratio = ratios[i] if ratios and i < len(ratios) else 1
             layout.addWidget(widget, stretch=ratio)
 
+        self._sync_matched_row_heights()
+
+    def _sync_matched_row_heights(self) -> None:
+        target_height = max(
+            (widget.sizeHint().height() for widget in self.widgets if widget is not None),
+            default=0,
+        )
+        if target_height <= 0:
+            return
+
+        for widget in self.widgets:
+            if widget is not None and bool(widget.property("matchRowHeight")):
+                widget.setFixedHeight(target_height)
+
 
 class _SettingsTextEdit(QTextEdit):
     """
