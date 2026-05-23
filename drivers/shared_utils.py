@@ -85,6 +85,81 @@ def make_openai_usage_sse(
     return f"data: {json.dumps(openai_chunk)}\n\n"
 
 
+def compute_missing_suffix(emitted: str, candidate: str) -> str:
+    """Return the suffix in candidate that has not already been emitted."""
+    if not candidate:
+        return ""
+    if not emitted:
+        return candidate
+    if candidate.startswith(emitted):
+        return candidate[len(emitted) :]
+
+    idx = candidate.rfind(emitted)
+    if idx != -1:
+        return candidate[idx + len(emitted) :]
+
+    anchor_len = min(200, len(emitted))
+    if anchor_len > 0:
+        anchor = emitted[-anchor_len:]
+        idx = candidate.rfind(anchor)
+        if idx != -1:
+            return candidate[idx + anchor_len :]
+
+    max_check = min(500, len(emitted), len(candidate))
+    for size in range(max_check, 0, -1):
+        if emitted.endswith(candidate[:size]):
+            return candidate[size:]
+
+    if len(candidate) <= 800:
+        return candidate
+    return ""
+
+
+class IncrementalTextAccumulator:
+    """Track emitted text while avoiding full-string copies on every append."""
+
+    def __init__(self) -> None:
+        self._parts: list[str] = []
+        self._length = 0
+        self._text_cache: str | None = ""
+
+    @property
+    def has_text(self) -> bool:
+        return self._length > 0
+
+    @property
+    def text(self) -> str:
+        if self._text_cache is None:
+            self._text_cache = "".join(self._parts)
+        return self._text_cache
+
+    def append(self, text: str) -> None:
+        piece = str(text or "")
+        if not piece:
+            return
+        self._parts.append(piece)
+        self._length += len(piece)
+        self._text_cache = None
+
+    def missing_suffix(self, candidate: str) -> str:
+        candidate = str(candidate or "")
+        if not candidate:
+            return ""
+        if self._length <= 0:
+            return candidate
+        if len(candidate) >= self._length and self._candidate_starts_with_parts(candidate):
+            return candidate[self._length :]
+        return compute_missing_suffix(self.text, candidate)
+
+    def _candidate_starts_with_parts(self, candidate: str) -> bool:
+        offset = 0
+        for part in self._parts:
+            if not candidate.startswith(part, offset):
+                return False
+            offset += len(part)
+        return True
+
+
 def build_prompt_text_file_payload(
     formatted_message: str,
     *,

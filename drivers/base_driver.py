@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Optional, Union
 
+import httpx
 from patchright.async_api import Browser, BrowserContext, Page, async_playwright
 
 from drivers.providers import DriverProvider, get_playwright_profile_dir
@@ -79,6 +80,7 @@ class BaseDriver(ABC):
         self.browser: Browser | None = None
         self.context: BrowserContext | None = None
         self.page: Page | None = None
+        self._http_client: httpx.AsyncClient | None = None
 
         self.is_running = False
         self.on_crash_callback = None
@@ -1522,6 +1524,25 @@ class BaseDriver(ABC):
             self._send_control_signature = signature
         return signature
 
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        client = self._http_client
+        if client is None or client.is_closed:
+            client = httpx.AsyncClient()
+            self._http_client = client
+        # Browser context cookies are the source of truth for provider requests
+        # so clear httpx's jar so reusing the client does not carry Set-Cookie state forward
+        try:
+            client.cookies.clear()
+        except Exception:
+            pass
+        return client
+
+    async def _close_http_client(self) -> None:
+        client = self._http_client
+        self._http_client = None
+        if client is not None and not client.is_closed:
+            await client.aclose()
+
     async def close(self) -> None:
         """
         Closes the browser and playwright.
@@ -1567,6 +1588,15 @@ class BaseDriver(ABC):
                 # Best-effort cleanup should not prevent outer cancellation.
                 task.cancel()
                 raise
+
+        try:
+            await _await_with_timeout(
+                self._close_http_client(),
+                10.0,
+                "closing provider HTTP client",
+            )
+        except Exception as e:
+            Logger.debug(f"Error closing provider HTTP client: {e}")
 
         if self.context:
             try:

@@ -1194,14 +1194,14 @@ class MoonshotDriver(BaseDriver):
         headers.setdefault("referer", "https://www.kimi.com/")
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    "https://www.kimi.com/apiv2/kimi.chat.v1.ChatService/DeleteChat",
-                    headers=headers,
-                    cookies=cookies,
-                    json={"chat_id": normalized_id},
-                    timeout=20.0,
-                )
+            client = await self._get_http_client()
+            response = await client.post(
+                "https://www.kimi.com/apiv2/kimi.chat.v1.ChatService/DeleteChat",
+                headers=headers,
+                cookies=cookies,
+                json={"chat_id": normalized_id},
+                timeout=20.0,
+            )
         except Exception as e:
             Logger.warning(f"Moonshot: failed to auto-delete chat {normalized_id}: {e}")
             return False
@@ -1437,35 +1437,35 @@ class MoonshotDriver(BaseDriver):
             aborted = False
 
             try:
-                async with httpx.AsyncClient() as client:
-                    request_kwargs: Dict[str, Any] = {
-                        "headers": headers,
-                        "cookies": cookie_dict,
-                        "timeout": 90.0,
-                    }
-                    if request_body is not None:
-                        request_kwargs["content"] = request_body
+                client = await self._get_http_client()
+                request_kwargs: Dict[str, Any] = {
+                    "headers": headers,
+                    "cookies": cookie_dict,
+                    "timeout": 90.0,
+                }
+                if request_body is not None:
+                    request_kwargs["content"] = request_body
 
-                    async with client.stream(request.method, request.url, **request_kwargs) as response:
-                        response_status = int(response.status_code)
-                        for k, v in response.headers.items():
-                            response_headers[k] = v
+                async with client.stream(request.method, request.url, **request_kwargs) as response:
+                    response_status = int(response.status_code)
+                    for k, v in response.headers.items():
+                        response_headers[k] = v
 
-                        async for chunk in response.aiter_bytes():
-                            if self.abort_requested or (abort_event and abort_event.is_set()):
-                                Logger.debug("Abort detected during Moonshot streaming, stopping...")
-                                aborted = True
-                                break
+                    async for chunk in response.aiter_bytes():
+                        if self.abort_requested or (abort_event and abort_event.is_set()):
+                            Logger.debug("Abort detected during Moonshot streaming, stopping...")
+                            aborted = True
+                            break
 
-                            full_response_body.extend(chunk)
-                            await self._process_connect_chunk(
-                                chunk,
-                                response_queue,
-                                anti_censorship=bool(
-                                    self.config_manager.get_setting("moonshot_behavior", "anti_censorship")
-                                ),
-                                send_deepthink=bool(effective_send_deepthink),
-                            )
+                        full_response_body.extend(chunk)
+                        await self._process_connect_chunk(
+                            chunk,
+                            response_queue,
+                            anti_censorship=bool(
+                                self.config_manager.get_setting("moonshot_behavior", "anti_censorship")
+                            ),
+                            send_deepthink=bool(effective_send_deepthink),
+                        )
             except httpx.ReadError as e:
                 if not aborted and not self.abort_requested:
                     Logger.error(f"Read error during Moonshot intercepted request: {e}")

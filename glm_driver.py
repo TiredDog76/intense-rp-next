@@ -11,8 +11,10 @@ from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
+    IncrementalTextAccumulator,
     build_prompt_text_file_payload,
     clear_clean_regeneration_cache,
+    compute_missing_suffix,
     extract_macro_overrides,
     find_multi_slot_cache_entry,
     format_request_messages,
@@ -2089,33 +2091,7 @@ class GLMDriver(BaseDriver):
         GLM can resend (or patch) the full reasoning/answer content via edit_content. We
         want to forward only the newly-added tail to avoid duplicate chunks.
         """
-        if not candidate:
-            return ""
-        if not emitted:
-            return candidate
-        if candidate.startswith(emitted):
-            return candidate[len(emitted) :]
-
-        idx = candidate.rfind(emitted)
-        if idx != -1:
-            return candidate[idx + len(emitted) :]
-
-        anchor_len = min(200, len(emitted))
-        if anchor_len > 0:
-            anchor = emitted[-anchor_len:]
-            idx = candidate.rfind(anchor)
-            if idx != -1:
-                return candidate[idx + anchor_len :]
-
-        max_check = min(500, len(emitted), len(candidate))
-        for k in range(max_check, 0, -1):
-            if emitted.endswith(candidate[:k]):
-                return candidate[k:]
-
-        # Avoid dumping the entire reasoning again if we failed to align
-        if len(candidate) <= 800:
-            return candidate
-        return ""
+        return compute_missing_suffix(emitted, candidate)
 
     async def generate_response(
         self,
@@ -2317,7 +2293,7 @@ class GLMDriver(BaseDriver):
             aborted = False
             text_buffer = bytearray()
             text_buffer_pos = 0
-            thinking_emitted = ""
+            thinking_emitted = IncrementalTextAccumulator()
             answer_emitted = False
             glm_block_active = False
             emitted_openai_chunk = False
@@ -2458,7 +2434,7 @@ class GLMDriver(BaseDriver):
                         stripped = self._strip_details_tags(delta_content)
                         if stripped:
                             enqueue_openai_delta(stripped)
-                            thinking_emitted += stripped
+                            thinking_emitted.append(stripped)
                         return
 
                     if phase == "answer":
@@ -2482,13 +2458,13 @@ class GLMDriver(BaseDriver):
                         if self.current_send_deepthink and (self.thinking_active or not answer_emitted):
                             reasoning = self._extract_reasoning_from_edit_content(edit_content)
                             if reasoning:
-                                missing = self._compute_missing_suffix(thinking_emitted, reasoning)
+                                missing = thinking_emitted.missing_suffix(reasoning)
                                 if missing:
                                     if not self.thinking_active:
                                         enqueue_openai_delta("<think>")
                                         self.thinking_active = True
                                     enqueue_openai_delta(missing)
-                                    thinking_emitted += missing
+                                    thinking_emitted.append(missing)
 
                         if self.thinking_active and self.current_send_deepthink:
                             enqueue_openai_delta("</think>")
@@ -2531,99 +2507,99 @@ class GLMDriver(BaseDriver):
                     except Exception:
                         json_body = None
 
-                async with httpx.AsyncClient() as client:
-                    try:
-                        request_kwargs: Dict[str, Any] = {
-                            "headers": headers,
-                            "cookies": cookie_dict,
-                            "timeout": 60.0,
-                        }
-                        if json_body is not None:
-                            request_kwargs["json"] = json_body
-                        elif raw_post_data:
-                            request_kwargs["content"] = str(raw_post_data).encode("utf-8")
+                client = await self._get_http_client()
+                try:
+                    request_kwargs: Dict[str, Any] = {
+                        "headers": headers,
+                        "cookies": cookie_dict,
+                        "timeout": 60.0,
+                    }
+                    if json_body is not None:
+                        request_kwargs["json"] = json_body
+                    elif raw_post_data:
+                        request_kwargs["content"] = str(raw_post_data).encode("utf-8")
 
-                        async with client.stream(
-                            request.method,
-                            request.url,
-                            **request_kwargs,
-                        ) as response:
-                            intercepted_response = response
-                            for k, v in response.headers.items():
-                                response_headers[k] = v
+                    async with client.stream(
+                        request.method,
+                        request.url,
+                        **request_kwargs,
+                    ) as response:
+                        intercepted_response = response
+                        for k, v in response.headers.items():
+                            response_headers[k] = v
 
-                            async for chunk in response.aiter_bytes():
-                                intercepted_activity_count += 1
-                                if (
-                                    intercepted_request_abort.is_set()
-                                    or self.abort_requested
-                                    or (abort_event and abort_event.is_set())
-                                ):
-                                    Logger.debug("Abort detected during GLM streaming, stopping...")
-                                    aborted = True
+                        async for chunk in response.aiter_bytes():
+                            intercepted_activity_count += 1
+                            if (
+                                intercepted_request_abort.is_set()
+                                or self.abort_requested
+                                or (abort_event and abort_event.is_set())
+                            ):
+                                Logger.debug("Abort detected during GLM streaming, stopping...")
+                                aborted = True
+                                break
+
+                            full_response_body.extend(chunk)
+                            text_buffer.extend(chunk)
+
+                            while True:
+                                newline_idx = text_buffer.find(b"\n", text_buffer_pos)
+                                if newline_idx == -1:
                                     break
 
-                                full_response_body.extend(chunk)
-                                text_buffer.extend(chunk)
-
-                                while True:
-                                    newline_idx = text_buffer.find(b"\n", text_buffer_pos)
-                                    if newline_idx == -1:
-                                        break
-
-                                    line_bytes = text_buffer[text_buffer_pos:newline_idx]
-                                    text_buffer_pos = newline_idx + 1
-                                    try:
-                                        process_sse_line(
-                                            bytes(line_bytes).decode("utf-8", errors="ignore")
-                                        )
-                                    except Exception:
-                                        continue
-                                    if capacity_error_message:
-                                        break
-
+                                line_bytes = text_buffer[text_buffer_pos:newline_idx]
+                                text_buffer_pos = newline_idx + 1
+                                try:
+                                    process_sse_line(
+                                        bytes(line_bytes).decode("utf-8", errors="ignore")
+                                    )
+                                except Exception:
+                                    continue
                                 if capacity_error_message:
                                     break
 
-                                # Periodically compact the buffer to avoid unbounded growth
-                                if text_buffer_pos > 8192:
-                                    del text_buffer[:text_buffer_pos]
-                                    text_buffer_pos = 0
+                            if capacity_error_message:
+                                break
 
-                            # Flush any final SSE line if the stream didn't end with a newline
-                            if not capacity_error_message:
-                                tail = bytes(text_buffer[text_buffer_pos:])
-                                if tail.strip():
-                                    process_sse_line(tail.decode("utf-8", errors="ignore"))
-                            text_buffer.clear()
-                            text_buffer_pos = 0
+                            # Periodically compact the buffer to avoid unbounded growth
+                            if text_buffer_pos > 8192:
+                                del text_buffer[:text_buffer_pos]
+                                text_buffer_pos = 0
 
-                            if (
-                                (not aborted)
-                                and (not intercepted_request_abort.is_set())
-                                and (not self.abort_requested)
-                                and (not capacity_error_message)
-                                and count_tokens_enabled
-                                and (openai_usage is not None)
-                                and (not openai_usage_emitted)
-                            ):
-                                enqueue_openai_usage(openai_usage)
-                    except httpx.ReadError as e:
+                        # Flush any final SSE line if the stream didn't end with a newline
+                        if not capacity_error_message:
+                            tail = bytes(text_buffer[text_buffer_pos:])
+                            if tail.strip():
+                                process_sse_line(tail.decode("utf-8", errors="ignore"))
+                        text_buffer.clear()
+                        text_buffer_pos = 0
+
                         if (
-                            not aborted
+                            (not aborted)
                             and (not intercepted_request_abort.is_set())
-                            and not self.abort_requested
+                            and (not self.abort_requested)
+                            and (not capacity_error_message)
+                            and count_tokens_enabled
+                            and (openai_usage is not None)
+                            and (not openai_usage_emitted)
                         ):
-                            Logger.error(f"Read error during GLM intercepted request: {e}")
-                            response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
-                    except Exception as e:
-                        if (
-                            not aborted
-                            and (not intercepted_request_abort.is_set())
-                            and not self.abort_requested
-                        ):
-                            Logger.error(f"Error during GLM intercepted request: {e}")
-                            response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
+                            enqueue_openai_usage(openai_usage)
+                except httpx.ReadError as e:
+                    if (
+                        not aborted
+                        and (not intercepted_request_abort.is_set())
+                        and not self.abort_requested
+                    ):
+                        Logger.error(f"Read error during GLM intercepted request: {e}")
+                        response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
+                except Exception as e:
+                    if (
+                        not aborted
+                        and (not intercepted_request_abort.is_set())
+                        and not self.abort_requested
+                    ):
+                        Logger.error(f"Error during GLM intercepted request: {e}")
+                        response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
             except RuntimeError as e:
                 if "async generator" in str(e) or "cancel scope" in str(e):
                     Logger.debug(f"Ignored expected error during abort: {e}")

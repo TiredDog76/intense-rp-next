@@ -9,7 +9,9 @@ from drivers.base_driver import BaseDriver
 from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
+    IncrementalTextAccumulator,
     build_prompt_text_file_payload,
+    compute_missing_suffix,
     extract_macro_overrides,
     format_request_messages,
     make_openai_delta_sse,
@@ -134,7 +136,7 @@ class _PerplexityAnswerStreamParser:
         self._line_buffer = bytearray()
         self._event_name = ""
         self._blocks_by_usage: dict[str, _PerplexityMarkdownBlockState] = {}
-        self._emitted_answer = ""
+        self._emitted_answer = IncrementalTextAccumulator()
         self.finish_emitted = False
         self.emitted_text = False
         self.provider_final_seen = False
@@ -204,9 +206,9 @@ class _PerplexityAnswerStreamParser:
             self._state_for_usage(usage).apply_block(block)
 
         current_answer = self._current_answer_text()
-        missing = self._compute_missing_suffix(self._emitted_answer, current_answer)
+        missing = self._emitted_answer.missing_suffix(current_answer)
         if missing:
-            self._emitted_answer += missing
+            self._emitted_answer.append(missing)
             self.emitted_text = True
             emitted.append((missing, None))
 
@@ -267,32 +269,7 @@ class _PerplexityAnswerStreamParser:
 
     @staticmethod
     def _compute_missing_suffix(emitted: str, candidate: str) -> str:
-        if not candidate:
-            return ""
-        if not emitted:
-            return candidate
-        if candidate.startswith(emitted):
-            return candidate[len(emitted) :]
-
-        idx = candidate.rfind(emitted)
-        if idx != -1:
-            return candidate[idx + len(emitted) :]
-
-        anchor_len = min(200, len(emitted))
-        if anchor_len > 0:
-            anchor = emitted[-anchor_len:]
-            idx = candidate.rfind(anchor)
-            if idx != -1:
-                return candidate[idx + anchor_len :]
-
-        max_check = min(500, len(emitted), len(candidate))
-        for size in range(max_check, 0, -1):
-            if emitted.endswith(candidate[:size]):
-                return candidate[size:]
-
-        if len(candidate) <= 800:
-            return candidate
-        return ""
+        return compute_missing_suffix(emitted, candidate)
 
 
 class PerplexityDriver(BaseDriver):

@@ -1710,6 +1710,8 @@ class API:
         request = entry.request
         request_type = getattr(entry, "request_type", "chat")
         driver_model = str(getattr(entry, "driver_model", None) or getattr(request, "model", "") or "")
+        request_model = str(getattr(request, "model", "") or "").strip()
+        should_rewrite_chunk_model = bool(request_model and request_model != driver_model.strip())
         response_queue = entry.response_queue
         abort_event = entry.abort_event
         loadout_name = self._get_active_loadout_name_for_provider(provider)
@@ -1795,7 +1797,11 @@ class API:
                         max_tokens=request.max_tokens,
                         abort_event=abort_event,
                     ):
-                        client_chunk = _set_openai_sse_chunk_model(chunk, request.model)
+                        client_chunk = (
+                            _set_openai_sse_chunk_model(chunk, request_model)
+                            if should_rewrite_chunk_model
+                            else chunk
+                        )
                         if abort_event.is_set():
                             Logger.debug("Request aborted, stopping chunk forwarding...")
                             break

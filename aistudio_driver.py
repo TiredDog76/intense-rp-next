@@ -4747,58 +4747,58 @@ class AIStudioDriver(BaseDriver):
             rate_limit_hint = False
 
             try:
-                async with httpx.AsyncClient() as client:
-                    request_kwargs: Dict[str, Any] = {
-                        "headers": headers,
-                        "cookies": cookie_dict,
-                        "timeout": 120.0,
-                    }
-                    if request_body is not None:
-                        request_kwargs["content"] = request_body
+                client = await self._get_http_client()
+                request_kwargs: Dict[str, Any] = {
+                    "headers": headers,
+                    "cookies": cookie_dict,
+                    "timeout": 120.0,
+                }
+                if request_body is not None:
+                    request_kwargs["content"] = request_body
 
-                    async with client.stream(request.method, request.url, **request_kwargs) as response:
-                        response_status = int(response.status_code)
-                        for k, v in response.headers.items():
-                            response_headers[k] = v
-                        response_headers.pop("content-encoding", None)
-                        response_headers.pop("content-length", None)
-                        response_headers.pop("transfer-encoding", None)
+                async with client.stream(request.method, request.url, **request_kwargs) as response:
+                    response_status = int(response.status_code)
+                    for k, v in response.headers.items():
+                        response_headers[k] = v
+                    response_headers.pop("content-encoding", None)
+                    response_headers.pop("content-length", None)
+                    response_headers.pop("transfer-encoding", None)
 
-                        async for chunk in response.aiter_bytes():
-                            if self.abort_requested or (abort_event and abort_event.is_set()):
-                                Logger.debug("Abort detected during Google AI Studio streaming, stopping...")
-                                aborted = True
-                                break
+                    async for chunk in response.aiter_bytes():
+                        if self.abort_requested or (abort_event and abort_event.is_set()):
+                            Logger.debug("Abort detected during Google AI Studio streaming, stopping...")
+                            aborted = True
+                            break
 
-                            full_response_body.extend(chunk)
-                            for parsed_event in parser.feed(chunk):
-                                hard_censorship_hint = (
-                                    hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
-                                )
-                                rate_limit_hint = (
-                                    rate_limit_hint or self._event_looks_rate_limited(parsed_event)
-                                )
-                                emitted = await self._process_stream_event(
-                                    parsed_event,
-                                    response_queue,
-                                    send_deepthink=bool(effective_settings["send_deepthink"]),
-                                )
-                                emitted_text = emitted_text or emitted
+                        full_response_body.extend(chunk)
+                        for parsed_event in parser.feed(chunk):
+                            hard_censorship_hint = (
+                                hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
+                            )
+                            rate_limit_hint = (
+                                rate_limit_hint or self._event_looks_rate_limited(parsed_event)
+                            )
+                            emitted = await self._process_stream_event(
+                                parsed_event,
+                                response_queue,
+                                send_deepthink=bool(effective_settings["send_deepthink"]),
+                            )
+                            emitted_text = emitted_text or emitted
 
-                        if not aborted:
-                            for parsed_event in parser.finish():
-                                hard_censorship_hint = (
-                                    hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
-                                )
-                                rate_limit_hint = (
-                                    rate_limit_hint or self._event_looks_rate_limited(parsed_event)
-                                )
-                                emitted = await self._process_stream_event(
-                                    parsed_event,
-                                    response_queue,
-                                    send_deepthink=bool(effective_settings["send_deepthink"]),
-                                )
-                                emitted_text = emitted_text or emitted
+                    if not aborted:
+                        for parsed_event in parser.finish():
+                            hard_censorship_hint = (
+                                hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
+                            )
+                            rate_limit_hint = (
+                                rate_limit_hint or self._event_looks_rate_limited(parsed_event)
+                            )
+                            emitted = await self._process_stream_event(
+                                parsed_event,
+                                response_queue,
+                                send_deepthink=bool(effective_settings["send_deepthink"]),
+                            )
+                            emitted_text = emitted_text or emitted
             except httpx.ReadError as e:
                 if not aborted and not self.abort_requested:
                     encountered_error = True

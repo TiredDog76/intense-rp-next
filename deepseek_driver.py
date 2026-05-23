@@ -92,6 +92,7 @@ class DeepSeekDriver(BaseDriver):
     def _reset_stream_parser(self) -> None:
         self._stream_text_decoder = codecs.getincrementaldecoder("utf-8")()
         self._stream_text_buffer = ""
+        self._stream_text_buffer_pos = 0
         self._stream_active_fragment_type: Optional[str] = None
         self._stream_active_fragment_base_path: Optional[str] = None
 
@@ -502,14 +503,14 @@ class DeepSeekDriver(BaseDriver):
             f"authorization={auth_state}; cookies={len(cookies)}"
         )
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    "https://chat.deepseek.com/api/v0/chat_session/delete",
-                    headers=headers,
-                    cookies=cookies,
-                    json={"chat_session_id": normalized_id},
-                    timeout=20.0,
-                )
+            client = await self._get_http_client()
+            response = await client.post(
+                "https://chat.deepseek.com/api/v0/chat_session/delete",
+                headers=headers,
+                cookies=cookies,
+                json={"chat_session_id": normalized_id},
+                timeout=20.0,
+            )
         except Exception as e:
             Logger.warning(f"DeepSeek: failed to auto-delete chat {normalized_id}: {e}")
             return False
@@ -760,55 +761,55 @@ class DeepSeekDriver(BaseDriver):
             aborted = False
             
             try:
-                async with httpx.AsyncClient() as client:
-                    try:
-                        Logger.info("Streaming response from DeepSeek...")
-                        async with client.stream("POST", request.url, headers=headers, cookies=cookie_dict, json=post_data, timeout=60.0) as response:
-                            intercepted_response = response
-                            # Capture headers to forward them later
-                            # We specifically need Content-Type so the frontend knows it's an SSE stream
-                            for k, v in response.headers.items():
-                                response_headers[k] = v
-                            
-                            async for chunk in response.aiter_bytes():
-                                intercepted_activity_count += 1
-                                # Check if abort was requested
-                                if (
-                                    intercepted_request_abort.is_set()
-                                    or self.abort_requested
-                                    or (abort_event and abort_event.is_set())
-                                ):
-                                    Logger.debug("Abort detected during streaming, stopping...")
-                                    aborted = True
-                                    break
-                                
-                                full_response_body.extend(chunk)
-                                # Process chunk for streaming
-                                await self._process_chunk(chunk, response_queue)
+                client = await self._get_http_client()
+                try:
+                    Logger.info("Streaming response from DeepSeek...")
+                    async with client.stream("POST", request.url, headers=headers, cookies=cookie_dict, json=post_data, timeout=60.0) as response:
+                        intercepted_response = response
+                        # Capture headers to forward them later
+                        # We specifically need Content-Type so the frontend knows it's an SSE stream
+                        for k, v in response.headers.items():
+                            response_headers[k] = v
 
+                        async for chunk in response.aiter_bytes():
+                            intercepted_activity_count += 1
+                            # Check if abort was requested
                             if (
-                                not aborted
-                                and (not intercepted_request_abort.is_set())
-                                and not self.abort_requested
+                                intercepted_request_abort.is_set()
+                                or self.abort_requested
+                                or (abort_event and abort_event.is_set())
                             ):
-                                await self._process_chunk(b"", response_queue, final=True)
-                                
-                    except httpx.ReadError as e:
+                                Logger.debug("Abort detected during streaming, stopping...")
+                                aborted = True
+                                break
+
+                            full_response_body.extend(chunk)
+                            # Process chunk for streaming
+                            await self._process_chunk(chunk, response_queue)
+
                         if (
                             not aborted
                             and (not intercepted_request_abort.is_set())
                             and not self.abort_requested
                         ):
-                            Logger.error(f"Read error during intercepted request: {e}")
-                            await response_queue.put({"error": str(e)})
-                    except Exception as e:
-                        if (
-                            not aborted
-                            and (not intercepted_request_abort.is_set())
-                            and not self.abort_requested
-                        ):
-                            Logger.error(f"Error during intercepted request: {e}")
-                            await response_queue.put({"error": str(e)})
+                            await self._process_chunk(b"", response_queue, final=True)
+
+                except httpx.ReadError as e:
+                    if (
+                        not aborted
+                        and (not intercepted_request_abort.is_set())
+                        and not self.abort_requested
+                    ):
+                        Logger.error(f"Read error during intercepted request: {e}")
+                        await response_queue.put({"error": str(e)})
+                except Exception as e:
+                    if (
+                        not aborted
+                        and (not intercepted_request_abort.is_set())
+                        and not self.abort_requested
+                    ):
+                        Logger.error(f"Error during intercepted request: {e}")
+                        await response_queue.put({"error": str(e)})
             except RuntimeError as e:
                 # Ignore RuntimeError from async generator cleanup during abort
                 if "async generator" in str(e) or "cancel scope" in str(e):
@@ -1408,21 +1409,29 @@ class DeepSeekDriver(BaseDriver):
 
     async def _process_chunk(self, chunk: bytes, queue: asyncio.Queue, *, final: bool = False):
         try:
-            self._stream_text_buffer += self._stream_text_decoder.decode(chunk, final=final)
+            decoded = self._stream_text_decoder.decode(chunk, final=final)
+            if decoded:
+                self._stream_text_buffer += decoded
 
             while True:
-                newline_idx = self._stream_text_buffer.find("\n")
+                newline_idx = self._stream_text_buffer.find("\n", self._stream_text_buffer_pos)
                 if newline_idx == -1:
                     break
 
-                line = self._stream_text_buffer[:newline_idx].rstrip("\r")
-                self._stream_text_buffer = self._stream_text_buffer[newline_idx + 1 :]
+                line = self._stream_text_buffer[self._stream_text_buffer_pos:newline_idx].rstrip("\r")
+                self._stream_text_buffer_pos = newline_idx + 1
                 await self._process_sse_line(line, queue)
 
-            if final and self._stream_text_buffer.strip():
-                line = self._stream_text_buffer.rstrip("\r")
+            if self._stream_text_buffer_pos > 8192:
+                self._stream_text_buffer = self._stream_text_buffer[self._stream_text_buffer_pos :]
+                self._stream_text_buffer_pos = 0
+
+            if final:
+                tail = self._stream_text_buffer[self._stream_text_buffer_pos :]
                 self._stream_text_buffer = ""
-                await self._process_sse_line(line, queue)
+                self._stream_text_buffer_pos = 0
+                if tail.strip():
+                    await self._process_sse_line(tail.rstrip("\r"), queue)
         except Exception as e:
             Logger.error(f"Error processing chunk: {e}")
 

@@ -77,6 +77,9 @@ class Logger:
     _extra_debug_logs_enabled: bool = False
 
     _log_file: Optional[str] = None
+    _log_file_handle: Any = None
+    _log_file_handle_path: Optional[str] = None
+    _log_file_size_bytes: int = 0
     _max_file_size: float = 0.0
     _max_files: float = 0.0
     _log_dir: Optional[str] = None
@@ -219,8 +222,10 @@ class Logger:
     def configure_file_logging(cls, enabled: bool, log_dir: str, max_files: int, max_size_val: int, size_unit: str):
         """Configure file logging settings."""
         with cls._file_lock:
+            cls._close_log_file_handle()
             if not enabled:
                 cls._log_file = None
+                cls._log_file_size_bytes = 0
                 return
 
             cls._log_dir = log_dir
@@ -243,15 +248,57 @@ class Logger:
                 try:
                     os.makedirs(log_dir, exist_ok=True)
                 except OSError:
+                    cls._log_file = None
+                    cls._log_file_size_bytes = 0
                     cls._write_stdout_line(f"Failed to create log directory: {log_dir}")
                     return
 
             # Create new log file for this session
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             cls._log_file = os.path.join(log_dir, f"log_{timestamp}.txt")
+            cls._log_file_size_bytes = (
+                os.path.getsize(cls._log_file) if os.path.exists(cls._log_file) else 0
+            )
 
             # Cleanup old files
             cls._cleanup_old_files()
+
+    @classmethod
+    def _close_log_file_handle(cls) -> None:
+        """Close the cached log file handle, if one is open."""
+        handle = cls._log_file_handle
+        cls._log_file_handle = None
+        cls._log_file_handle_path = None
+        if handle is None:
+            return
+        try:
+            handle.close()
+        except Exception:
+            pass
+
+    @classmethod
+    def _get_log_file_handle(cls) -> Any:
+        """Return a cached append handle for the current log file."""
+        log_file = cls._log_file
+        if not log_file:
+            return None
+
+        handle = cls._log_file_handle
+        if (
+            handle is not None
+            and not getattr(handle, "closed", True)
+            and cls._log_file_handle_path == log_file
+        ):
+            return handle
+
+        cls._close_log_file_handle()
+        cls._log_file_size_bytes = (
+            os.path.getsize(log_file) if os.path.exists(log_file) else 0
+        )
+        handle = open(log_file, "a", encoding="utf-8", buffering=1)
+        cls._log_file_handle = handle
+        cls._log_file_handle_path = log_file
+        return handle
         
     @classmethod
     def _cleanup_old_files(cls):
@@ -310,8 +357,10 @@ class Logger:
                 if not log_file or not os.path.exists(log_file):
                     return
 
+                cls._close_log_file_handle()
                 current_size = os.path.getsize(log_file)
                 if current_size <= max_bytes:
+                    cls._log_file_size_bytes = current_size
                     return
 
                 tmp_path = log_file + ".tmp"
@@ -332,6 +381,7 @@ class Logger:
                     dst.write(data)
 
                 os.replace(tmp_path, log_file)
+                cls._log_file_size_bytes = os.path.getsize(log_file)
         except Exception as e:
             cls._write_stdout_line(f"Error trimming log file: {e}")
             if tmp_path:
@@ -344,29 +394,36 @@ class Logger:
     @classmethod
     def _log_to_file(cls, message: str):
         """Append log message to file and manage size."""
-        if not cls._log_file:
-            return
-            
         try:
             # We do NOT put ANSI codes in log file, they don't render well (at all)
 
             with cls._file_lock:
-                created_new_file = not os.path.exists(cls._log_file)
+                log_file = cls._log_file
+                if not log_file:
+                    return
 
-                with open(cls._log_file, "a", encoding="utf-8") as f:
-                    f.write(message + "\n")
+                created_new_file = not os.path.exists(log_file)
+                handle = cls._get_log_file_handle()
+                if handle is None:
+                    return
+
+                line = message + "\n"
+                handle.write(line)
+                handle.flush()
+                cls._log_file_size_bytes += len(line.encode("utf-8"))
 
                 if created_new_file:
                     cls._cleanup_old_files()
 
                 # Check size
                 if cls._max_file_size != float("inf"):
-                    if os.path.getsize(cls._log_file) > cls._max_file_size:
+                    if cls._log_file_size_bytes > cls._max_file_size:
                         cls._trim_file()
                     
         except Exception:
             # Don't crash app on logging failure
-            pass
+            with cls._file_lock:
+                cls._close_log_file_handle()
 
     @classmethod
     def _format_message(cls, level: LogLevel, message: str, include_ansi: bool = True) -> str:
