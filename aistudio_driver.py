@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -155,9 +155,12 @@ class _AiStudioJsonEventStreamParser:
 class AIStudioDriver(BaseDriver):
     """Drive the Google AI Studio web UI and expose OpenAI-style streaming output."""
 
-    START_URL = "https://aistudio.google.com/prompts/new_chat?incognito=true"
+    START_URL = "https://aistudio.google.com/prompts/new_chat?temporary"
     AISTUDIO_HOST = "aistudio.google.com"
     AUTH_HOST_MARKER = "accounts.google.com"
+    TEMPORARY_CHAT_QUERY_PARAM = "temporary"
+    LEGACY_TEMPORARY_CHAT_QUERY_PARAM = "incognito"
+    TEMPORARY_CHAT_DISABLED_VALUES = {"0", "false", "no", "off"}
     DEFAULT_MODEL_LABEL = "Gemini 3.1 Pro"
     DEFAULT_MAX_OUTPUT_TOKENS = 65536
     GEMINI_25_PAID_MODEL_ERROR = (
@@ -436,59 +439,69 @@ class AIStudioDriver(BaseDriver):
             return False
         return hostname == cls.AISTUDIO_HOST
 
-    @staticmethod
-    def _url_has_incognito_enabled(url: str) -> bool:
+    @classmethod
+    def _url_has_temporary_enabled(cls, url: str) -> bool:
         try:
             query_pairs = parse_qsl(urlsplit(str(url or "")).query, keep_blank_values=True)
         except Exception:
             return False
         return any(
-            key == "incognito" and str(value).lower() == "true"
+            key == cls.TEMPORARY_CHAT_QUERY_PARAM
+            and str(value).strip().lower() not in cls.TEMPORARY_CHAT_DISABLED_VALUES
             for key, value in query_pairs
         )
 
-    @staticmethod
-    def _with_incognito_enabled(url: str) -> str:
+    @classmethod
+    def _with_temporary_enabled(cls, url: str) -> str:
         parts = urlsplit(str(url or ""))
         query_pairs = parse_qsl(parts.query, keep_blank_values=True)
         updated_pairs = []
-        incognito_seen = False
+        temporary_seen = False
 
         for key, value in query_pairs:
-            if key == "incognito":
-                incognito_seen = True
-                updated_pairs.append((key, "true"))
+            if key == cls.LEGACY_TEMPORARY_CHAT_QUERY_PARAM:
+                continue
+            if key == cls.TEMPORARY_CHAT_QUERY_PARAM:
+                temporary_seen = True
+                updated_pairs.append((key, ""))
             else:
                 updated_pairs.append((key, value))
 
-        if not incognito_seen:
-            updated_pairs.append(("incognito", "true"))
+        if not temporary_seen:
+            updated_pairs.append((cls.TEMPORARY_CHAT_QUERY_PARAM, ""))
+
+        encoded_query_parts = [
+            quote_plus(key)
+            if key == cls.TEMPORARY_CHAT_QUERY_PARAM and value == ""
+            else urlencode([(key, value)])
+            for key, value in updated_pairs
+        ]
 
         return urlunsplit(
-            (parts.scheme, parts.netloc, parts.path, urlencode(updated_pairs), parts.fragment)
+            (parts.scheme, parts.netloc, parts.path, "&".join(encoded_query_parts), parts.fragment)
         )
 
-    async def _ensure_incognito_chat_url(self, timeout_ms: int = 60000) -> None:
-        """Keep AI Studio on an incognito URL after redirects that can strip it."""
+    async def _ensure_temporary_chat_url(self, timeout_ms: int = 60000) -> None:
+        """Keep AI Studio on a temporary-chat URL after redirects that can strip it."""
         if not self.page:
             return
 
         current_url = await self._current_url()
         if not self._is_aistudio_url(current_url):
             return
-        if self._url_has_incognito_enabled(current_url):
+        if self._url_has_temporary_enabled(current_url):
             return
 
-        target_url = self._with_incognito_enabled(current_url)
+        target_url = self._with_temporary_enabled(current_url)
         Logger.info(
-            "Google AI Studio: current chat URL is missing incognito=true. "
+            "Google AI Studio: current chat URL is missing ?temporary. "
             "Re-opening with temporary chat enabled..."
         )
         try:
             await self._navigate_to_start_url(target_url)
         except Exception as e:
             Logger.warning(
-                f"Google AI Studio: failed to re-open current URL with incognito=true: {e}. "
+                f"Google AI Studio: failed to re-open current URL with ?temporary: {e}. "
                 "Retrying the default temporary chat URL..."
             )
             try:
@@ -503,7 +516,7 @@ class AIStudioDriver(BaseDriver):
 
     async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         """Run post-start checks and one-time UI initialization for AI Studio."""
-        await self._ensure_incognito_chat_url(timeout_ms=60000)
+        await self._ensure_temporary_chat_url(timeout_ms=60000)
         await self._accept_terms_of_service_if_present(timeout_ms=1500)
         await self.check_ui_language(status_callback=status_callback)
         clear_clean_regeneration_cache(
@@ -638,7 +651,7 @@ class AIStudioDriver(BaseDriver):
                 return
 
         await self._accept_terms_of_service_if_present(timeout_ms=1500)
-        await self._ensure_incognito_chat_url(timeout_ms=60000)
+        await self._ensure_temporary_chat_url(timeout_ms=60000)
         await self._wait_for_chat_ready(timeout_ms=60000)
         await self.check_ui_language()
         self._system_instructions_storage_reset_done = True
@@ -895,7 +908,7 @@ class AIStudioDriver(BaseDriver):
 
         login_state = await self._wait_for_login_state(timeout_ms=12000)
         if login_state == "chat":
-            await self._ensure_incognito_chat_url(timeout_ms=60000)
+            await self._ensure_temporary_chat_url(timeout_ms=60000)
             await self._accept_terms_of_service_if_present(timeout_ms=2500)
             Logger.info("Google AI Studio: already signed in.")
             self._mark_active_ece_pair_used()
@@ -908,7 +921,7 @@ class AIStudioDriver(BaseDriver):
                 pass
             login_state = await self._wait_for_login_state(timeout_ms=12000)
             if login_state == "chat":
-                await self._ensure_incognito_chat_url(timeout_ms=60000)
+                await self._ensure_temporary_chat_url(timeout_ms=60000)
                 await self._accept_terms_of_service_if_present(timeout_ms=2500)
                 Logger.info("Google AI Studio: already signed in.")
                 self._mark_active_ece_pair_used()
@@ -931,7 +944,7 @@ class AIStudioDriver(BaseDriver):
                     except Exception:
                         pass
                     await self._wait_until_logged_in(timeout_ms=60000)
-                    await self._ensure_incognito_chat_url(timeout_ms=60000)
+                    await self._ensure_temporary_chat_url(timeout_ms=60000)
                     await self._accept_terms_of_service_if_present(timeout_ms=4000)
                     Logger.success("Google AI Studio: login detected.")
                     self.ece_mark_used(pair.email)
@@ -971,7 +984,7 @@ class AIStudioDriver(BaseDriver):
             await self._navigate_to_start_url(self.START_URL)
         except Exception:
             pass
-        await self._ensure_incognito_chat_url(timeout_ms=60000)
+        await self._ensure_temporary_chat_url(timeout_ms=60000)
 
     async def _get_document_lang(self) -> str:
         """Read the active document language, allowing Google auth pages temporarily."""
@@ -2816,7 +2829,7 @@ class AIStudioDriver(BaseDriver):
             return
         await self._navigate_to_start_url(self.START_URL)
         await self._wait_for_chat_ready(timeout_ms=60000)
-        await self._ensure_incognito_chat_url(timeout_ms=60000)
+        await self._ensure_temporary_chat_url(timeout_ms=60000)
 
     def _preflight_next_chat_enabled(self) -> bool:
         """Return whether post-response blank-chat preparation is enabled."""
