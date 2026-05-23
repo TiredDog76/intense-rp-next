@@ -41,7 +41,7 @@ pyee==13.0.0
 Pygments==2.20.0
 pyinstaller==6.17.0
 pyinstaller-hooks-contrib==2025.10
-pymdown-extensions==10.21.3
+pymdown-extensions>=10.21.3
 PySide6==6.10.0
 PySide6_Addons==6.10.0
 PySide6_Essentials==6.10.0
