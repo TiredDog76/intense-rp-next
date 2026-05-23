@@ -33,6 +33,43 @@ class BaseDriver(ABC):
     _BROWSER_TIMEZONE_MAP: dict[str, str] = {
         "New York (America/New_York)": "America/New_York",
     }
+    _BROWSER_HARDENING_ARGS: tuple[str, ...] = (
+        "--disable-background-mode",
+        "--disable-background-networking",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-component-update",
+        "--disable-default-apps",
+        "--disable-domain-reliability",
+        "--disable-sync",
+        "--no-default-browser-check",
+        "--no-first-run",
+        "--no-service-autorun",
+    )
+    _BROWSER_PROFILE_PREF_OVERRIDES: dict[str, Any] = {
+        "credentials_enable_service": False,
+        "signin": {
+            "allowed": False,
+            "allowed_on_next_startup": False,
+        },
+        "sync_promo": {
+            "show_on_first_run_allowed": False,
+        },
+        "profile": {
+            "default_content_setting_values": {
+                "webid_api": 2,
+            },
+            "password_manager_enabled": False,
+        },
+    }
+    _BROWSER_LOCAL_STATE_OVERRIDES: dict[str, Any] = {
+        "background_mode": {
+            "enabled": False,
+        },
+        "browser": {
+            "check_default_browser": False,
+            "has_seen_welcome_page": True,
+        },
+    }
 
     def __init__(self, config_manager: Any, provider: DriverProvider):
         self.config_manager = config_manager
@@ -886,6 +923,108 @@ class BaseDriver(ABC):
 
         return options
 
+    def _get_browser_launch_args(self) -> list[str]:
+        """
+        Return Chromium/Chrome launch flags that keep CfT closer to an app sandbox.
+
+        Patchright already applies several of these today, but keeping them in
+        IntenseRP makes the behavior explicit and protects us if upstream launch
+        defaults move around again.
+        """
+        return list(self._BROWSER_HARDENING_ARGS)
+
+    @staticmethod
+    def _merge_json_object(target: dict[str, Any], overrides: dict[str, Any]) -> bool:
+        changed = False
+        for key, value in overrides.items():
+            if isinstance(value, dict):
+                current = target.get(key)
+                if not isinstance(current, dict):
+                    current = {}
+                    target[key] = current
+                    changed = True
+                if BaseDriver._merge_json_object(current, value):
+                    changed = True
+                continue
+
+            if target.get(key) != value:
+                target[key] = value
+                changed = True
+
+        return changed
+
+    @classmethod
+    def _update_browser_profile_json(
+        cls,
+        path: Path,
+        overrides: dict[str, Any],
+    ) -> bool:
+        data: dict[str, Any] = {}
+        if path.exists():
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                Logger.debug(f"Browser profile preseed skipped for {path}: {exc}")
+                return False
+
+            if not isinstance(loaded, dict):
+                Logger.debug(
+                    f"Browser profile preseed skipped for {path}: root is not an object."
+                )
+                return False
+            data = loaded
+
+        if not cls._merge_json_object(data, overrides):
+            return False
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_name(f"{path.name}.irp_tmp")
+        try:
+            tmp_path.write_text(
+                json.dumps(data, ensure_ascii=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            tmp_path.replace(path)
+        except Exception:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
+        return True
+
+    def _preseed_persistent_browser_profile(self, user_data_dir: str) -> None:
+        """
+        Seed Chrome-owned profile prefs before CfT opens the profile.
+
+        Launch flags can suppress startup work, but browser sign-in and sync promos
+        are profile preferences. We only touch the IntenseRP-managed browser
+        profile and avoid clearing cookies or provider web-session data.
+        """
+        profile_dir = Path(user_data_dir)
+        changed_files: list[str] = []
+
+        try:
+            if self._update_browser_profile_json(
+                profile_dir / "Local State",
+                self._BROWSER_LOCAL_STATE_OVERRIDES,
+            ):
+                changed_files.append("Local State")
+            if self._update_browser_profile_json(
+                profile_dir / "Default" / "Preferences",
+                self._BROWSER_PROFILE_PREF_OVERRIDES,
+            ):
+                changed_files.append("Default/Preferences")
+        except Exception as exc:
+            Logger.debug(f"Browser profile preseed failed for {profile_dir}: {exc}")
+            return
+
+        if changed_files:
+            Logger.info(
+                "Prepared browser profile defaults to suppress Chrome sign-in/sync prompts "
+                f"({', '.join(changed_files)})."
+            )
+
     def _get_persistent_profile_dir(self) -> str:
         config_dir = getattr(self.config_manager, "config_dir", None)
         pair = getattr(self, "_ece_active_pair", None)
@@ -1221,6 +1360,7 @@ class BaseDriver(ABC):
                 self.config_manager.get_setting("system_settings", "persistent_sessions")
             )
             browser_context_options = self._get_browser_context_options()
+            browser_launch_args = self._get_browser_launch_args()
 
             if browser_context_options.get("locale"):
                 Logger.info(
@@ -1242,9 +1382,11 @@ class BaseDriver(ABC):
                     import os
 
                     os.makedirs(user_data_dir, exist_ok=True)
+                    self._preseed_persistent_browser_profile(user_data_dir)
                     self.context = await self.playwright.chromium.launch_persistent_context(
                         user_data_dir,
                         headless=False,
+                        args=browser_launch_args,
                         **browser_context_options,
                     )
                     context_browser = getattr(self.context, "browser", None)
@@ -1253,11 +1395,17 @@ class BaseDriver(ABC):
                     Logger.error(f"Failed to launch persistent context: {e}")
                     Logger.warning("Falling back to non-persistent session...")
                     self._profile_compatibility_assessment = None
-                    self.browser = await self.playwright.chromium.launch(headless=False)
+                    self.browser = await self.playwright.chromium.launch(
+                        headless=False,
+                        args=browser_launch_args,
+                    )
                     self.context = await self.browser.new_context(**browser_context_options)
             else:
                 Logger.info("Launching Chromium...")
-                self.browser = await self.playwright.chromium.launch(headless=False)
+                self.browser = await self.playwright.chromium.launch(
+                    headless=False,
+                    args=browser_launch_args,
+                )
                 self.context = await self.browser.new_context(**browser_context_options)
 
             try:
