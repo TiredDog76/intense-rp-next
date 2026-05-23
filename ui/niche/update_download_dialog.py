@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import subprocess
 import sys
 import tempfile
@@ -169,6 +171,7 @@ class UpdateDownloadDialog(QDialog):
         self.prepared_update: Optional[PreparedUpdate] = None
         self._cancel_requested = False
         self._install_started = False
+        self._install_task: asyncio.Task | None = None
 
         self.setWindowTitle("Downloading Update")
         self.setModal(True)
@@ -252,6 +255,10 @@ class UpdateDownloadDialog(QDialog):
         self._start_worker()
 
     def closeEvent(self, event):
+        if self._install_started:
+            event.ignore()
+            return
+
         # Best-effort cancellation when the user closes the dialog.
         self._cancel_requested = True
         if self.prepared_update is None and self._worker_thread_is_running():
@@ -442,33 +449,69 @@ class UpdateDownloadDialog(QDialog):
         self._cancel_requested = True
         self._request_worker_cancel()
 
-    def _on_install_clicked(self) -> None:
-        prepared = self.prepared_update
-        if prepared is None:
+    def _find_stop_services_owner(self):
+        current = self.parent()
+        while current is not None:
+            stop_services = getattr(current, "stop_services", None)
+            if callable(stop_services):
+                return current
+            try:
+                current = current.parent()
+            except Exception:
+                return None
+        return None
+
+    async def _stop_services_before_update(self) -> None:
+        owner = self._find_stop_services_owner()
+        if owner is None:
             return
 
-        reply = QMessageBox.question(
-            self,
-            "Install Update",
-            "The app will close to install the update and then relaunch.\n\nContinue?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if reply != QMessageBox.Yes:
+        stop_services = getattr(owner, "stop_services", None)
+        if not callable(stop_services):
             return
 
         try:
-            updater_exe = _find_staged_updater(prepared)
+            result = stop_services(update_ui=False)
+        except TypeError:
+            result = stop_services()
+
+        if inspect.isawaitable(result):
+            await result
+
+    async def _prepare_and_launch_updater(self, prepared: PreparedUpdate, updater_exe: Path) -> None:
+        try:
+            self._status_label.setText("Stopping services...")
+            await asyncio.wait_for(self._stop_services_before_update(), timeout=60.0)
+        except asyncio.TimeoutError:
+            self._on_install_prepare_failed("Timed out while waiting for running services to stop.")
+            return
         except Exception as exc:
-            QMessageBox.warning(self, "Auto-Update", f"Update package is missing the updater.\n\n{exc}")
+            self._on_install_prepare_failed(str(exc))
             return
 
-        # lock ui and launch the updater off the main thread so the UI stays responsive while the updater starts
-        self._install_started = True
+        if not self._install_started:
+            return
+        try:
+            self._launch_updater(prepared, updater_exe)
+        except Exception as exc:
+            self._on_install_prepare_failed(str(exc))
+
+    def _on_install_prepare_failed(self, message: str) -> None:
+        self._install_started = False
+        self._status_label.setText("Ready to install.")
+        self._install_btn.setEnabled(True)
+        self._cancel_btn.setEnabled(True)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(100)
+        QMessageBox.warning(
+            self,
+            "Auto-Update",
+            "Failed to stop running services before starting the updater.\n\n"
+            f"{message}",
+        )
+
+    def _launch_updater(self, prepared: PreparedUpdate, updater_exe: Path) -> None:
         self._status_label.setText("Launching Updater...")
-        self._install_btn.setEnabled(False)
-        self._cancel_btn.setEnabled(False)
-        self._progress.setRange(0, 0)  # indeterminate spinner
 
         install_dir = Path(sys.executable).resolve().parent
         exe_name = Path(sys.executable).name
@@ -493,6 +536,52 @@ class UpdateDownloadDialog(QDialog):
             lambda message: self._on_updater_start_failed(prepared, message)
         )
         self._launcher_thread.start()
+
+    def _on_install_clicked(self) -> None:
+        if self._install_started:
+            return
+
+        prepared = self.prepared_update
+        if prepared is None:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Install Update",
+            "The app will close to install the update and then relaunch.\n\nContinue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            updater_exe = _find_staged_updater(prepared)
+        except Exception as exc:
+            QMessageBox.warning(self, "Auto-Update", f"Update package is missing the updater.\n\n{exc}")
+            return
+
+        # lock ui and launch the updater off the main thread so the UI stays responsive while the updater starts
+        self._install_started = True
+        self._status_label.setText("Preparing update...")
+        self._install_btn.setEnabled(False)
+        self._cancel_btn.setEnabled(False)
+        self._progress.setRange(0, 0)  # indeterminate spinner
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._launch_updater(prepared, updater_exe)
+            return
+
+        self._install_task = loop.create_task(
+            self._prepare_and_launch_updater(prepared, updater_exe)
+        )
+
+        def _clear_install_task(_task: asyncio.Task) -> None:
+            self._install_task = None
+
+        self._install_task.add_done_callback(_clear_install_task)
 
     def _on_updater_started(self) -> None:
         """Called on the main thread once the updater process is running."""

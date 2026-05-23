@@ -26,6 +26,11 @@ DEFAULT_OPTIONAL_DIRNAME = "optional"
 DEFAULT_LOCK_WAIT_S = 300.0
 POSTUPDATE_FLAG_FILENAME = "postupdate_notes_url.txt"
 PRESERVED_ROOT_FILENAMES = ("loadouts.json",)
+CHROMIUM_SINGLETON_LOCK_FILENAMES = (
+    "SingletonLock",
+    "SingletonCookie",
+    "SingletonSocket",
+)
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,139 @@ def _path_is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
+def _normalized_resolved_path(path: Path) -> str:
+    try:
+        return os.path.normcase(str(path.resolve()))
+    except Exception:
+        try:
+            return os.path.normcase(str(path.absolute()))
+        except Exception:
+            return os.path.normcase(str(path))
+
+
+def _read_config_dir_pointer(pointer_path: Path, install_dir: Path) -> Path | None:
+    try:
+        text = pointer_path.read_text(encoding="utf-8", errors="replace").strip()
+    except Exception:
+        return None
+    if not text:
+        return None
+
+    try:
+        path = Path(text).expanduser()
+        if not path.is_absolute():
+            path = install_dir / path
+        return path.resolve()
+    except Exception:
+        try:
+            return path.absolute()
+        except Exception:
+            return None
+
+
+def _discover_config_dirs_for_update(install_dir: Path) -> list[Path]:
+    candidates: list[Path] = [install_dir / "config_data"]
+
+    try:
+        pointer_paths = [p for p in install_dir.glob("*_dir.txt") if p.is_file()]
+    except Exception:
+        pointer_paths = []
+
+    for pointer_path in pointer_paths:
+        target = _read_config_dir_pointer(pointer_path, install_dir)
+        if target is not None:
+            candidates.append(target)
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = _normalized_resolved_path(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _running_chromium_user_data_dirs() -> set[str]:
+    try:
+        import psutil  # type: ignore
+    except Exception:
+        return set()
+
+    running_dirs: set[str] = set()
+    for proc in psutil.process_iter(["cmdline"]):
+        try:
+            cmdline = proc.info.get("cmdline") or []
+        except Exception:
+            continue
+        if not cmdline:
+            continue
+
+        for index, arg in enumerate(cmdline):
+            arg_text = str(arg or "")
+            user_data_dir = ""
+            if arg_text.startswith("--user-data-dir="):
+                user_data_dir = arg_text.split("=", 1)[1]
+            elif arg_text == "--user-data-dir" and index + 1 < len(cmdline):
+                user_data_dir = str(cmdline[index + 1] or "")
+
+            user_data_dir = user_data_dir.strip().strip('"')
+            if not user_data_dir:
+                continue
+            try:
+                running_dirs.add(_normalized_resolved_path(Path(user_data_dir).expanduser()))
+            except Exception:
+                continue
+    return running_dirs
+
+
+def _cleanup_playwright_singleton_locks(install_dir: Path) -> int:
+    """
+    Remove stale Chromium ProcessSingleton files from IntenseRP-managed profiles.
+
+    These files are lock/IPC markers, not cookies or provider session data. The
+    cleanup is deliberately scoped to config/playwright_profiles and exact file
+    names only, so update installation cannot wander into unrelated browser data.
+    """
+    removed = 0
+    running_user_data_dirs = _running_chromium_user_data_dirs()
+
+    for config_dir in _discover_config_dirs_for_update(install_dir):
+        profiles_root = config_dir / "playwright_profiles"
+        try:
+            profiles_root_resolved = profiles_root.resolve()
+        except Exception:
+            profiles_root_resolved = profiles_root.absolute()
+        if not profiles_root_resolved.exists() or not profiles_root_resolved.is_dir():
+            continue
+
+        try:
+            walker = os.walk(profiles_root_resolved, topdown=True, followlinks=False)
+            for current_dir, dirnames, filenames in walker:
+                names = set(dirnames) | set(filenames)
+                for name in CHROMIUM_SINGLETON_LOCK_FILENAMES:
+                    if name not in names:
+                        continue
+                    lock_path = Path(current_dir) / name
+                    try:
+                        if not _path_is_relative_to(lock_path.parent, profiles_root_resolved):
+                            continue
+                        if lock_path.is_dir() and not lock_path.is_symlink():
+                            continue
+                        profile_key = _normalized_resolved_path(lock_path.parent)
+                        if profile_key in running_user_data_dirs:
+                            continue
+                        lock_path.unlink(missing_ok=True)
+                        removed += 1
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+
+    return removed
+
+
 def _stop_processes_under_dir(install_dir: Path) -> None:
     try:
         import psutil  # type: ignore
@@ -244,6 +382,12 @@ def _perform_update(args: UpdateArgs, *, status_cb, progress_cb) -> None:
     _wait_for_pid(args.app_pid, timeout_s=240.0)
     try:
         _stop_processes_under_dir(install_dir)
+    except Exception:
+        pass
+    try:
+        removed_locks = _cleanup_playwright_singleton_locks(install_dir)
+        if removed_locks:
+            status_cb(f"Removed {removed_locks} stale browser profile lock file(s)…")
     except Exception:
         pass
 
