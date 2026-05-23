@@ -36,19 +36,26 @@ Google AI Studio has a real model picker in the web UI:
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Model**
 
-Currently supported:
+Current model entries:
 
 - `Gemini 3.5 Flash`
 - `Gemini 3.1 Pro`
 - `Gemini 3.1 Flash Lite`
 - `Gemini 3 Flash`
-- `Gemini 2.5 Pro`
-- `Gemini 2.5 Flash`
-- `Gemini 2.5 Flash Lite`
+- `Gemini 2.5 Pro` (paid in AI Studio; requests are rejected)
+- `Gemini 2.5 Flash` (paid in AI Studio; requests are rejected)
+- `Gemini 2.5 Flash Lite` (paid in AI Studio; requests are rejected)
 - `Gemma 4 26B-A4B`
 - `Gemma 4 31B`
 
 This is separate from the API `aistudio-*` behavior presets.
+
+!!! warning "Gemini 2.5 models are no longer served"
+    Gemini 2.5 Pro, Flash, and Flash Lite have become paid in Google AI Studio. IntenseRP keeps their model entries and old thinking-budget mappings so existing settings don't disappear, but runtime requests that resolve to a Gemini 2.5 model stop with:
+
+    `Gemini 2.5 models have become paid in Google AI Studio, and IRP can't serve them.`
+
+    Even if IRP could handle paid AI Studio API keys, using it that way wouldn't make much sense. With a paid key, use the actual AI Studio API directly instead of routing through IRP's browser automation.
 
 ---
 
@@ -109,6 +116,8 @@ Controls the level IntenseRP selects on supported AI Studio models:
 
     For **Gemini 2.5 Pro**, Thinking Mode is always on, so `Minimal`, `Low`, `Medium`, and `High` map to `128`, `8192`, `16384`, and `32768`.
 
+    These mappings are kept for compatibility, but IntenseRP now rejects Gemini 2.5 requests before touching the AI Studio UI because the models are paid there.
+
 !!! note "Gemma 4 models"
     Gemma 4 models currently expose `Minimal` and `High`. When your configured level lands between those two, IntenseRP picks the nearest available level.
 
@@ -138,7 +147,7 @@ AI Studio maps effort values to Thinking Level:
 This is usually nicer than changing the global IRP setting or adding macros to prompts, especially when the client already has a reasoning-effort control.
 
 !!! note "Model-specific rounding"
-    Some AI Studio models expose fewer levels, so IntenseRP picks the closest supported one. Gemini 2.5 Flash, Flash Lite, and Pro also use manual thinking budgets under the hood, so IntenseRP converts the requested level into the matching budget.
+    Some AI Studio models expose fewer levels, so IntenseRP picks the closest supported one. The old Gemini 2.5 budget mappings are still kept for compatibility, but those models are rejected at runtime because they are paid in AI Studio.
 
 ### Send Thinking
 
@@ -423,7 +432,7 @@ All macros are stripped before sending.
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
-| **Model** | Selects AI Studio's real model picker | Gemini 2.5 Flash |
+| **Model** | Selects AI Studio's real model picker | Gemini 3.1 Pro |
 | **Enable Thinking** | Uses a higher Thinking Level on supported AI Studio models | Off |
 | **Thinking Level** | Picks the Thinking Level when Thinking is enabled | Medium |
 | **Send Thinking** | Includes AI Studio thinking summaries in response | Off |

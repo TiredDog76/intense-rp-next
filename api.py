@@ -865,6 +865,40 @@ class API:
 
         raise HTTPException(status_code=400, detail=detail)
 
+    @staticmethod
+    def _run_model_availability_validator(
+        model: Any,
+        slot: RuntimeExecutionSlot,
+        validator_name: str,
+    ) -> None:
+        validator = getattr(slot.driver, validator_name, None)
+        if not callable(validator):
+            return
+
+        try:
+            validator(model)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            detail = str(exc) or f"Model `{model or '<empty>'}` is not available."
+            raise HTTPException(status_code=400, detail=detail) from exc
+
+    @classmethod
+    def _ensure_request_model_available(cls, model: Any, slot: RuntimeExecutionSlot) -> None:
+        cls._run_model_availability_validator(
+            model,
+            slot,
+            "validate_request_model_available",
+        )
+
+    @classmethod
+    def _ensure_explicit_request_model_available(cls, model: Any, slot: RuntimeExecutionSlot) -> None:
+        cls._run_model_availability_validator(
+            model,
+            slot,
+            "validate_explicit_request_model_available",
+        )
+
     def _accept_api_reasoning_effort(self) -> bool:
         cfg = getattr(self.driver, "config_manager", None)
         if cfg is None:
@@ -1307,8 +1341,10 @@ class API:
 
             target_slot = self._resolve_request_slot(request.model)
             target_provider = target_slot.provider
+            self._ensure_explicit_request_model_available(request.model, target_slot)
             self._ensure_supported_model_id(request.model, target_provider)
             driver_model = self._resolve_driver_model_for_request(request, target_provider)
+            self._ensure_request_model_available(driver_model, target_slot)
 
             # Log incoming request
             msg_count = len(request.messages)
@@ -1442,11 +1478,13 @@ class API:
 
             target_slot = self._resolve_request_slot(request.model)
             target_provider = target_slot.provider
+            self._ensure_explicit_request_model_available(request.model, target_slot)
             self._ensure_supported_model_id(request.model, target_provider)
 
             normalized_prompt = _normalize_text_completion_prompt(request.prompt)
             normalized_request = request.model_copy(update={"prompt": normalized_prompt})
             driver_model = self._resolve_driver_model_for_request(normalized_request, target_provider)
+            self._ensure_request_model_available(driver_model, target_slot)
 
             prompt_length = len(normalized_prompt)
             stream_mode = "streaming" if normalized_request.stream else "non-streaming"

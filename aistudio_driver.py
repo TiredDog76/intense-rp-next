@@ -158,6 +158,9 @@ class AIStudioDriver(BaseDriver):
     AUTH_HOST_MARKER = "accounts.google.com"
     DEFAULT_MODEL_LABEL = "Gemini 3.1 Pro"
     DEFAULT_MAX_OUTPUT_TOKENS = 65536
+    GEMINI_25_PAID_MODEL_ERROR = (
+        "Gemini 2.5 models have become paid in Google AI Studio, and IRP can't serve them."
+    )
     MODEL_FAMILY_FILTER_LABEL = "All"
     GENERATE_ROUTE_GLOB = (
         "**/$rpc/google.internal.alkali.applications.makersuite.v1.MakerSuiteService/GenerateContent*"
@@ -1058,16 +1061,49 @@ class AIStudioDriver(BaseDriver):
         return list(self.MODEL_CONFIGS.keys())
 
     def _get_model_label_for_request(self, model: Any = None) -> str:
+        return self._resolve_model_label_for_request(model)
+
+    def _resolve_model_label_for_request(
+        self,
+        model: Any = None,
+        *,
+        model_label_override: str | None = None,
+    ) -> str:
+        configured_label = self._get_configured_model_label()
         override = resolve_real_model_label_from_model_id(
             self.provider,
             model,
             self.api_real_model_labels(),
         )
-        return override or self._get_configured_model_label()
+        override_label = str(model_label_override or override or "").strip()
+        return override_label if override_label in self.MODEL_CONFIGS else configured_label
 
     @classmethod
     def _model_config_for_label(cls, label: str) -> Dict[str, Any]:
         return dict(cls.MODEL_CONFIGS.get(label) or cls.MODEL_CONFIGS[cls.DEFAULT_MODEL_LABEL])
+
+    @staticmethod
+    def _is_paid_gemini_25_model_config(model_config: Dict[str, Any]) -> bool:
+        model_base_id = str(model_config.get("base_id") or "").strip().lower()
+        return model_base_id.startswith("gemini-2.5-")
+
+    @classmethod
+    def _raise_if_model_unavailable(cls, model_config: Dict[str, Any]) -> None:
+        if cls._is_paid_gemini_25_model_config(model_config):
+            raise RuntimeError(cls.GEMINI_25_PAID_MODEL_ERROR)
+
+    def validate_request_model_available(self, model: Any = None) -> None:
+        desired_label = self._resolve_model_label_for_request(model)
+        self._raise_if_model_unavailable(self._model_config_for_label(desired_label))
+
+    def validate_explicit_request_model_available(self, model: Any = None) -> None:
+        desired_label = resolve_real_model_label_from_model_id(
+            self.provider,
+            model,
+            self.api_real_model_labels(),
+        )
+        if desired_label:
+            self._raise_if_model_unavailable(self._model_config_for_label(desired_label))
 
     @classmethod
     def _model_max_output_tokens(cls, model_config: Dict[str, Any]) -> int:
@@ -1256,6 +1292,7 @@ class AIStudioDriver(BaseDriver):
     async def apply_configured_model(self, model: Any = None) -> None:
         """Apply the currently configured model label to the AI Studio UI."""
         desired_label = self._get_model_label_for_request(model)
+        self._raise_if_model_unavailable(self._model_config_for_label(desired_label))
         try:
             await self._ensure_model_selected(desired_label)
         except Exception as e:
@@ -1437,15 +1474,12 @@ class AIStudioDriver(BaseDriver):
             real_model_labels=self.api_real_model_labels(),
         )
 
-        configured_label = self._get_configured_model_label()
-        request_label_override = resolve_real_model_label_from_model_id(
-            self.provider,
+        desired_label = self._resolve_model_label_for_request(
             requested_model,
-            self.api_real_model_labels(),
+            model_label_override=model_label_override,
         )
-        override_label = str(model_label_override or request_label_override or "").strip()
-        desired_label = override_label if override_label in self.MODEL_CONFIGS else configured_label
         model_config = self._model_config_for_label(desired_label)
+        self._raise_if_model_unavailable(model_config)
         model_base_id = str(model_config.get("base_id") or "").strip().lower()
         force_search = self._model_forces_search(model_config)
         supports_url_context = self._model_supports_url_context(model_config)

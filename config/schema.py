@@ -1146,7 +1146,7 @@ SCHEMA = [
                 key="model",
                 label="Model",
                 type=SettingType.DROPDOWN,
-                default="Gemini 2.5 Flash",
+                default="Gemini 3.1 Pro",
                 options=[
                     "Gemini 3.5 Flash",
                     "Gemini 3.1 Pro",

@@ -974,6 +974,16 @@ class BaseDriver(ABC):
         """Return real provider model labels that can be exposed as API model IDs."""
         return []
 
+    def validate_explicit_request_model_available(self, model: Any = None) -> None:
+        """Raise if the explicit API model ID names a known but unavailable model."""
+        _ = model
+        return None
+
+    def validate_request_model_available(self, model: Any = None) -> None:
+        """Raise if the resolved provider model for this request is unavailable."""
+        _ = model
+        return None
+
     async def apply_configured_model(self, model: Any = None) -> None:
         """
         Optional hook: make sure the provider's *real* model selection is applied.

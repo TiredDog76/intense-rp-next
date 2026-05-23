@@ -148,7 +148,7 @@ For most providers, effort values are simplified into the existing reasoning tog
 For Google AI Studio, explicit efforts are mapped to Thinking Level instead: `minimum`/`minimal` -> `Minimal`, `low` -> `Low`, `medium` -> `Medium`, and `high`/`max`/`xhigh` -> `High`. If no effort is sent, IntenseRP still treats that as chat/off mode because clients like SillyTavern use "Auto" by omitting the field.
 
 !!! note "AI Studio rounding"
-    AI Studio models don't expose the same controls. IntenseRP may round to the closest available Thinking Level, or convert the level into a manual thinking budget on Gemini 2.5 models.
+    AI Studio models don't expose the same controls. IntenseRP may round to the closest available Thinking Level. The old Gemini 2.5 manual thinking-budget mappings are still kept in the driver, but requests that resolve to Gemini 2.5 are rejected because those models have become paid in AI Studio.
 
 !!! info "What these IDs are (and are not)"
     Provider-prefixed and `intenserp-*` IDs are behavior presets. IntenseRP uses them to decide which provider UI toggles to click before sending.
