@@ -397,6 +397,15 @@ If you see a warning about the language:
 2. Reload the AI Studio tab
 3. Retry / restart the browser from IntenseRP if needed
 
+### Assume English UI
+
+If AI Studio reports the wrong language value (and complains that the UI must be in English) while the visible page is actually English, you can bypass that detection:
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Assume English UI**
+
+!!! warning "Last resort"
+    Leave this off unless you're absolutely sure the AI Studio UI is English. It does not translate the page or make non-English buttons searchable; it only tells IntenseRP to skip the language safety check.
+
 ---
 
 ## :material-code-tags: Per-message macros
@@ -451,6 +460,7 @@ All macros are stripped before sending.
 | **Top P** | Default top-p value | `0.95` |
 | **Max Output Tokens** | Default output token budget | `65536` |
 | **Auto Login Redirect Timeout (s)** | Wait before falling back to manual Google completion | `15` |
+| **Assume English UI** | Skips AI Studio's `<html lang>` safety check when the visible UI is definitely English | Off |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 | **Preflight Next Chat** | Prepares a blank chat after successful responses | Off |
 

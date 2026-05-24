@@ -148,6 +148,7 @@ Fine-tune how Google AI Studio processes your requests.
 | **Anti-Censorship** | Detects blocked turns and runs the edit + continue workaround |
 | **Temperature / Top P / Max Output Tokens** | Applies supported AI Studio sampling controls before sending |
 | **Safety Filters** | Lowers AI Studio's safety sliders automatically once per browser session |
+| **Assume English UI** | Last-resort language-check override when the visible AI Studio page is definitely English |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts instead of opening a new chat |
 
 ---

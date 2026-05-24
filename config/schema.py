@@ -1404,6 +1404,34 @@ SCHEMA = [
                 docs_anchor="auto-login-redirect-timeout",
             ),
             SettingField(
+                key="assume_english_ui",
+                label="Assume English UI",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Ignore AI Studio's <html lang> value and treat "
+                    "the visible UI as English. Only enable this when you are absolutely "
+                    "sure the AI Studio page itself is in English."
+                ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="assume-english-ui",
+            ),
+            SettingField(
+                key="assume_english_ui_warning",
+                label="This is a last-resort override!",
+                type=SettingType.HINT,
+                default=(
+                    "Only use this when the visible AI Studio page is actually English. "
+                    "It skips the <html lang> safety check, so a genuinely non-English UI "
+                    "can still break automation."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="aistudio_behavior.assume_english_ui",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="assume-english-ui",
+            ),
+            SettingField(
                 key="clean_regeneration",
                 label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
@@ -2676,6 +2704,6 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
-        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "clean_regeneration", "preflight_next_chat"]},
+        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "assume_english_ui", "assume_english_ui_warning", "clean_regeneration", "preflight_next_chat"]},
     ],
 }

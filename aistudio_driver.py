@@ -427,6 +427,7 @@ class AIStudioDriver(BaseDriver):
         self._preflight_ready = False
         self._preflight_state: Optional[Dict[str, Any]] = None
         self._preflight_system_prompt_text = ""
+        self._assume_english_ui_notice_logged = False
 
     def get_start_url(self) -> str:
         return self.START_URL
@@ -896,6 +897,12 @@ class AIStudioDriver(BaseDriver):
             value = 15
         return float(min(max(value, 5), 120))
 
+    def _assume_english_ui_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("aistudio_behavior", "assume_english_ui"))
+        except Exception:
+            return False
+
     async def login(self) -> None:
         """Ensure the browser reaches an authenticated AI Studio chat session.
 
@@ -995,6 +1002,15 @@ class AIStudioDriver(BaseDriver):
         if self.AUTH_HOST_MARKER in current_url:
             # Google login can temporarily use whatever language the account/browser is already in
             # We only enforce English on the actual AI Studio page
+            return "en"
+
+        if self._assume_english_ui_enabled():
+            if not self._assume_english_ui_notice_logged:
+                self._assume_english_ui_notice_logged = True
+                Logger.warning(
+                    "Google AI Studio: Assume English UI is enabled; skipping the document "
+                    "language check. Only use this when the visible AI Studio UI is English."
+                )
             return "en"
 
         try:
