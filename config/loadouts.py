@@ -305,10 +305,10 @@ def _validate_field_value(prefix: str, field: SettingField, value: Any) -> Any:
     normalized = _validate_field_type(prefix, field, value)
 
     try:
-        if field.type == SettingType.INPUT_LIST and field.validator:
-            normalize_ip_list(normalized)
-        elif field.validator:
+        if field.validator:
             field.validator(normalized)
+        if field.type == SettingType.INPUT_LIST and field.key == "ip_whitelist":
+            normalized = normalize_ip_list(normalized)
     except ValueError as exc:
         raise LoadoutValidationError(f"{prefix}: '{field.key}' is invalid: {exc}") from exc
 

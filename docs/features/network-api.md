@@ -130,7 +130,7 @@ For most providers, this is mapped to the existing on/off reasoning controls:
 Google AI Studio is more granular: `minimum`/`minimal`, `low`, `medium`, and `high` map to AI Studio's Thinking Level controls instead. Very high values like `max` and `xhigh` are rounded to `High`.
 
 !!! warning "Gemini 2.5 in AI Studio"
-    Gemini 2.5 models are paid in Google AI Studio now, so IntenseRP rejects AI Studio requests that resolve to Gemini 2.5 with: `Gemini 2.5 models have become paid in Google AI Studio, and IRP can't serve them.`
+    Gemini 2.5 models are paid in Google AI Studio now, so IntenseRP rejects AI Studio requests that resolve to Gemini 2.5 unless **Assume Paid Model Access** is enabled for the active AI Studio account.
 
 Disable this setting, or remove a provider from **Reasoning Effort Providers**, if you want API `model` IDs, Provider Behavior settings, and AI Studio macros to be the only things that control reasoning.
 
@@ -266,7 +266,7 @@ When Providers in Parallel exposes real-model IDs, only exact conflicts get prov
     | `aistudio-chat` | Suppresses `<think>` output and lowers Thinking Level on supported AI Studio models |
     | `aistudio-reasoner` | Uses your configured Thinking Level and Send Thinking setting |
 
-    Requests that resolve to Gemini 2.5 are rejected because those models have become paid in AI Studio. A paid AI Studio API key is better used with the actual AI Studio API instead of IRP.
+    Requests that resolve to Gemini 2.5 require **Assume Paid Model Access**, because those models have become paid in AI Studio. A paid AI Studio API key is still better used with the actual AI Studio API instead of IRP.
 
 ---
 

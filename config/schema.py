@@ -5,6 +5,7 @@ from .validators import (
     validate_port,
     validate_directory_path,
     validate_ip_address_list,
+    validate_email_list,
     validate_float_range,
     validate_integer_range,
 )
@@ -1702,6 +1703,48 @@ SCHEMA = [
                 docs_anchor="assume-english-ui",
             ),
             SettingField(
+                key="assume_paid_model_access",
+                label="Assume Paid Model Access",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Allow Gemini 2.5 models in Google AI Studio. Only enable this when you are "
+                    "absolutely sure the active AI Studio account has paid model access."
+                ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="assume-paid-model-access",
+            ),
+            SettingField(
+                key="assume_paid_model_access_warning",
+                label="Only for accounts you know can use Gemini 2.5",
+                type=SettingType.HINT,
+                default=(
+                    "This does not buy access or bypass AI Studio account limits. If the email list "
+                    "below is empty, IntenseRP assumes every AI Studio account has access. If you add "
+                    "emails, only those accounts are treated as paid-access accounts."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="aistudio_behavior.assume_paid_model_access",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="assume-paid-model-access",
+            ),
+            SettingField(
+                key="paid_model_access_emails",
+                label="Paid Model Access Emails",
+                type=SettingType.INPUT_LIST,
+                default=[],
+                tooltip=(
+                    "Optional list of Google account emails that can use paid Gemini 2.5 models "
+                    "in AI Studio. Leave empty to assume all AI Studio accounts have access."
+                ),
+                validator=validate_email_list,
+                depends="aistudio_behavior.assume_paid_model_access",
+                visible_depends="aistudio_behavior.assume_paid_model_access",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="assume-paid-model-access",
+            ),
+            SettingField(
                 key="clean_regeneration",
                 label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
@@ -3006,6 +3049,6 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
-        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "assume_english_ui", "assume_english_ui_warning", "clean_regeneration", "preflight_next_chat"]},
+        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "assume_english_ui", "assume_english_ui_warning", "assume_paid_model_access", "assume_paid_model_access_warning", "paid_model_access_emails", "clean_regeneration", "preflight_next_chat"]},
     ],
 }

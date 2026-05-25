@@ -741,7 +741,25 @@ class API:
     def _get_default_provider(self) -> DriverProvider:
         return self._get_default_slot().provider
 
-    def _select_execution_slot_for_provider(self, provider: DriverProvider) -> RuntimeExecutionSlot:
+    @staticmethod
+    def _slot_can_handle_request_model(slot: RuntimeExecutionSlot, model: Any) -> bool:
+        checker = getattr(slot.driver, "can_handle_request_model", None)
+        if not callable(checker):
+            return True
+
+        try:
+            return bool(checker(model))
+        except Exception as exc:
+            Logger.debug(
+                f"{slot.label}: failed to check account-specific model availability: {exc}"
+            )
+            return True
+
+    def _select_execution_slot_for_provider(
+        self,
+        provider: DriverProvider,
+        model: Any = None,
+    ) -> RuntimeExecutionSlot:
         all_slots = self._get_execution_slots_for_provider(provider)
         if not all_slots:
             raise KeyError(f"No execution slot is registered for provider: {provider.value}")
@@ -755,6 +773,14 @@ class API:
                     "Restart services to relaunch this provider."
                 ),
             )
+
+        if model is not None:
+            model_capable_slots = [
+                slot for slot in slots
+                if self._slot_can_handle_request_model(slot, model)
+            ]
+            if model_capable_slots:
+                slots = model_capable_slots
 
         if len(slots) == 1:
             selected = slots[0]
@@ -826,7 +852,7 @@ class API:
 
     def _resolve_request_slot(self, model: Any) -> RuntimeExecutionSlot:
         provider = self._resolve_request_provider(model)
-        return self._select_execution_slot_for_provider(provider)
+        return self._select_execution_slot_for_provider(provider, model)
 
     def _ensure_supported_model_id(self, model: Any, provider: DriverProvider) -> None:
         normalized = str(model or "").strip()

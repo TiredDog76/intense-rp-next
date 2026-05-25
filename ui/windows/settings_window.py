@@ -1385,7 +1385,11 @@ class SettingsWindow(QMainWindow):
                 )
             )
         elif field.type == SettingType.INPUT_LIST:
-            widget = InputListWidget(placeholder="127.0.0.1")
+            placeholder = "account@example.com" if (
+                category_key == "aistudio_behavior"
+                and field.key == "paid_model_access_emails"
+            ) else "127.0.0.1"
+            widget = InputListWidget(placeholder=placeholder)
             widget.itemsChanged.connect(self._on_setting_changed)
 
         elif field.type == SettingType.MULTI_SELECT_DROPDOWN:
@@ -4796,7 +4800,7 @@ class SettingsWindow(QMainWindow):
                         elif field.validator:
                             try:
                                 field.validator(value)
-                                if field.type == SettingType.INPUT_LIST:
+                                if field.type == SettingType.INPUT_LIST and field.key == "ip_whitelist":
                                     value = normalize_ip_list(value)
                                 if isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                                     widget.set_error(False)

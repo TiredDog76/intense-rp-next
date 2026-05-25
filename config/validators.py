@@ -43,6 +43,31 @@ def validate_email(value: str):
         raise ValueError("Invalid email address format.")
 
 
+def validate_email_list(value) -> None:
+    """
+    Validate a list of email addresses.
+
+    Empty lists are allowed because some settings use an empty list to mean
+    "all accounts".
+    """
+    if value is None:
+        return
+
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("Expected a list of email addresses.")
+
+    seen: set[str] = set()
+    for index, item in enumerate(value, start=1):
+        email = str(item or "").strip()
+        if not email:
+            continue
+        normalized = email.lower()
+        if normalized in seen:
+            raise ValueError(f"Duplicate email address on row {index}.")
+        validate_email(email)
+        seen.add(normalized)
+
+
 def validate_port(value: int):
     """
     Validates that the value is a valid TCP/UDP port number.

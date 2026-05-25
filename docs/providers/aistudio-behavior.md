@@ -42,20 +42,20 @@ Current model entries:
 - `Gemini 3.1 Pro`
 - `Gemini 3.1 Flash Lite`
 - `Gemini 3 Flash`
-- `Gemini 2.5 Pro` (paid in AI Studio; requests are rejected)
-- `Gemini 2.5 Flash` (paid in AI Studio; requests are rejected)
-- `Gemini 2.5 Flash Lite` (paid in AI Studio; requests are rejected)
+- `Gemini 2.5 Pro` (paid in AI Studio; requires the paid-access override)
+- `Gemini 2.5 Flash` (paid in AI Studio; requires the paid-access override)
+- `Gemini 2.5 Flash Lite` (paid in AI Studio; requires the paid-access override)
 - `Gemma 4 26B-A4B`
 - `Gemma 4 31B`
 
 This is separate from the API `aistudio-*` behavior presets.
 
-!!! warning "Gemini 2.5 models are no longer served"
-    Gemini 2.5 Pro, Flash, and Flash Lite have become paid in Google AI Studio. IntenseRP keeps their model entries and old thinking-budget mappings so existing settings don't disappear, but runtime requests that resolve to a Gemini 2.5 model stop with:
+!!! warning "Gemini 2.5 models need paid account access"
+    Gemini 2.5 Pro, Flash, and Flash Lite have become paid in Google AI Studio. IntenseRP keeps their model entries and old thinking-budget mappings so existing settings don't disappear, but runtime requests that resolve to a Gemini 2.5 model stop unless **Assume Paid Model Access** is enabled for the active account.
 
     `Gemini 2.5 models have become paid in Google AI Studio, and IRP can't serve them.`
 
-    Even if IRP could handle paid AI Studio API keys, using it that way wouldn't make much sense. With a paid key, use the actual AI Studio API directly instead of routing through IRP's browser automation.
+    This is an account-access override, not a way to buy or bypass access. If a paid AI Studio API key is available, the actual AI Studio API is usually the cleaner path.
 
 ---
 
@@ -83,6 +83,17 @@ If Auto Login fills your credentials but Google does not return to AI Studio qui
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Auto Login Redirect Timeout (s)**
 
 Default is 15 seconds.
+
+### Assume Paid Model Access
+
+If your Google AI Studio account can use the paid Gemini 2.5 models in the web UI, you can allow IntenseRP to use those model entries again:
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Assume Paid Model Access**
+
+When enabled, **Paid Model Access Emails** appears below it. Leave that list empty to assume every AI Studio account has access. Add one or more emails to restrict Gemini 2.5 requests to only those accounts.
+
+!!! warning "Be picky here"
+    Only enable this when you're sure the account really has Gemini 2.5 access in AI Studio. With **Providers in Parallel**, IntenseRP uses the email list to route Gemini 2.5 requests to matching AI Studio lanes when it can. Accounts not on the list are treated as not having access.
 
 ---
 
@@ -116,7 +127,7 @@ Controls the level IntenseRP selects on supported AI Studio models:
 
     For **Gemini 2.5 Pro**, Thinking Mode is always on, so `Minimal`, `Low`, `Medium`, and `High` map to `128`, `8192`, `16384`, and `32768`.
 
-    These mappings are kept for compatibility, but IntenseRP now rejects Gemini 2.5 requests before touching the AI Studio UI because the models are paid there.
+    These mappings are kept for compatibility. Gemini 2.5 requests are allowed only when **Assume Paid Model Access** says the active account can use them.
 
 !!! note "Gemma 4 models"
     Gemma 4 models currently expose `Minimal` and `High`. When your configured level lands between those two, IntenseRP picks the nearest available level.
@@ -461,6 +472,8 @@ All macros are stripped before sending.
 | **Max Output Tokens** | Default output token budget | `65536` |
 | **Auto Login Redirect Timeout (s)** | Wait before falling back to manual Google completion | `15` |
 | **Assume English UI** | Skips AI Studio's `<html lang>` safety check when the visible UI is definitely English | Off |
+| **Assume Paid Model Access** | Allows Gemini 2.5 requests for accounts that have paid AI Studio access | Off |
+| **Paid Model Access Emails** | Optional allowlist for paid-access Google accounts | (empty) |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 | **Preflight Next Chat** | Prepares a blank chat after successful responses | Off |
 

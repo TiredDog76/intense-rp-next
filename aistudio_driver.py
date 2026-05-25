@@ -1072,10 +1072,93 @@ class AIStudioDriver(BaseDriver):
         model_base_id = str(model_config.get("base_id") or "").strip().lower()
         return model_base_id.startswith("gemini-2.5-")
 
-    @classmethod
-    def _raise_if_model_unavailable(cls, model_config: Dict[str, Any]) -> None:
-        if cls._is_paid_gemini_25_model_config(model_config):
-            raise RuntimeError(cls.GEMINI_25_PAID_MODEL_ERROR)
+    @staticmethod
+    def _normalize_account_email(email: Any) -> str:
+        return str(email or "").strip().lower()
+
+    @staticmethod
+    def _normalize_paid_model_access_email_list(raw_value: Any) -> set[str]:
+        if isinstance(raw_value, str):
+            raw_items = re.split(r"[\s,;]+", raw_value)
+        elif isinstance(raw_value, (list, tuple, set)):
+            raw_items = raw_value
+        else:
+            raw_items = ()
+
+        emails: set[str] = set()
+        for raw_item in raw_items:
+            email = AIStudioDriver._normalize_account_email(raw_item)
+            if email:
+                emails.add(email)
+        return emails
+
+    def _assume_paid_model_access_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("aistudio_behavior", "assume_paid_model_access"))
+        except Exception:
+            return False
+
+    def _paid_model_access_emails(self) -> set[str]:
+        try:
+            raw_value = self.config_manager.get_setting(
+                "aistudio_behavior",
+                "paid_model_access_emails",
+            )
+        except Exception:
+            raw_value = None
+        return self._normalize_paid_model_access_email_list(raw_value)
+
+    def _active_account_email(self) -> str:
+        try:
+            pair = self.ece_active_pair()
+        except Exception:
+            pair = None
+        return self._normalize_account_email(getattr(pair, "email", None) if pair else None)
+
+    def _paid_gemini_25_access_allowed_for_current_account(self) -> bool:
+        if not self._assume_paid_model_access_enabled():
+            return False
+
+        allowed_emails = self._paid_model_access_emails()
+        if not allowed_emails:
+            return True
+
+        active_email = self._active_account_email()
+        return bool(active_email and active_email in allowed_emails)
+
+    def _paid_gemini_25_model_error(self) -> str:
+        if not self._assume_paid_model_access_enabled():
+            return (
+                f"{self.GEMINI_25_PAID_MODEL_ERROR} Enable Assume Paid Model Access only "
+                "for AI Studio accounts that you know can use Gemini 2.5."
+            )
+
+        allowed_emails = self._paid_model_access_emails()
+        if allowed_emails:
+            active_email = self._active_account_email()
+            account_label = f"`{active_email}`" if active_email else "the current manual account"
+            return (
+                "Gemini 2.5 models require paid access in Google AI Studio. "
+                "Assume Paid Model Access is enabled, but "
+                f"{account_label} is not listed in Paid Model Access Emails."
+            )
+
+        return self.GEMINI_25_PAID_MODEL_ERROR
+
+    def _raise_if_model_unavailable(self, model_config: Dict[str, Any]) -> None:
+        if (
+            self._is_paid_gemini_25_model_config(model_config)
+            and not self._paid_gemini_25_access_allowed_for_current_account()
+        ):
+            raise RuntimeError(self._paid_gemini_25_model_error())
+
+    def can_handle_request_model(self, model: Any = None) -> bool:
+        """Return whether this account-backed driver can handle the requested model."""
+        desired_label = self._resolve_model_label_for_request(model)
+        model_config = self._model_config_for_label(desired_label)
+        if not self._is_paid_gemini_25_model_config(model_config):
+            return True
+        return self._paid_gemini_25_access_allowed_for_current_account()
 
     def validate_request_model_available(self, model: Any = None) -> None:
         desired_label = self._resolve_model_label_for_request(model)
