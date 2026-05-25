@@ -15,6 +15,7 @@ PROVIDER_ICON_MAP: dict[str, str] = {
     "Moonshot": "providers/moonshot.svg",
     "QwenLM": "providers/qwen.svg",
     "Perplexity": "providers/perplexity.svg",
+    "HuggingChat": "providers/huggingface.svg",
     "Google AI Studio": "providers/aistudio.svg",
 }
 
@@ -24,6 +25,7 @@ ALL_PROVIDERS: list[str] = [
     "Moonshot",
     "QwenLM",
     "Perplexity",
+    "HuggingChat",
     "Google AI Studio",
 ]
 

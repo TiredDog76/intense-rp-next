@@ -23,6 +23,7 @@ Right now this works on:
 - GLM Chat
 - Moonshot / Kimi
 - QwenLM
+- HuggingChat
 
 It does **not** apply to **Perplexity** or **Google AI Studio**. Perplexity does not have a stable cleanup path yet, and AI Studio already starts chats with its incognito mode, so there is nothing useful for IntenseRP to auto-delete there.
 
@@ -36,6 +37,7 @@ You enable it from the provider Behavior page for the provider you are using:
 - **Provider Behavior** -> **GLM Chat** -> **Delete Chat After Reply**
 - **Provider Behavior** -> **Moonshot** -> **Delete Chat After Reply**
 - **Provider Behavior** -> **QwenLM** -> **Delete Chat After Reply**
+- **Provider Behavior** -> **HuggingChat** -> **Delete Chat After Reply**
 
 ---
 
@@ -75,6 +77,7 @@ When GLM sends its throwaway cache-buster prompt, IntenseRP deletes that tempora
 - [:material-refresh: GLM Behavior](../providers/glm-behavior.md#delete-chat-after-reply)
 - [:material-refresh: Moonshot Behavior](../providers/moonshot-behavior.md#delete-chat-after-reply)
 - [:material-refresh: QwenLM Behavior](../providers/qwen-behavior.md#delete-chat-after-reply)
+- [:material-refresh: HuggingChat Behavior](../providers/huggingchat-behavior.md#delete-chat-after-reply)
 - [:material-layers-triple-outline: Search Older Matching Chats](multi-slot-cache.md)
 - [:material-file-code-outline: Loadouts](../experimental/loadouts.md)
 

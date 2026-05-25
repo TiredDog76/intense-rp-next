@@ -27,7 +27,16 @@ from ece.models import CredentialPair
 from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
 from ui.niche.hotswap_dialog import ALL_PROVIDERS, PROVIDER_ICON_MAP
-from ui.widgets.components import MultiColumnRow, SettingRow, StyledButton, StyledLineEdit, Tumbler, ToggleRow
+from ui.widgets.components import (
+    MultiColumnRow,
+    SettingRow,
+    StyledButton,
+    StyledComboBox,
+    StyledLineEdit,
+    StyledTextEdit,
+    Tumbler,
+    ToggleRow,
+)
 from ui.widgets.smooth_scroll_area import SmoothScrollArea
 from ui.widgets.step_progress import StepProgressBar
 from utils.api_key_generator import generate_api_key
@@ -61,6 +70,10 @@ class QuickSetupState:
     paste_system_instructions_into_space: bool = False
     enable_url_context: bool = False
     use_system_prompt_field: bool = False
+    huggingchat_inference_provider: str = "auto"
+    huggingchat_thinking_effort: str = "auto"
+    huggingchat_text_file_message: str = "Please read the attached file and respond to it."
+    huggingchat_auto_disable_ratelimited_accounts: bool = False
 
 
 class ProviderChoiceCard(QFrame):
@@ -321,6 +334,10 @@ class WelcomeWindow(QDialog):
         state.paste_system_instructions_into_space = False
         state.enable_url_context = False
         state.use_system_prompt_field = False
+        state.huggingchat_inference_provider = "auto"
+        state.huggingchat_thinking_effort = "auto"
+        state.huggingchat_text_file_message = "Please read the attached file and respond to it."
+        state.huggingchat_auto_disable_ratelimited_accounts = False
 
         if provider == DriverProvider.PERPLEXITY:
             state.use_perplexity_spaces = bool(config.get_setting("perplexity_behavior", "use_spaces"))
@@ -334,6 +351,26 @@ class WelcomeWindow(QDialog):
             state.enable_url_context = bool(config.get_setting("aistudio_behavior", "enable_url_context"))
             state.use_system_prompt_field = bool(
                 config.get_setting("aistudio_behavior", "use_system_prompt_field")
+            )
+        elif provider == DriverProvider.HUGGINGCHAT:
+            state.use_system_prompt_field = bool(
+                config.get_setting("huggingchat_behavior", "use_system_prompt_field")
+            )
+            state.huggingchat_inference_provider = str(
+                config.get_setting("huggingchat_behavior", "inference_provider") or "auto"
+            ).strip() or "auto"
+            state.huggingchat_thinking_effort = str(
+                config.get_setting("huggingchat_behavior", "thinking_effort") or "auto"
+            ).strip() or "auto"
+            state.huggingchat_text_file_message = str(
+                config.get_setting("huggingchat_behavior", "text_file_message")
+                or "Please read the attached file and respond to it."
+            )
+            state.huggingchat_auto_disable_ratelimited_accounts = bool(
+                config.get_setting(
+                    "huggingchat_behavior",
+                    "auto_disable_ratelimited_accounts",
+                )
             )
 
     def _build_card(self) -> QFrame:
@@ -405,7 +442,7 @@ class WelcomeWindow(QDialog):
 
         desc = QLabel(
             "IntenseRP Next is a local OpenAI-compatible API + desktop app that drives provider web UIs "
-            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio) in a real browser, so clients like SillyTavern can use them "
+            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio) in a real browser, so clients like SillyTavern can use them "
             "without wiring up the paid official APIs."
         )
         desc.setWordWrap(True)
@@ -700,6 +737,8 @@ class WelcomeWindow(QDialog):
                 desc = "Email/password login, very smooth experience."
             elif provider == "Perplexity":
                 desc = "Email-code login. Persistent Sessions are strongly recommended."
+            elif provider == "HuggingChat":
+                desc = "Hugging Face login. Small monthly credits, but good model variety."
             elif provider == "Google AI Studio":
                 desc = "Google login with AI Studio models. Persistent sessions recommended."
 
@@ -730,7 +769,7 @@ class WelcomeWindow(QDialog):
         self._auto_login_row = ToggleRow(
             "Enable Auto Login",
             self._auto_login,
-            description="Fill credentials automatically (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio).",
+            description="Fill credentials automatically (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio).",
         )
         layout.addWidget(self._auto_login_row, 0)
 
@@ -938,6 +977,27 @@ class WelcomeWindow(QDialog):
         )
         layout.addWidget(self._use_system_prompt_field_row, 0)
 
+        self._huggingchat_inference_provider = StyledLineEdit()
+        self._huggingchat_inference_provider.setPlaceholderText("auto")
+        self._huggingchat_inference_provider.setText(self._state.huggingchat_inference_provider)
+        self._huggingchat_inference_provider_row = SettingRow(
+            "HuggingChat Inference Provider",
+            self._huggingchat_inference_provider,
+            description="Usually leave this as auto. Advanced users can enter values like together or featherless-ai.",
+        )
+        layout.addWidget(self._huggingchat_inference_provider_row, 0)
+
+        self._huggingchat_auto_disable = Tumbler()
+        self._huggingchat_auto_disable.setChecked(
+            bool(self._state.huggingchat_auto_disable_ratelimited_accounts)
+        )
+        self._huggingchat_auto_disable_row = ToggleRow(
+            "Auto-Disable Spent HChat Accounts",
+            self._huggingchat_auto_disable,
+            description="When HuggingChat shows Upgrade Required, disable that saved account so rotation can skip it.",
+        )
+        layout.addWidget(self._huggingchat_auto_disable_row, 0)
+
         self._enable_reasoning = Tumbler()
         self._enable_reasoning.setChecked(bool(self._state.enable_reasoning))
         self._enable_reasoning.stateChanged.connect(lambda *_: self._on_reasoning_toggles_changed())
@@ -947,6 +1007,21 @@ class WelcomeWindow(QDialog):
             description="Turns on the provider's reasoning toggle (DeepThink / Thinking).",
         )
         layout.addWidget(self._enable_reasoning_row, 0)
+
+        self._huggingchat_thinking_effort = StyledComboBox()
+        self._huggingchat_thinking_effort.addItems(["auto", "default", "low", "medium", "high"])
+        if self._state.huggingchat_thinking_effort not in {
+            self._huggingchat_thinking_effort.itemText(i)
+            for i in range(self._huggingchat_thinking_effort.count())
+        }:
+            self._huggingchat_thinking_effort.addItem(self._state.huggingchat_thinking_effort)
+        self._huggingchat_thinking_effort.setCurrentText(self._state.huggingchat_thinking_effort)
+        self._huggingchat_thinking_effort_row = SettingRow(
+            "HuggingChat Thinking Effort",
+            self._huggingchat_thinking_effort,
+            description="Used when HuggingChat Thinking is enabled and the selected model exposes the control.",
+        )
+        layout.addWidget(self._huggingchat_thinking_effort_row, 0)
 
         self._send_reasoning = Tumbler()
         self._send_reasoning.setChecked(bool(self._state.send_reasoning))
@@ -977,12 +1052,22 @@ class WelcomeWindow(QDialog):
 
         self._send_as_text_file = Tumbler()
         self._send_as_text_file.setChecked(bool(self._state.send_as_text_file))
+        self._send_as_text_file.stateChanged.connect(lambda *_: self._on_send_as_text_file_changed())
         self._send_as_text_file_row = ToggleRow(
             "Upload Prompt as Text File",
             self._send_as_text_file,
             description="Useful for very long prompts. Normal pasting is simpler for everyday use.",
         )
         layout.addWidget(self._send_as_text_file_row, 0)
+
+        self._huggingchat_text_file_message = StyledTextEdit()
+        self._huggingchat_text_file_message.setPlainText(self._state.huggingchat_text_file_message)
+        self._huggingchat_text_file_message_row = SettingRow(
+            "HChat Text File Message",
+            self._huggingchat_text_file_message,
+            description="Companion text pasted after the prompt file uploads. HuggingChat needs some message text with files.",
+        )
+        layout.addWidget(self._huggingchat_text_file_message_row, 0)
 
         layout.addStretch(1)
         return frame
@@ -1125,6 +1210,7 @@ class WelcomeWindow(QDialog):
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
             DriverProvider.PERPLEXITY,
+            DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
         }
 
@@ -1148,6 +1234,11 @@ class WelcomeWindow(QDialog):
             self._account_info.setText(
                 "Perplexity uses email-code login. Auto Login can enter your email, but you still need "
                 "to type the 6-digit code in the browser. Persistent Sessions help a lot here."
+            )
+        elif provider == DriverProvider.HUGGINGCHAT:
+            self._account_info.setText(
+                "HuggingChat supports username/email + password Auto Login. Credits are small, so "
+                "saving a few accounts and disabling spent ones in Credential Manager is useful."
             )
         elif provider == DriverProvider.AI_STUDIO:
             self._account_info.setText(
@@ -1177,6 +1268,9 @@ class WelcomeWindow(QDialog):
             self._password_row.label.setText("Password")
             self._password_input.setPlaceholderText("Unused for Perplexity email-code login")
             self._password_row.setVisible(False)
+        elif provider == DriverProvider.HUGGINGCHAT:
+            self._email_row.label.setText("Username or Email")
+            self._email_input.setPlaceholderText("HF username or email")
 
         if not show_identity_fields:
             self._auto_login.blockSignals(True)
@@ -1218,21 +1312,46 @@ class WelcomeWindow(QDialog):
             self._use_system_prompt_field,
             self._state.use_system_prompt_field,
         )
+        self._huggingchat_inference_provider.setText(
+            self._state.huggingchat_inference_provider
+        )
+        if self._huggingchat_thinking_effort.findText(
+            self._state.huggingchat_thinking_effort
+        ) < 0:
+            self._huggingchat_thinking_effort.addItem(
+                self._state.huggingchat_thinking_effort
+            )
+        self._huggingchat_thinking_effort.setCurrentText(
+            self._state.huggingchat_thinking_effort
+        )
+        self._huggingchat_text_file_message.setPlainText(
+            self._state.huggingchat_text_file_message
+        )
+        self._set_tumbler_checked(
+            self._huggingchat_auto_disable,
+            self._state.huggingchat_auto_disable_ratelimited_accounts,
+        )
 
     def _sync_provider_feature_visibility(self, provider: DriverProvider) -> None:
         is_perplexity = provider == DriverProvider.PERPLEXITY
         is_ai_studio = provider == DriverProvider.AI_STUDIO
+        is_huggingchat = provider == DriverProvider.HUGGINGCHAT
 
         self._perplexity_spaces_row.setVisible(is_perplexity)
         self._perplexity_space_instructions_row.setVisible(is_perplexity)
         self._enable_url_context_row.setVisible(is_ai_studio)
-        self._use_system_prompt_field_row.setVisible(is_ai_studio)
+        self._use_system_prompt_field_row.setVisible(is_ai_studio or is_huggingchat)
+        self._huggingchat_inference_provider_row.setVisible(is_huggingchat)
+        self._huggingchat_auto_disable_row.setVisible(is_huggingchat)
+        self._huggingchat_thinking_effort_row.setVisible(is_huggingchat)
+        self._huggingchat_text_file_message_row.setVisible(is_huggingchat)
 
         # Perplexity doesn't expose usable thinking traces in the stream yet, so
         # showing "Send Thinking" in first-run setup is mostly useless and just weird
         self._send_reasoning_row.setVisible(not is_perplexity)
         if is_perplexity:
             self._set_tumbler_checked(self._send_reasoning, False)
+        self._sync_huggingchat_parameter_state()
 
     def _set_toggle_row_text(
         self,
@@ -1251,6 +1370,11 @@ class WelcomeWindow(QDialog):
 
     def _sync_feature_labels(self, provider: DriverProvider) -> None:
         if provider == DriverProvider.AI_STUDIO:
+            self._set_toggle_row_text(
+                self._use_system_prompt_field_row,
+                "Use AI Studio System Instructions",
+                "Moves leading system messages into AI Studio's native System Instructions field.",
+            )
             self._set_toggle_row_text(
                 self._enable_reasoning_row,
                 "Use AI Studio Thinking Level",
@@ -1281,6 +1405,27 @@ class WelcomeWindow(QDialog):
                 self._enable_search_row,
                 "Enable Web Search",
                 "Let Perplexity search the web. Source metadata is filtered from API responses.",
+            )
+        elif provider == DriverProvider.HUGGINGCHAT:
+            self._set_toggle_row_text(
+                self._use_system_prompt_field_row,
+                "Use HuggingChat System Prompt Field",
+                "Moves leading system messages into HuggingChat's custom system prompt field.",
+            )
+            self._set_toggle_row_text(
+                self._enable_reasoning_row,
+                "Enable HuggingChat Thinking",
+                "Uses HuggingChat's thinking effort selector when the selected model exposes it.",
+            )
+            self._set_toggle_row_text(
+                self._send_reasoning_row,
+                "Send Thinking",
+                "Forward <think> text from HuggingChat responses to the API client.",
+            )
+            self._set_toggle_row_text(
+                self._enable_search_row,
+                "Enable Exa Search",
+                "Let HuggingChat use the Exa MCP web search server. Tool payloads are filtered from API responses.",
             )
         elif provider in {DriverProvider.MOONSHOT, DriverProvider.QWEN_LM}:
             self._set_toggle_row_text(
@@ -1333,6 +1478,21 @@ class WelcomeWindow(QDialog):
         self._send_reasoning_row.setEnabled(enabled)
         if not enabled:
             self._send_reasoning.setChecked(False)
+        self._sync_huggingchat_parameter_state()
+
+    def _on_send_as_text_file_changed(self) -> None:
+        self._sync_huggingchat_parameter_state()
+
+    def _sync_huggingchat_parameter_state(self) -> None:
+        if not hasattr(self, "_huggingchat_thinking_effort_row"):
+            return
+        is_huggingchat = DriverProvider.from_setting(self._state.provider) == DriverProvider.HUGGINGCHAT
+        self._huggingchat_thinking_effort_row.setEnabled(
+            bool(is_huggingchat and self._enable_reasoning.isChecked())
+        )
+        self._huggingchat_text_file_message_row.setEnabled(
+            bool(is_huggingchat and self._send_as_text_file.isChecked())
+        )
 
     def _on_perplexity_spaces_changed(self) -> None:
         if not hasattr(self, "_perplexity_spaces"):
@@ -1437,13 +1597,33 @@ class WelcomeWindow(QDialog):
         requires_password = provider is not DriverProvider.PERPLEXITY
 
         ok = True
-        try:
-            validate_email(email)
-        except ValueError as exc:
-            self._email_input.set_error(True)
-            self._account_error.setText(str(exc))
-            self._account_error.setVisible(True)
-            ok = False
+        if provider == DriverProvider.HUGGINGCHAT:
+            if not email:
+                self._email_input.set_error(True)
+                self._account_error.setText("Username or email is empty.")
+                self._account_error.setVisible(True)
+                ok = False
+            elif any(ch.isspace() for ch in email):
+                self._email_input.set_error(True)
+                self._account_error.setText("Username or email cannot contain whitespace.")
+                self._account_error.setVisible(True)
+                ok = False
+            elif "@" in email:
+                try:
+                    validate_email(email)
+                except ValueError as exc:
+                    self._email_input.set_error(True)
+                    self._account_error.setText(str(exc))
+                    self._account_error.setVisible(True)
+                    ok = False
+        else:
+            try:
+                validate_email(email)
+            except ValueError as exc:
+                self._email_input.set_error(True)
+                self._account_error.setText(str(exc))
+                self._account_error.setVisible(True)
+                ok = False
 
         if requires_password and not password.strip():
             self._password_input.set_error(True)
@@ -1492,6 +1672,8 @@ class WelcomeWindow(QDialog):
             model_text = "qwen-auto\nqwen-chat\nqwen-reasoner"
         elif provider == DriverProvider.PERPLEXITY:
             model_text = "perplexity-auto\nperplexity-chat\nperplexity-reasoner"
+        elif provider == DriverProvider.HUGGINGCHAT:
+            model_text = "huggingchat-auto\nhuggingchat-chat\nhuggingchat-reasoner"
         elif provider == DriverProvider.AI_STUDIO:
             model_text = "aistudio-auto\naistudio-chat\naistudio-reasoner"
         else:
@@ -1542,6 +1724,19 @@ class WelcomeWindow(QDialog):
         )
         self._state.enable_url_context = bool(self._enable_url_context.isChecked())
         self._state.use_system_prompt_field = bool(self._use_system_prompt_field.isChecked())
+        self._state.huggingchat_inference_provider = (
+            self._huggingchat_inference_provider.text().strip() or "auto"
+        )
+        self._state.huggingchat_thinking_effort = (
+            self._huggingchat_thinking_effort.currentText().strip() or "auto"
+        )
+        self._state.huggingchat_text_file_message = (
+            self._huggingchat_text_file_message.toPlainText().strip()
+            or "Please read the attached file and respond to it."
+        )
+        self._state.huggingchat_auto_disable_ratelimited_accounts = bool(
+            self._huggingchat_auto_disable.isChecked()
+        )
 
         ok, error = self._apply_state()
         if not ok:
@@ -1608,6 +1803,33 @@ class WelcomeWindow(QDialog):
                 "use_system_prompt_field",
                 bool(self._state.use_system_prompt_field),
             )
+        elif provider_enum == DriverProvider.HUGGINGCHAT:
+            cfg.set_setting(
+                "huggingchat_behavior",
+                "use_system_prompt_field",
+                bool(self._state.use_system_prompt_field),
+            )
+            cfg.set_setting(
+                "huggingchat_behavior",
+                "inference_provider",
+                self._state.huggingchat_inference_provider.strip() or "auto",
+            )
+            cfg.set_setting(
+                "huggingchat_behavior",
+                "thinking_effort",
+                self._state.huggingchat_thinking_effort.strip() or "auto",
+            )
+            cfg.set_setting(
+                "huggingchat_behavior",
+                "text_file_message",
+                self._state.huggingchat_text_file_message.strip()
+                or "Please read the attached file and respond to it.",
+            )
+            cfg.set_setting(
+                "huggingchat_behavior",
+                "auto_disable_ratelimited_accounts",
+                bool(self._state.huggingchat_auto_disable_ratelimited_accounts),
+            )
 
         # Credential Manager (first-run helper)
         supports_auto_login = provider_enum in {
@@ -1616,6 +1838,7 @@ class WelcomeWindow(QDialog):
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
             DriverProvider.PERPLEXITY,
+            DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
         }
         should_write_identity = bool(supports_auto_login and self._state.auto_login)
@@ -1624,10 +1847,21 @@ class WelcomeWindow(QDialog):
             password = self._state.password
             requires_password = provider_enum is not DriverProvider.PERPLEXITY
 
-            try:
-                validate_email(email)
-            except ValueError as exc:
-                return False, str(exc)
+            if provider_enum == DriverProvider.HUGGINGCHAT:
+                if not email:
+                    return False, "Username or email is empty."
+                if any(ch.isspace() for ch in email):
+                    return False, "Username or email cannot contain whitespace."
+                if "@" in email:
+                    try:
+                        validate_email(email)
+                    except ValueError as exc:
+                        return False, str(exc)
+            else:
+                try:
+                    validate_email(email)
+                except ValueError as exc:
+                    return False, str(exc)
             if requires_password and not password.strip():
                 return False, "Password is empty."
 

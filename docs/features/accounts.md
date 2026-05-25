@@ -21,6 +21,7 @@ You can store **multiple accounts per provider**, let IntenseRP pick one on star
     - **Prefer the Least Used Account**: spreads usage across accounts
     - **Retry With Another Account**: retries early failures with a rotated identity
     - **Pin** in **Saved Accounts**: forces a specific row to be used on normal startup
+    - **Disable** in **Saved Accounts**: keeps a row saved but removes it from selection/rotation
 
 ---
 
@@ -64,7 +65,7 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 | Setting | Where | What it does |
 |---|---|---|
-| **Saved Accounts** | Settings -> Provider and Login -> Sign-In and Accounts | Add and manage accounts per provider, including pinning 1 row per provider |
+| **Saved Accounts** | Settings -> Provider and Login -> Sign-In and Accounts | Add and manage accounts per provider, including pinning and disabling rows |
 | **Sign In Automatically** | Settings -> Provider and Login -> Sign-In and Accounts | Uses a saved account for login |
 | **Prefer the Least Used Account** | Settings -> Provider and Login -> Sign-In and Accounts | Chooses the least recently used account when starting the driver, unless a row is pinned |
 | **Retry With Another Account** | Settings -> Provider and Login -> Sign-In and Accounts | On early failures, restarts the driver and retries once with a rotated identity |
@@ -73,7 +74,7 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 ## :material-account-switch: How account selection works
 
-Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio).
+Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio).
 
 When **Sign In Automatically** is enabled, IntenseRP selects an account on driver start and logs in automatically. If it is disabled, you can still log in manually and use **Keep Provider Sessions Signed In** to stay signed in between restarts.
 
@@ -96,6 +97,17 @@ The current pinned row (if any) is also indicated in the startup logs with `[PIN
 !!! note "1 pinned row per provider"
     You can only pin 1 row per provider. Pinning another row automatically unpins the previous one.
 
+### Disabling a row
+
+Open the little `...` button on any Saved Accounts row and click **Disable**.
+
+Disabled rows stay visible and dimmed, but IntenseRP will not use them for startup selection, least-used rotation, full parallel lanes, or retry-with-another-account recovery.
+
+This is especially useful for providers with monthly limits. For example, when a HuggingChat account hits its monthly credits, disable that row until the quota resets.
+
+!!! note "At least one enabled account"
+    If a provider has saved rows, at least one row must stay enabled. Otherwise Auto Login would have credentials saved but no usable identity to pick.
+
 ---
 
 ## :material-cookie: Persistent Sessions (profiles)
@@ -110,6 +122,7 @@ IntenseRP stores one profile per identity (account or manual) under:
 [config_dir]/playwright_profiles/accounts/moonshot_kimi/<hash>/
 [config_dir]/playwright_profiles/accounts/qwenlm/<hash>/
 [config_dir]/playwright_profiles/accounts/perplexity/<hash>/
+[config_dir]/playwright_profiles/accounts/huggingchat/<hash>/
 [config_dir]/playwright_profiles/accounts/aistudio/<hash>/
 ```
 
@@ -181,6 +194,8 @@ These files are encrypted using the same `settings.key` used for your main setti
 **QwenLM:** standard email/password login. Auto Login can fill credentials automatically.
 
 **Perplexity:** email-code login. Auto Login can fill the email and start the code flow, but you still need to enter the 6-digit code in the browser. Password can be left blank in Saved Accounts.
+
+**HuggingChat:** username/email + password login. HuggingChat monthly credits are small (`$0.1/month` for free accounts, `$2/month` for Pro), so add multiple accounts if you have them and disable rows that hit the monthly limit until they reset.
 
 **Google AI Studio:** Google login with optional credential autofill. Persistent Sessions are strongly recommended because Google may still ask for manual confirmation/challenge steps.
 

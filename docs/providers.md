@@ -4,7 +4,7 @@ icon: material/cloud
 
 # :material-cloud: Providers
 
-IntenseRP Next v2 currently supports six providers, and each one has its own Behavior page. This overview gives you a quick sense of what each provider-specific settings section covers and links to the full docs for each one.
+IntenseRP Next v2 currently supports seven providers, and each one has its own Behavior page. This overview gives you a quick sense of what each provider-specific settings section covers and links to the full docs for each one.
 
 ---
 
@@ -39,6 +39,12 @@ IntenseRP Next v2 currently supports six providers, and each one has its own Beh
     Configure Perplexity model selection, Thinking, Search, uploads, and email-code login notes.
 
     [:arrow_right: Learn More](providers/perplexity-behavior.md)
+
+-   :providers-huggingface: **HuggingChat Behavior**
+
+    Configure HuggingChat model selection, inference provider, Thinking Effort, Exa search, uploads, and account-limit handling.
+
+    [:arrow_right: Learn More](providers/huggingchat-behavior.md)
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 
@@ -129,6 +135,25 @@ Fine-tune how Perplexity processes your requests.
 | **Send Thinking** | Reserved for consistency; no thinking traces are forwarded yet |
 | **Web Search** | Toggles Perplexity Web search (search/source payloads are not sent to the client) |
 | **File Upload Mode** | Uploads long prompts as a text file, with text fallback if uploads are capped |
+
+---
+
+### :providers-huggingface: HuggingChat Behavior
+
+Fine-tune how HuggingChat processes your requests.
+
+!!! warning "Not the Inference API"
+    HuggingChat support drives the HuggingChat web UI with your Hugging Face credentials. It is not a replacement for the token-based Hugging Face Inference API.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Model Picker (UI)** | Select HuggingChat's real model picker, using a cached model list refreshed after startup |
+| **Inference Provider** | Optionally select a HuggingChat inference provider such as `auto` or `together` |
+| **Thinking Effort** | Selects `auto`, `default`, `low`, `medium`, or `high` when the model exposes it |
+| **Send Thinking** | Includes `<think>` text in API responses when enabled |
+| **Exa Search** | Toggles HuggingChat's Exa MCP web search; tool payloads are filtered |
+| **File Upload Mode** | Uploads long prompts as a text file |
+| **Reuse Matching Chat** | Regenerates matching HuggingChat chats, including older cached chats per account |
 
 ---
 

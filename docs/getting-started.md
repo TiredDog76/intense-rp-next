@@ -15,7 +15,7 @@ Before we dive in, make sure you have:
 | | |
 |---|---|
 | :material-microsoft-windows: **Windows 10/11** or :material-linux: **Linux** | 64-bit with a graphical desktop |
-| :material-account-plus: **Provider account** | [DeepSeek](https://chat.deepseek.com), [GLM Chat (Z.ai)](https://chat.z.ai/), [Kimi](https://www.kimi.com/), [QwenLM](https://chat.qwen.ai/), [Perplexity](https://www.perplexity.ai/), or [Google AI Studio](https://aistudio.google.com/) |
+| :material-account-plus: **Provider account** | [DeepSeek](https://chat.deepseek.com), [GLM Chat (Z.ai)](https://chat.z.ai/), [Kimi](https://www.kimi.com/), [QwenLM](https://chat.qwen.ai/), [Perplexity](https://www.perplexity.ai/), [HuggingChat](https://huggingface.co/chat), or [Google AI Studio](https://aistudio.google.com/) |
 | :material-chat: **SillyTavern** (or similar) | Any OpenAI-compatible client works |
 
 ---
@@ -87,7 +87,7 @@ Before hitting Start, pick your provider and decide how you want to log in.
 
 1. Click the :material-cog: **Settings** button
 2. Go to **Provider and Login**
-3. In **Current Provider**, choose your provider (DeepSeek, GLM Chat, Moonshot, QwenLM, Perplexity, or Google AI Studio)
+3. In **Current Provider**, choose your provider (DeepSeek, GLM Chat, Moonshot, QwenLM, Perplexity, HuggingChat, or Google AI Studio)
 4. In **Sign-In and Accounts**, (optional) turn on :material-toggle-switch: **Sign In Automatically**
 5. Open **Saved Accounts** and add your account(s)
 6. (Optional) Enable **Prefer the Least Used Account** and/or **Retry With Another Account**
@@ -114,6 +114,9 @@ Before hitting Start, pick your provider and decide how you want to log in.
 
 !!! note "Perplexity login"
     Perplexity uses email-code login. Auto Login can fill your email and start the code flow, but you still need to type the 6-digit code in the browser window. Persistent Sessions are very helpful here.
+
+!!! note "HuggingChat login"
+    HuggingChat uses your Hugging Face username/email and password. Its monthly credits are small, so add extra accounts in **Saved Accounts** if you have them and disable rows that have hit their monthly limit.
 
 ---
 
@@ -162,7 +165,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 |-------|-------|
 | :material-web: **Custom Endpoint** | `http://127.0.0.1:7777/v1` |
 | :material-key: **API Key** | Leave blank |
-| :material-robot: **Model** | `deepseek-*` / `glm-*` / `moonshot-*` / `qwen-*` / `perplexity-*` / `aistudio-*` |
+| :material-robot: **Model** | `deepseek-*` / `glm-*` / `moonshot-*` / `qwen-*` / `perplexity-*` / `huggingchat-*` / `aistudio-*` |
 
 !!! note
     Use the model ID that matches your active provider:
@@ -172,6 +175,7 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
     - Moonshot -> `moonshot-auto`
     - QwenLM -> `qwen-auto`
     - Perplexity -> `perplexity-auto`
+    - HuggingChat -> `huggingchat-auto`
     - Google AI Studio -> `aistudio-auto`
 
 !!! info "Model IDs"

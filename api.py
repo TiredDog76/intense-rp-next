@@ -202,6 +202,9 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: Optional[int] = None
     reasoning_effort: Optional[Any] = None
     reasoning: Optional[Any] = None
+    inference_provider: Optional[Any] = None
+    huggingchat_inference_provider: Optional[Any] = None
+    huggingchat_thinking_effort: Optional[Any] = None
 
 
 CompletionPromptInput = Union[str, List[str]]
@@ -217,6 +220,9 @@ class TextCompletionRequest(BaseModel):
     max_tokens: Optional[int] = None
     reasoning_effort: Optional[Any] = None
     reasoning: Optional[Any] = None
+    inference_provider: Optional[Any] = None
+    huggingchat_inference_provider: Optional[Any] = None
+    huggingchat_thinking_effort: Optional[Any] = None
 
 
 QueuedRequest = Union[ChatCompletionRequest, TextCompletionRequest]
@@ -980,6 +986,32 @@ class API:
     def _reasoning_effort_enables_reasoning(effort: str) -> bool:
         return effort not in REASONING_EFFORT_DISABLED_VALUES
 
+    @staticmethod
+    def _huggingchat_effort_for_reasoning_effort(effort: str) -> str:
+        if effort in {"", "auto"}:
+            return ""
+        if effort in {
+            "none",
+            "off",
+            "false",
+            "0",
+            "no",
+            "disable",
+            "disabled",
+        }:
+            return "default"
+        if effort in {"minimum", "min", "minimal"}:
+            return "low"
+        if effort in {"low", "medium", "med", "high"}:
+            return "medium" if effort == "med" else effort
+        if effort in {"max", "maximum", "xhigh", "x-high", "extra-high"}:
+            return "high"
+        return effort
+
+    @classmethod
+    def _huggingchat_reasoning_effort_enables_reasoning(cls, effort: str) -> bool:
+        return cls._huggingchat_effort_for_reasoning_effort(effort) not in {"", "default"}
+
     def _resolve_driver_model_for_request(
         self,
         request: QueuedRequest,
@@ -999,8 +1031,49 @@ class API:
             reasoner_model = self._replace_behavior_suffix(base_model, MODE_REASONER)
             return f"{reasoner_model}-{level}" if reasoner_model else reasoner_model
 
+        if provider == DriverProvider.HUGGINGCHAT:
+            mode = (
+                MODE_REASONER
+                if self._huggingchat_reasoning_effort_enables_reasoning(effort)
+                else MODE_CHAT
+            )
+            return self._replace_behavior_suffix(requested_model, mode)
+
         mode = MODE_REASONER if self._reasoning_effort_enables_reasoning(effort) else MODE_CHAT
         return self._replace_behavior_suffix(requested_model, mode)
+
+    def _extract_provider_request_overrides(
+        self,
+        request: QueuedRequest,
+        provider: DriverProvider,
+    ) -> dict[str, Any]:
+        if provider != DriverProvider.HUGGINGCHAT:
+            return {}
+
+        overrides: dict[str, Any] = {}
+        for attr_name in (
+            "inference_provider",
+            "huggingchat_inference_provider",
+            "huggingchat_thinking_effort",
+        ):
+            value = getattr(request, attr_name, None)
+            if value is None:
+                continue
+            overrides[attr_name] = value
+
+        if "huggingchat_inference_provider" in overrides:
+            overrides["inference_provider"] = overrides["huggingchat_inference_provider"]
+        if "huggingchat_thinking_effort" in overrides:
+            overrides["thinking_effort"] = overrides["huggingchat_thinking_effort"]
+        elif self._provider_accepts_api_reasoning_effort(provider):
+            effort = _normalize_reasoning_effort(_extract_reasoning_effort_value(request))
+            thinking_effort = self._huggingchat_effort_for_reasoning_effort(effort)
+            if thinking_effort:
+                overrides["thinking_effort"] = thinking_effort
+                overrides["deepthink_enabled"] = (
+                    self._huggingchat_reasoning_effort_enables_reasoning(effort)
+                )
+        return overrides
 
     def _find_processing_slot_id_for_abort_event(
         self, abort_event: asyncio.Event | None
@@ -1760,6 +1833,18 @@ class API:
                             mark_used(email)
                 except Exception:
                     pass
+
+                # Optional provider hook: pass request-only controls that are not encoded
+                # in the OpenAI-compatible model ID.
+                try:
+                    apply_request_overrides = getattr(driver, "set_request_overrides", None)
+                    if callable(apply_request_overrides):
+                        apply_request_overrides(
+                            self._extract_provider_request_overrides(request, provider)
+                        )
+                except Exception as e:
+                    provider_label = getattr(driver, "provider_label", None) or provider.value
+                    Logger.debug(f"{provider_label}: failed to apply request overrides: {e}")
 
                 # Optional provider hook: apply configured *real* model selection (UI model picker),
                 # if the active provider supports it

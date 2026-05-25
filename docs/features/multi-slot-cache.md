@@ -20,6 +20,7 @@ Right now this feature works on:
 - GLM Chat
 - Moonshot / Kimi
 - QwenLM
+- HuggingChat
 
 It does **not** work on **Perplexity** or **Google AI Studio** right now.
 
@@ -49,6 +50,7 @@ IntenseRP also checks the relevant provider-side request state, such as things l
 - whether thinking is enabled
 - whether search is enabled
 - whether the prompt was sent as a text file
+- provider-specific model extras, such as HuggingChat inference provider / thinking effort
 
 That way it does not accidentally reopen an old chat and regenerate it under the wrong setup.
 
@@ -83,6 +85,7 @@ You enable it in the provider Behavior pages:
 - **Provider Behavior** -> **GLM Chat** -> **Search Older Matching Chats**
 - **Provider Behavior** -> **Moonshot** -> **Search Older Matching Chats**
 - **Provider Behavior** -> **QwenLM** -> **Search Older Matching Chats**
+- **Provider Behavior** -> **HuggingChat** -> **Search Older Matching Chats**
 
 And again, it only does anything if **Reuse Matching Chat** is already enabled for that provider.
 
@@ -94,6 +97,7 @@ And again, it only does anything if **Reuse Matching Chat** is already enabled f
 - [:material-refresh: GLM Behavior](../providers/glm-behavior.md#reuse-matching-chat)
 - [:material-refresh: Moonshot Behavior](../providers/moonshot-behavior.md#reuse-matching-chat)
 - [:material-refresh: QwenLM Behavior](../providers/qwen-behavior.md#reuse-matching-chat)
+- [:material-refresh: HuggingChat Behavior](../providers/huggingchat-behavior.md#reuse-matching-chat)
 - [:material-cloud: Provider Support](../advanced/provider-support.md)
 
 ---

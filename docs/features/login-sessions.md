@@ -4,7 +4,7 @@ icon: material/key
 
 # :material-key: Login & Sessions
 
-Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / Google AI Studio) and keeping your session alive between restarts. These two features work together to make your life easier.
+Managing how you log in to your active provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio) and keeping your session alive between restarts. These two features work together to make your life easier.
 
 ---
 
@@ -45,6 +45,9 @@ Next time you start IntenseRP, the driver can fill credentials and click login f
 
 !!! note "Perplexity login"
     Perplexity uses email-code login. Auto Login can enter your email and start the code flow, but you still need to type the 6-digit code in the browser window.
+
+!!! note "HuggingChat login"
+    HuggingChat uses a Hugging Face username/email and password. If an account hits its monthly credits, disable that row in Credential Manager until the quota resets.
 
 ### How It Works
 

@@ -24,6 +24,7 @@ class IconOptionMenuItem:
     label: str
     icon_file: str | None = None
     danger: bool = False
+    warning: bool = False
 
 
 class _IconOptionMenuRow(QFrame):
@@ -45,9 +46,12 @@ class _IconOptionMenuRow(QFrame):
         self._icon_label.setStyleSheet("background-color: transparent;")
         self._icon_label.setFixedSize(18, 18)
         if item.icon_file:
+            item_color = BrandColors.DANGER if item.danger else (
+                BrandColors.WARNING if item.warning else BrandColors.TEXT_PRIMARY
+            )
             pixmap = IconUtils.get_pixmap(
                 item.icon_file,
-                color=BrandColors.DANGER if item.danger else BrandColors.TEXT_PRIMARY,
+                color=item_color,
                 size=16,
                 dpr=self.devicePixelRatioF(),
             )
@@ -56,9 +60,12 @@ class _IconOptionMenuRow(QFrame):
         layout.addWidget(self._icon_label, 0, Qt.AlignVCenter)
 
         self._text_label = QLabel(item.label)
+        item_color = BrandColors.DANGER if item.danger else (
+            BrandColors.WARNING if item.warning else BrandColors.TEXT_PRIMARY
+        )
         self._text_label.setStyleSheet(
             f"""
-            color: {BrandColors.DANGER if item.danger else BrandColors.TEXT_PRIMARY};
+            color: {item_color};
             background-color: transparent;
             font-size: {BrandColors.FONT_SIZE_REGULAR};
             font-family: {BrandColors.FONT_FAMILY};
@@ -67,7 +74,9 @@ class _IconOptionMenuRow(QFrame):
         )
         layout.addWidget(self._text_label, 1, Qt.AlignVCenter)
 
-        hover_border = BrandColors.DANGER if item.danger else BrandColors.CATEGORY_ACTIVE_BORDER
+        hover_border = BrandColors.DANGER if item.danger else (
+            BrandColors.WARNING if item.warning else BrandColors.CATEGORY_ACTIVE_BORDER
+        )
         self.setStyleSheet(
             f"""
             QFrame#iconOptionMenuRow {{

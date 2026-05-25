@@ -13,6 +13,7 @@ import threading
 import os
 import shutil
 import re
+import json
 from pathlib import Path
 from config.formatting_presets import FORMATTING_PRESET_TEMPLATES
 from config.loadouts import (
@@ -828,6 +829,7 @@ class SettingsWindow(QMainWindow):
         "moonshot_behavior": "providers/moonshot.svg",
         "qwen_behavior": "providers/qwen.svg",
         "perplexity_behavior": "providers/perplexity.svg",
+        "huggingchat_behavior": "providers/huggingface.svg",
         "aistudio_behavior": "providers/aistudio.svg",
         "diagnostics": "bug.svg",
         "logfiles": "file.svg",
@@ -1234,6 +1236,65 @@ class SettingsWindow(QMainWindow):
         self.search_input.setFocus(Qt.ShortcutFocusReason)
         self.search_input.selectAll()
 
+    def _dropdown_options_for_field(self, field, category_key: str) -> list[str]:
+        options = [str(option) for option in (field.options or [])]
+        if category_key == "huggingchat_behavior" and field.key == "model":
+            unavailable = "Model list unavailable, please successfully log into HuggingChat at least once"
+            try:
+                cache_path = Path(getattr(self.config_manager, "config_dir", "config_data")) / "cache" / "huggingchat_models.json"
+                payload = json.loads(cache_path.read_text(encoding="utf-8"))
+                cached_models = payload.get("models") if isinstance(payload, dict) else []
+            except Exception:
+                cached_models = []
+
+            base_option = options[0] if options else "Current HuggingChat selection"
+            dynamic_options = [base_option]
+            seen = set(dynamic_options)
+            for raw_model in cached_models if isinstance(cached_models, list) else []:
+                model = str(raw_model or "").strip()
+                if model and model not in seen:
+                    seen.add(model)
+                    dynamic_options.append(model)
+            if len(dynamic_options) == 1:
+                dynamic_options.append(unavailable)
+            return dynamic_options
+        return options
+
+    def _refresh_dropdown_options_for_field(self, category_key: str, field) -> None:
+        if field.type != SettingType.DROPDOWN:
+            return
+        full_key = f"{category_key}.{field.key}"
+        widget = self.field_widgets.get(full_key)
+        if not isinstance(widget, StyledComboBox):
+            return
+
+        options = self._dropdown_options_for_field(field, category_key)
+        existing = [widget.itemText(index) for index in range(widget.count())]
+        if existing == options:
+            return
+
+        current_text = widget.currentText()
+        saved_value = str(self.config_manager.get_setting(category_key, field.key) or "")
+        widget.blockSignals(True)
+        try:
+            widget.clear()
+            for option in options:
+                widget.addItem(str(option))
+            if current_text and widget.findText(current_text) >= 0:
+                widget.setCurrentText(current_text)
+            elif saved_value and widget.findText(saved_value) >= 0:
+                widget.setCurrentText(saved_value)
+        finally:
+            widget.blockSignals(False)
+
+    def refresh_dynamic_dropdown_options(self) -> None:
+        for full_key, field in (self.field_defs or {}).items():
+            try:
+                category_key, _field_key = full_key.split(".", 1)
+            except ValueError:
+                continue
+            self._refresh_dropdown_options_for_field(category_key, field)
+
     def _create_field_widget(self, field, category_key):
         widget = None
         docs_url = self._get_field_docs_url(field)
@@ -1270,8 +1331,9 @@ class SettingsWindow(QMainWindow):
             widget.textChanged.connect(self._on_setting_changed)
         elif field.type == SettingType.DROPDOWN:
             widget = StyledComboBox()
-            if field.options:
-                for option in field.options:
+            dropdown_options = self._dropdown_options_for_field(field, category_key)
+            if dropdown_options:
+                for option in dropdown_options:
                     widget.addItem(str(option))
             if not getattr(field, "transient", False):
                 widget.currentTextChanged.connect(self._on_setting_changed)
@@ -1286,6 +1348,7 @@ class SettingsWindow(QMainWindow):
                         "Moonshot": "providers/moonshot.svg",
                         "QwenLM": "providers/qwen.svg",
                         "Perplexity": "providers/perplexity.svg",
+                        "HuggingChat": "providers/huggingface.svg",
                         "Google AI Studio": "providers/aistudio.svg",
                     }.get(provider_name)
                     if not icon_file:
@@ -1526,8 +1589,13 @@ class SettingsWindow(QMainWindow):
             elif field.type == SettingType.TEXTAREA:
                 widget.setPlainText(str(value) if value is not None else "")
             elif field.type == SettingType.DROPDOWN:
-                if value and value in field.options:
-                    widget.setCurrentText(value)
+                widget.blockSignals(False)
+                self._refresh_dropdown_options_for_field(category.key, field)
+                widget.blockSignals(True)
+                if value:
+                    value_text = str(value)
+                    if widget.findText(value_text) >= 0:
+                        widget.setCurrentText(value_text)
             elif field.type == SettingType.INPUT_PAIR:
                 widget.set_pairs(value or [])
             elif field.type == SettingType.INPUT_LIST:
@@ -2194,6 +2262,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.MOONSHOT: "providers/moonshot.svg",
             DriverProvider.QWEN_LM: "providers/qwen.svg",
             DriverProvider.PERPLEXITY: "providers/perplexity.svg",
+            DriverProvider.HUGGINGCHAT: "providers/huggingface.svg",
             DriverProvider.AI_STUDIO: "providers/aistudio.svg",
         }.get(provider)
 
@@ -2221,6 +2290,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
             DriverProvider.PERPLEXITY,
+            DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
@@ -2245,6 +2315,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
             DriverProvider.PERPLEXITY,
+            DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
@@ -2353,6 +2424,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.MOONSHOT,
             DriverProvider.QWEN_LM,
             DriverProvider.PERPLEXITY,
+            DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)

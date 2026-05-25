@@ -7,7 +7,7 @@ icon: material/api
 This page documents how the built-in OpenAI-compatible API behaves at runtime: what routes exist, how streaming works, and why requests are queued instead of running in parallel.
 
 !!! note "Implementation detail"
-    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `qwen_driver.py`, `aistudio_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
+    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `qwen_driver.py`, `perplexity_driver.py`, `huggingchat_driver.py`, `aistudio_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
 
 ---
 
@@ -45,7 +45,7 @@ If **Settings -> API Server -> Model IDs -> Use Universal Model Names** is enabl
 
 Provider-prefixed behavior IDs still continue to work either way. **Providers in Parallel** still rejects `intenserp-*`, but it can expose UMM real-model IDs when this setting is enabled.
 
-For GLM Chat, Google AI Studio, QwenLM, and Perplexity, Universal Model Names also exposes real model IDs in `/v1/models`. They are lowercase, with spaces and dots converted to `-`, and they keep the normal `-auto`, `-reasoner`, and `-chat` suffixes. For example, **GLM-5.1** appears as `glm-5-1-auto`, `glm-5-1-reasoner`, and `glm-5-1-chat`.
+For GLM Chat, Google AI Studio, QwenLM, Perplexity, and HuggingChat, Universal Model Names also exposes real model IDs in `/v1/models`. They are lowercase, with spaces and dots converted to `-`, and they keep the normal `-auto`, `-reasoner`, and `-chat` suffixes. For example, **GLM-5.1** appears as `glm-5-1-auto`, `glm-5-1-reasoner`, and `glm-5-1-chat`.
 
 In Providers in Parallel, only conflicting real-model IDs get provider prefixes so they can route to the right browser. For example, Google AI Studio's **Gemini 3.1 Pro** can appear as `aistudio-gemini-3-1-pro-reasoner` if another active provider also exposes `gemini-3-1-pro-reasoner`.
 
@@ -101,6 +101,18 @@ Perplexity model IDs are behavior presets:
 | `perplexity-chat` | Forced off | Forced off |
 | `perplexity-reasoner` | Forced on when available | No thinking traces forwarded yet |
 
+### HuggingChat
+
+HuggingChat model IDs are behavior presets:
+
+| Model ID | Thinking Effort | Send Thinking |
+|---|---|---|
+| `huggingchat-auto` | Uses your settings | Uses your settings |
+| `huggingchat-chat` | Uses HuggingChat's default/off behavior | Forced off |
+| `huggingchat-reasoner` | Uses your configured Thinking Effort | Uses your settings |
+
+HuggingChat can also accept HuggingChat-only request fields such as `inference_provider`, `huggingchat_inference_provider`, and `huggingchat_thinking_effort`.
+
 ### Google AI Studio
 
 Google AI Studio model IDs are also behavior presets:
@@ -153,7 +165,7 @@ For Google AI Studio, explicit efforts are mapped to Thinking Level instead: `mi
 !!! info "What these IDs are (and are not)"
     Provider-prefixed and `intenserp-*` IDs are behavior presets. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
-    For providers with a real web UI model picker (GLM Chat, QwenLM, Perplexity, Google AI Studio), the extra real-model IDs can override the **Provider Behavior** model for a single request.
+    For providers with a real web UI model picker (GLM Chat, QwenLM, Perplexity, HuggingChat, Google AI Studio), the extra real-model IDs can override the **Provider Behavior** model for a single request.
 
 !!! note "AI Studio anti-censorship retries"
     When **Settings -> Provider Behavior -> Google AI Studio -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.

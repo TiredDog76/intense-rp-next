@@ -33,7 +33,7 @@ When enabled, IntenseRP launches Chromium using a **persistent browser context**
 ```
 [config_dir]/playwright_profiles/accounts/<provider>/<identity>/
 ```
-The `<provider>` is one of `deepseek`, `glm_chat`, or `moonshot_kimi`. The `<identity>` is either a hashed email (when an account is selected) or `manual` (when no account is selected).
+The `<provider>` is one of `deepseek`, `glm_chat`, `moonshot_kimi`, `qwen_lm`, `perplexity`, `huggingchat`, or `aistudio`. The `<identity>` is either a hashed email/username hash (when an account is selected) or `manual` (when no account is selected).
 
 Next time you start the app, it loads that same profile, so you usually won't see a login page at all.
 

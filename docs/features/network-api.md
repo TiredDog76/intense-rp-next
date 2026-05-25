@@ -201,7 +201,7 @@ If you enable **Use Universal Model Names** in **Settings** -> **API Server** ->
 
 Provider-specific behavior IDs still work either way. In **Providers in Parallel**, `intenserp-*` stays invalid, but UMM real-model IDs can appear when this setting is enabled.
 
-The `intenserp-*` and provider-prefixed IDs are behavior presets (modes), not true model selection. For GLM Chat, Google AI Studio, QwenLM, and Perplexity, Universal Model Names also exposes real model IDs that override the provider UI model for that request. They are lowercase, with spaces and dots converted to `-`, and use the same `-auto`, `-reasoner`, and `-chat` suffixes.
+The `intenserp-*` and provider-prefixed IDs are behavior presets (modes), not true model selection. For GLM Chat, Google AI Studio, QwenLM, Perplexity, and HuggingChat, Universal Model Names also exposes real model IDs that override the provider UI model for that request. They are lowercase, with spaces and dots converted to `-`, and use the same `-auto`, `-reasoner`, and `-chat` suffixes.
 
 When Providers in Parallel exposes real-model IDs, only exact conflicts get provider prefixes so they can route cleanly. For example, Google AI Studio's **Gemini 3.1 Pro** can appear as `aistudio-gemini-3-1-pro-reasoner` if another active provider also exposes `gemini-3-1-pro-reasoner`.
 
@@ -247,6 +247,16 @@ When Providers in Parallel exposes real-model IDs, only exact conflicts get prov
     | `perplexity-auto` | Uses your IntenseRP settings |
     | `perplexity-chat` | Forces Thinking off |
     | `perplexity-reasoner` | Forces Thinking on when available |
+
+=== ":providers-huggingface: HuggingChat"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `huggingchat-auto` | Uses your IntenseRP settings |
+    | `huggingchat-chat` | Forces Thinking off |
+    | `huggingchat-reasoner` | Forces Thinking on when available |
+
+    HuggingChat requests can also pass `inference_provider`, `huggingchat_inference_provider`, or `huggingchat_thinking_effort` for request-level HuggingChat-only controls.
 
 === ":material-image-auto-adjust: Google AI Studio"
 

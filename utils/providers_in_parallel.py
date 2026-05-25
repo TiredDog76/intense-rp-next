@@ -11,6 +11,7 @@ PARALLEL_PROVIDER_FIELD_BY_PROVIDER: dict[DriverProvider, str] = {
     DriverProvider.MOONSHOT: "parallel_enable_moonshot",
     DriverProvider.QWEN_LM: "parallel_enable_qwen",
     DriverProvider.PERPLEXITY: "parallel_enable_perplexity",
+    DriverProvider.HUGGINGCHAT: "parallel_enable_huggingchat",
     DriverProvider.AI_STUDIO: "parallel_enable_aistudio",
 }
 
@@ -20,6 +21,7 @@ PARALLEL_PROVIDER_INSTANCE_FIELD_BY_PROVIDER: dict[DriverProvider, str] = {
     DriverProvider.MOONSHOT: "parallel_instances_moonshot",
     DriverProvider.QWEN_LM: "parallel_instances_qwen",
     DriverProvider.PERPLEXITY: "parallel_instances_perplexity",
+    DriverProvider.HUGGINGCHAT: "parallel_instances_huggingchat",
     DriverProvider.AI_STUDIO: "parallel_instances_aistudio",
 }
 

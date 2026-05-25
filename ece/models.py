@@ -8,3 +8,4 @@ class CredentialPair:
     email: str
     password: str
     pinned: bool = False
+    disabled: bool = False

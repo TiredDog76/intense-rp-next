@@ -3,6 +3,7 @@ import asyncio
 import uvicorn
 import logging
 import os
+import json
 import threading
 import errno
 from pathlib import Path
@@ -888,6 +889,17 @@ class MainWindow(QMainWindow):
             return []
         return [(provider, runtime_driver)]
 
+    def _refresh_settings_dynamic_dropdown_options(self) -> None:
+        settings_window = getattr(self, "settings_window", None)
+        if settings_window is None or not settings_window.isVisible():
+            return
+        refresh = getattr(settings_window, "refresh_dynamic_dropdown_options", None)
+        if callable(refresh):
+            try:
+                refresh()
+            except Exception as exc:
+                Logger.debug(f"Settings dynamic dropdown refresh skipped: {exc}")
+
     def _get_hotswap_targets(self) -> list[str]:
         current = self.config_manager.get_setting("providers_credentials", "provider") or "DeepSeek"
         current_provider = DriverProvider.from_setting(current)
@@ -904,10 +916,28 @@ class MainWindow(QMainWindow):
         model_field = get_loadout_field_defs(target_provider).get("model")
         raw_options = getattr(model_field, "options", None) or []
         options: list[str] = []
+        seen: set[str] = set()
         for raw_option in raw_options:
             option = str(raw_option or "").strip()
-            if option:
+            if option and option not in seen:
+                seen.add(option)
                 options.append(option)
+        if target_provider == DriverProvider.HUGGINGCHAT:
+            try:
+                cache_path = (
+                    Path(getattr(self.config_manager, "config_dir", "config_data"))
+                    / "cache"
+                    / "huggingchat_models.json"
+                )
+                payload = json.loads(cache_path.read_text(encoding="utf-8"))
+                cached_models = payload.get("models") if isinstance(payload, dict) else []
+            except Exception:
+                cached_models = []
+            for raw_model in cached_models if isinstance(cached_models, list) else []:
+                model = str(raw_model or "").strip()
+                if model and model not in seen:
+                    seen.add(model)
+                    options.append(model)
         return options
 
     def _get_remote_current_model(self, provider: DriverProvider | None = None) -> str:
@@ -2946,6 +2976,29 @@ class MainWindow(QMainWindow):
                     )
             return
 
+        if provider == DriverProvider.HUGGINGCHAT:
+            apply_model = getattr(runtime_driver, "apply_configured_model", None)
+            if not callable(apply_model):
+                raise RuntimeError("HuggingChat does not expose model switching right now.")
+
+            await apply_model()
+            if desired == "Current HuggingChat selection":
+                return
+
+            read_info = getattr(runtime_driver, "_read_current_model_info", None)
+            canonicalize_label = getattr(runtime_driver, "_canonicalize_model_id", None)
+            if callable(read_info) and callable(canonicalize_label):
+                current_info = await read_info()
+                current_label = ""
+                if isinstance(current_info, dict):
+                    current_label = str(current_info.get("model") or "").strip()
+                if canonicalize_label(current_label) != canonicalize_label(desired):
+                    shown = current_label or "Unknown"
+                    raise RuntimeError(
+                        f"HuggingChat did not confirm the requested model switch (still showing '{shown}')."
+                    )
+            return
+
         if provider == DriverProvider.AI_STUDIO:
             apply_model = getattr(runtime_driver, "apply_configured_model", None)
             if not callable(apply_model):
@@ -3478,6 +3531,7 @@ class MainWindow(QMainWindow):
             # Start Driver (with status callback for browser installation/launch updates)
             self._update_status("Launching Browser...", "info")
             await self.driver.start(status_callback=lambda msg: self._update_status(msg, "info"))
+            self._refresh_settings_dynamic_dropdown_options()
 
             # Optional provider UI language check (provider-specific enforcement; safe to no-op)
             # If the user cancels, stop startup gracefully

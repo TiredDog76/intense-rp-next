@@ -12,6 +12,7 @@ class DriverProvider(str, Enum):
     MOONSHOT = "Moonshot"
     QWEN_LM = "QwenLM"
     PERPLEXITY = "Perplexity"
+    HUGGINGCHAT = "HuggingChat"
     AI_STUDIO = "Google AI Studio"
     # Backwards compatible alias (legacy label was "Moonshot / Kimi")
     MOONSHOT_KIMI = "Moonshot"
@@ -64,6 +65,20 @@ class DriverProvider(str, Enum):
         }:
             return cls.PERPLEXITY
         if normalized in {
+            "huggingchat",
+            "hugging chat",
+            "hugging-chat",
+            "huggingface",
+            "hugging face",
+            "hugging-face",
+            "hf",
+            "hf chat",
+            "huggingface chat",
+            "huggingface.co/chat",
+            "hugging face chat",
+        }:
+            return cls.HUGGINGCHAT
+        if normalized in {
             "google ai studio",
             "google-ai-studio",
             "google_ai_studio",
@@ -89,6 +104,8 @@ class DriverProvider(str, Enum):
             return "moonshot_kimi"
         if self is DriverProvider.AI_STUDIO:
             return "aistudio"
+        if self is DriverProvider.HUGGINGCHAT:
+            return "huggingchat"
         raw = (self.value or "").strip().lower()
         return re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
 
@@ -99,6 +116,7 @@ PROVIDER_BEHAVIOR_CATEGORY_KEYS: dict[DriverProvider, str] = {
     DriverProvider.MOONSHOT: "moonshot_behavior",
     DriverProvider.QWEN_LM: "qwen_behavior",
     DriverProvider.PERPLEXITY: "perplexity_behavior",
+    DriverProvider.HUGGINGCHAT: "huggingchat_behavior",
     DriverProvider.AI_STUDIO: "aistudio_behavior",
 }
 

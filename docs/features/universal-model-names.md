@@ -27,10 +27,11 @@ For providers with a real model picker, IntenseRP also lists the available real 
 - Google AI Studio
 - QwenLM
 - Perplexity
+- HuggingChat
 
 Those IDs are lowercase, with spaces and dots converted to `-`, and they keep the normal suffixes. For example, a GLM model named **GLM-5.1** appears as `glm-5-1-auto`, `glm-5-1-reasoner`, and `glm-5-1-chat`.
 
-In **Providers in Parallel**, only conflicting real-model IDs get a provider prefix. So a unique Perplexity model can stay as `kimi-k2-6-reasoner`, while an overlap like **Gemini 3.1 Pro** under both Google AI Studio and Perplexity becomes provider-prefixed for those providers.
+In **Providers in Parallel**, only conflicting real-model IDs get a provider prefix. So a unique Perplexity or HuggingChat model can stay short, while an overlap like **Gemini 3.1 Pro** under both Google AI Studio and Perplexity becomes provider-prefixed for those providers.
 
 `intenserp-*` still uses the model selected in Settings. A real-model ID switches the provider UI to that model for the request, then applies the suffix behavior on top.
 

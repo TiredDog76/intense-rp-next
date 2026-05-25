@@ -11,13 +11,13 @@ Quick answers to the questions that come up the most. If you need a step-by-step
 ## :material-help-circle: General
 
 ??? question "What is IntenseRP Next v2?"
-    A local desktop app + OpenAI-compatible API that lets clients like SillyTavern talk to provider web chats (DeepSeek / GLM / Moonshot / QwenLM / Perplexity / Google AI Studio) by driving them in a real browser.
+    A local desktop app + OpenAI-compatible API that lets clients like SillyTavern talk to provider web chats (DeepSeek / GLM / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio) by driving them in a real browser.
 
 ??? question "Is this an official DeepSeek or SillyTavern project?"
     Nope. This is a third-party tool and is not affiliated with DeepSeek, SillyTavern, or any provider.
 
 ??? question "Do I need a paid provider API key?"
-    No. IntenseRP uses provider web apps you log into in the browser (DeepSeek / GLM / Moonshot / QwenLM / Perplexity / Google AI Studio). This project does not use paid official provider APIs.
+    No. IntenseRP uses provider web apps you log into in the browser (DeepSeek / GLM / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio). This project does not use paid official provider APIs.
 
 ??? question "What platforms are supported?"
     Windows and Linux are the supported targets right now. A graphical desktop is required because it launches a real browser.
@@ -47,6 +47,7 @@ Quick answers to the questions that come up the most. If you need a step-by-step
     - Moonshot: `moonshot-auto` / `moonshot-chat` / `moonshot-reasoner`
     - QwenLM: `qwen-auto` / `qwen-chat` / `qwen-reasoner`
     - Perplexity: `perplexity-auto` / `perplexity-chat` / `perplexity-reasoner`
+    - HuggingChat: `huggingchat-auto` / `huggingchat-chat` / `huggingchat-reasoner`
     - Google AI Studio: `aistudio-auto` / `aistudio-chat` / `aistudio-reasoner`
 
 ??? question "Why are responses slow sometimes?"

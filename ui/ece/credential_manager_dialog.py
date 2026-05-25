@@ -44,10 +44,15 @@ class _CredentialRow(QWidget):
     deleteRequested = Signal()
     pinRequested = Signal()
     unpinRequested = Signal()
+    disableRequested = Signal()
+    enableRequested = Signal()
 
     def __init__(self, number: int, pair: Optional[CredentialPair] = None, parent=None) -> None:
         super().__init__(parent)
         self._pinned = bool(getattr(pair, "pinned", False))
+        self._disabled = bool(getattr(pair, "disabled", False))
+        if self._disabled:
+            self._pinned = False
         self._menu_toggle_suppressed = False
         self.setStyleSheet("background-color: transparent;")
 
@@ -91,6 +96,25 @@ class _CredentialRow(QWidget):
         if not pin_pixmap.isNull():
             self.pin_badge.setPixmap(pin_pixmap)
         number_stack.addWidget(self.pin_badge)
+
+        self.disabled_badge = QLabel()
+        self.disabled_badge.setFixedSize(22, 22)
+        self.disabled_badge.setAlignment(Qt.AlignCenter)
+        self.disabled_badge.setStyleSheet(
+            f"""
+            background-color: {BrandColors.WARNING};
+            border-radius: 6px;
+            """
+        )
+        disabled_pixmap = IconUtils.get_pixmap(
+            "flag-off.svg",
+            color="#3b2a00",
+            size=12,
+            dpr=self.devicePixelRatioF(),
+        )
+        if not disabled_pixmap.isNull():
+            self.disabled_badge.setPixmap(disabled_pixmap)
+        number_stack.addWidget(self.disabled_badge)
 
         self._number_stack = number_stack
         layout.addWidget(number_host, 0, Qt.AlignVCenter)
@@ -145,17 +169,30 @@ class _CredentialRow(QWidget):
         return self._pinned
 
     def set_pinned(self, pinned: bool) -> None:
-        self._pinned = bool(pinned)
+        self._pinned = bool(pinned) and not self._disabled
+        self._sync_index_display()
+
+    def is_disabled(self) -> bool:
+        return self._disabled
+
+    def set_disabled(self, disabled: bool) -> None:
+        self._disabled = bool(disabled)
+        if self._disabled:
+            self._pinned = False
         self._sync_index_display()
 
     def set_dimmed(self, dimmed: bool) -> None:
-        self._opacity_effect.setOpacity(0.58 if dimmed else 1.0)
+        if self._disabled:
+            self._opacity_effect.setOpacity(0.42)
+        else:
+            self._opacity_effect.setOpacity(0.58 if dimmed else 1.0)
 
     def get_pair(self) -> CredentialPair:
         return CredentialPair(
             email=str(self.email_input.text() or ""),
             password=str(self.password_input.text() or ""),
             pinned=self._pinned,
+            disabled=self._disabled,
         )
 
     def close_action_menu(self) -> None:
@@ -180,7 +217,12 @@ class _CredentialRow(QWidget):
         )
 
     def _sync_index_display(self) -> None:
-        self._number_stack.setCurrentWidget(self.pin_badge if self._pinned else self.number_label)
+        if self._disabled:
+            self._number_stack.setCurrentWidget(self.disabled_badge)
+        elif self._pinned:
+            self._number_stack.setCurrentWidget(self.pin_badge)
+        else:
+            self._number_stack.setCurrentWidget(self.number_label)
 
     def _handle_more_button_pressed(self) -> None:
         self._menu_toggle_suppressed = False
@@ -200,6 +242,12 @@ class _CredentialRow(QWidget):
                     icon_file="pin-off.svg" if self._pinned else "pin.svg",
                 ),
                 IconOptionMenuItem(
+                    key="toggle_disabled",
+                    label="Enable" if self._disabled else "Disable",
+                    icon_file="flag.svg" if self._disabled else "flag-off.svg",
+                    warning=not self._disabled,
+                ),
+                IconOptionMenuItem(
                     key="delete",
                     label="Delete",
                     icon_file="x.svg",
@@ -212,6 +260,14 @@ class _CredentialRow(QWidget):
     def _handle_action_triggered(self, action_key: str) -> None:
         if action_key == "delete":
             self.deleteRequested.emit()
+            return
+        if action_key == "toggle_disabled":
+            if self._disabled:
+                self.enableRequested.emit()
+            else:
+                self.disableRequested.emit()
+            return
+        if self._disabled:
             return
         if self._pinned:
             self.unpinRequested.emit()
@@ -342,8 +398,10 @@ class _ProviderPage(QWidget):
         row.deleteRequested.connect(lambda r=row: self._delete_row(r))
         row.pinRequested.connect(lambda r=row: self._pin_row(r))
         row.unpinRequested.connect(lambda r=row: self._unpin_row(r))
+        row.disableRequested.connect(lambda r=row: self._disable_row(r))
+        row.enableRequested.connect(lambda r=row: self._enable_row(r))
 
-        if row.is_pinned():
+        if row.is_pinned() and not row.is_disabled():
             if self._pinned_row is None:
                 self._pinned_row = row
             else:
@@ -378,6 +436,8 @@ class _ProviderPage(QWidget):
     def _pin_row(self, row: _CredentialRow) -> None:
         if row not in self._rows:
             return
+        if row.is_disabled():
+            return
         if self._pinned_row is row and row.is_pinned():
             return
 
@@ -398,6 +458,22 @@ class _ProviderPage(QWidget):
         self.changed.emit()
         self._sync_pinned_state()
 
+    def _disable_row(self, row: _CredentialRow) -> None:
+        if row not in self._rows or row.is_disabled():
+            return
+        if self._pinned_row is row:
+            self._pinned_row = None
+        row.set_disabled(True)
+        self.changed.emit()
+        self._sync_pinned_state()
+
+    def _enable_row(self, row: _CredentialRow) -> None:
+        if row not in self._rows or not row.is_disabled():
+            return
+        row.set_disabled(False)
+        self.changed.emit()
+        self._sync_pinned_state()
+
     def _renumber(self) -> None:
         for idx, row in enumerate(self._rows, start=1):
             row.set_number(idx)
@@ -405,7 +481,7 @@ class _ProviderPage(QWidget):
     def _sync_pinned_state(self) -> None:
         has_pinned_row = self._pinned_row is not None and self._pinned_row in self._rows
         for row in self._rows:
-            row.set_dimmed(has_pinned_row and row is not self._pinned_row)
+            row.set_dimmed(row.is_disabled() or (has_pinned_row and row is not self._pinned_row))
 
     def _sync_placeholder(self) -> None:
         self.placeholder.setVisible(len(self._rows) == 0)
@@ -423,7 +499,7 @@ class CredentialManagerDialog(QDialog):
         self._ece = EceManager(getattr(config_manager, "config_dir", "config_data"))
 
         self._unsaved_changes = False
-        self._loaded_snapshot: Dict[str, List[Tuple[str, str, bool]]] = {}
+        self._loaded_snapshot: Dict[str, List[Tuple[str, str, bool, bool]]] = {}
 
         self.setWindowTitle("Credential Manager")
         self.setModal(True)
@@ -517,6 +593,7 @@ class CredentialManagerDialog(QDialog):
             _ProviderEntry(label="Moonshot", provider=DriverProvider.MOONSHOT),
             _ProviderEntry(label="QwenLM", provider=DriverProvider.QWEN_LM),
             _ProviderEntry(label="Perplexity", provider=DriverProvider.PERPLEXITY),
+            _ProviderEntry(label="HuggingChat", provider=DriverProvider.HUGGINGCHAT),
             _ProviderEntry(label="AI Studio", provider=DriverProvider.AI_STUDIO),
         ]
 
@@ -526,6 +603,7 @@ class CredentialManagerDialog(QDialog):
             DriverProvider.MOONSHOT: "providers/moonshot.svg",
             DriverProvider.QWEN_LM: "providers/qwen.svg",
             DriverProvider.PERPLEXITY: "providers/perplexity.svg",
+            DriverProvider.HUGGINGCHAT: "providers/huggingface.svg",
             DriverProvider.AI_STUDIO: "providers/aistudio.svg",
         }
 
@@ -647,13 +725,16 @@ class CredentialManagerDialog(QDialog):
         self._apply_sidebar_item_icon(previous, active=False)
         self._apply_sidebar_item_icon(current, active=True)
 
-    def _snapshot_from_pages(self) -> Dict[str, List[Tuple[str, str, bool]]]:
-        snap: Dict[str, List[Tuple[str, str, bool]]] = {}
+    def _snapshot_from_pages(self) -> Dict[str, List[Tuple[str, str, bool, bool]]]:
+        snap: Dict[str, List[Tuple[str, str, bool, bool]]] = {}
         for entry in self._provider_entries:
             page = self._page_by_provider_key.get(entry.provider.key)
             if not page:
                 continue
-            snap[entry.provider.key] = [(p.email, p.password, bool(p.pinned)) for p in page.get_pairs()]
+            snap[entry.provider.key] = [
+                (p.email, p.password, bool(p.pinned), bool(getattr(p, "disabled", False)))
+                for p in page.get_pairs()
+            ]
         return snap
 
     def _load(self) -> None:

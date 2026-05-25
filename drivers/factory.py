@@ -5,6 +5,7 @@ from typing import Any
 from aistudio_driver import AIStudioDriver
 from deepseek_driver import DeepSeekDriver
 from glm_driver import GLMDriver
+from huggingchat_driver import HuggingChatDriver
 from moonshot_driver import MoonshotDriver
 from perplexity_driver import PerplexityDriver
 from qwen_driver import QwenLMDriver
@@ -35,6 +36,8 @@ def create_driver_for_provider(config_manager: Any, provider: DriverProvider) ->
         return QwenLMDriver(scoped_config)
     if provider == DriverProvider.PERPLEXITY:
         return PerplexityDriver(scoped_config)
+    if provider == DriverProvider.HUGGINGCHAT:
+        return HuggingChatDriver(scoped_config)
     if provider == DriverProvider.AI_STUDIO:
         return AIStudioDriver(scoped_config)
 

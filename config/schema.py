@@ -21,6 +21,7 @@ DOCS_DEEPSEEK = "providers/deepseek-behavior/"
 DOCS_FORMATTING = "features/formatting/"
 DOCS_GLM = "providers/glm-behavior/"
 DOCS_GLM_QUIRKS = "advanced/glm-quirks/"
+DOCS_HUGGINGCHAT = "providers/huggingchat-behavior/"
 DOCS_HOTSWAPS = "features/hotswaps/"
 DOCS_IP_WHITELIST = "advanced/ip-whitelist/"
 DOCS_LOGIN = "features/login-sessions/"
@@ -1134,6 +1135,275 @@ SCHEMA = [
         ],
     ),
     SettingCategory(
+        name="HuggingChat Behavior",
+        key="huggingchat_behavior",
+        fields=[
+            SettingField(
+                key="model",
+                label="Model",
+                type=SettingType.DROPDOWN,
+                default="Current HuggingChat selection",
+                options=[
+                    "Current HuggingChat selection",
+                    "Model list unavailable, please successfully log into HuggingChat at least once",
+                ],
+                tooltip=(
+                    "Select which HuggingChat model to use in the web UI. "
+                    "The live model list is cached after a successful HuggingChat login."
+                ),
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="real-huggingchat-model-selection-web-ui",
+            ),
+            SettingField(
+                key="inference_provider",
+                label="Inference Provider",
+                type=SettingType.STRING,
+                default="auto",
+                tooltip=(
+                    "Optional HuggingChat provider value, such as auto, together, fireworks-ai, etc. "
+                    "If HuggingChat does not expose the selector for a model, IntenseRP skips it."
+                ),
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="inference-provider",
+            ),
+            SettingField(
+                key="subscription_note",
+                label="Monthly Credits",
+                type=SettingType.HINT,
+                default=(
+                    "HuggingChat has small monthly model credits: free accounts get $0.1/month "
+                    "and Pro accounts get $2/month. Disable spent accounts in Credential Manager "
+                    "until they reset."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="limits-and-account-rotation",
+            ),
+            SettingField(
+                key="auto_disable_ratelimited_accounts",
+                label="Auto-Disable Rate-Limited Accounts",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "When HuggingChat shows Upgrade Required, disable the current saved account "
+                    "so account rotation can skip it until you re-enable it."
+                ),
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="limits-and-account-rotation",
+            ),
+            SettingField(
+                key="enable_deepthink",
+                label="Enable Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Use HuggingChat's thinking effort selector on models that expose it.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="thinking-effort",
+            ),
+            SettingField(
+                key="thinking_effort",
+                label="Thinking Effort",
+                type=SettingType.DROPDOWN,
+                default="auto",
+                options=["auto", "default", "low", "medium", "high"],
+                tooltip="Thinking effort to select when Thinking is enabled and the model exposes the control.",
+                depends="huggingchat_behavior.enable_deepthink",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="thinking-effort",
+            ),
+            SettingField(
+                key="send_deepthink",
+                label="Send Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Forward <think>...</think> text from HuggingChat streams to the API client.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="send-thinking",
+            ),
+            SettingField(
+                key="search_forced_off_note",
+                label="Search",
+                type=SettingType.HINT,
+                default=(
+                    "HuggingChat search/tool payloads are not forwarded to the client for stability. "
+                    "Only the final assistant text is streamed."
+                ),
+                tooltip=None,
+                hint_variant="info",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="search",
+            ),
+            SettingField(
+                key="enable_search",
+                label="Enable Search",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Enable HuggingChat's Exa MCP web search before sending.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="search",
+            ),
+            SettingField(
+                key="use_system_prompt_field",
+                label="Use System Prompt Field",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Move configured and leading system messages into HuggingChat's custom "
+                    "system prompt field instead of the main chat prompt."
+                ),
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="system-prompt-field",
+            ),
+            SettingField(
+                key="paste_leading_system_messages",
+                label="Paste Leading System Messages",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip="Move leading API system messages into the HuggingChat custom system prompt field.",
+                depends="huggingchat_behavior.use_system_prompt_field",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="system-prompt-field",
+            ),
+            SettingField(
+                key="send_as_text_file",
+                label="Send As Text File",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Upload the prompt as a text file instead of typing it into HuggingChat.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="file-upload-mode",
+            ),
+            SettingField(
+                key="text_file_message",
+                label="Text File Message",
+                type=SettingType.TEXTAREA,
+                default="Please read the attached file and respond to it.",
+                tooltip="Text pasted alongside the uploaded file. HuggingChat requires text with file uploads.",
+                depends="huggingchat_behavior.send_as_text_file",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="text-file-message",
+            ),
+            SettingField(
+                key="file_upload_timeout",
+                label="File Upload Timeout",
+                type=SettingType.INTEGER,
+                default=20,
+                tooltip="Max seconds to wait for the send button to become available after file upload.",
+                depends="huggingchat_behavior.send_as_text_file",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="file-upload-timeout",
+            ),
+            SettingField(
+                key="file_upload_settle_delay",
+                label="File Upload Settle Delay (s)",
+                type=SettingType.STRING,
+                default="3.0",
+                tooltip=(
+                    "Seconds to wait after HuggingChat accepts the file before pasting "
+                    "the companion message."
+                ),
+                depends="huggingchat_behavior.send_as_text_file",
+                validator=validate_float_range(0.0, 30.0, label="File upload settle delay"),
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="file-upload-settle-delay",
+            ),
+            SettingField(
+                key="message_send_timeout",
+                label="Message Send Timeout (s)",
+                type=SettingType.INTEGER,
+                default=8,
+                tooltip="Max seconds to wait for the send button to appear after text entry.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="message-send-timeout",
+            ),
+            SettingField(
+                key="clean_regeneration",
+                label="Reuse Matching Chat",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt and settings match.",
+                depends="huggingchat_behavior.auto_delete_chats!=true",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="clean-regeneration",
+            ),
+            SettingField(
+                key="auto_delete_chats",
+                label="Delete Chat After Reply",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Delete the provider chat after a successful reply finishes. "
+                    "This cannot be used together with Reuse Matching Chat."
+                ),
+                depends="huggingchat_behavior.clean_regeneration!=true",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
+            ),
+            SettingField(
+                key="auto_delete_chats_warning",
+                label="Delete Chat After Reply",
+                type=SettingType.HINT,
+                default=(
+                    "This adds extra cleanup work after each request, so it can slow requests down quite a bit."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="huggingchat_behavior.auto_delete_chats",
+                docs_path=DOCS_CHAT_AUTO_DELETE,
+                docs_anchor="delete-chat-after-reply",
+            ),
+            SettingField(
+                key="multi_slot_cache",
+                label="Search Older Matching Chats",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Reuse up to 7 older cached chats for duplicate prompts instead of only the most recent one.",
+                depends="huggingchat_behavior.clean_regeneration",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_MULTI_SLOT_CACHE,
+                docs_anchor="how-it-works",
+            ),
+            SettingField(
+                key="completion_request_timeout",
+                label="Completion Request Timeout (s)",
+                type=SettingType.INTEGER,
+                default=150,
+                tooltip="Max seconds to wait after clicking Send or Regenerate for HuggingChat's conversation request.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="quirks",
+            ),
+            SettingField(
+                key="first_chunk_timeout",
+                label="First Chunk Timeout (s)",
+                type=SettingType.INTEGER,
+                default=150,
+                tooltip="Max seconds to wait for HuggingChat's response stream to produce answer text.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="quirks",
+            ),
+            SettingField(
+                key="model_apply_timeout",
+                label="Model Apply Timeout (s)",
+                type=SettingType.INTEGER,
+                default=20,
+                tooltip="Max seconds to wait while applying HuggingChat model settings.",
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="quirks",
+            ),
+            SettingField(
+                key="post_action_delay",
+                label="Post-Action Delay (s)",
+                type=SettingType.STRING,
+                default="0.35",
+                tooltip="Small pause after HuggingChat UI actions so its menus and toggles can settle.",
+                validator=validate_float_range(0.0, 5.0, label="Post-action delay"),
+                docs_path=DOCS_HUGGINGCHAT,
+                docs_anchor="quirks",
+            ),
+        ],
+    ),
+    SettingCategory(
         name="Google AI Studio Behavior",
         key="aistudio_behavior",
         fields=[
@@ -1984,6 +2254,29 @@ SCHEMA = [
                 docs_path=DOCS_FULL_PARALLELIZATION,
             ),
             SettingField(
+                key="parallel_enable_huggingchat",
+                label="HuggingChat",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Include HuggingChat in the parallel browser pool.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="providers_credentials.provider!=HuggingChat",
+                force_when_dep_unmet=True,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_instances_huggingchat",
+                label="HuggingChat Instances",
+                type=SettingType.INTEGER,
+                default=1,
+                tooltip="How many HuggingChat account/profile lanes to launch when Full Parallelization is enabled.",
+                validator=validate_integer_range(1, 32, label="HuggingChat instances"),
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_huggingchat",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_huggingchat",
+                force_when_dep_unmet=1,
+                docs_path=DOCS_FULL_PARALLELIZATION,
+            ),
+            SettingField(
                 key="parallel_enable_aistudio",
                 label="Google AI Studio",
                 type=SettingType.BOOLEAN,
@@ -2660,6 +2953,8 @@ SETTINGS_CARDS = {
             ("experimental", "parallel_instances_qwen"),
             ("experimental", "parallel_enable_perplexity"),
             ("experimental", "parallel_instances_perplexity"),
+            ("experimental", "parallel_enable_huggingchat"),
+            ("experimental", "parallel_instances_huggingchat"),
             ("experimental", "parallel_enable_aistudio"),
             ("experimental", "parallel_instances_aistudio"),
             ("experimental", "enable_remote_control"),
@@ -2698,6 +2993,13 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "subscription_note", "enable_deepthink", "send_deepthink", "search_forced_off_note", "enable_search"]},
         {"title": "Spaces", "icon": "sparkles.svg", "fields": ["use_spaces", "paste_system_instructions_into_space"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
+    ],
+    "huggingchat_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "inference_provider", "subscription_note", "auto_disable_ratelimited_accounts", "enable_deepthink", "thinking_effort", "send_deepthink", "search_forced_off_note", "enable_search"]},
+        {"title": "System Prompt", "icon": "type.svg", "fields": ["use_system_prompt_field", "paste_leading_system_messages"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "file_upload_settle_delay", "message_send_timeout"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
+        {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout", "first_chunk_timeout", "model_apply_timeout", "post_action_delay"]},
     ],
     "aistudio_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},

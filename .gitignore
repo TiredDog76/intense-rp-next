@@ -67,3 +67,6 @@ test_*.py
 PerplexityFindings.md
 Perplexity*.txt
 spacesupport.md
+fixes.md
+HUGGINGCHAT_FINDINGS.md
+hchat_*.txt
