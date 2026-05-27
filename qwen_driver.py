@@ -84,6 +84,7 @@ class QwenLMDriver(BaseDriver):
         "li.ant-dropdown-menu-submenu.ant-dropdown-menu-submenu-vertical.mode-select-common-item"
     )
     MODE_SELECT_MENU_ITEM_SELECTOR = "li[data-menu-id]"
+    MODE_SELECT_TOOLS_SWITCH_SELECTOR = "div[class*='qwen-chat-ui-packages-design-switch-size-small']"
 
     MODEL_SELECTOR_TEXT_SELECTOR = "[class*='model-selector-text']"
     MODEL_SELECTOR_POPUP_SELECTOR = "div[class*='model-selector-popup']"
@@ -1979,6 +1980,112 @@ class QwenLMDriver(BaseDriver):
 
         return False
 
+    async def _disable_tools_switch_in_mode_select_menu(self, menu=None) -> bool:
+        if not self.page:
+            return False
+
+        scope = menu
+        if scope is None:
+            scope = self.page.locator(self.MODE_SELECT_DROPDOWN_MENU_ROOT_SELECTOR)
+            if await scope.count() == 0:
+                scope = self.page.locator("ul.ant-dropdown-menu-root")
+
+        try:
+            switches = scope.locator(self.MODE_SELECT_TOOLS_SWITCH_SELECTOR)
+        except Exception:
+            switches = self.page.locator(self.MODE_SELECT_TOOLS_SWITCH_SELECTOR)
+
+        try:
+            count = await switches.count()
+        except Exception:
+            count = 0
+
+        if count == 0:
+            switches = self.page.locator(self.MODE_SELECT_TOOLS_SWITCH_SELECTOR)
+            try:
+                count = await switches.count()
+            except Exception:
+                count = 0
+
+        visible_switches = []
+        tools_switches = []
+        for idx in range(count):
+            switch = switches.nth(idx)
+            try:
+                if not await switch.is_visible():
+                    continue
+            except Exception:
+                continue
+
+            label = ""
+            try:
+                label = str(
+                    await switch.evaluate(
+                        """(el) => {
+                            const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();
+                            let current = el;
+                            for (let depth = 0; current && depth < 5; depth++, current = current.parentElement) {
+                                const text = normalize(current.textContent);
+                                if (text) return text;
+                            }
+                            return '';
+                        }"""
+                    )
+                    or ""
+                )
+            except Exception:
+                label = ""
+
+            if "tools" in label:
+                tools_switches.append(switch)
+            else:
+                visible_switches.append(switch)
+
+        target_switches = tools_switches or visible_switches
+
+        for switch in target_switches:
+            try:
+                checked = str(await switch.get_attribute("aria-checked") or "").strip().lower()
+            except Exception:
+                checked = ""
+
+            if checked != "true":
+                continue
+
+            try:
+                aria_disabled = str(await switch.get_attribute("aria-disabled") or "").strip().lower()
+            except Exception:
+                aria_disabled = ""
+
+            if aria_disabled == "true":
+                Logger.warning("QwenLM: Tools switch is enabled but disabled in the + menu.")
+                return False
+
+            try:
+                await switch.click(timeout=3000)
+            except Exception:
+                try:
+                    await switch.evaluate("el => el.click()")
+                except Exception as e:
+                    Logger.warning(f"QwenLM: failed to disable Tools in the + menu: {e}")
+                    return False
+
+            await asyncio.sleep(0.15)
+
+            try:
+                checked_after = str(await switch.get_attribute("aria-checked") or "").strip().lower()
+            except Exception:
+                checked_after = ""
+
+            if checked_after == "true":
+                Logger.warning("QwenLM: Tools switch stayed enabled after clicking it in the + menu.")
+                return False
+
+            Logger.debug("QwenLM: disabled Tools in the + menu.")
+            return True
+
+        return True
+
     async def _open_mode_select_dropdown_menu_root(self):
         if not self.page:
             return None
@@ -2050,6 +2157,11 @@ class QwenLMDriver(BaseDriver):
         if await menu.count() == 0:
             return None
 
+        try:
+            await self._disable_tools_switch_in_mode_select_menu(menu)
+        except Exception:
+            pass
+
         return menu
 
     async def _open_mode_select_common_submenu(self) -> bool:
@@ -2112,6 +2224,15 @@ class QwenLMDriver(BaseDriver):
         except Exception:
             pass
 
+        try:
+            menu = self.page.locator(self.MODE_SELECT_DROPDOWN_MENU_ROOT_SELECTOR)
+            if await menu.count() == 0:
+                menu = self.page.locator("ul.ant-dropdown-menu-root")
+            if await menu.count() > 0:
+                await self._disable_tools_switch_in_mode_select_menu(menu)
+        except Exception:
+            pass
+
         submenu = self.page.locator(self.MODE_SELECT_COMMON_SUBMENU_SELECTOR)
         if await submenu.count() == 0:
             return False
@@ -2134,9 +2255,9 @@ class QwenLMDriver(BaseDriver):
             return self.MODE_SELECT_MENU_ITEM_SELECTOR
         return f"{self.MODE_SELECT_MENU_ITEM_SELECTOR}[data-menu-id$='-{wanted}']"
 
-    async def _click_mode_select_item(self, suffix: str) -> bool:
+    async def _click_mode_select_item(self, suffix: str) -> str:
         if not self.page:
-            return False
+            return "missing"
 
         item_selector = self._mode_select_item_selector(suffix)
         try:
@@ -2151,17 +2272,69 @@ class QwenLMDriver(BaseDriver):
                 f"{self.MODE_SELECT_MENU_ITEM_SELECTOR}[data-menu-id*='{str(suffix or '').strip().lower()}']"
             )
 
-        clicked = await self._click_first_visible(items, timeout_ms=3000)
+        clicked = False
+        disabled = False
+        count = 0
+        try:
+            count = await items.count()
+        except Exception:
+            count = 0
+
+        for idx in range(count):
+            candidate = items.nth(idx)
+            try:
+                if not await candidate.is_visible():
+                    continue
+            except Exception:
+                continue
+
+            try:
+                aria_disabled = str(await candidate.get_attribute("aria-disabled") or "").strip().lower()
+            except Exception:
+                aria_disabled = ""
+
+            try:
+                disabled_attr = await candidate.get_attribute("disabled")
+            except Exception:
+                disabled_attr = None
+
+            try:
+                disabled_in_tree = bool(
+                    await candidate.evaluate(
+                        """(el) => {
+                            if (!el) return false;
+                            const className = (el.getAttribute('class') || '').toString().toLowerCase();
+                            if (className.includes('disabled')) return true;
+                            const nested = el.querySelector("[aria-disabled='true'], [disabled]");
+                            return !!nested;
+                        }"""
+                    )
+                )
+            except Exception:
+                disabled_in_tree = False
+
+            if aria_disabled == "true" or disabled_attr is not None or disabled_in_tree:
+                disabled = True
+                break
+
+            if await self._click_first_visible(candidate, timeout_ms=3000):
+                clicked = True
+                break
+
         try:
             await self.page.keyboard.press("Escape")
         except Exception:
             pass
 
-        return bool(clicked)
+        if clicked:
+            return "clicked"
+        if disabled:
+            return "disabled"
+        return "missing"
 
-    async def _enable_search_via_mode_select_dropdown(self) -> bool:
+    async def _enable_search_via_mode_select_dropdown(self) -> str:
         if not self.page:
-            return False
+            return "missing"
 
         Logger.debug("QwenLM: enabling search via mode-select dropdown...")
 
@@ -2172,12 +2345,14 @@ class QwenLMDriver(BaseDriver):
 
         if not await self._open_mode_select_common_submenu():
             Logger.debug("QwenLM: mode-select submenu not found/opened.")
-            return False
+            return "missing"
 
-        ok = await self._click_mode_select_item("search")
-        if not ok:
+        result = await self._click_mode_select_item("search")
+        if result == "disabled":
+            Logger.warning("QwenLM: Search is visible but disabled in the + menu.")
+        elif result != "clicked":
             Logger.debug("QwenLM: mode-select search item not found/clicked.")
-        return bool(ok)
+        return result
 
     async def _prime_upload_flow_via_mode_select_dropdown(self) -> bool:
         """
@@ -2193,13 +2368,35 @@ class QwenLMDriver(BaseDriver):
 
         try:
             primed = await self.page.evaluate(
-                "async (triggerSel, menuSel, itemSel) => {"
+                "async (triggerSel, menuSel, itemSel, toolsSwitchSel) => {"
                 "  const sleep = (ms) => new Promise(r => setTimeout(r, ms));"
                 "  const clickEl = (el) => {"
                 "    if (!el) return false;"
                 "    try { el.click(); return true; } catch (e) {}"
                 "    try { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; } catch (e) {}"
                 "    return false;"
+                "  };"
+                "  const disableTools = (root) => {"
+                "    const switches = Array.from((root || document).querySelectorAll(toolsSwitchSel));"
+                "    if (switches.length === 0 && root !== document) {"
+                "      switches.push(...Array.from(document.querySelectorAll(toolsSwitchSel)));"
+                "    }"
+                "    const visible = switches.filter((el) => {"
+                "      const rect = el.getBoundingClientRect();"
+                "      return rect.width > 0 && rect.height > 0;"
+                "    });"
+                "    const target = visible.find((el) => {"
+                "      let current = el;"
+                "      for (let depth = 0; current && depth < 5; depth++, current = current.parentElement) {"
+                "        const text = (current.textContent || '').toString().toLowerCase();"
+                "        if (text.includes('tools')) return true;"
+                "      }"
+                "      return false;"
+                "    }) || visible[0];"
+                "    if (!target) return;"
+                "    const checked = (target.getAttribute('aria-checked') || '').toLowerCase() === 'true';"
+                "    const disabled = (target.getAttribute('aria-disabled') || '').toLowerCase() === 'true';"
+                "    if (checked && !disabled) clickEl(target);"
                 "  };"
                 ""
                 "  const trigger = document.querySelector(triggerSel);"
@@ -2219,6 +2416,7 @@ class QwenLMDriver(BaseDriver):
                 ""
                 "  const menu = document.querySelector(menuSel) || document.querySelector('ul.ant-dropdown-menu-root');"
                 "  if (!menu) return false;"
+                "  disableTools(menu);"
                 ""
                 "  while (Date.now() < deadline) {"
                 "    const items = Array.from(menu.querySelectorAll(itemSel));"
@@ -2246,6 +2444,7 @@ class QwenLMDriver(BaseDriver):
                 self.MODE_SELECT_TRIGGER_ANY_SELECTOR,
                 self.MODE_SELECT_DROPDOWN_MENU_ROOT_SELECTOR,
                 self.MODE_SELECT_MENU_ITEM_SELECTOR,
+                self.MODE_SELECT_TOOLS_SWITCH_SELECTOR,
             )
         except Exception:
             primed = False
@@ -2257,33 +2456,46 @@ class QwenLMDriver(BaseDriver):
 
         return bool(primed)
 
-    async def _enable_search(self) -> bool:
+    async def _enable_search(self) -> str:
         if not self.page:
-            return False
+            return "missing"
 
         # use the mode-select dropdown (more stable than the old anchor trick)
         # and it doesn't bug out in most cases
-        if await self._enable_search_via_mode_select_dropdown():
-            return True
+        dropdown_result = await self._enable_search_via_mode_select_dropdown()
+        if dropdown_result in {"clicked", "disabled"}:
+            return dropdown_result
 
         try:
-            clicked = await self.page.evaluate(
+            result = await self.page.evaluate(
                 "(enableAnchor, currentModeSelector) => {"
                 "  const clickAncestors = (span) => {"
-                "    if (!span) return false;"
+                "    if (!span) return 'missing';"
+                "    const isDisabled = (node) => {"
+                "      let current = node;"
+                "      for (let i = 0; current && i < 5; i++, current = current.parentElement) {"
+                "        const ariaDisabled = (current.getAttribute && current.getAttribute('aria-disabled') || '').toString().toLowerCase();"
+                "        if (ariaDisabled === 'true') return true;"
+                "        if (current.disabled === true) return true;"
+                "      }"
+                "      return false;"
+                "    };"
+                "    if (isDisabled(span)) return 'disabled';"
                 "    let el = span;"
                 "    for (let i = 0; i < 3; i++) {"
                 "      if (el.parentElement) el = el.parentElement;"
                 "    }"
-                "    try { el.click(); return true; } catch (e) {}"
-                "    try { span.click(); return true; } catch (e) {}"
-                "    try { span.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; } catch (e) {}"
-                "    return false;"
+                "    if (isDisabled(el)) return 'disabled';"
+                "    try { el.click(); return 'clicked'; } catch (e) {}"
+                "    try { span.click(); return 'clicked'; } catch (e) {}"
+                "    try { span.dispatchEvent(new MouseEvent('click', { bubbles: true })); return 'clicked'; } catch (e) {}"
+                "    return 'missing';"
                 "  };"
                 ""
                 "  try {"
                 "    const byAnchor = document.querySelector(`span[data-spm-anchor-id='${enableAnchor}']`);"
-                "    if (clickAncestors(byAnchor)) return true;"
+                "    const byAnchorResult = clickAncestors(byAnchor);"
+                "    if (byAnchorResult === 'clicked' || byAnchorResult === 'disabled') return byAnchorResult;"
                 "  } catch (e) {}"
                 ""
                 "  const isInsideCurrent = (node) => {"
@@ -2299,19 +2511,22 @@ class QwenLMDriver(BaseDriver):
                 "    if (!raw) continue;"
                 "    const text = raw.replace(/\\s+/g, ' ');"
                 "    if (text === 'web search' || text.includes('web search') || (text.includes('web') && text.includes('search'))) {"
-                "      if (clickAncestors(s)) return true;"
+                "      const result = clickAncestors(s);"
+                "      if (result === 'clicked' || result === 'disabled') return result;"
                 "    }"
                 "  }"
                 ""
-                "  return false;"
+                "  return 'missing';"
                 "}",
                 self.SEARCH_ENABLE_ANCHOR,
                 self.SEARCH_MODE_CONTAINER_SELECTOR,
             )
         except Exception:
-            clicked = False
+            result = "missing"
 
-        return bool(clicked)
+        if result == "disabled":
+            Logger.warning("QwenLM: Search is visible but disabled in the composer.")
+        return str(result or "missing")
 
     async def _disable_search(self) -> bool:
         if not self.page:
@@ -2335,7 +2550,10 @@ class QwenLMDriver(BaseDriver):
                 return
 
             if wanted:
-                await self._enable_search()
+                result = await self._enable_search()
+                if result == "disabled":
+                    Logger.warning("QwenLM: Search cannot be enabled because Qwen disabled the control.")
+                    return
             else:
                 await self._disable_search()
 
