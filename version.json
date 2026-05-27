@@ -1,7 +1,7 @@
 {
-  "version": "2.8.4-patch",
+  "version": "2.8.5-patch",
   "aua": true,
-  "severity": 4,
+  "severity": 3,
   "pu": "discord",
   "pufref": "none"
 }
