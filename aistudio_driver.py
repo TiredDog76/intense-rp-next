@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
-from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -155,12 +155,15 @@ class _AiStudioJsonEventStreamParser:
 class AIStudioDriver(BaseDriver):
     """Drive the Google AI Studio web UI and expose OpenAI-style streaming output."""
 
-    START_URL = "https://aistudio.google.com/prompts/new_chat?temporary"
+    START_URL = "https://aistudio.google.com/prompts/new_chat?temporary=true"
     AISTUDIO_HOST = "aistudio.google.com"
     AUTH_HOST_MARKER = "accounts.google.com"
     TEMPORARY_CHAT_QUERY_PARAM = "temporary"
+    TEMPORARY_CHAT_QUERY_VALUE = "true"
     LEGACY_TEMPORARY_CHAT_QUERY_PARAM = "incognito"
-    TEMPORARY_CHAT_DISABLED_VALUES = {"0", "false", "no", "off"}
+    TEMPORARY_CHAT_BADGE_SELECTOR = "span[data-test-id='main-text']"
+    TEMPORARY_CHAT_BADGE_LABEL = "Temporary chat"
+    TEMPORARY_CHAT_BADGE_TIMEOUT_MS = 10000
     DEFAULT_MODEL_LABEL = "Gemini 3.1 Pro"
     DEFAULT_MAX_OUTPUT_TOKENS = 65536
     GEMINI_25_PAID_MODEL_ERROR = (
@@ -448,7 +451,7 @@ class AIStudioDriver(BaseDriver):
             return False
         return any(
             key == cls.TEMPORARY_CHAT_QUERY_PARAM
-            and str(value).strip().lower() not in cls.TEMPORARY_CHAT_DISABLED_VALUES
+            and str(value).strip().lower() == cls.TEMPORARY_CHAT_QUERY_VALUE
             for key, value in query_pairs
         )
 
@@ -457,29 +460,26 @@ class AIStudioDriver(BaseDriver):
         parts = urlsplit(str(url or ""))
         query_pairs = parse_qsl(parts.query, keep_blank_values=True)
         updated_pairs = []
-        temporary_seen = False
+        temporary_applied = False
 
         for key, value in query_pairs:
             if key == cls.LEGACY_TEMPORARY_CHAT_QUERY_PARAM:
                 continue
             if key == cls.TEMPORARY_CHAT_QUERY_PARAM:
-                temporary_seen = True
-                updated_pairs.append((key, ""))
-            else:
-                updated_pairs.append((key, value))
+                if temporary_applied:
+                    continue
+                temporary_applied = True
+                updated_pairs.append((key, cls.TEMPORARY_CHAT_QUERY_VALUE))
+                continue
+            updated_pairs.append((key, value))
 
-        if not temporary_seen:
-            updated_pairs.append((cls.TEMPORARY_CHAT_QUERY_PARAM, ""))
-
-        encoded_query_parts = [
-            quote_plus(key)
-            if key == cls.TEMPORARY_CHAT_QUERY_PARAM and value == ""
-            else urlencode([(key, value)])
-            for key, value in updated_pairs
-        ]
+        if not temporary_applied:
+            updated_pairs.append(
+                (cls.TEMPORARY_CHAT_QUERY_PARAM, cls.TEMPORARY_CHAT_QUERY_VALUE)
+            )
 
         return urlunsplit(
-            (parts.scheme, parts.netloc, parts.path, "&".join(encoded_query_parts), parts.fragment)
+            (parts.scheme, parts.netloc, parts.path, urlencode(updated_pairs), parts.fragment)
         )
 
     async def _ensure_temporary_chat_url(self, timeout_ms: int = 60000) -> None:
@@ -490,30 +490,41 @@ class AIStudioDriver(BaseDriver):
         current_url = await self._current_url()
         if not self._is_aistudio_url(current_url):
             return
-        if self._url_has_temporary_enabled(current_url):
-            return
 
         target_url = self._with_temporary_enabled(current_url)
-        Logger.info(
-            "Google AI Studio: current chat URL is missing ?temporary. "
-            "Re-opening with temporary chat enabled..."
-        )
-        try:
-            await self._navigate_to_start_url(target_url)
-        except Exception as e:
-            Logger.warning(
-                f"Google AI Studio: failed to re-open current URL with ?temporary: {e}. "
-                "Retrying the default temporary chat URL..."
+        if not self._url_has_temporary_enabled(current_url):
+            Logger.info(
+                "Google AI Studio: current chat URL is missing ?temporary=true. "
+                "Re-opening with temporary chat enabled..."
             )
             try:
-                await self._navigate_to_start_url(self.START_URL)
-            except Exception as fallback_error:
+                await self._navigate_to_start_url(target_url)
+            except Exception as e:
                 Logger.warning(
-                    "Google AI Studio: default temporary chat navigation also failed: "
-                    f"{fallback_error}"
+                    f"Google AI Studio: failed to re-open current URL with ?temporary=true: {e}. "
+                    "Retrying the default temporary chat URL..."
                 )
-                return
-        await self._wait_for_chat_ready(timeout_ms=timeout_ms)
+                try:
+                    await self._navigate_to_start_url(self.START_URL)
+                except Exception as fallback_error:
+                    Logger.warning(
+                        "Google AI Studio: default temporary chat navigation also failed: "
+                        f"{fallback_error}"
+                    )
+                    return
+
+        if not await self._wait_for_chat_ready(timeout_ms=timeout_ms):
+            return
+
+        if await self._wait_for_temporary_chat_badge(
+            timeout_ms=self.TEMPORARY_CHAT_BADGE_TIMEOUT_MS
+        ):
+            return
+
+        Logger.warning(
+            "Google AI Studio: temporary chat URL loaded, but the Temporary chat badge "
+            "was not detected."
+        )
 
     async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         """Run post-start checks and one-time UI initialization for AI Studio."""
@@ -742,6 +753,38 @@ class AIStudioDriver(BaseDriver):
     async def _wait_for_chat_ready(self, timeout_ms: int = 60000) -> bool:
         """Return whether the chat composer becomes visible within the timeout."""
         return await self._find_first_visible(self.CHAT_READY_SELECTORS, timeout_ms=timeout_ms) is not None
+
+    async def _wait_for_temporary_chat_badge(self, timeout_ms: int = 10000) -> bool:
+        """Return whether AI Studio shows its visible Temporary chat indicator."""
+        if not self.page:
+            return False
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        wanted_label = self._normalize_text(self.TEMPORARY_CHAT_BADGE_LABEL)
+
+        while True:
+            locator = self.page.locator(self.TEMPORARY_CHAT_BADGE_SELECTOR)
+            try:
+                count = await locator.count()
+            except Exception:
+                count = 0
+
+            for idx in range(min(count, 10)):
+                item = locator.nth(idx)
+                try:
+                    if not await item.is_visible():
+                        continue
+                    text = str(await item.inner_text() or "")
+                except Exception:
+                    continue
+
+                if self._normalize_text(text) == wanted_label:
+                    return True
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return False
+
+            await asyncio.sleep(0.2)
 
     async def _current_url(self) -> str:
         if not self.page:
