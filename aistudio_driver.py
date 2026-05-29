@@ -435,6 +435,10 @@ class AIStudioDriver(BaseDriver):
     def get_start_url(self) -> str:
         return self.START_URL
 
+    def should_apply_configured_model_before_request(self) -> bool:
+        """Let the AI Studio request flow own model selection."""
+        return False
+
     @classmethod
     def _is_aistudio_url(cls, url: str) -> bool:
         try:
@@ -3076,6 +3080,20 @@ class AIStudioDriver(BaseDriver):
             self._prepare_preflight_next_chat(settings_snapshot, system_prompt_snapshot)
         )
 
+    async def _preflight_live_model_matches(self, settings: Dict[str, Any]) -> bool:
+        """Return whether the prepared chat still has the expected live model."""
+        desired_label = str(settings.get("model_label") or "").strip()
+        if not desired_label:
+            return True
+
+        try:
+            desired = self._model_config_for_label(desired_label)
+            current = await self._read_current_model_id()
+            return self._current_model_matches(current, desired_label, desired)
+        except Exception as e:
+            Logger.debug(f"Google AI Studio Preflight: failed to verify live model: {e}")
+            return False
+
     async def _consume_preflighted_chat(
         self,
         settings: Dict[str, Any],
@@ -3095,10 +3113,17 @@ class AIStudioDriver(BaseDriver):
             system_prompt_text=system_prompt_text,
         )
         if previous_state == requested_state:
-            Logger.info("Google AI Studio Preflight: using the prepared chat session.")
-            return True
+            if await self._preflight_live_model_matches(settings):
+                Logger.info("Google AI Studio Preflight: using the prepared chat session.")
+                return True
 
-        Logger.info("Google AI Studio Preflight: adjusting the prepared chat for this request...")
+            Logger.info(
+                "Google AI Studio Preflight: prepared chat settings matched, "
+                "but the live model changed. Reapplying controls..."
+            )
+        else:
+            Logger.info("Google AI Studio Preflight: adjusting the prepared chat for this request...")
+
         await self._apply_request_controls(settings)
         await self._ui_settle_pause(0.2)
 
