@@ -4,7 +4,7 @@ icon: material/rocket-launch
 
 # :material-rocket-launch: Getting Started
 
-Let's get you up and running with IntenseRP Next v2! This guide covers everything from installation to chatting in SillyTavern.
+Let's get IntenseRP installed, connected to a provider, and talking to SillyTavern. This page sticks to the setup path, while deeper provider weirdness gets linke out to the relevant Behavior pages in :material-cloud: [Providers](providers.md).
 
 ---
 
@@ -83,7 +83,7 @@ Pick your platform and let's go!
 
 ## :material-cog: Step 2: Provider + Account
 
-Before hitting Start, pick your provider and decide how you want to log in.
+Before hitting **Start**, pick your provider and decide whether IntenseRP should try to sign in for you.
 
 1. Click the :material-cog: **Settings** button
 2. Go to **Provider and Login**
@@ -96,27 +96,23 @@ Before hitting Start, pick your provider and decide how you want to log in.
 <!-- TODO: replace with an updated screenshot -->
 ![Provider and Login (placeholder)](pics/getting-started/signin_and_accounts.png)
 
-!!! info "Manual login"
-    If you prefer to log in manually each time, leave **Sign In Automatically** off. The browser will wait for you to log in.
+!!! tip "Manual login is fine"
+    You don't have to save credentials if you don't want to. If **Sign In Automatically** is off, IntenseRP opens the provider browser and waits for you to log in yourself.
+
+!!! note "Provider login quirks"
+    Some providers still need a human even with Auto Login enabled:
+
+    | Provider | What to expect |
+    |---|---|
+    | **GLM Chat** | Auto Login can fill credentials, but you still solve the CAPTCHA. Persistent sessions help a lot. |
+    | **Moonshot / Google AI Studio** | Google sign-in may ask for confirmation, 2FA, or manual popup cleanup. |
+    | **Perplexity** | Auto Login starts the email-code flow, but you enter the 6-digit code. |
+    | **HuggingChat** | Uses Hugging Face credentials; free monthly credits can run out quickly on heavier models. |
+
+    For the longer version, see [:material-key: Login & Sessions](features/login-sessions.md) and [:material-cloud: Providers](providers.md).
 
 !!! note "Upgrading?"
-    If you previously saved credentials in older versions, IntenseRP automatically imports them into **Saved Accounts** on startup.
-
-!!! warning "GLM CAPTCHA"
-    GLM Chat requires a CAPTCHA during login. **Sign In Automatically** can fill your credentials, but you still need to solve the CAPTCHA in the browser window.
-    **Keep Provider Sessions Signed In** is strongly recommended if you do not want to solve it every start.
-
-!!! note "Moonshot login"
-    Moonshot uses a Google popup login flow. If **Sign In Automatically** is enabled, IntenseRP can try to fill the popup automatically, but Google may still ask for manual confirmation, 2FA, or leave the popup open until you close it yourself.
-
-!!! note "Google AI Studio login"
-    Google AI Studio also uses Google sign-in. IntenseRP can try to auto-fill the Google login flow if **Sign In Automatically** is enabled, but **Keep Provider Sessions Signed In** is strongly recommended because Google may still ask for manual confirmation.
-
-!!! note "Perplexity login"
-    Perplexity uses email-code login. Auto Login can fill your email and start the code flow, but you still need to type the 6-digit code in the browser window. Persistent Sessions are very helpful here.
-
-!!! note "HuggingChat login"
-    HuggingChat uses your Hugging Face username/email and password. Its monthly credits are small, so add extra accounts in **Saved Accounts** if you have them and disable rows that have hit their monthly limit.
+    If you previously saved credentials in older versions, IntenseRP imports them into **Saved Accounts** on startup.
 
 ---
 
@@ -195,13 +191,13 @@ Click :material-connection: **Connect** and look for the green indicator.
 
 ---
 
-## :material-tune-vertical: Extra Settings (Optional)
+## :material-tune-vertical: Useful First Tweaks
 
-Here are some handy tweaks you might want to know about.
+You can ignore these on the first launch, but they are worth knowing about once the basic connection works.
 
 ### :material-tag-multiple: Set up Names
 
-So that IntenseRP knows the names of your characters and personas, you'll want to set up a way to send names to it.
+If you want IntenseRP to format messages with the right character and persona names, set SillyTavern to send names in the request.
 
 The recommended way is to set **Character Names Behavior** to **Completion Object**. This automatically sends character names to the API with every message, so IntenseRP can use them in formatting and injections.
 
@@ -219,67 +215,39 @@ Don't forget to update your SillyTavern endpoint too!
 
 ---
 
-### :material-brain: Enable DeepThink
-
-And just as before, we support provider reasoning features. In simple words, it makes the model "smarter" by letting it think through problems step-by-step before answering (but also makes it slower and can change the tone).
-
-:material-arrow-right: **Settings** → **Provider Behavior** → pick your provider in the selector
-
-| Option | What It Does |
-|--------|-------------|
-| :material-toggle-switch: **Enable DeepThink** | Turns on the thinking toggle in DeepSeek |
-| :material-toggle-switch: **Send DeepThink** | Includes reasoning in responses |
-
----
-
 ### :material-cookie: Persistent Sessions
 
 Tired of logging in every time you restart?
 
 :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** → :material-toggle-switch: **Keep Provider Sessions Signed In**
 
-This saves your browser session so you stay logged in (unless you log out manually).
+This saves your browser session so you stay logged in unless the provider expires the session or you log out manually.
+
+---
+
+### :material-brain: Reasoning / Thinking
+
+Most providers have some version of reasoning mode. DeepSeek calls it **DeepThink**, GLM calls it **Deep Think**, and others use names like **Thinking** or **Thinking Effort**.
+
+:material-arrow-right: **Settings** → **Provider Behavior** → pick your provider in the selector
+
+The `*-auto` model IDs respect your provider settings. Where supported, `*-reasoner` forces reasoning on and `*-chat` forces it off. See [:material-cloud: Providers](providers.md) for the exact behavior per provider.
 
 ---
 
 ## :material-help-circle: Troubleshooting
 
+If something fails during setup, check these first:
+
+| Problem | Quick check |
+|---|---|
+| Browser doesn't open | Restart IntenseRP, check antivirus/firewall blocks, and make sure there is enough disk space for the browser install. |
+| SillyTavern can't connect | IntenseRP should show **Running**, the endpoint should use `http://`, and the port should match. Default: `http://127.0.0.1:7777/v1`. |
+| Login gets stuck | Try manual login once, then enable **Keep Provider Sessions Signed In** after the provider accepts the session. |
+| Provider refuses or blocks a reply | Check that provider's Behavior page; some providers have optional mitigation settings. |
+
 !!! tip "Need more?"
-    See [:material-bug: Troubleshooting](hands/troubleshooting.md) for a full checklist and bug report tips.
-
-### :material-window-close: Browser Won't Open
-
-- Make sure you have enough disk space (~500MB for browser, ~300MB for the app)
-- Check if your antivirus is blocking the app
-- Try restarting the app
-
-### :material-connection: SillyTavern Can't Connect
-
-- Is IntenseRP showing **Running**? If not, click Start
-- Double-check the port matches (default: `7777`)
-- Make sure you're using `http://`, not `https://`
-
-### :material-alert: "Sorry, that's beyond my current scope"
-
-That's DeepSeek's content filter kicking in. To hide this message:
-
-:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → :material-toggle-switch: **Anti-Censorship**
-
-!!! note
-    This doesn't bypass the filter; we just "snatch" the message before it's censored.
-
-### :material-shield-off: Google AI Studio says "Content blocked"
-
-That's AI Studio's harder backend-style censorship flow.
-
-If you want IntenseRP to try the edit + continue workaround:
-
-:material-arrow-right: **Settings** → **Provider Behavior** → **Google AI Studio** → :material-toggle-switch: **Anti-Censorship**
-
-!!! note
-    AI Studio's version is a bit weirder than DeepSeek's one.
-
-    IntenseRP replaces the blocked assistant turn, sends a continue nudge, and retries up to 3 follow-up nudges before giving up.
+    See [:material-bug: Troubleshooting](hands/troubleshooting.md) for the full checklist and bug report tips.
 
 ---
 

@@ -4,7 +4,7 @@ icon: material/star-four-points
 
 # :material-star-four-points: Features
 
-IntenseRP Next v2 packs a lot of useful features under the hood. This page gives you an overview of the app-wide features and links to detailed documentation for each one.
+Use this page as a map of the app-wide docs. If you are looking for provider-specific toggles, model pickers, search controls, or provider quirks, go to :material-cloud: [Providers](providers.md) instead.
 
 !!! info "Provider settings moved"
     DeepSeek, GLM, Moonshot, QwenLM, Perplexity, HuggingChat, and Google AI Studio Behavior settings now live in the dedicated [:material-cloud: Providers](providers.md) section.
@@ -13,173 +13,96 @@ IntenseRP Next v2 packs a lot of useful features under the hood. This page gives
 
 <div class="grid cards" markdown>
 
+-   :material-account-switch: **Accounts & Credentials**
+
+    Saved accounts, account rotation, pinning, disabling rows, and retrying with another account.
+
+    [:arrow_right: Open Accounts](features/accounts.md)
+
 -   :material-format-text: **Formatting**
 
-    Control how messages are processed and sent to the provider.
+    Templates, presets, name detection, message dividers, and injection.
 
-    [:arrow_right: Learn More](features/formatting.md)
-
--   :material-cloud: **Providers**
-
-    Provider-specific Behavior settings now live in their own section.
-
-    [:arrow_right: Learn More](providers.md)
+    [:arrow_right: Open Formatting](features/formatting.md)
 
 -   :material-layers-triple-outline: **Search Older Matching Chats**
 
-    Reuse up to 7 older cached chats on supported providers instead of only the latest one.
+    Reuse older cached chats on supported providers instead of only checking the latest one.
 
-    [:arrow_right: Learn More](features/multi-slot-cache.md)
+    [:arrow_right: Open Search Older Matching Chats](features/multi-slot-cache.md)
 
 -   :material-delete-clock-outline: **Chat Auto-Deletion**
 
-    Automatically delete the provider chat after a reply finishes on supported providers.
+    Delete the provider-side chat after a reply finishes, where supported.
 
-    [:arrow_right: Learn More](features/chat-auto-deletion.md)
+    [:arrow_right: Open Chat Auto-Deletion](features/chat-auto-deletion.md)
+
+-   :material-account-multiple: **STMP Support**
+
+    Patch RossAscends's STMP so character names can reach IntenseRP reliably.
+
+    [:arrow_right: Open STMP Support](features/stmp-support.md)
 
 -   :material-key: **Login & Sessions**
 
-    Auto-login and persistent browser sessions.
+    Auto Login, persistent sessions, saved browser profiles, and session cleanup.
 
-    [:arrow_right: Learn More](features/login-sessions.md)
+    [:arrow_right: Open Login & Sessions](features/login-sessions.md)
 
 -   :material-lan: **Network & API**
 
-    Port settings, LAN access, and API key authentication.
+    Port settings, LAN access, API keys, model IDs, and OpenAI-compatible endpoints.
 
-    [:arrow_right: Learn More](features/network-api.md)
+    [:arrow_right: Open Network & API](features/network-api.md)
+
+-   :material-tag-text-outline: **Universal Model Names**
+
+    Optional provider-neutral model IDs like `intenserp-auto`.
+
+    [:arrow_right: Open Universal Model Names](features/universal-model-names.md)
 
 -   :material-console: **Console & Logging**
 
-    Real-time logs, file logging, and console dumping.
+    Console window, log levels, file logging, console export, and bug report helpers.
 
-    [:arrow_right: Learn More](features/console-logging.md)
+    [:arrow_right: Open Console & Logging](features/console-logging.md)
 
 -   :material-swap-horizontal: **Hotswaps**
 
-    Switch providers on the fly without touching Settings.
+    Switch providers from the main window without reopening Settings.
 
-    [:arrow_right: Learn More](features/hotswaps.md)
+    [:arrow_right: Open Hotswaps](features/hotswaps.md)
 
 -   :material-cog: **System**
 
-    Config storage, updates, and application settings.
+    Config storage, updates, profiles, backup/restore, and maintenance settings.
 
-    [:arrow_right: Learn More](features/system.md)
+    [:arrow_right: Open System](features/system.md)
 
 </div>
 
 ---
 
-## Quick Reference
+## :material-compass-outline: Which Page Do I Need?
 
-Here's a quick rundown of the major app-wide features you'll find in IntenseRP Next v2.
+| If you want to... | Start here |
+|---|---|
+| Add accounts, rotate accounts, or recover from a bad account row | [:material-account-switch: Accounts & Credentials](features/accounts.md) |
+| Fix names, prompt shape, templates, or injection | [:material-format-text: Formatting](features/formatting.md) |
+| Stay logged in between restarts | [:material-key: Login & Sessions](features/login-sessions.md) |
+| Change the port, connect from another device, or require API keys | [:material-lan: Network & API](features/network-api.md) |
+| Use `intenserp-auto` instead of provider-prefixed model IDs | [:material-tag-text-outline: Universal Model Names](features/universal-model-names.md) |
+| See what happened during a failed request | [:material-console: Console & Logging](features/console-logging.md) |
+| Switch providers without going back into Settings | [:material-swap-horizontal: Hotswaps](features/hotswaps.md) |
+| Move config storage, back up settings, or reset browser profiles | [:material-cog: System](features/system.md) |
+| Find provider-specific Thinking/Search/upload/model controls | [:material-cloud: Providers](providers.md) |
 
-### :material-format-text: Formatting
-
-IntenseRP doesn't just forward your messages to the provider. It formats them into a single prompt that the model can understand better.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Formatting Templates** | Define how messages appear using `{{name}}`, `{{role}}`, and `{{content}}` placeholders |
-| **Built-in Presets** | Choose from Classic, XML-Like, Multiline XML-Like, or Divided styles |
-| **Name Detection** | Extract character/user names from IR2 blocks, Classic IntenseRP tags, or message objects (`name` / `irp-next`) |
-| **Message Injection** | Add custom text before or after all messages |
-
----
-
-### :material-cloud: Providers
-
-Provider-specific Behavior settings now live in their own section.
-
-If you are looking for DeepSeek / GLM / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio toggles, model pickers, search settings, or provider-specific quirks:
-
-:material-arrow-right: **Open** [:material-cloud: Providers Overview](providers.md)
+!!! tip "When in doubt"
+    If the setting name includes a provider name, it probably belongs in :material-cloud: [Providers](providers.md). If it affects the local API server, logging, formatting, accounts, or app maintenance, it probably belongs here.
 
 ---
 
-### :material-layers-triple-outline: Search Older Matching Chats
-
-On supported providers, **Search Older Matching Chats** lets **Reuse Matching Chat** remember more than one old chat.
-
-It keeps up to 7 reusable prompt slots per provider/account, so IntenseRP can jump back to an older matching conversation and hit Regenerate there instead of only checking the very last chat.
-
-:material-arrow-right: **Open** [:material-layers-triple-outline: Search Older Matching Chats](features/multi-slot-cache.md)
-
----
-
-### :material-delete-clock-outline: Chat Auto-Deletion
-
-On supported providers, **Delete Chat After Reply** cleans up the provider-side chat after a successful reply finishes.
-
-It is handy if you want less provider chat clutter, but it's also slower because IntenseRP has to do extra cleanup work after each request.
-
-:material-arrow-right: **Open** [:material-delete-clock-outline: Chat Auto-Deletion](features/chat-auto-deletion.md)
-
----
-
-### :material-key: Login & Sessions
-
-Make logging in less of a chore.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Auto Login** | Automatically sign in with saved credentials on startup |
-| **Persistent Sessions** | Keep your browser session between restarts, no re-login needed |
-
----
-
-### :material-lan: Network & API
-
-Configure how IntenseRP listens for requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Port** | Change the default port (7777) if it's already in use |
-| **LAN Availability** | Make the server accessible from other devices on your local network |
-| **Universal Model Names** | Optionally expose provider-neutral model IDs like `intenserp-auto` |
-| **API Keys** | Require authentication for incoming requests |
-
----
-
-### :material-console: Console & Logging
-
-Keep track of what's happening under the hood.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Console Window** | A separate window showing real-time application logs |
-| **Color Theme** | Choose between Modern, Classic, or Bright color schemes |
-| **File Logging** | Save logs to files with automatic rotation |
-| **Export and Cleanup** | Export console contents to a file |
-
----
-
-### :material-swap-horizontal: Hotswaps
-
-Switch AI providers without leaving the main window.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Stop Menu mode** | Adds a Hotswap option to the chevron dropdown on the Stop button |
-| **Discrete mode** | Shows a small provider-icon button next to Help |
-
----
-
-### :material-cog: System
-
-Application-wide settings and maintenance.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Config Storage** | Choose where settings are stored (relative, AppData, or custom path) |
-| **Auto Updates** | Check for and install updates directly from the app |
-| **Delete Profile** | Delete a selected persistent browser profile to start fresh |
-| **Clear All Profiles** | Wipe all persistent profiles (Legacy + Accounts) |
-
----
-
-## What's Next?
+## :material-arrow-right-bold: Next Steps
 
 <div class="grid cards" markdown>
 
@@ -189,16 +112,16 @@ Application-wide settings and maintenance.
 
     [:arrow_right: Get Started](getting-started.md)
 
--   :material-transfer: **Migration Guide**
-
-    Coming from v1? Learn what's changed.
-
-    [:arrow_right: Migrate](migration.md)
-
 -   :material-cloud: **Providers**
 
-    Need provider-specific Behavior settings? They're in their own section now.
+    Tune DeepSeek, GLM, Moonshot, QwenLM, Perplexity, HuggingChat, or Google AI Studio.
 
     [:arrow_right: Browse Providers](providers.md)
+
+-   :material-bug: **Troubleshooting**
+
+    Use the checklist when the browser, login, or API connection misbehaves.
+
+    [:arrow_right: Troubleshoot](hands/troubleshooting.md)
 
 </div>

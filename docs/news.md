@@ -6,7 +6,7 @@ icon: material/newspaper-variant-outline
 
 # :material-newspaper-variant-outline: News
 
-This page is the changelog to view all the latests news and updates about IntenseRP Next.
+This page is the changelog for the latest news and updates about IntenseRP Next.
 
 ## April 29, 2026 - Update 2.8.0
 

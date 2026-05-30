@@ -4,7 +4,10 @@ icon: material/cloud
 
 # :material-cloud: Providers
 
-IntenseRP Next v2 currently supports seven providers, and each one has its own Behavior page. This overview gives you a quick sense of what each provider-specific settings section covers and links to the full docs for each one.
+Each provider has its own Behavior page because the web UIs don't all expose the same controls, and some of them have unique quirks that need extra explanation. If you are looking for a specific toggle, model picker, or provider quirk, this is the place to find it.
+
+!!! tip "App-wide settings live elsewhere"
+    Accounts, sessions, formatting, ports, API keys, and logging are covered under :material-star-four-points: [Features](features.md). This section is for provider-specific controls like Thinking, Search, model pickers, uploads, anti-censorship workarounds, and provider quirks.
 
 ---
 
@@ -12,191 +15,85 @@ IntenseRP Next v2 currently supports seven providers, and each one has its own B
 
 -   :providers-deepseek: **DeepSeek Behavior**
 
-    Configure DeepThink, Search, anti-censorship, file uploads, and chat reuse.
+    DeepThink, Search, file uploads, anti-censorship, and chat reuse.
 
-    [:arrow_right: Learn More](providers/deepseek-behavior.md)
+    [:arrow_right: Open DeepSeek](providers/deepseek-behavior.md)
 
 -   :providers-zai: **GLM Behavior**
 
-    Configure Deep Think, Search, Tools, model selection, token counting, file uploads, regeneration controls, and GLM-specific quirks.
+    Deep Think, Search, Tools, model selection, token counting, uploads, and GLM-specific caveats.
 
-    [:arrow_right: Learn More](providers/glm-behavior.md)
+    [:arrow_right: Open GLM](providers/glm-behavior.md)
 
--   :providers-moonshot: **Moonshot Behavior**
+-   :providers-moonshot: **Kimi Behavior**
 
-    Configure Thinking, Search, file uploads, anti-censorship, and Kimi-specific caveats.
+    Thinking, Search, file uploads, anti-censorship, and Kimi login/paywall notes.
 
-    [:arrow_right: Learn More](providers/moonshot-behavior.md)
+    [:arrow_right: Open Kimi](providers/moonshot-behavior.md)
 
 -   :providers-qwen: **QwenLM Behavior**
 
-    Configure Thinking, Web search, model selection, token counting, uploads, and provider guardrails.
+    Thinking, Web Search, model selection, token counting, uploads, and provider guardrails.
 
-    [:arrow_right: Learn More](providers/qwen-behavior.md)
+    [:arrow_right: Open QwenLM](providers/qwen-behavior.md)
 
 -   :providers-perplexity: **Perplexity Behavior**
 
-    Configure Perplexity model selection, Thinking, Search, uploads, and email-code login notes.
+    Model selection, Thinking, Search, uploads, and email-code login notes.
 
-    [:arrow_right: Learn More](providers/perplexity-behavior.md)
+    [:arrow_right: Open Perplexity](providers/perplexity-behavior.md)
 
 -   :providers-huggingface: **HuggingChat Behavior**
 
-    Configure HuggingChat model selection, inference provider, Thinking Effort, Exa search, uploads, and account-limit handling.
+    Model selection, inference provider, Thinking Effort, Exa search, uploads, and account limits.
 
-    [:arrow_right: Learn More](providers/huggingchat-behavior.md)
+    [:arrow_right: Open HuggingChat](providers/huggingchat-behavior.md)
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 
-    Configure AI Studio model selection, Thinking Level, Search, URL Context, uploads, and sampling controls.
+    Gemini model selection, Thinking Level, Search grounding, URL Context, uploads, sampling, and safety controls.
 
-    [:arrow_right: Learn More](providers/aistudio-behavior.md)
+    [:arrow_right: Open AI Studio](providers/aistudio-behavior.md)
 
 </div>
 
 ---
 
-## Quick Reference
+## :material-compass-outline: Quick Picker
 
-Here's a quick rundown of the provider-specific Behavior pages.
+| Provider | Best doc to read when... |
+|---|---|
+| **DeepSeek** | You need DeepThink/Search controls, duplicate-prompt reuse, or the DeepSeek refusal-message workaround. |
+| **GLM Chat** | You need Tools, token counting, model picker behavior, Repetition Buster, or timing/instability notes. |
+| **Kimi / Moonshot** | You use Kimi's Thinking/Search modes, Google login, uploads, or want to understand its free/paid mode caveats. |
+| **QwenLM** | You need Qwen Thinking, Web Search, model selection, token counting, file uploads, or guardrail behavior. |
+| **Perplexity** | You use Perplexity's model picker, Thinking/Search behavior, uploads, or email-code login. |
+| **HuggingChat** | You need model/provider selection, Thinking Effort, Exa search, uploads, or help with monthly credit limits. |
+| **Google AI Studio** | You need Gemini model selection, Thinking Level, grounding tools, upload behavior, safety sliders, or paid-model access notes. |
 
-### :providers-deepseek: DeepSeek Behavior
-
-Fine-tune how DeepSeek processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **DeepThink** | Toggle DeepSeek's reasoning mode for more thoughtful responses |
-| **Send DeepThink** | Include the thinking process in the response (wrapped in `<think>` tags) |
-| **Search** | Enable web search capabilities |
-| **File Upload Mode** | Send long prompts as a text file to bypass input limits |
-| **Anti-Censorship** | Suppress "Sorry, that's beyond my current scope" messages |
-| **Reuse Matching Chat** | Regenerate the last response instead of creating a new chat when the prompt is identical |
+Provider docs are intentionally a little more detailed than the overview pages, though they're still focused on practical user-facing info, as I wanted to avoid dumping too much technicalities into the main flow. If you want to understand more about how a provider integration works under the hood, you're going to have to dig through the code or ask in the community.
 
 ---
 
-### :providers-zai: GLM Behavior
-
-Fine-tune how GLM Chat processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Deep Think** | Toggle GLM reasoning mode |
-| **Send Deep Think** | Include the thinking process in the response (wrapped in `<think>` tags) |
-| **Search** | Toggle GLM Search (search results are not sent to the client) |
-| **Tools** | Toggle GLM's separate Tools button on GLM-5V-Turbo |
-| **Model** | Select GLM's real web UI model picker |
-| **Count Tokens** | Return token usage in API responses |
-| **File Upload Mode** | Send long prompts as a text file to bypass input limits |
-| **Reuse Matching Chat** | Regenerate on duplicate prompts (currently unreliable for GLM) |
-| **Repetition Buster** | Send a throwaway cache-buster prompt before duplicate prompts in a fresh chat |
-
----
-
-### :providers-moonshot: Moonshot Behavior
-
-Fine-tune how Moonshot processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Enable Thinking** | Switches Kimi between Instant and Thinking modes |
-| **Send Thinking** | Include reasoning in response (wrapped in `<think>` tags) |
-| **Search** | Toggle Kimi search tooling |
-| **File Upload Mode** | Send long prompts as a text file |
-| **Anti-Censorship** | Suppress refusal-like stream outputs when detected |
-| **Reuse Matching Chat** | Regenerate on duplicate prompts instead of opening a new chat |
-
----
-
-### :providers-qwen: QwenLM Behavior
-
-Fine-tune how QwenLM processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Thinking** | Toggle QwenLM Thinking mode |
-| **Send Thinking** | Include thinking summaries in the response (wrapped in `<think>` tags) |
-| **Count Tokens** | Returns token usage in API responses |
-| **Web Search** | Toggle QwenLM Web search (search results are not sent to the client) |
-| **Model Picker (UI)** | Select Qwen's real model dropdown |
-| **File Upload Mode** | Send long prompts as a text file |
-| **Reuse Matching Chat** | Regenerate on duplicate prompts instead of opening a new chat |
-
----
-
-### :providers-perplexity: Perplexity Behavior
-
-Fine-tune how Perplexity processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Model Picker (UI)** | Select Perplexity's real model picker on paid accounts |
-| **Enable Thinking** | Toggles Perplexity Thinking where available |
-| **Send Thinking** | Reserved for consistency; no thinking traces are forwarded yet |
-| **Web Search** | Toggles Perplexity Web search (search/source payloads are not sent to the client) |
-| **File Upload Mode** | Uploads long prompts as a text file, with text fallback if uploads are capped |
-
----
-
-### :providers-huggingface: HuggingChat Behavior
-
-Fine-tune how HuggingChat processes your requests.
-
-!!! warning "Not the Inference API"
-    HuggingChat support drives the HuggingChat web UI with your Hugging Face credentials. It is not a replacement for the token-based Hugging Face Inference API.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Model Picker (UI)** | Select HuggingChat's real model picker, using a cached model list refreshed after startup |
-| **Inference Provider** | Optionally select a HuggingChat inference provider such as `auto` or `together` |
-| **Thinking Effort** | Selects `auto`, `default`, `low`, `medium`, or `high` when the model exposes it |
-| **Send Thinking** | Includes `<think>` text in API responses when enabled |
-| **Exa Search** | Toggles HuggingChat's Exa MCP web search; tool payloads are filtered |
-| **File Upload Mode** | Uploads long prompts as a text file |
-| **Reuse Matching Chat** | Regenerates matching HuggingChat chats, including older cached chats per account |
-
----
-
-### :providers-aistudio: Google AI Studio Behavior
-
-Fine-tune how Google AI Studio processes your requests.
-
-| Feature | What It Does |
-|---------|-------------|
-| **Model Picker (UI)** | Select Google AI Studio's real model |
-| **Enable Thinking** | Uses a higher Thinking Level on supported AI Studio models |
-| **Thinking Level** | Picks the Thinking Level tier for supported AI Studio models |
-| **Send Thinking** | Includes AI Studio thinking summaries in the response (wrapped in `<think>` tags) |
-| **Search** | Toggles Google Search grounding |
-| **URL Context** | Toggles the URL Context browsing tool |
-| **File Upload Mode** | Uploads prompts through AI Studio's media picker |
-| **Anti-Censorship** | Detects blocked turns and runs the edit + continue workaround |
-| **Temperature / Top P / Max Output Tokens** | Applies supported AI Studio sampling controls before sending |
-| **Safety Filters** | Lowers AI Studio's safety sliders automatically once per browser session |
-| **Assume English UI** | Last-resort language-check override when the visible AI Studio page is definitely English |
-| **Reuse Matching Chat** | Regenerates on duplicate prompts instead of opening a new chat |
-
----
-
-## What's Next?
+## :material-arrow-right-bold: Related Pages
 
 <div class="grid cards" markdown>
 
 -   :material-key: **Login & Sessions**
 
-    Auto-login and persistent browser sessions for supported providers.
+    Auto Login and persistent browser sessions for supported providers.
 
     [:arrow_right: Open Login & Sessions](features/login-sessions.md)
 
 -   :material-account-switch: **Accounts & Credentials**
 
-    Manage saved accounts, rotation, retry-on-failure, and sign-in settings.
+    Saved accounts, rotation, retry-on-failure, pinning, and disabling account rows.
 
     [:arrow_right: Open Accounts & Credentials](features/accounts.md)
 
 -   :material-cloud: **Provider Support**
 
-    See the provider roadmap, lifecycle stages, and implementation notes.
+    Provider roadmap, lifecycle stages, and implementation status.
 
     [:arrow_right: Open Provider Support](advanced/provider-support.md)
 

@@ -12,65 +12,62 @@ icon: material/home
   />
 </p>
 
-**IntenseRP Next v2** is a complete rewrite of the original IntenseRP Next project. I rebuilt it from the ground up so that it's MUCH more stable, faster, and easier to use. It's a modern (but hacky) tool for getting free access to LLMs via their web apps, and connecting it to SillyTavern (or other clients) for RPs.
+**IntenseRP Next v2** is a local desktop app that lets OpenAI-compatible clients, like SillyTavern, talk to supported provider web chats through a real browser.
+
+In plain terms, you log into a provider website, IntenseRP automates that page, and your client talks to IntenseRP through a local `/v1` API as usual. It's still a bit hacky by nature, because provider web UIs were not built to be APIs, but v2 is built to make that flow much steadier and easier to live with.
 
 <div class="grid cards" markdown>
 
 -   :material-rocket-launch: **Getting Started**
 
-    New to IntenseRP? Set up your environment and start roleplaying in minutes.
+    Install the app, pick a provider, and connect SillyTavern.
 
     [:arrow_right: Get Started](getting-started.md)
 
 -   :material-transfer: **Migration Guide**
 
-    Coming from **IntenseRP Next v1** or **IntenseRP API** (by Omega-Slender)? Learn how to move to v2.
+    Coming from **IntenseRP Next v1** or **IntenseRP API**? Start here before copying old settings over.
 
     [:arrow_right: Migrate to v2](migration.md)
 
--   :material-star-four-points: **Features**
+-   :material-cloud: **Providers**
 
-    Explore the new architecture, tech stack, and capabilities of v2.
+    Find the knobs, caveats, and model controls for each supported provider.
 
-    [:arrow_right: See Features](features.md)
+    [:arrow_right: Browse Providers](providers.md)
 
--   :material-flask-outline: **Experimental**
+-   :material-bug: **Troubleshooting**
 
-    Opt-in features that are still evolving.
+    Browser won't open, login is stuck, or SillyTavern can't connect? Use the checklist.
 
-    [:arrow_right: Experimental](experimental.md)
+    [:arrow_right: Fix a Problem](hands/troubleshooting.md)
 
 </div>
 
-## Why v2?
+## Where to Start
 
-IntenseRP Next v2 takes an entirely different path from its predecessors. I've learned from the challenges faced by the original **IntenseRP API** (by Omega-Slender) and **IntenseRP Next v1**.
+If this is your first install, go straight to :material-rocket-launch: [Getting Started](getting-started.md). It keeps things simple and links out when something gets provider-specific.
 
-### The "Rewrite" Philosophy
+If you're upgrading from v1 or the older API project, read the :material-transfer: [Migration Guide](migration.md) first. The formatting system changed enough that some of your old settings might not work right away, and the guide can help you figure out what to change.
 
-Instead of patching old code, I started from scratch. So, now we have:
+If you already have the app running and want to tune behavior, the most useful sections are :material-cloud: [Providers](providers.md), :material-format-text: [Formatting](features/formatting.md), and :material-lan: [Network & API](features/network-api.md).
 
-*   **Modern Tech Stack**: I built it with **Python 3.13+**, **FastAPI**, **PySide6**, and **Playwright**.
-*   **Stability First**: For v1, I used the original HTML scraping method, with my own then-buggy network interception. Now, v2 only has native network interception thanks to Playwright.
-*   **Performance**: Optimized for speed and low resource usage.
-*   **Maintainability**: A modular codebase that is easier to contribute to and extend.
+## What Changed in v2?
 
-### Key Differences
+v2 is a full rewrite, in simple words! The important part for users is not the rewrite itself, though. The upgrade is more about what the rewrite allows:
 
-| Feature | IntenseRP API / Next v1 | IntenseRP Next v2 |
-| :------ | :---------------------- | :---------------- |
-| **Backend** | Python (Flask) | Python (FastAPI) |
-| **UI** | Customtkinter | Native (PySide6) |
-| **Automation** | SeleniumBase (UC) | Playwright (Patchright) |
-| **Stability** | Workaround-based | Native patching |
-| **Scraping** | HTML Parsing + Buggy Network Interception | Network Interception |
+- A native desktop UI instead of the older customtkinter setup. (much more pretty, extensible, and faster to load)
+- Playwright/Patchright browser control with network interception, instead of relying on fragile HTML scraping.
+- Better provider-specific settings, account handling, logs, and troubleshooting tools.
+- A cleaner OpenAI-compatible API for clients like SillyTavern.
+- Support for a lot more providers than just DeepSeek, with more on the way.
 
 !!! note "Work in Progress"
-    This project is currently under active development. Features are being added rapidly. Please check the [GitHub Repository](https://github.com/LyubomirT/intense-rp-next) for the latest updates.
+    IntenseRP is still moving quickly. Provider websites can also change without warning, because apparently websites enjoy breaking stuff. If something suddenly breaks, check the [GitHub repository](https://github.com/LyubomirT/intense-rp-next), the [News page](news.md), or the [Troubleshooting checklist](hands/troubleshooting.md), as the fix might already be out or in the works. If it's not yet known, please report it in the [GitHub Issues](https://github.com/LyubomirT/intense-rp-next/issues) or on our [Discord server](https://discord.gg/4Gvjk2RdsK) so I can get it fixed as soon as possible!
 
 ## Community & Support
 
-Most of the support resources are still being built. Meanwhile, you can:
+Need help, want to report a bug, or just want to keep up with updates?
 
 [Contact The Dev](hands/contact.md){ .md-button }
 [Join Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
