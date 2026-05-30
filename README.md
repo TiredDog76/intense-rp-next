@@ -5,8 +5,8 @@
 <h1 align="center">IntenseRP Next v2</h1>
 
 <p align="center">
-  It's a local OpenAI-compatible API + desktop app that drives various web LLM chat UI (via Playwright),
-  so you can use it from SillyTavern and other clients without paying for the official API. <i>Slightly cursed yet surprisingly effective.</i>
+  It's a local OpenAI-compatible API + desktop app that drives various web LLM chat UIs (via Playwright),
+  so you can use those providers from SillyTavern and other clients without wiring up the official provider APIs. <i>Slightly cursed yet surprisingly effective.</i>
 </p>
 
 <p align="center">
@@ -25,13 +25,14 @@
   <a href="#what-is-this">What is this?</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#connect-sillytavern-or-any-openai-compatible-client">Client setup</a> ·
+  <a href="#provider-support">Providers</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="https://github.com/LyubomirT/intense-rp-next/releases">Releases</a> ·
   <a href="https://github.com/LyubomirT/intense-rp-next/issues">Issues</a> ·
-  <a href="https://discord.gg/4Gvjk2RdsK">Discord Server</a> ·
+  <a href="https://discord.gg/4Gvjk2RdsK">Discord Server</a>
 </p>
 
-<h1 align="center">🎬 Preview Video 🎬</h1>
+<h1 align="center">🎬 Preview Video</h1>
 
 
 
@@ -47,16 +48,16 @@ https://github.com/user-attachments/assets/ebf1bfcd-3b23-4614-b584-174791bcb004
 
 ## Welcome 👋
 
-If you're here because you want to use an LLM in SillyTavern without wiring up the paid official API: Welcome to the club!
-IntenseRP Next v2 drives the official web apps (like DeepSeek, Z.AI, Moonshot, QwenLM) in a real browser, and re-exposes them as an OpenAI-compatible endpoint.
+If you're here because you want to use an LLM in SillyTavern without wiring up a paid official API: Welcome to the club!
+IntenseRP Next v2 drives official provider web apps (like DeepSeek, Z.AI, Kimi, QwenLM, Perplexity, HuggingChat, and Google AI Studio) in a real browser, and re-exposes them as an OpenAI-compatible endpoint.
 
-Unlike the official API, this is usually free (DeepSeek / GLM / Kimi are free to use with limits, and paid plans aren't added yet) and it gives you access to the full web UI experience (including reasoning toggles, search, file uploads, and more). Not without tradeoffs, of course - see below.
+Compared to official APIs, this is often free-ish depending on the provider/account, and it gives you access to the full web UI experience (including reasoning toggles, search, file uploads, and more). Not without tradeoffs, of course - see below.
   
 ## Start here! 🎁
 
 1. Download a release (see [Releases](https://github.com/LyubomirT/intense-rp-next/releases)) and run it (or run from source)
 2. Click **Start** and log in when the browser opens
-3. Point your SillyTavern client at `http://127.0.0.1:7777/v1` (default) and pick `deepseek-*` / `glm-*` / `moonshot-*` / `qwen-*` mode IDs
+3. Point your SillyTavern client at `http://127.0.0.1:7777/v1` (default) and pick the matching provider model IDs (`deepseek-*`, `glm-*`, `moonshot-*`, `qwen-*`, etc.)
 
 And it's done! It should Just Work™️.
 
@@ -65,7 +66,7 @@ And it's done! It should Just Work™️.
 IntenseRP Next v2 (sometimes shortened to "IRP Next v2") is a local bridge between:
 
 - an OpenAI-style client (like SillyTavern), and
-- a provider web app (currently: DeepSeek, GLM Chat, Moonshot, QwenLM)
+- a supported provider web app (DeepSeek, GLM Chat, Kimi / Moonshot, QwenLM, Perplexity, HuggingChat, or Google AI Studio)
 
 Under the hood it:
 
@@ -75,7 +76,7 @@ Under the hood it:
 4. Intercepts the provider's streaming network responses
 5. Re-emits them as OpenAI-style SSE deltas for your client
 
-In normal human terms: free acces to LLMs via their official web apps but turned into an API you can use in SillyTavern and other OpenAI-compatible clients.
+In normal human terms, it's free-ish access to LLMs via their official web apps, but turned into an API you can use in SillyTavern and other OpenAI-compatible clients.
 
 Of course, there are also official paid APIs, but not everyone can pay for them, so this is kind of a free alternative. 🙂
 
@@ -99,8 +100,6 @@ Not the best fit if you:
 > 1. Provider web apps change. When they do, a driver can break until it's updated.
 > 2. By default, IntenseRP processes **one request at a time** (requests are queued). This is on purpose for a single live browser session.
 > 3. This project is not affiliated with DeepSeek, ZhipuAI, SillyTavern, or any provider.
-
-</details>
 
 ## Why v2?
 
@@ -179,7 +178,7 @@ Once the app says **Running (Port 7777)**:
 | Endpoint | `http://127.0.0.1:7777/v1` |
 | API | OpenAI-compatible chat or text completions |
 | API key | Leave blank (unless you enabled API keys) |
-| Model | `deepseek-*` / `glm-*` / `moonshot-*` |
+| Model | Provider model IDs like `deepseek-*`, `glm-*`, `moonshot-*`, `qwen-*`, `perplexity-*`, `huggingchat-*`, or `aistudio-*` |
 
 Available model IDs (depends on provider):
 
@@ -194,7 +193,7 @@ Available model IDs (depends on provider):
   - `glm-auto` (uses your IntenseRP settings)
   - `glm-chat` (forces Deep Think off)
   - `glm-reasoner` (forces Deep Think on, Send Deep Think follows your setting)
-- Moonshot:
+- Kimi / Moonshot:
   - `moonshot-auto` (uses your IntenseRP settings)
   - `moonshot-chat` (forces Thinking off, Send Thinking off)
   - `moonshot-reasoner` (forces Thinking on, Send Thinking follows your setting)
@@ -202,16 +201,20 @@ Available model IDs (depends on provider):
   - `qwen-auto` (uses your IntenseRP settings)
   - `qwen-chat` (forces Thinking off, Send Thinking off)
   - `qwen-reasoner` (forces Thinking on, Send Thinking follows your setting)
-- Google AI Studio:
-  - `aistudio-auto` (uses your IntenseRP settings)
-  - `aistudio-chat` (forces Thinking off, Send Thinking off)
-  - `aistudio-reasoner` (forces Thinking on, Send Thinking follows your setting)
 - Perplexity:
   - `perplexity-auto` (uses your IntenseRP settings)
   - `perplexity-chat` (forces Reasoning off)
   - `perplexity-reasoner` (forces Reasoning on)
+- HuggingChat:
+  - `huggingchat-auto` (uses your IntenseRP settings)
+  - `huggingchat-chat` (uses HuggingChat's default/off behavior)
+  - `huggingchat-reasoner` (enables HuggingChat Thinking where available)
+- Google AI Studio:
+  - `aistudio-auto` (uses your IntenseRP settings)
+  - `aistudio-chat` (forces Thinking off, Send Thinking off)
+  - `aistudio-reasoner` (forces Thinking on, Send Thinking follows your setting)
 
-Note: these IDs are behavior presets (modes). For providers that support actual model selection in their web UI (like GLM and Google AI Studio), the mode will still apply its behavior changes, but the model will be whatever you have selected in settings within the app.
+Note: these IDs are behavior presets (modes). For providers that support actual model selection in their web UI (like GLM, QwenLM, Perplexity, HuggingChat, and Google AI Studio), the mode will still apply its behavior changes, but the real web UI model will be whatever you have selected in settings within the app.
 
 If you change the port in Settings, update the endpoint to match (example: `http://127.0.0.1:YOUR_PORT/v1`).
 
@@ -225,11 +228,9 @@ If you change the port in Settings, update the endpoint to match (example: `http
 - **Client cannot connect**: confirm the app says **Running**, and the endpoint matches your port (`http://127.0.0.1:7777/v1` by default).
 - **401 Unauthorized**: you probably enabled API keys in Settings. Either disable them or add a key in your client.
 - **Login loops / stuck sign-in**: try disabling Persistent Sessions, or clear the profile in Settings (it wipes saved cookies).
-- **Slow responses**: requests are queued by default, and DeepThink can add extra time. Experimental parallel modes can help, but they are much heavier.
+- **Slow responses**: requests are queued by default, and reasoning/thinking modes can add extra time. Experimental parallel modes can help, but they are much heavier.
 
 Tip: enable the console and/or logfiles before reporting issues. Logs help a lot when diagnosing!
-
-</details>
 
 ## What you get ✨
 
@@ -238,18 +239,26 @@ There are a few highlights I think are worth calling out. Most have been in v1 a
 - 🖥️ A desktop UI that starts/stops everything for you (and doesn't require terminal work)
 - 🔌 An OpenAI-compatible API under `/v1` for SillyTavern and other OpenAI-compatibles
 - 🧩 A formatting pipeline: templates, divider, injection, name detection
-- 🧠 Provider behavior toggles: DeepSeek, GLM Chat, and Moonshot behavior controls
+- 🧠 Provider behavior toggles: Thinking/Reasoning, Search, uploads, model pickers, and provider-specific knobs
+- 👥 Saved Accounts, account rotation, pinning, disabling, and persistent browser sessions
 - 🔐 Optional LAN mode and API keys
 - 🪵 Built-in extensive logging: console window, log files, console dump
+- 📱 Experimental Remote Control for managing the app from another device on your network
 - ♻️ Built-in v1 migrator + built-in update flow (when running packaged builds)
 
 ## Provider support
 
-Current:
+Current supported providers:
 
-- DeepSeek (usable; in "verification" stage)
-- GLM Chat (usable; beta-like, Search supported)
-- Moonshot (usable; first integration stage)
+| Provider | Status | Notes |
+|---|---|---|
+| <img src=".github/svgs/providers/deepseek.svg" width="18" alt=""> **DeepSeek** | Stable | DeepThink, Search, Expert Mode, uploads, and chat reuse |
+| <img src=".github/svgs/providers/zai.svg" width="18" alt=""> **GLM Chat (Z.ai)** | Stable-ish | Deep Think, Search/Tools, model selection, and CAPTCHA login |
+| <img src=".github/svgs/providers/moonshot.svg" width="18" alt=""> **Kimi / Moonshot** | Stable-ish | Thinking, Search, uploads, Google login, and Kimi-specific caveats |
+| <img src=".github/svgs/providers/qwen.svg" width="18" alt=""> **QwenLM** | Stable | Thinking, Web Search, model selection, token counting, and uploads |
+| <img src=".github/svgs/providers/perplexity.svg" width="18" alt=""> **Perplexity** | Verification | Model selection, Thinking/Search controls, uploads, and email-code login |
+| <img src=".github/svgs/providers/huggingface.svg" width="18" alt=""> **HuggingChat** | Early integration | Model/provider selection, Thinking Effort, Exa search, uploads, and tight monthly credits |
+| <img src=".github/svgs/providers/aistudio.svg" width="18" alt=""> **Google AI Studio** | Verification | Gemini model selection, Thinking Level, grounding tools, uploads, and safety controls |
 
 More detail lives in `docs/` (best viewed as the docs site - see below).
 
@@ -262,7 +271,7 @@ Check out [the docs site here](https://intense-rp-next.readthedocs.io/en/latest/
 Local preview (Zensical):
 
 ```bash
-python3 -m pip install -r docs/requirements.txt
+python -m pip install -r docs/requirements.txt
 zensical serve
 ```
 
@@ -305,7 +314,7 @@ Full list: https://github.com/LyubomirT/intense-rp-next/graphs/contributors
 
 IntenseRP Next v2 is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
->[!NOTE]
+> [!NOTE]
 > Original IntenseRP API by Omega-Slender is also MIT-licensed, but previously was a [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) project. This v2 rewrite is a new codebase and is not a derivative work, so the license has been switched to MIT for simplicity. I'm not affiliated with [Omega-Slender](https://github.com/Omega-Slender), even if I'm the official successor to their project (starting from v1).
 
 ## Credits
