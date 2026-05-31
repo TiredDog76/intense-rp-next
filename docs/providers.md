@@ -21,7 +21,7 @@ Each provider has its own Behavior page because the web UIs don't all expose the
 
 -   :providers-zai: **GLM Behavior**
 
-    Deep Think, Search, Tools, model selection, token counting, uploads, and GLM-specific caveats.
+    Deep Think, Search, Advanced Search, Tools, model selection, token counting, uploads, and GLM-specific caveats.
 
     [:arrow_right: Open GLM](providers/glm-behavior.md)
 

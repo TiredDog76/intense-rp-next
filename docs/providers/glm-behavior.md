@@ -69,6 +69,20 @@ GLM streams internal tool/search payloads into the same response stream (wrapped
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Enable Search**
 
+### Advanced Search
+
+GLM also has an **Advanced Search** switch tucked inside the Search hover menu. IntenseRP can toggle it too, but it is off by default and only applies when **Deep Think** and **Search** are both enabled for the request.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Enable Advanced Search**
+
+!!! note "Dependency behavior"
+    In Settings, **Enable Advanced Search** is forced off while **Enable Deep Think** or **Enable Search** is off.
+
+    At runtime, IntenseRP also checks the resolved request settings. If a model ID, loadout, or request override asks for Advanced Search without both required modes, the driver logs a warning and sends the request without Advanced Search.
+
+!!! note "Same output filtering"
+    Advanced Search can make GLM search more deeply, but IntenseRP still strips GLM's internal search/tool payloads from the API stream. You may still see citations in the final answer.
+
 ---
 
 ## :material-wrench: Tools
@@ -256,6 +270,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **Send Deep Think** | Includes thinking in response | Off |
 | **Count Tokens** | Returns token usage in API responses | On |
 | **Enable Search** | Enables GLM search | Off |
+| **Enable Advanced Search** | Enables GLM's deeper Search mode when Deep Think + Search are on | Off |
 | **Enable Tools** | Enables GLM's separate Tools button on GLM-5V-Turbo | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |

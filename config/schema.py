@@ -497,6 +497,20 @@ SCHEMA = [
                 docs_anchor="search",
             ),
             SettingField(
+                key="enable_advanced_search",
+                label="Enable Advanced Search",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Toggle GLM's Advanced Search mode. Requires Deep Think and Search; "
+                    "search results are not forwarded to the client."
+                ),
+                depends="glm_behavior.enable_deepthink&&glm_behavior.enable_search",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_GLM,
+                docs_anchor="advanced-search",
+            ),
+            SettingField(
                 key="enable_tools",
                 label="Enable Tools",
                 type=SettingType.BOOLEAN,
@@ -3015,7 +3029,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "glm_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_tools"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_advanced_search", "enable_tools"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "repetition_buster", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "completion_request_timeout", "first_chunk_timeout", "refresh_after_generation"]},

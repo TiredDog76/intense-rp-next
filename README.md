@@ -253,7 +253,7 @@ Current supported providers:
 | Provider | Status | Notes |
 |---|---|---|
 | <img src=".github/svgs/providers/deepseek.svg" width="18" alt=""> **DeepSeek** | Stable | DeepThink, Search, Expert Mode, uploads, and chat reuse |
-| <img src=".github/svgs/providers/zai.svg" width="18" alt=""> **GLM Chat (Z.ai)** | Stable-ish | Deep Think, Search/Tools, model selection, and CAPTCHA login |
+| <img src=".github/svgs/providers/zai.svg" width="18" alt=""> **GLM Chat (Z.ai)** | Stable-ish | Deep Think, Search/Advanced Search/Tools, model selection, and CAPTCHA login |
 | <img src=".github/svgs/providers/moonshot.svg" width="18" alt=""> **Kimi / Moonshot** | Stable-ish | Thinking, Search, uploads, Google login, and Kimi-specific caveats |
 | <img src=".github/svgs/providers/qwen.svg" width="18" alt=""> **QwenLM** | Stable | Thinking, Web Search, model selection, token counting, and uploads |
 | <img src=".github/svgs/providers/perplexity.svg" width="18" alt=""> **Perplexity** | Verification | Model selection, Thinking/Search controls, uploads, and email-code login |

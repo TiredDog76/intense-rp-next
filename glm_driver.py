@@ -20,12 +20,10 @@ from drivers.shared_utils import (
     format_request_messages,
     make_openai_delta_sse,
     make_openai_usage_sse,
-    read_clean_regeneration_state,
     read_multi_slot_cache_payload,
     remove_multi_slot_cache_entry,
     strip_macros_from_messages,
     upsert_multi_slot_cache_entry,
-    write_clean_regeneration_state,
 )
 from utils.cache_manager import CacheManager
 from utils.logger import Logger
@@ -70,6 +68,14 @@ class GLMDriver(BaseDriver):
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
     MODEL_SELECTOR_READY_TIMEOUT_MS = 20000
+    CLEAN_REGEN_STATE_KEYS = (
+        "deepthink_enabled",
+        "search_enabled",
+        "advanced_search_enabled",
+        "tools_enabled",
+        "send_as_text_file",
+        "ui_model",
+    )
 
     SIDEBAR_NEW_CHAT_BUTTON_SELECTOR = "button#sidebar-new-chat-button"
     QUICK_NEW_CHAT_BUTTON_SELECTOR = "button[data-scene='chat']"
@@ -871,6 +877,9 @@ class GLMDriver(BaseDriver):
         ui_model_label = self._get_glm_model_label_for_request(resolved_model)
         deepthink_enabled, send_deepthink = self._resolve_deepthink_flags(resolved_model)
         enable_search = bool(self.config_manager.get_setting("glm_behavior", "enable_search"))
+        enable_advanced_search = bool(
+            self.config_manager.get_setting("glm_behavior", "enable_advanced_search")
+        )
         enable_tools = bool(self.config_manager.get_setting("glm_behavior", "enable_tools"))
         send_as_text_file = bool(self.config_manager.get_setting("glm_behavior", "send_as_text_file"))
         tools_supported = self._glm_tools_supported_for_model(ui_model_label)
@@ -880,17 +889,34 @@ class GLMDriver(BaseDriver):
             "deepthink_enabled": bool(deepthink_enabled),
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(enable_search),
+            "advanced_search_enabled": bool(enable_advanced_search),
             "tools_enabled": bool(enable_tools),
             "send_as_text_file": bool(send_as_text_file),
         }
 
         if overrides:
-            for key in ("deepthink_enabled", "send_deepthink", "search_enabled", "tools_enabled", "send_as_text_file"):
+            for key in (
+                "deepthink_enabled",
+                "send_deepthink",
+                "search_enabled",
+                "advanced_search_enabled",
+                "tools_enabled",
+                "send_as_text_file",
+            ):
                 if key in overrides:
                     settings[key] = bool(overrides[key])
 
         if not tools_supported:
             settings["tools_enabled"] = False
+
+        if settings["advanced_search_enabled"] and not (
+            settings["deepthink_enabled"] and settings["search_enabled"]
+        ):
+            Logger.warning(
+                "GLM Chat: Advanced Search requires Deep Think and Search. "
+                "Ignoring Advanced Search for this request."
+            )
+            settings["advanced_search_enabled"] = False
 
         return settings
 
@@ -901,24 +927,50 @@ class GLMDriver(BaseDriver):
         return strip_macros_from_messages(messages, macro_actions=GLM_REQUEST_MACRO_ACTIONS)
 
     def _read_clean_regeneration_state(self) -> Optional[Dict[str, Any]]:
-        return read_clean_regeneration_state(
-            self.cache_manager,
-            self.clean_regen_state_cache_key,
-            log_label="Clean Regeneration (GLM)",
-        )
+        raw = self.cache_manager.read_cache(self.clean_regen_state_cache_key)
+        if raw is None:
+            return None
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            Logger.warning("Clean Regeneration (GLM): Cached state is invalid JSON, ignoring.")
+            return None
+
+        return self._normalize_clean_regeneration_state(data)
 
     def _write_clean_regeneration_state(self, state: Dict[str, Any]) -> None:
-        write_clean_regeneration_state(
-            self.cache_manager,
+        payload = self._normalize_clean_regeneration_state(state)
+        if payload is None:
+            return
+        self.cache_manager.write_cache(
             self.clean_regen_state_cache_key,
-            state,
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
         )
+
+    def _normalize_clean_regeneration_state(self, state: Any) -> Optional[Dict[str, Any]]:
+        if not isinstance(state, dict):
+            return None
+
+        required_keys = [key for key in self.CLEAN_REGEN_STATE_KEYS if key != "advanced_search_enabled"]
+        if not all(key in state for key in required_keys):
+            return None
+
+        return {
+            "deepthink_enabled": bool(state.get("deepthink_enabled")),
+            "search_enabled": bool(state.get("search_enabled")),
+            "advanced_search_enabled": bool(state.get("advanced_search_enabled", False)),
+            "tools_enabled": bool(state.get("tools_enabled")),
+            "send_as_text_file": bool(state.get("send_as_text_file")),
+            "ui_model": str(state.get("ui_model") or "").strip(),
+        }
 
     def _build_multi_slot_cache_state(
         self,
         *,
         effective_deepthink: bool,
         enable_search: bool,
+        enable_advanced_search: bool,
         enable_tools: bool,
         send_as_text_file: bool,
         ui_model_label: str | None = None,
@@ -926,6 +978,7 @@ class GLMDriver(BaseDriver):
         return {
             "deepthink_enabled": bool(effective_deepthink),
             "search_enabled": bool(enable_search),
+            "advanced_search_enabled": bool(enable_advanced_search),
             "tools_enabled": bool(enable_tools),
             "send_as_text_file": bool(send_as_text_file),
             "ui_model": str(ui_model_label or self._get_glm_model_label_for_request(self.current_model)),
@@ -936,6 +989,7 @@ class GLMDriver(BaseDriver):
         *,
         effective_deepthink: bool,
         enable_search: bool,
+        enable_advanced_search: bool,
         enable_tools: bool,
         log_label: str = "GLM Chat: preparing new chat session...",
     ) -> None:
@@ -947,6 +1001,7 @@ class GLMDriver(BaseDriver):
         await self.set_tools_state(bool(enable_tools))
         await self.set_deepthink_state(bool(effective_deepthink))
         await self.set_search_state(bool(enable_search))
+        await self.set_advanced_search_state(bool(enable_advanced_search))
         await asyncio.sleep(self._post_delay_s)
 
     async def _send_text_request(
@@ -1036,6 +1091,7 @@ class GLMDriver(BaseDriver):
         *,
         effective_deepthink: bool,
         enable_search: bool,
+        enable_advanced_search: bool,
         enable_tools: bool,
         auto_delete_after_send: bool = False,
     ) -> str | None:
@@ -1046,6 +1102,7 @@ class GLMDriver(BaseDriver):
         await self._prepare_new_chat_request_ui(
             effective_deepthink=effective_deepthink,
             enable_search=enable_search,
+            enable_advanced_search=enable_advanced_search,
             enable_tools=enable_tools,
             log_label="Repetition Buster (GLM): opening throwaway chat...",
         )
@@ -1215,8 +1272,10 @@ class GLMDriver(BaseDriver):
                 return False
 
         try:
+            await self.set_tools_state(bool(multi_slot_state.get("tools_enabled")))
             await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
             await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
+            await self.set_advanced_search_state(bool(multi_slot_state.get("advanced_search_enabled")))
             await asyncio.sleep(self._post_delay_s)
         except Exception:
             pass
@@ -1622,6 +1681,126 @@ class GLMDriver(BaseDriver):
             await button.click(timeout=self._ui_timeout)
         except Exception as e:
             Logger.warning(f"GLM Chat: failed to toggle Search: {e}")
+
+    async def _find_advanced_search_switch(self, search_button: Any | None = None):
+        """Find the Advanced Search switch that appears while Search is hovered."""
+        if not self.page:
+            return None
+
+        button = search_button or await self._find_search_button()
+        if not button:
+            return None
+
+        try:
+            await button.hover(timeout=self._ui_timeout)
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed to hover Search button for Advanced Search: {e}")
+            return None
+
+        for _attempt in range(4):
+            try:
+                handle = await self.page.evaluate_handle(
+                    """() => {
+                        const requiredClasses = [
+                            'font-medium',
+                            'leading-6',
+                            'flex',
+                            'justify-between',
+                            'items-center',
+                        ];
+
+                        const isVisible = (element) => {
+                            if (!element) return false;
+                            const style = window.getComputedStyle(element);
+                            const rect = element.getBoundingClientRect();
+                            return (
+                                style.display !== 'none' &&
+                                style.visibility !== 'hidden' &&
+                                rect.width > 0 &&
+                                rect.height > 0
+                            );
+                        };
+
+                        const normalize = (value) => String(value || '')
+                            .replace(/\\s+/g, ' ')
+                            .trim()
+                            .toLowerCase();
+
+                        const rows = Array.from(
+                            document.querySelectorAll(
+                                'div.font-medium.leading-6.flex.justify-between.items-center'
+                            )
+                        );
+
+                        for (const row of rows) {
+                            if (!requiredClasses.every((cls) => row.classList.contains(cls))) {
+                                continue;
+                            }
+                            if (!isVisible(row)) {
+                                continue;
+                            }
+
+                            const span = Array.from(row.children).find(
+                                (child) => child.tagName === 'SPAN'
+                            ) || row.querySelector('span');
+                            if (!span || normalize(span.textContent) !== 'advanced search') {
+                                continue;
+                            }
+
+                            const switchButton = Array.from(row.children).find(
+                                (child) => child.tagName === 'BUTTON'
+                            ) || row.querySelector('button[aria-checked]');
+                            if (isVisible(switchButton)) {
+                                return switchButton;
+                            }
+                        }
+
+                        return null;
+                    }"""
+                )
+                switch_button = handle.as_element()
+                if switch_button:
+                    return switch_button
+            except Exception as e:
+                Logger.debug(f"GLM Chat: Advanced Search switch lookup failed: {e}")
+
+            await asyncio.sleep(0.15)
+
+        return None
+
+    async def set_advanced_search_state(self, state: bool) -> None:
+        if not self.page:
+            return
+
+        switch_button = await self._find_advanced_search_switch()
+        if not switch_button:
+            if state:
+                Logger.warning("GLM Chat: Advanced Search switch not found.")
+            return
+
+        try:
+            attr = await switch_button.get_attribute("aria-checked")
+            is_enabled = str(attr or "").strip().lower() == "true"
+        except Exception:
+            is_enabled = False
+
+        if is_enabled == state:
+            return
+
+        try:
+            await switch_button.evaluate("(button) => button.click()")
+        except Exception as e:
+            Logger.warning(f"GLM Chat: failed to toggle Advanced Search: {e}")
+            return
+
+        try:
+            await asyncio.sleep(0.1)
+            attr = await switch_button.get_attribute("aria-checked")
+            checked_after = str(attr or "").strip().lower() == "true"
+            if checked_after != state:
+                Logger.warning("GLM Chat: Advanced Search did not settle to the requested state.")
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed to verify Advanced Search state: {e}")
 
     async def set_tools_state(self, state: bool) -> None:
         if not self.page:
@@ -2156,6 +2335,7 @@ class GLMDriver(BaseDriver):
         effective_deepthink = effective_settings["deepthink_enabled"]
         effective_send_deepthink = effective_settings["send_deepthink"]
         enable_search = effective_settings["search_enabled"]
+        enable_advanced_search = effective_settings["advanced_search_enabled"]
         enable_tools = effective_settings["tools_enabled"]
         send_as_text_file = effective_settings["send_as_text_file"]
         ui_model_label = str(
@@ -2183,6 +2363,7 @@ class GLMDriver(BaseDriver):
                 "deepthink_enabled": bool(effective_deepthink),
                 "send_deepthink": bool(effective_send_deepthink),
                 "search_enabled": bool(enable_search),
+                "advanced_search_enabled": bool(enable_advanced_search),
                 "tools_enabled": bool(enable_tools),
                 "send_as_text_file": bool(send_as_text_file),
             },
@@ -2245,6 +2426,7 @@ class GLMDriver(BaseDriver):
             repetition_buster_error = await self._run_repetition_buster(
                 effective_deepthink=bool(effective_deepthink),
                 enable_search=bool(enable_search),
+                enable_advanced_search=bool(enable_advanced_search),
                 enable_tools=bool(enable_tools),
                 auto_delete_after_send=auto_delete_enabled,
             )
@@ -2678,6 +2860,7 @@ class GLMDriver(BaseDriver):
                 clean_regen_state = {
                     "deepthink_enabled": bool(effective_deepthink),
                     "search_enabled": bool(enable_search),
+                    "advanced_search_enabled": bool(enable_advanced_search),
                     "tools_enabled": bool(enable_tools),
                     "send_as_text_file": bool(send_as_text_file),
                     "ui_model": ui_model_label,
@@ -2685,6 +2868,7 @@ class GLMDriver(BaseDriver):
                 multi_slot_state = self._build_multi_slot_cache_state(
                     effective_deepthink=bool(effective_deepthink),
                     enable_search=bool(enable_search),
+                    enable_advanced_search=bool(enable_advanced_search),
                     enable_tools=bool(enable_tools),
                     send_as_text_file=bool(send_as_text_file),
                     ui_model_label=ui_model_label,
@@ -2706,6 +2890,7 @@ class GLMDriver(BaseDriver):
                         await self.set_tools_state(enable_tools)
                         await self.set_deepthink_state(effective_deepthink)
                         await self.set_search_state(enable_search)
+                        await self.set_advanced_search_state(enable_advanced_search)
                         await asyncio.sleep(self._post_delay_s)
                     except Exception:
                         pass
@@ -2766,6 +2951,7 @@ class GLMDriver(BaseDriver):
                 await self._prepare_new_chat_request_ui(
                     effective_deepthink=bool(effective_deepthink),
                     enable_search=bool(enable_search),
+                    enable_advanced_search=bool(enable_advanced_search),
                     enable_tools=bool(enable_tools),
                 )
 
