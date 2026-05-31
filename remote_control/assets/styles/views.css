@@ -9,17 +9,63 @@
 
 .hotswap-grid {
   width: 100%;
-  max-width: 520px;
+  max-width: 432px;
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, 136px);
+  justify-content: center;
 }
 
-.hotswap-grid .web-button {
-  min-width: 0;
-  width: 100%;
+.hotswap-tile {
+  width: 136px;
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  padding: 12px 14px;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-panel);
+  background: var(--sidebar-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 16px 10px 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.hotswap-tile:hover {
+  background: var(--item-hover);
+  border-color: var(--accent);
+}
+
+.hotswap-tile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hotswap-tile__icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.hotswap-tile__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(100%);
+}
+
+.hotswap-tile__label {
+  overflow-wrap: anywhere;
 }
 
 .model-switch-row {

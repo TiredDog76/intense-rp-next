@@ -67,10 +67,6 @@
     min-width: 0;
   }
 
-  .hotswap-grid {
-    grid-template-columns: 1fr;
-  }
-
   .model-switch-row {
     max-width: none;
   }

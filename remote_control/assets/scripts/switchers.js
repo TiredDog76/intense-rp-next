@@ -26,11 +26,12 @@
     targets.forEach((target) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "web-button web-button--accent";
+      button.className = "hotswap-tile";
+      button.setAttribute("aria-label", "Hotswap to " + String(target.name || ""));
       button.innerHTML =
-        '<span class="web-button__icon" aria-hidden="true"><img src="' +
-        remote.escapeHtml(target.icon_url) +
-        '" alt=""></span><span class="web-button__label">' +
+        '<span class="hotswap-tile__icon" aria-hidden="true"><img src="' +
+        remote.escapeHtml(target.icon_url || "") +
+        '" alt=""></span><span class="hotswap-tile__label">' +
         remote.escapeHtml(target.name) +
         "</span>";
       button.addEventListener("click", function () {
