@@ -1270,6 +1270,9 @@ class SettingRow(QWidget):
         return
 
     def setEnabled(self, enabled: bool):
+        enabled = bool(enabled)
+        if self.isEnabled() == enabled and self.control.isEnabled() == enabled:
+            return
         super().setEnabled(enabled)
         self.control.setEnabled(enabled)
         self._update_label_style(enabled)
@@ -1378,6 +1381,9 @@ class ToggleRow(QWidget):
         return
 
     def setEnabled(self, enabled: bool):
+        enabled = bool(enabled)
+        if self.isEnabled() == enabled and self.control.isEnabled() == enabled:
+            return
         super().setEnabled(enabled)
         self.control.setEnabled(enabled)
         self._update_label_style(enabled)

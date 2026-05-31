@@ -879,6 +879,13 @@ class SettingsWindow(QMainWindow):
         self._section_widgets = {}
         self._section_layouts = {}
         self._card_widgets = {}
+        self._card_content_layouts = {}
+        self._card_next_field_index = {}
+        self._card_build_complete_keys = set()
+        self._built_section_keys = set()
+        self._pending_section_preload_cards = []
+        self._sections_needing_activation_sync = set()
+        self._settings_values_loaded = False
         self._sidebar_sections = {}
         self._selected_section_key = None
         self._selected_card_key = None
@@ -891,6 +898,7 @@ class SettingsWindow(QMainWindow):
         self._provider_behavior_user_selected = False
         self._provider_behavior_selector_card_key = "provider_defaults"
         self._provider_behavior_group_card_keys = {}
+        self._provider_behavior_complete_keys = set()
         self._provider_behavior_selector_instances = []
         self._pending_provider_behavior_preload_keys = []
         self._loadout_dropdown_instances = []
@@ -1198,9 +1206,13 @@ class SettingsWindow(QMainWindow):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._update_responsive_layout()
+        self._sync_section_visibility()
+        timer = getattr(self, "_section_preload_timer", None)
+        if self._pending_section_preload_cards and isinstance(timer, QTimer):
+            timer.start(80)
         timer = getattr(self, "_provider_behavior_preload_timer", None)
         if self._pending_provider_behavior_preload_keys and isinstance(timer, QTimer):
-            timer.start(40)
+            timer.start(120)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -2149,6 +2161,10 @@ class SettingsWindow(QMainWindow):
         self._provider_behavior_preload_timer.setSingleShot(True)
         self._provider_behavior_preload_timer.timeout.connect(self._preload_next_provider_behavior_group)
 
+        self._section_preload_timer = QTimer(self)
+        self._section_preload_timer.setSingleShot(True)
+        self._section_preload_timer.timeout.connect(self._preload_next_section_card)
+
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self.search_shortcut.activated.connect(self._focus_search_input)
 
@@ -2206,17 +2222,240 @@ class SettingsWindow(QMainWindow):
             self._section_widgets[section.key] = section_widget
             self._section_layouts[section.key] = section_layout
 
-            for card_key in section.card_keys:
-                card_def = self._card_defs_by_key.get(card_key)
-                if card_def is None:
-                    continue
-                card_widget = self._build_card_widget(section.key, card_def)
-                section_layout.addWidget(card_widget)
-                self._card_widgets[card_key] = card_widget
-
             section_layout.addStretch(1)
 
         self.sidebar_layout.addStretch(1)
+
+    def _apply_card_field_values(self, category_key: str, field) -> None:
+        category = self._category_defs_by_key.get(category_key)
+        if category is None or field is None:
+            return
+        for item in self._iter_fields([field]):
+            self._apply_field_value(category, item)
+
+    def _apply_card_values(self, card_def) -> None:
+        for category_key, field_key in list(getattr(card_def, "field_refs", None) or []):
+            field = self._resolve_field_def(category_key, field_key)
+            self._apply_card_field_values(category_key, field)
+
+    def _is_standard_card(self, card_def) -> bool:
+        return not bool(getattr(card_def, "special", None))
+
+    def _build_next_standard_card_field(self, section_key: str, card_def, *, refresh_values: bool) -> bool:
+        card_key = str(getattr(card_def, "key", "") or "")
+        content_layout = self._card_content_layouts.get(card_key)
+        if content_layout is None:
+            return False
+
+        refs = list(getattr(card_def, "field_refs", None) or [])
+        next_index = int(self._card_next_field_index.get(card_key, 0) or 0)
+        if next_index >= len(refs):
+            self._card_build_complete_keys.add(card_key)
+            return False
+
+        category_key, field_key = refs[next_index]
+        field = self._resolve_field_def(category_key, field_key)
+        if field is not None:
+            entry = self._build_field_entry(field, category_key, section_key, card_key)
+            if entry is not None:
+                content_layout.addWidget(entry)
+            if refresh_values:
+                previous_suppress = self._suppress_dirty_tracking
+                self._suppress_dirty_tracking = True
+                try:
+                    self._apply_card_field_values(category_key, field)
+                finally:
+                    self._suppress_dirty_tracking = previous_suppress
+
+        next_index += 1
+        self._card_next_field_index[card_key] = next_index
+        if next_index >= len(refs):
+            self._card_build_complete_keys.add(card_key)
+        return True
+
+    def _finish_standard_card_fields(self, section_key: str, card_def, *, refresh_values: bool) -> None:
+        card_key = str(getattr(card_def, "key", "") or "")
+        while card_key not in self._card_build_complete_keys:
+            if not self._build_next_standard_card_field(
+                section_key,
+                card_def,
+                refresh_values=refresh_values,
+            ):
+                break
+
+    def _mark_section_built_if_complete(self, section_key: str) -> None:
+        section = self._section_defs_by_key.get(section_key)
+        if section is not None and all(key in self._card_build_complete_keys for key in section.card_keys):
+            self._built_section_keys.add(section_key)
+
+    def _insert_card_widget(self, section_key: str, card_key: str, card_widget: QWidget) -> None:
+        section_layout = self._section_layouts.get(section_key)
+        if section_layout is None:
+            return
+        insert_index = max(0, section_layout.count() - 1)
+        section_layout.insertWidget(insert_index, card_widget)
+        self._card_widgets[card_key] = card_widget
+
+    def _ensure_card_built(
+        self,
+        section_key: str,
+        card_key: str,
+        *,
+        refresh_values: bool = False,
+        background: bool = False,
+    ) -> QWidget | None:
+        existing = self._card_widgets.get(card_key)
+        card_def = self._card_defs_by_key.get(card_key)
+        if existing is not None:
+            if card_def is not None and card_key not in self._card_build_complete_keys:
+                if background and self._is_standard_card(card_def):
+                    self._build_next_standard_card_field(
+                        section_key,
+                        card_def,
+                        refresh_values=refresh_values,
+                    )
+                elif not background:
+                    self._finish_standard_card_fields(section_key, card_def, refresh_values=refresh_values)
+                self._mark_section_built_if_complete(section_key)
+            return existing
+
+        section_layout = self._section_layouts.get(section_key)
+        if section_layout is None or card_def is None:
+            return None
+
+        if background and self._is_standard_card(card_def):
+            card_widget = self._build_standard_card(section_key, card_def, field_refs=[])
+            self._card_next_field_index[card_key] = 0
+            self._insert_card_widget(section_key, card_key, card_widget)
+            if not list(getattr(card_def, "field_refs", None) or []):
+                self._card_build_complete_keys.add(card_key)
+            else:
+                self._build_next_standard_card_field(
+                    section_key,
+                    card_def,
+                    refresh_values=refresh_values,
+                )
+        else:
+            card_widget = self._build_card_widget(section_key, card_def)
+            self._insert_card_widget(section_key, card_key, card_widget)
+            self._card_build_complete_keys.add(card_key)
+
+        if refresh_values and card_key in self._card_build_complete_keys:
+            previous_suppress = self._suppress_dirty_tracking
+            self._suppress_dirty_tracking = True
+            try:
+                self._apply_card_values(card_def)
+                self._sync_application_settings_info()
+                self._sync_profile_clear_button_label()
+            finally:
+                self._suppress_dirty_tracking = previous_suppress
+
+        if background:
+            self._sections_needing_activation_sync.add(section_key)
+
+        self._mark_section_built_if_complete(section_key)
+
+        return card_widget
+
+    def _ensure_section_built(
+        self,
+        section_key: str | None,
+        *,
+        refresh_values: bool = False,
+        background: bool = False,
+    ) -> bool:
+        resolved_key = str(section_key or "").strip()
+        section = self._section_defs_by_key.get(resolved_key)
+        if section is None:
+            return False
+
+        built_any = False
+        for card_key in section.card_keys:
+            if card_key in self._card_build_complete_keys:
+                continue
+            if self._ensure_card_built(
+                resolved_key,
+                card_key,
+                refresh_values=refresh_values,
+                background=background,
+            ) is not None:
+                built_any = True
+
+        self._mark_section_built_if_complete(resolved_key)
+
+        return built_any
+
+    def _sync_section_after_activation(self, section_key: str, *, force: bool = False) -> None:
+        resolved_key = str(section_key or "").strip()
+        if not resolved_key:
+            return
+        needs_sync = force or (resolved_key in self._sections_needing_activation_sync)
+        if not needs_sync:
+            return
+
+        previous_suppress = self._suppress_dirty_tracking
+        self._suppress_dirty_tracking = True
+        try:
+            preset_widget = self.field_widgets.get("formatting.formatting_preset")
+            if preset_widget:
+                self._on_preset_changed(preset_widget.currentText())
+            self._sync_config_storage_from_active_dir()
+            self._sync_application_settings_info()
+            self._sync_profile_clear_button_label()
+            if resolved_key in {"formatting", "provider_behavior"}:
+                self._refresh_loadout_editor_widgets()
+            else:
+                self._update_dependencies()
+        finally:
+            self._suppress_dirty_tracking = previous_suppress
+        self._sections_needing_activation_sync.discard(resolved_key)
+
+    def _queue_section_preload(self, *, exclude: str | None = None) -> None:
+        excluded_key = str(exclude or "").strip()
+        pending: list[tuple[str, str]] = []
+        for section in self._section_defs:
+            if section.key == excluded_key:
+                continue
+            for card_key in section.card_keys:
+                if card_key not in self._card_build_complete_keys:
+                    pending.append((section.key, card_key))
+
+        self._pending_section_preload_cards = pending
+
+        timer = getattr(self, "_section_preload_timer", None)
+        if not isinstance(timer, QTimer):
+            return
+        if not pending:
+            timer.stop()
+            return
+
+        timer.start(80 if self.isVisible() else 180)
+
+    def _preload_next_section_card(self) -> None:
+        if not self.isVisible():
+            self._queue_section_preload(exclude=self._selected_section_key)
+            return
+
+        while self._pending_section_preload_cards:
+            section_key, card_key = self._pending_section_preload_cards.pop(0)
+            if section_key == self._selected_section_key:
+                continue
+            if card_key in self._card_build_complete_keys:
+                continue
+            self._ensure_card_built(
+                section_key,
+                card_key,
+                refresh_values=self._settings_values_loaded,
+                background=True,
+            )
+            if card_key not in self._card_build_complete_keys:
+                self._pending_section_preload_cards.insert(0, (section_key, card_key))
+            break
+
+        if self._pending_section_preload_cards:
+            timer = getattr(self, "_section_preload_timer", None)
+            if isinstance(timer, QTimer):
+                timer.start(24)
 
     def _sidebar_cards_for_section(self, section_key: str) -> list[tuple[str, str]]:
         section = self._section_defs_by_key.get(section_key)
@@ -2564,13 +2803,13 @@ class SettingsWindow(QMainWindow):
             if not isinstance(widget, MarshmallowDropdown):
                 continue
             if section_key == "provider_behavior" and isinstance(row, QWidget):
-                row.setVisible(loadouts_enabled)
+                self._set_widget_visible_if_changed(row, loadouts_enabled)
             widget.set_options(options, current_name)
-            widget.setEnabled(loadouts_enabled)
+            self._set_widget_enabled_if_changed(widget, loadouts_enabled)
 
         formatting_card = self._card_widgets.get(self._loadout_editor_formatting_card_key)
         if formatting_card is not None:
-            formatting_card.setVisible(loadouts_enabled)
+            self._set_widget_visible_if_changed(formatting_card, loadouts_enabled)
 
         if self._selected_section_key in {"formatting", "provider_behavior"}:
             sidebar = self._sidebar_sections.get(self._selected_section_key)
@@ -2629,9 +2868,9 @@ class SettingsWindow(QMainWindow):
 
             category_key, _field_key = full_key.split(".", 1)
             if category_key == "formatting":
-                target.setEnabled(False)
+                self._set_widget_enabled_if_changed(target, False)
             elif category_key == current_behavior_key:
-                target.setEnabled(False)
+                self._set_widget_enabled_if_changed(target, False)
 
     def _refresh_loadout_editor_widgets(self) -> None:
         previous_suppress = self._suppress_dirty_tracking
@@ -2756,7 +2995,7 @@ class SettingsWindow(QMainWindow):
                 return True
         return False
 
-    def _build_standard_card(self, section_key: str, card_def):
+    def _build_standard_card(self, section_key: str, card_def, *, field_refs=None):
         card = QWidget()
         card.setStyleSheet(
             f"""
@@ -2791,6 +3030,7 @@ class SettingsWindow(QMainWindow):
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(6)
+        self._card_content_layouts[card_def.key] = content_layout
 
         if getattr(card_def, "description", None):
             desc = QLabel(render_tooltip_text(card_def.description))
@@ -2807,7 +3047,8 @@ class SettingsWindow(QMainWindow):
             )
             content_layout.addWidget(desc)
 
-        for category_key, field_key in list(getattr(card_def, "field_refs", None) or []):
+        refs = list((getattr(card_def, "field_refs", None) if field_refs is None else field_refs) or [])
+        for category_key, field_key in refs:
             field = self._resolve_field_def(category_key, field_key)
             if field is None:
                 continue
@@ -2857,7 +3098,6 @@ class SettingsWindow(QMainWindow):
 
         content_layout.addWidget(self._build_loadout_selector_block(section_key=section_key))
         layout.addWidget(content_widget)
-        self._sync_provider_behavior_default_page(force=True)
         return card
 
     def _build_loadout_editor_card(self, section_key: str, card_def):
@@ -2913,36 +3153,174 @@ class SettingsWindow(QMainWindow):
         layout.addWidget(self._build_loadout_selector_block(section_key=section_key))
         return card
 
-    def _ensure_provider_behavior_group_cards_built(self, behavior_key: str, *, refresh_dirty: bool = True) -> None:
+    def _apply_behavior_field_value(self, behavior_key: str, field_key: str) -> None:
+        category = self._category_defs_by_key.get(behavior_key)
+        if category is None:
+            return
+        field = self._resolve_field_def(behavior_key, field_key)
+        if field is None:
+            return
+        for item in self._iter_fields([field]):
+            self._apply_field_value(category, item)
+
+    def _apply_behavior_group_values(self, behavior_key: str, group: dict) -> None:
+        for field_key in group.get("fields", []):
+            self._apply_behavior_field_value(behavior_key, field_key)
+
+    def _behavior_group_card_key(self, behavior_key: str, index: int) -> str:
+        return f"provider_behavior::{behavior_key}::{int(index)}"
+
+    def _build_next_behavior_group_field(
+        self,
+        group: dict,
+        behavior_key: str,
+        section_key: str,
+        card_key: str,
+        *,
+        refresh_values: bool,
+    ) -> bool:
+        content_layout = self._card_content_layouts.get(card_key)
+        if content_layout is None:
+            return False
+
+        field_keys = list(group.get("fields", []) or [])
+        next_index = int(self._card_next_field_index.get(card_key, 0) or 0)
+        if next_index >= len(field_keys):
+            self._card_build_complete_keys.add(card_key)
+            return False
+
+        field_key = field_keys[next_index]
+        field = self._resolve_field_def(behavior_key, field_key)
+        if field is not None:
+            entry = self._build_field_entry(field, behavior_key, section_key, card_key, provider_key=behavior_key)
+            if entry is not None:
+                content_layout.addWidget(entry)
+            if refresh_values:
+                self._apply_behavior_field_value(behavior_key, field_key)
+
+        next_index += 1
+        self._card_next_field_index[card_key] = next_index
+        if next_index >= len(field_keys):
+            self._card_build_complete_keys.add(card_key)
+        return True
+
+    def _ensure_provider_behavior_group_cards_built(
+        self,
+        behavior_key: str,
+        *,
+        refresh_dirty: bool = True,
+        max_groups: int | None = None,
+        background: bool = False,
+    ) -> None:
         normalized_key = str(behavior_key or "").strip()
-        if not normalized_key or normalized_key in self._provider_behavior_group_card_keys:
+        if not normalized_key or normalized_key in self._provider_behavior_complete_keys:
             return
 
         section_layout = self._section_layouts.get("provider_behavior")
         if section_layout is None:
             return
 
+        if self._provider_behavior_selector_card_key not in self._card_widgets:
+            self._ensure_card_built(
+                "provider_behavior",
+                self._provider_behavior_selector_card_key,
+                refresh_values=self._settings_values_loaded,
+                background=background,
+            )
+
         groups = PROVIDER_BEHAVIOR_GROUPS.get(normalized_key, [])
-        provider_cards = []
-        insert_index = max(0, section_layout.count() - 1)
-        for index, group in enumerate(groups):
-            card_key = f"provider_behavior::{normalized_key}::{index}"
-            self._dynamic_card_titles[card_key] = str(group.get("title") or "Provider")
-            card_widget = self._build_behavior_group_card(group, normalized_key, "provider_behavior", card_key)
-            card_widget.setProperty("sidebarTitle", str(group.get("title") or "Provider"))
-            card_widget.setVisible(False)
-            section_layout.insertWidget(insert_index + len(provider_cards), card_widget)
-            self._card_widgets[card_key] = card_widget
-            provider_cards.append(card_key)
+        provider_cards = self._provider_behavior_group_card_keys.setdefault(normalized_key, [])
+        if not groups:
+            self._provider_behavior_complete_keys.add(normalized_key)
+            return
 
-        self._provider_behavior_group_card_keys[normalized_key] = provider_cards
+        def next_incomplete_group_index() -> int | None:
+            for group_index in range(len(groups)):
+                card_key = self._behavior_group_card_key(normalized_key, group_index)
+                if card_key not in self._card_build_complete_keys:
+                    return group_index
+            return None
 
-        category = self._category_defs_by_key.get(normalized_key)
+        if next_incomplete_group_index() is None:
+            self._provider_behavior_complete_keys.add(normalized_key)
+            return
+
+        step_limit = None if max_groups is None else max(1, int(max_groups))
+
+        built_count = 0
         previous_suppress = self._suppress_dirty_tracking
         self._suppress_dirty_tracking = True
         try:
-            if category is not None:
-                self._apply_category_values(category)
+            while True:
+                index = next_incomplete_group_index()
+                if index is None:
+                    break
+                if step_limit is not None and built_count >= step_limit:
+                    break
+
+                group = groups[index]
+                card_key = self._behavior_group_card_key(normalized_key, index)
+                if card_key not in self._card_widgets:
+                    self._dynamic_card_titles[card_key] = str(group.get("title") or "Provider")
+                    card_widget = self._build_behavior_group_card(
+                        group,
+                        normalized_key,
+                        "provider_behavior",
+                        card_key,
+                        field_keys=[],
+                    )
+                    card_widget.setProperty("sidebarTitle", str(group.get("title") or "Provider"))
+                    card_widget.setVisible(False)
+                    insert_index = max(0, section_layout.count() - 1)
+                    section_layout.insertWidget(insert_index, card_widget)
+                    self._card_widgets[card_key] = card_widget
+                    provider_cards.append(card_key)
+                    self._card_next_field_index[card_key] = 0
+                    if not list(group.get("fields", []) or []):
+                        self._card_build_complete_keys.add(card_key)
+                        built_count += 1
+                        continue
+
+                if background:
+                    if self._build_next_behavior_group_field(
+                        group,
+                        normalized_key,
+                        "provider_behavior",
+                        card_key,
+                        refresh_values=True,
+                    ):
+                        built_count += 1
+                    else:
+                        self._card_build_complete_keys.add(card_key)
+                    break
+
+                while card_key not in self._card_build_complete_keys:
+                    if not self._build_next_behavior_group_field(
+                        group,
+                        normalized_key,
+                        "provider_behavior",
+                        card_key,
+                        refresh_values=True,
+                    ):
+                        break
+                    built_count += 1
+        finally:
+            self._suppress_dirty_tracking = previous_suppress
+
+        if next_incomplete_group_index() is None:
+            self._provider_behavior_complete_keys.add(normalized_key)
+
+        if background:
+            if built_count:
+                self._sections_needing_activation_sync.add("provider_behavior")
+            return
+
+        if not built_count and not refresh_dirty:
+            return
+
+        previous_suppress = self._suppress_dirty_tracking
+        self._suppress_dirty_tracking = True
+        try:
             self._update_dependencies()
         finally:
             self._suppress_dirty_tracking = previous_suppress
@@ -2952,11 +3330,15 @@ class SettingsWindow(QMainWindow):
 
     def _queue_provider_behavior_preload(self, *, exclude: str | None = None) -> None:
         excluded_key = str(exclude or "").strip()
-        pending = [
-            key
-            for key in PROVIDER_BEHAVIOR_GROUPS
-            if key != excluded_key and key not in self._provider_behavior_group_card_keys
-        ]
+        pending: list[tuple[str, int]] = []
+        for key, groups in PROVIDER_BEHAVIOR_GROUPS.items():
+            if key == excluded_key:
+                continue
+            for index, _group in enumerate(groups):
+                card_key = self._behavior_group_card_key(key, index)
+                if card_key not in self._card_build_complete_keys:
+                    pending.append((key, index))
+
         self._pending_provider_behavior_preload_keys = pending
 
         timer = getattr(self, "_provider_behavior_preload_timer", None)
@@ -2966,7 +3348,7 @@ class SettingsWindow(QMainWindow):
             timer.stop()
             return
 
-        timer.start(40 if self.isVisible() else 120)
+        timer.start(120 if self.isVisible() else 220)
 
     def _preload_next_provider_behavior_group(self) -> None:
         if not self.isVisible():
@@ -2974,18 +3356,45 @@ class SettingsWindow(QMainWindow):
             return
 
         while self._pending_provider_behavior_preload_keys:
-            next_key = self._pending_provider_behavior_preload_keys.pop(0)
-            if next_key in self._provider_behavior_group_card_keys:
+            next_item = self._pending_provider_behavior_preload_keys.pop(0)
+            if isinstance(next_item, tuple):
+                next_key, expected_index = next_item
+            else:
+                next_key, expected_index = str(next_item), 0
+            next_key = str(next_key or "").strip()
+            if not next_key:
                 continue
-            self._ensure_provider_behavior_group_cards_built(next_key, refresh_dirty=False)
+            if next_key == self._provider_behavior_selected_key:
+                continue
+            if next_key in self._provider_behavior_complete_keys:
+                continue
+            card_key = self._behavior_group_card_key(next_key, int(expected_index or 0))
+            if card_key in self._card_build_complete_keys:
+                continue
+            self._ensure_provider_behavior_group_cards_built(
+                next_key,
+                refresh_dirty=False,
+                max_groups=1,
+                background=True,
+            )
+            if card_key not in self._card_build_complete_keys:
+                self._pending_provider_behavior_preload_keys.insert(0, (next_key, int(expected_index or 0)))
             break
 
         if self._pending_provider_behavior_preload_keys:
             timer = getattr(self, "_provider_behavior_preload_timer", None)
             if isinstance(timer, QTimer):
-                timer.start(0)
+                timer.start(24)
 
-    def _build_behavior_group_card(self, group: dict, behavior_key: str, section_key: str, card_key: str):
+    def _build_behavior_group_card(
+        self,
+        group: dict,
+        behavior_key: str,
+        section_key: str,
+        card_key: str,
+        *,
+        field_keys=None,
+    ):
         group_card = QWidget()
         group_card.setStyleSheet(
             f"""
@@ -3040,8 +3449,10 @@ class SettingsWindow(QMainWindow):
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(6)
+        self._card_content_layouts[card_key] = content_layout
 
-        for field_key in group.get("fields", []):
+        refs = list((group.get("fields", []) if field_keys is None else field_keys) or [])
+        for field_key in refs:
             field = self._resolve_field_def(behavior_key, field_key)
             if field is None:
                 continue
@@ -3239,6 +3650,14 @@ class SettingsWindow(QMainWindow):
         if not self._selected_section_key:
             return
 
+        built_new_section = self._ensure_section_built(
+            self._selected_section_key,
+            refresh_values=self._settings_values_loaded,
+            background=False,
+        )
+        if built_new_section and self._settings_values_loaded:
+            self._sections_needing_activation_sync.add(self._selected_section_key)
+
         if self._selected_section_key == "provider_behavior":
             provider_key = (
                 self._provider_behavior_selected_key
@@ -3248,10 +3667,10 @@ class SettingsWindow(QMainWindow):
             self._ensure_provider_behavior_group_cards_built(provider_key)
             self._set_provider_behavior_page(provider_key, user_selected=False)
 
+        if self._settings_values_loaded:
+            self._sync_section_after_activation(self._selected_section_key)
         self._hide_info_bubble()
-        for key, section_widget in self._section_widgets.items():
-            visible = key == self._selected_section_key
-            section_widget.setVisible(visible)
+        self._sync_section_visibility()
         for key, sidebar in self._sidebar_sections.items():
             is_active = key == self._selected_section_key
             sidebar.set_active(is_active)
@@ -3302,7 +3721,7 @@ class SettingsWindow(QMainWindow):
         if self._selected_section_key == "provider_behavior":
             self._ensure_provider_behavior_group_cards_built(key)
         self._sync_loadout_selector_instances()
-        if key not in self._provider_behavior_group_card_keys:
+        if key not in self._provider_behavior_complete_keys:
             self._refresh_loadout_editor_widgets()
             return
 
@@ -3311,7 +3730,7 @@ class SettingsWindow(QMainWindow):
             for card_key in card_keys:
                 widget = self._card_widgets.get(card_key)
                 if widget is not None:
-                    widget.setVisible(is_active_provider)
+                    self._set_widget_visible_if_changed(widget, is_active_provider)
 
         sidebar = self._sidebar_sections.get("provider_behavior")
         if sidebar is not None:
@@ -3567,6 +3986,7 @@ class SettingsWindow(QMainWindow):
         return started
 
     def _load_values(self):
+        self._settings_values_loaded = False
         override_cache = getattr(self, "_dep_override_cache", None)
         if override_cache is not None:
             override_cache.clear()
@@ -3589,12 +4009,14 @@ class SettingsWindow(QMainWindow):
             )
             self._ensure_provider_behavior_group_cards_built(current_behavior_key, refresh_dirty=False)
             self._queue_provider_behavior_preload(exclude=current_behavior_key)
+            self._queue_section_preload(exclude=self._selected_section_key)
             delete_btn = self.field_widgets.get("system_settings.delete_persistent_profile_btn")
             if isinstance(delete_btn, QPushButton):
                 delete_btn.setEnabled(False)
             self._sync_profile_clear_button_label()
         finally:
             self._suppress_dirty_tracking = previous_suppress
+            self._settings_values_loaded = True
             self.unsaved_changes = False
 
     def refresh_from_config(self, force: bool = False) -> bool:
@@ -3755,6 +4177,36 @@ class SettingsWindow(QMainWindow):
         finally:
             widget.blockSignals(False)
 
+    def _set_widget_enabled_if_changed(self, widget: QWidget | None, enabled: bool) -> None:
+        if widget is None:
+            return
+        enabled = bool(enabled)
+        try:
+            if widget.isEnabled() == enabled:
+                return
+        except RuntimeError:
+            return
+        widget.setEnabled(enabled)
+
+    def _set_widget_visible_if_changed(self, widget: QWidget | None, visible: bool) -> None:
+        if widget is None:
+            return
+        visible = bool(visible)
+        try:
+            requested_visible = widget.property("_settings_requested_visible")
+            explicitly_hidden = widget.testAttribute(Qt.WA_WState_Hidden)
+            if requested_visible == visible and explicitly_hidden == (not visible):
+                return
+            widget.setProperty("_settings_requested_visible", visible)
+            widget.setVisible(visible)
+        except RuntimeError:
+            return
+
+    def _sync_section_visibility(self) -> None:
+        selected_section_key = str(self._selected_section_key or "").strip()
+        for key, section_widget in self._section_widgets.items():
+            self._set_widget_visible_if_changed(section_widget, key == selected_section_key)
+
     def _is_dependency_met(self, expr: str | None) -> bool:
         if not expr:
             return True
@@ -3861,9 +4313,9 @@ class SettingsWindow(QMainWindow):
             # If there's a SettingRow for this field, enable/disable the whole row
             row = self.setting_rows.get(dependent_key)
             if row:
-                row.setEnabled(is_met)
+                self._set_widget_enabled_if_changed(row, is_met)
             else:
-                widget.setEnabled(is_met)
+                self._set_widget_enabled_if_changed(widget, is_met)
             if not is_met and isinstance(widget, (StyledLineEdit, DirectoryEntry)):
                 widget.set_error(False) # Clear error if disabled
 
@@ -3871,9 +4323,9 @@ class SettingsWindow(QMainWindow):
             if visible_expr is not None:
                 should_show = self._is_dependency_met(visible_expr)
                 if row:
-                    row.setVisible(should_show)
+                    self._set_widget_visible_if_changed(row, should_show)
                 else:
-                    widget.setVisible(should_show)
+                    self._set_widget_visible_if_changed(widget, should_show)
 
         self._apply_forced_overrides()
         if not self._suppress_dirty_tracking:
@@ -3886,9 +4338,9 @@ class SettingsWindow(QMainWindow):
         if preset_widget is not None and template_widget is not None:
             is_custom = str(preset_widget.currentText() or "") == "Custom"
             if template_row is not None:
-                template_row.setEnabled(is_custom)
+                self._set_widget_enabled_if_changed(template_row, is_custom)
             else:
-                template_widget.setEnabled(is_custom)
+                self._set_widget_enabled_if_changed(template_widget, is_custom)
 
     def _is_loadouts_enabled_in_ui(self) -> bool:
         widget = self.field_widgets.get("experimental.enable_loadouts")
@@ -4193,9 +4645,9 @@ class SettingsWindow(QMainWindow):
         widget = self.field_widgets.get(custom_key)
 
         if row:
-            row.setEnabled(is_custom)
+            self._set_widget_enabled_if_changed(row, is_custom)
         elif widget:
-            widget.setEnabled(is_custom)
+            self._set_widget_enabled_if_changed(widget, is_custom)
 
         if not is_custom and isinstance(widget, (StyledLineEdit, DirectoryEntry)):
             widget.set_error(False)
@@ -4208,7 +4660,7 @@ class SettingsWindow(QMainWindow):
         previous_block = template_widget.blockSignals(True)
         try:
             if text == "Custom":
-                template_widget.setEnabled(True)
+                self._set_widget_enabled_if_changed(template_widget, True)
                 # We need to store the custom value temporarily if we switch away from Custom.
                 
                 if hasattr(self, "_last_custom_template"):
@@ -4220,7 +4672,7 @@ class SettingsWindow(QMainWindow):
                 if template_widget.isEnabled():
                     self._last_custom_template = template_widget.toPlainText()
                 
-                template_widget.setEnabled(False)
+                self._set_widget_enabled_if_changed(template_widget, False)
                 template = FORMATTING_PRESET_TEMPLATES.get(text)
                 if template is not None:
                     template_widget.setPlainText(template)
@@ -4230,9 +4682,9 @@ class SettingsWindow(QMainWindow):
         row = self.setting_rows.get("formatting.formatting_template")
         is_custom = text == "Custom"
         if row is not None:
-            row.setEnabled(is_custom)
+            self._set_widget_enabled_if_changed(row, is_custom)
         else:
-            template_widget.setEnabled(is_custom)
+            self._set_widget_enabled_if_changed(template_widget, is_custom)
 
     def _sync_application_settings_info(self):
         version_widget = self.field_widgets.get("application_settings.current_version_info")
@@ -4584,7 +5036,12 @@ class SettingsWindow(QMainWindow):
             button.setEnabled(True)
 
     def set_profile_clear_provider_selection(self, providers: list[str] | tuple[str, ...] | set[str]) -> bool:
-        self._ensure_category_built("system_settings", refresh_profiles=True)
+        self._ensure_card_built(
+            "provider_login",
+            "saved_sessions",
+            refresh_values=self._settings_values_loaded,
+        )
+        self._maybe_refresh_persistent_profile_options("provider_login", force=True)
         widget = self.field_widgets.get("system_settings.clear_persistent_profile_providers")
         if not isinstance(widget, MarshmallowMultiSelectDropdown):
             return False
