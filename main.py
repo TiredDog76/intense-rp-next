@@ -2388,11 +2388,6 @@ class MainWindow(QMainWindow):
             loadout_action = menu.addAction("Switch Loadout")
             loadout_action.triggered.connect(self._on_switch_loadout)
 
-        hotswap_mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
-        if (hotswap_mode or "Stop Menu") == "Stop Menu":
-            hotswap_action = menu.addAction("Hotswap")
-            hotswap_action.triggered.connect(self._on_hotswap)
-
     def _on_restart_services(self):
         asyncio.create_task(self._restart_services_impl())
 

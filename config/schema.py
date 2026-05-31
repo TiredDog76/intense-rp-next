@@ -2466,15 +2466,14 @@ SCHEMA = [
                 key="hotswap_experience",
                 label="Hotswap Button Style",
                 type=SettingType.DROPDOWN,
-                default="Stop Menu",
-                options=["Stop Menu", "Discrete", "Persistent Discrete"],
+                default="Discrete",
+                options=["Discrete", "Persistent Discrete"],
                 tooltip=(
                     "How the Hotswap shortcut appears. "
-                    "Stop Menu: in the Stop button dropdown. "
                     "Discrete: icon next to Help (while running). "
                     "Persistent Discrete: always visible."
                 ),
-                affects=["chevron_dropdown", "hotswap_button"],
+                affects=["hotswap_button"],
                 docs_path=DOCS_HOTSWAPS,
                 docs_anchor="hotswap-experience",
             ),

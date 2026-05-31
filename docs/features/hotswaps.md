@@ -27,17 +27,11 @@ That's it. Your other settings (credentials, behavior toggles, etc.) are untouch
 
 ## :material-tune: Hotswap Button Style
 
-You can choose **how** the Hotswap shortcut appears in the UI:
+You can choose between two small-button styles for the Hotswap shortcut:
 
 :material-arrow-right: **Settings** -> **Interface** -> **Main Window** -> **Hotswap Button Style**
 
-### Stop Menu (default)
-
-Adds a **Hotswap** option to the chevron dropdown on the **Stop** button - right alongside **Restart** and **Switch Account**.
-
-I personally like this option more, since it keeps all the "big" controls together in one place, but it's a bit less discoverable than the Discrete mode.
-
-### Discrete
+### Discrete (default)
 
 Adds a small icon button to the **left of the Help button**. The button shows your current provider's icon:
 
@@ -60,7 +54,7 @@ Uses the same small icon button as **Discrete**, but it stays visible even when 
 - If services are stopped: it just switches your Provider setting (no restart, and it will not start anything).
 
 !!! note "Switching modes"
-    Changing **Hotswap Button Style** takes effect immediately (you won't need to restart). If you switch from **Stop Menu** to **Discrete** (or vice versa) while services are running, the UI updates right away. Thanks to the magic of Qt6!
+    Changing **Hotswap Button Style** takes effect immediately (you won't need to restart). If you switch between **Discrete** and **Persistent Discrete** while services are running, the UI updates right away. Thanks to the magic of Qt6!
 
 ---
 
@@ -70,7 +64,7 @@ Uses the same small icon button as **Discrete**, but it stays visible even when 
     Not by itself. If you have **Persistent Sessions** enabled, each provider keeps its own browser profile, so switching providers is seamless. If you **don't** have Persistent Sessions, you'll need to log in to the new provider (same as a normal restart with a different provider selected).
 
 ??? question "Can I Hotswap while the browser is stopped?"
-    By default, no. The Hotswap option only appears when services are running.
+    By default, no. The Hotswap button only appears when services are running.
 
     If you set **Hotswap Button Style** to **Persistent Discrete**, the Hotswap button stays visible while stopped and will switch your Provider setting without starting or restarting services.
 
@@ -86,11 +80,10 @@ Uses the same small icon button as **Discrete**, but it stays visible even when 
 
 | Setting | Where | Default |
 |---|---|---|
-| **Hotswap Button Style** | Interface -> Main Window | Stop Menu |
+| **Hotswap Button Style** | Interface -> Main Window | Discrete |
 
 | Experience | Location | Visible when |
 |---|---|---|
-| Stop Menu | Chevron dropdown (Stop button) | Services running |
 | Discrete | Small button left of Help | Services running |
 | Persistent Discrete | Small button left of Help | Always |
 

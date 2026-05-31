@@ -106,6 +106,13 @@ class SettingsMigrator:
                 if "enable_umm" not in network_settings and better_model_names is not None:
                     network_settings["enable_umm"] = bool(better_model_names)
 
+        # Migration: Hotswap no longer lives in the Stop button chevron menu.
+        application_settings = settings.get("application_settings")
+        if isinstance(application_settings, dict):
+            hotswap_experience = str(application_settings.get("hotswap_experience") or "").strip()
+            if hotswap_experience in {"Stop Menu", "Chevron Menu"}:
+                application_settings["hotswap_experience"] = "Discrete"
+
         # Migration: remove obsolete settings that no longer exist in the UI
         for category_key, field_key in REMOVED_FIELDS:
             category = settings.get(category_key)
