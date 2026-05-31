@@ -6,6 +6,7 @@ from typing import Any
 
 DEFAULT_POST_UPDATE_ACTION = "survey"
 DEFAULT_POST_UPDATE_FUNCTION_REF = "none"
+DEFAULT_UPDATE_SUMMARY = ""
 _POST_UPDATE_ACTIONS = {"discord", "survey", "none"}
 
 
@@ -16,6 +17,7 @@ class VersionFileInfo:
     severity: int  # 1-4
     post_update: str  # discord | survey | none
     post_update_function_ref: str = DEFAULT_POST_UPDATE_FUNCTION_REF
+    summary: str = DEFAULT_UPDATE_SUMMARY
 
 
 def parse_version_file(
@@ -26,6 +28,7 @@ def parse_version_file(
     default_severity: int = 2,
     default_post_update: str = DEFAULT_POST_UPDATE_ACTION,
     default_post_update_function_ref: str = DEFAULT_POST_UPDATE_FUNCTION_REF,
+    default_summary: str = DEFAULT_UPDATE_SUMMARY,
     strict: bool = False,
 ) -> VersionFileInfo:
     """
@@ -38,6 +41,7 @@ def parse_version_file(
     - severity: integer 1-4
     - pu: post-update action (discord, survey, none)
     - pufref: post-update function reference (none, or a registered function key)
+    - summary: brief post-update summary text
     """
 
     value = (text or "").strip()
@@ -53,6 +57,7 @@ def parse_version_file(
                 default_post_update_function_ref,
                 default=default_post_update_function_ref,
             ),
+            summary=_coerce_summary(default_summary, default=default_summary),
         )
 
     try:
@@ -88,12 +93,16 @@ def parse_version_file(
         default=default_post_update_function_ref,
     )
 
+    summary_raw = payload.get("summary", payload.get("update_summary", default_summary))
+    summary = _coerce_summary(summary_raw, default=default_summary)
+
     return VersionFileInfo(
         version=version_str,
         auto_updateable=aua,
         severity=severity,
         post_update=post_update,
         post_update_function_ref=post_update_function_ref,
+        summary=summary,
     )
 
 
@@ -150,3 +159,10 @@ def _coerce_post_update_function_ref(value: Any, *, default: str) -> str:
     if normalized:
         return normalized
     return normalized_default
+
+
+def _coerce_summary(value: Any, *, default: str) -> str:
+    summary = str(value or "").strip()
+    if summary:
+        return summary
+    return str(default or "").strip()

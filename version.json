@@ -3,5 +3,6 @@
   "aua": true,
   "severity": 3,
   "pu": "discord",
-  "pufref": "none"
+  "pufref": "none",
+  "summary": ""
 }

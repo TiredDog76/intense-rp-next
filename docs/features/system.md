@@ -244,14 +244,16 @@ For full details and the severity order, see [:material-console: Console & Loggi
 
 When you check for updates, IntenseRP downloads the latest `version.json` from GitHub.
 
-`version.json` is a JSON object with 4 keys:
+`version.json` is a JSON object with these keys:
 
 - `version` - SemVer-style version string
 - `aua` - whether the update is auto-updateable (`true`/`false`)
 - `severity` - 1-4 (`optional`, `normal`, `important`, `critical`)
 - `pu` - post-update button mode: `survey`, `discord`, or `none`
+- `pufref` - optional post-update helper action used by the app after the dialog closes
+- `summary` - optional short summary shown in the "Update Installed" dialog
 
-IntenseRP compares only `version` to decide if an update is available. `aua` can disable Auto-Update for specific releases. `pu` only affects the button shown after the updated app starts.
+IntenseRP compares only `version` to decide if an update is available. `aua` can disable Auto-Update for specific releases. `pu` only affects the button shown after the updated app starts, and `summary` only adds a little context to that post-update dialog.
 
 For the project's same-version hotfix tags, the checker treats the suffixes as release steps in this order: plain release -> `-update`/`-major` -> `-patch` -> `-revN`.
 

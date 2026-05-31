@@ -386,6 +386,7 @@ def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
         release_notes_url=release_notes_url,
         post_update=version_info.post_update,
         post_update_function_ref=version_info.post_update_function_ref,
+        summary=version_info.summary,
     )
 
 
@@ -657,6 +658,7 @@ class MainWindow(QMainWindow):
                 release_notes_url=str(release_notes_url or ""),
                 post_update=version_info.post_update,
                 post_update_function_ref=fake_pufref or version_info.post_update_function_ref,
+                summary=version_info.summary,
             )
         self._maybe_show_update_installed_dialog()
 

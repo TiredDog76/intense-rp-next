@@ -10,12 +10,14 @@ from PySide6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QMessageBox,
 
 from ui.core.brand import BrandColors
 from ui.core.icons import IconType, IconUtils
+from utils.docs_links import build_docs_url
 
 
 REMOTE_LATEST_SURVEY_URL = (
     "https://raw.githubusercontent.com/LyubomirT/intense-rp-next/refs/heads/v2-rewrite/latestsurvey.txt"
 )
 DISCORD_INVITE_URL = "https://discord.gg/4Gvjk2RdsK"
+DONATE_URL = build_docs_url("hands/support", "financial-support-optional")
 _POST_UPDATE_ACTIONS = {"discord", "survey", "none"}
 
 
@@ -36,6 +38,7 @@ class UpdateInstalledInfo:
     release_notes_url: str
     post_update: str = "survey"
     post_update_function_ref: str = "none"
+    summary: str = ""
 
 
 class UpdateInstalledDialog(QDialog):
@@ -83,8 +86,8 @@ class UpdateInstalledDialog(QDialog):
         )
         layout.addWidget(title)
 
-        version_text = _format_version(self._info.version)
-        subtitle = QLabel(f"Update {version_text} successfully installed.")
+        subtitle = QLabel(self._build_subtitle_text())
+        subtitle.setTextFormat(Qt.PlainText)
         subtitle.setWordWrap(True)
         subtitle.setAlignment(Qt.AlignCenter)
         subtitle.setStyleSheet(
@@ -99,9 +102,17 @@ class UpdateInstalledDialog(QDialog):
 
         layout.addWidget(self._build_button_row())
 
-        post_update_button = self._build_post_update_button()
-        if post_update_button is not None:
-            layout.addWidget(post_update_button)
+        post_update_row = self._build_post_update_row()
+        if post_update_row is not None:
+            layout.addWidget(post_update_row)
+
+    def _build_subtitle_text(self) -> str:
+        version_text = _format_version(self._info.version)
+        text = f"Update {version_text} successfully installed."
+        summary = str(getattr(self._info, "summary", "") or "").strip()
+        if summary:
+            text = f"{text} This update brings: {summary}"
+        return text
 
     def _build_button_row(self) -> QFrame:
         row = QFrame()
@@ -160,6 +171,22 @@ class UpdateInstalledDialog(QDialog):
 
         return row
 
+    def _build_post_update_row(self) -> QFrame | None:
+        post_update_button = self._build_post_update_button()
+        if post_update_button is None:
+            return None
+
+        row = QFrame()
+        row.setStyleSheet("background-color: transparent;")
+
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(post_update_button, 1)
+        layout.addWidget(self._build_donate_button(), 0)
+
+        return row
+
     def _build_post_update_button(self) -> QPushButton | None:
         action = _normalize_post_update_action(self._info.post_update)
         if action == "none":
@@ -170,30 +197,8 @@ class UpdateInstalledDialog(QDialog):
 
         button = QPushButton(button_text)
         button.setCursor(Qt.PointingHandCursor)
-        button.setStyleSheet(
-            f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {BrandColors.TEXT_PRIMARY};
-                border: 1px solid {BrandColors.INPUT_BORDER};
-                padding: 10px 14px;
-                border-radius: 8px;
-                font-size: {BrandColors.FONT_SIZE_REGULAR};
-                font-weight: 700;
-            }}
-            QPushButton:hover {{
-                background-color: {BrandColors.ITEM_HOVER};
-                border: 1px solid {BrandColors.ACCENT};
-            }}
-            QPushButton:pressed {{
-                background-color: {BrandColors.SIDEBAR_BG};
-                border: 1px solid {BrandColors.INPUT_BORDER};
-            }}
-            QPushButton:disabled {{
-                color: {BrandColors.TEXT_DISABLED};
-            }}
-            """
-        )
+        button.setMinimumHeight(42)
+        button.setStyleSheet(_post_update_button_style())
 
         if action == "discord":
             IconUtils.apply_icon(button, IconType.DISCORD, BrandColors.TEXT_PRIMARY, size=16)
@@ -213,11 +218,26 @@ class UpdateInstalledDialog(QDialog):
         self._post_update_button = button
         return button
 
+    def _build_donate_button(self) -> QPushButton:
+        button = QPushButton()
+        button.setCursor(Qt.PointingHandCursor)
+        button.setFixedSize(42, 42)
+        button.setToolTip("Support the project")
+        button.setAccessibleName("Support the project")
+        button.setStyleSheet(_post_update_button_style(square=True))
+        IconUtils.apply_icon(button, IconType.DONATE, BrandColors.TEXT_PRIMARY, size=17)
+        button.setIconSize(QSize(17, 17))
+        button.clicked.connect(self._on_donate_clicked)
+        return button
+
     def _on_release_notes_clicked(self) -> None:
         url = (self._info.release_notes_url or "").strip()
         if url:
             QDesktopServices.openUrl(QUrl(url))
         self.accept()
+
+    def _on_donate_clicked(self) -> None:
+        QDesktopServices.openUrl(QUrl(DONATE_URL))
 
     def _on_post_update_clicked(self) -> None:
         action = _normalize_post_update_action(self._info.post_update)
@@ -290,6 +310,32 @@ def _fetch_latest_survey_url(timeout_s: float = 5.0) -> str:
     if not url:
         raise ValueError("The survey link file is empty or invalid.")
     return url
+
+
+def _post_update_button_style(*, square: bool = False) -> str:
+    padding = "0px" if square else "10px 14px"
+    return f"""
+        QPushButton {{
+            background-color: transparent;
+            color: {BrandColors.TEXT_PRIMARY};
+            border: 1px solid {BrandColors.INPUT_BORDER};
+            padding: {padding};
+            border-radius: 8px;
+            font-size: {BrandColors.FONT_SIZE_REGULAR};
+            font-weight: 700;
+        }}
+        QPushButton:hover {{
+            background-color: {BrandColors.ITEM_HOVER};
+            border: 1px solid {BrandColors.ACCENT};
+        }}
+        QPushButton:pressed {{
+            background-color: {BrandColors.SIDEBAR_BG};
+            border: 1px solid {BrandColors.INPUT_BORDER};
+        }}
+        QPushButton:disabled {{
+            color: {BrandColors.TEXT_DISABLED};
+        }}
+    """
 
 
 def _normalize_post_update_action(value: str) -> str:
