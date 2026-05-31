@@ -16,6 +16,7 @@ nav:
       - Home: index.md
       - News: news.md
       - Getting Started: getting-started.md
+      - Glossary: glossary.md
       - Migration Guide: migration.md
       - Features:
           - Overview: features.md
