@@ -57,6 +57,7 @@ class DeepSeekDriver(BaseDriver):
         "referer",
         "user-agent",
     }
+    REGENERATION_LIMIT_ERROR_MESSAGE = "DeepSeek: regeneration limit reached. Request aborted."
     CHAT_READY_SELECTORS = [
         "textarea[placeholder='Message DeepSeek']",
         "textarea",
@@ -95,6 +96,7 @@ class DeepSeekDriver(BaseDriver):
         self._stream_text_buffer_pos = 0
         self._stream_active_fragment_type: Optional[str] = None
         self._stream_active_fragment_base_path: Optional[str] = None
+        self._stream_provider_abort_requested = False
 
     def get_start_url(self) -> str:
         return "https://chat.deepseek.com/"
@@ -340,11 +342,24 @@ class DeepSeekDriver(BaseDriver):
         return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
     def _read_clean_regeneration_state(self) -> Optional[Dict[str, Any]]:
-        return read_clean_regeneration_state(
+        state = read_clean_regeneration_state(
             self.cache_manager,
             self.clean_regen_state_cache_key,
             log_label="Clean Regeneration",
         )
+        if state is not None:
+            return self._normalize_clean_regeneration_state(state)
+
+        raw = self.cache_manager.read_cache(self.clean_regen_state_cache_key)
+        if raw is None:
+            return None
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+
+        return self._normalize_clean_regeneration_state(data)
 
     def _write_clean_regeneration_state(self, state: Dict[str, Any]) -> None:
         write_clean_regeneration_state(
@@ -364,12 +379,45 @@ class DeepSeekDriver(BaseDriver):
         return {
             "deepthink_enabled": bool(effective_deepthink),
             "search_enabled": bool(enable_search),
+            "tools_enabled": False,
             "send_as_text_file": bool(send_as_text_file),
-            "model_type": (
-                DEEPSEEK_MODEL_TYPE_EXPERT
-                if str(model_type or "").strip().lower() == DEEPSEEK_MODEL_TYPE_EXPERT
-                else DEEPSEEK_MODEL_TYPE_DEFAULT
-            ),
+            "ui_model": self._model_type_display_name(model_type),
+        }
+
+    def _normalize_clean_regeneration_state(
+        self,
+        state: Optional[Dict[str, Any]],
+        *,
+        current_state: Optional[Dict[str, Any]] = None,
+        search_button_found: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(state, dict):
+            return None
+
+        if not any(
+            key in state
+            for key in (
+                "deepthink_enabled",
+                "search_enabled",
+                "send_as_text_file",
+                "ui_model",
+                "model_type",
+            )
+        ):
+            return None
+
+        ui_model = str(state.get("ui_model") or "").strip()
+        if not ui_model and "model_type" in state:
+            ui_model = self._model_type_display_name(str(state.get("model_type") or ""))
+        if not ui_model and current_state:
+            ui_model = str(current_state.get("ui_model") or "").strip()
+
+        return {
+            "deepthink_enabled": bool(state.get("deepthink_enabled")),
+            "search_enabled": bool(state.get("search_enabled")) if search_button_found else False,
+            "tools_enabled": bool(state.get("tools_enabled", False)),
+            "send_as_text_file": bool(state.get("send_as_text_file")),
+            "ui_model": ui_model,
         }
 
     def _parse_conversation_info_from_url(self, url: str) -> Optional[Dict[str, str]]:
@@ -619,6 +667,11 @@ class DeepSeekDriver(BaseDriver):
                 return False
 
         try:
+            multi_slot_model_type = self._model_type_from_display_text(
+                str(multi_slot_state.get("ui_model") or "")
+            )
+            if multi_slot_model_type:
+                await self.set_model_type_state(multi_slot_model_type)
             await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
             await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
             await asyncio.sleep(0.25)
@@ -721,6 +774,8 @@ class DeepSeekDriver(BaseDriver):
         enable_search = effective_settings["search_enabled"]
         send_as_text_file = effective_settings["send_as_text_file"]
         effective_model_type = effective_settings["model_type"]
+        enable_search, search_button_found = await self._resolve_available_search_state(enable_search)
+        effective_settings["search_enabled"] = bool(enable_search)
         self.current_send_deepthink = effective_send_deepthink
         
         async def handle_route(route):
@@ -777,6 +832,7 @@ class DeepSeekDriver(BaseDriver):
                             if (
                                 intercepted_request_abort.is_set()
                                 or self.abort_requested
+                                or self._stream_provider_abort_requested
                                 or (abort_event and abort_event.is_set())
                             ):
                                 Logger.debug("Abort detected during streaming, stopping...")
@@ -786,11 +842,21 @@ class DeepSeekDriver(BaseDriver):
                             full_response_body.extend(chunk)
                             # Process chunk for streaming
                             await self._process_chunk(chunk, response_queue)
+                            if (
+                                intercepted_request_abort.is_set()
+                                or self.abort_requested
+                                or self._stream_provider_abort_requested
+                                or (abort_event and abort_event.is_set())
+                            ):
+                                Logger.debug("Abort requested while processing DeepSeek stream chunk.")
+                                aborted = True
+                                break
 
                         if (
                             not aborted
                             and (not intercepted_request_abort.is_set())
                             and not self.abort_requested
+                            and not self._stream_provider_abort_requested
                         ):
                             await self._process_chunk(b"", response_queue, final=True)
 
@@ -799,6 +865,7 @@ class DeepSeekDriver(BaseDriver):
                         not aborted
                         and (not intercepted_request_abort.is_set())
                         and not self.abort_requested
+                        and not self._stream_provider_abort_requested
                     ):
                         Logger.error(f"Read error during intercepted request: {e}")
                         await response_queue.put({"error": str(e)})
@@ -807,6 +874,7 @@ class DeepSeekDriver(BaseDriver):
                         not aborted
                         and (not intercepted_request_abort.is_set())
                         and not self.abort_requested
+                        and not self._stream_provider_abort_requested
                     ):
                         Logger.error(f"Error during intercepted request: {e}")
                         await response_queue.put({"error": str(e)})
@@ -820,12 +888,22 @@ class DeepSeekDriver(BaseDriver):
                 intercepted_response = None
             
             # Log the aborted state; the timeout/abort path already attempted a UI stop click.
-            if aborted or intercepted_request_abort.is_set() or self.abort_requested:
+            if (
+                aborted
+                or intercepted_request_abort.is_set()
+                or self.abort_requested
+                or self._stream_provider_abort_requested
+            ):
                 Logger.warning("DeepSeek generation was aborted before completion.")
             
             # Fulfill the original request so the UI updates
             try:
-                if aborted or intercepted_request_abort.is_set() or self.abort_requested:
+                if (
+                    aborted
+                    or intercepted_request_abort.is_set()
+                    or self.abort_requested
+                    or self._stream_provider_abort_requested
+                ):
                     await route.abort()
                 else:
                     # Forward the captured headers, especially Content-Type
@@ -840,6 +918,7 @@ class DeepSeekDriver(BaseDriver):
                 not aborted
                 and (not intercepted_request_abort.is_set())
                 and not self.abort_requested
+                and not self._stream_provider_abort_requested
             ):
                 Logger.success("Response streaming completed.")
 
@@ -898,6 +977,11 @@ class DeepSeekDriver(BaseDriver):
 
                 last_message = self.cache_manager.read_cache(self.clean_regen_message_cache_key)
                 last_state = self._read_clean_regeneration_state()
+                last_state = self._normalize_clean_regeneration_state(
+                    last_state,
+                    current_state=clean_regen_state,
+                    search_button_found=search_button_found,
+                )
 
                 message_matches = last_message == formatted_message
                 state_matches = last_state == clean_regen_state
@@ -922,6 +1006,9 @@ class DeepSeekDriver(BaseDriver):
                     else:
                         Logger.warning("Clean Regeneration: Button not found or disabled. Falling back to new chat.")
                 elif message_matches and not state_matches:
+                    Logger.debug(
+                        f"Clean Regeneration: cached state {last_state} != requested state {clean_regen_state}"
+                    )
                     Logger.info("Clean Regeneration: Message matches cache but settings changed. Creating new chat.")
                 else:
                     Logger.debug("Clean Regeneration: Message differs from cache. Creating new chat.")
@@ -952,6 +1039,13 @@ class DeepSeekDriver(BaseDriver):
 
                 # Apply settings before sending
                 await self.set_model_type_state(effective_model_type)
+                applied_model_type = await self._read_visible_model_type()
+                if applied_model_type:
+                    applied_ui_model = self._model_type_display_name(applied_model_type)
+                    if clean_regen_state is not None:
+                        clean_regen_state["ui_model"] = applied_ui_model
+                    if multi_slot_state is not None:
+                        multi_slot_state["ui_model"] = applied_ui_model
                 await self.set_deepthink_state(effective_deepthink)
                 await self.set_search_state(enable_search)
                 
@@ -1236,6 +1330,18 @@ class DeepSeekDriver(BaseDriver):
             return False
         return any(isinstance(item, dict) and ("p" in item) for item in value)
 
+    def _is_regeneration_limit_payload(self, data: Any) -> bool:
+        if not isinstance(data, dict):
+            return False
+
+        finish_reason = str(data.get("finish_reason") or "").strip().lower()
+        if finish_reason == "regeneration_limit":
+            return True
+
+        content = str(data.get("content") or "").strip().lower()
+        payload_type = str(data.get("type") or "").strip().lower()
+        return payload_type == "error" and "regeneration limit" in content
+
     async def _process_sse_line(self, line: str, queue: asyncio.Queue) -> None:
         if not line.startswith("data:"):
             return
@@ -1245,6 +1351,13 @@ class DeepSeekDriver(BaseDriver):
             return
 
         try:
+            data = json.loads(data_str)
+            if self._is_regeneration_limit_payload(data):
+                self._stream_provider_abort_requested = True
+                Logger.warning(self.REGENERATION_LIMIT_ERROR_MESSAGE)
+                await queue.put({"error": self.REGENERATION_LIMIT_ERROR_MESSAGE})
+                return
+
             # Cache settings once per chunk processing
             anti_censorship = self.config_manager.get_setting("deepseek_behavior", "anti_censorship")
             send_deepthink = (
@@ -1252,7 +1365,6 @@ class DeepSeekDriver(BaseDriver):
                 if self.current_send_deepthink is not None
                 else self.config_manager.get_setting("deepseek_behavior", "send_deepthink")
             )
-            data = json.loads(data_str)
             content = ""
             finish_reason = None
             
@@ -1457,25 +1569,44 @@ class DeepSeekDriver(BaseDriver):
         else:
             Logger.debug(f"DeepThink is already {state}.")
 
-    async def set_search_state(self, state: bool):
-        """
-        Toggles the Search mode to the desired state.
-        """
+    async def _find_search_button(self):
         # this toggle used to be a <button>, but is now often a <div role="button">.
         button = self.page.locator(".ds-toggle-button", has_text="Search")
         if await button.count() == 0:
             button = self.page.locator("[role='button']", has_text="Search")
-        
         if await button.count() == 0:
-            Logger.warning("Search button not found.")
+            return None
+        return button.first
+
+    async def _resolve_available_search_state(self, requested_state: bool) -> tuple[bool, bool]:
+        button = await self._find_search_button()
+        if button is not None:
+            return bool(requested_state), True
+
+        if requested_state:
+            Logger.warning("DeepSeek: Search button not found; assuming Search is disabled.")
+        else:
+            Logger.debug("DeepSeek: Search button not found; assuming Search is disabled.")
+        return False, False
+
+    async def set_search_state(self, state: bool):
+        """
+        Toggles the Search mode to the desired state.
+        """
+        button = await self._find_search_button()
+        if button is None:
+            if state:
+                Logger.warning("DeepSeek: Search button not found; assuming Search is disabled.")
+            else:
+                Logger.debug("DeepSeek: Search button not found; assuming Search is disabled.")
             return
 
-        class_attr = await button.first.get_attribute("class") or ""
+        class_attr = await button.get_attribute("class") or ""
         is_selected = "ds-toggle-button--selected" in class_attr
         
         if is_selected != state:
             Logger.debug(f"Toggling Search to {state}...")
-            await button.first.click()
+            await button.click()
         else:
             Logger.debug(f"Search is already {state}.")
 
@@ -1491,6 +1622,15 @@ class DeepSeekDriver(BaseDriver):
         return f"{name}: {detail[0][:200]}"
 
     @staticmethod
+    def _model_type_from_display_text(text: str) -> Optional[str]:
+        normalized = str(text or "").strip().lower()
+        if "expert" in normalized:
+            return DEEPSEEK_MODEL_TYPE_EXPERT
+        if "instant" in normalized:
+            return DEEPSEEK_MODEL_TYPE_DEFAULT
+        return None
+
+    @staticmethod
     def _model_type_display_name(model_type: str) -> str:
         normalized = str(model_type or "").strip().lower()
         if normalized == DEEPSEEK_MODEL_TYPE_EXPERT:
@@ -1498,6 +1638,20 @@ class DeepSeekDriver(BaseDriver):
         if normalized == "vision":
             return "Vision"
         return "Instant"
+
+    async def _read_visible_model_type(self) -> Optional[str]:
+        if not self.page:
+            return None
+
+        label = self.page.locator("span._46a12ab")
+        try:
+            if await label.count() == 0:
+                return None
+            text = await label.first.text_content(timeout=1000)
+        except Exception:
+            return None
+
+        return self._model_type_from_display_text(str(text or ""))
 
     def _model_type_option_selector(self, picker_kind: str, model_type: str) -> str:
         normalized = str(model_type or "").strip().lower()
@@ -1903,10 +2057,13 @@ class DeepSeekDriver(BaseDriver):
         Clicks the regenerate button.
         Returns True if successful, False otherwise.
         """
-        # DeepSeek changes their UI classes often; hence we avoid relying on hashed class names.
-        # In the current UI, regenerate is the 2nd "control" icon-button (nth=1) in the control bar
-        # that appears right after the last assistant message.
         try:
+            strict_result = await self._click_regenerate_from_action_bar()
+            if strict_result is not None:
+                return strict_result
+
+            # regenerate is the 2nd "control" icon-button
+            # in the control bar that appears right after the last assistant message
             assistant_messages = self.page.locator("div.ds-message:has(.ds-markdown)")
             assistant_count = await assistant_messages.count()
 
@@ -1954,6 +2111,43 @@ class DeepSeekDriver(BaseDriver):
         except Exception as e:
             Logger.error(f"Error clicking regenerate button: {e}")
             return False
+
+    async def _click_regenerate_from_action_bar(self) -> Optional[bool]:
+        """
+        Click DeepSeek's current regenerate action.
+
+        Newer DeepSeek builds leave unrelated icon-button ghosts in the DOM, so this
+        path scopes the lookup to the real action bar container first.
+        """
+        containers = self.page.locator("div._965abe9:has(.db183363)")
+        container_count = await containers.count()
+
+        for i in range(container_count - 1, -1, -1):
+            bar = containers.nth(i)
+
+            if await bar.locator("textarea").count() > 0:
+                continue
+            if not await bar.is_visible():
+                continue
+
+            buttons = bar.locator(".db183363")
+            if await buttons.count() < 2:
+                continue
+
+            regen_button = buttons.nth(1)
+            if not await regen_button.is_visible():
+                continue
+
+            is_disabled = (await regen_button.get_attribute("aria-disabled")) == "true"
+            if is_disabled:
+                Logger.warning("Regenerate button is disabled (likely due to censorship).")
+                return False
+
+            Logger.debug("Clicking regenerate button from DeepSeek action bar...")
+            await regen_button.click()
+            return True
+
+        return None
 
     async def upload_file(self, file_spec: Any) -> None:
         """

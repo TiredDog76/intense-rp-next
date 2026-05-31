@@ -35,7 +35,8 @@ _RATE_LIMIT_LIKE_RE = re.compile(
     flags=re.IGNORECASE,
 )
 _NON_RETRYABLE_PROVIDER_ERROR_RE = re.compile(
-    r"(peak\s*hours|at\s*capacity|model\s*concurrency\s*limit|concurrency\s*limit)",
+    r"(peak\s*hours|at\s*capacity|model\s*concurrency\s*limit|concurrency\s*limit|"
+    r"regeneration[_\s-]*limit)",
     flags=re.IGNORECASE,
 )
 
