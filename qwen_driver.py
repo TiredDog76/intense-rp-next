@@ -43,6 +43,19 @@ from utils.model_ids import (
 load_dotenv()
 
 
+QWEN_REQUEST_MACRO_ACTIONS: Dict[str, tuple[str, Any]] = {
+    **COMMON_REQUEST_MACRO_ACTIONS,
+    "tool": ("tools_enabled", True),
+    "tools": ("tools_enabled", True),
+    "notool": ("tools_enabled", False),
+    "no_tool": ("tools_enabled", False),
+    "no-tool": ("tools_enabled", False),
+    "notools": ("tools_enabled", False),
+    "no_tools": ("tools_enabled", False),
+    "no-tools": ("tools_enabled", False),
+}
+
+
 class QwenLMDriver(BaseDriver):
     CHAT_URL = "https://chat.qwen.ai/"
     AUTH_URL = "https://chat.qwen.ai/auth"
@@ -121,6 +134,8 @@ class QwenLMDriver(BaseDriver):
 
         self.current_model: Optional[str] = None
         self.current_send_deepthink: Optional[bool] = None
+        self.current_tools_enabled: Optional[bool] = None
+        self._tools_disabled_for_request = False
         self.thinking_active = False
 
         self.clean_regen_message_cache_key = "qwen_last_message.txt"
@@ -484,6 +499,7 @@ class QwenLMDriver(BaseDriver):
         ui_model_label = self._get_qwen_model_label_for_request(resolved_model)
         deepthink_enabled, send_deepthink = self._resolve_deepthink_flags(resolved_model)
         enable_search = bool(self.config_manager.get_setting("qwen_behavior", "enable_search"))
+        enable_tools = bool(self.config_manager.get_setting("qwen_behavior", "enable_tools"))
         send_as_text_file = bool(self.config_manager.get_setting("qwen_behavior", "send_as_text_file"))
 
         settings = {
@@ -491,21 +507,28 @@ class QwenLMDriver(BaseDriver):
             "deepthink_enabled": bool(deepthink_enabled),
             "send_deepthink": bool(send_deepthink),
             "search_enabled": bool(enable_search),
+            "tools_enabled": bool(enable_tools),
             "send_as_text_file": bool(send_as_text_file),
         }
 
         if overrides:
-            for key in ("deepthink_enabled", "send_deepthink", "search_enabled", "send_as_text_file"):
+            for key in (
+                "deepthink_enabled",
+                "send_deepthink",
+                "search_enabled",
+                "tools_enabled",
+                "send_as_text_file",
+            ):
                 if key in overrides:
                     settings[key] = bool(overrides[key])
 
         return settings
 
     def _extract_qwen_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
-        return extract_macro_overrides(text, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
+        return extract_macro_overrides(text, macro_actions=QWEN_REQUEST_MACRO_ACTIONS)
 
     def _strip_qwen_macros_from_messages(self, messages: List[Any]) -> tuple[List[Any], Dict[str, bool]]:
-        return strip_macros_from_messages(messages, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
+        return strip_macros_from_messages(messages, macro_actions=QWEN_REQUEST_MACRO_ACTIONS)
 
     def _read_clean_regeneration_state(self) -> Optional[Dict[str, Any]]:
         return read_clean_regeneration_state(
@@ -526,12 +549,14 @@ class QwenLMDriver(BaseDriver):
         *,
         effective_deepthink: bool,
         enable_search: bool,
+        enable_tools: bool,
         send_as_text_file: bool,
         ui_model_label: str | None = None,
     ) -> Dict[str, Any]:
         return {
             "deepthink_enabled": bool(effective_deepthink),
             "search_enabled": bool(enable_search),
+            "tools_enabled": bool(enable_tools),
             "send_as_text_file": bool(send_as_text_file),
             "ui_model": str(ui_model_label or self._get_qwen_model_label_for_request(self.current_model)),
         }
@@ -711,6 +736,7 @@ class QwenLMDriver(BaseDriver):
 
         try:
             await self.apply_configured_model(model=self.current_model)
+            await self.set_tools_state(bool(multi_slot_state.get("tools_enabled")))
             await self.set_deepthink_state(bool(multi_slot_state.get("deepthink_enabled")))
             await self.set_search_state(bool(multi_slot_state.get("search_enabled")))
             await asyncio.sleep(0.25)
@@ -1980,9 +2006,16 @@ class QwenLMDriver(BaseDriver):
 
         return False
 
-    async def _disable_tools_switch_in_mode_select_menu(self, menu=None) -> bool:
-        if not self.page:
+    def _desired_tools_state(self) -> bool:
+        if self._tools_disabled_for_request:
             return False
+        return bool(self.current_tools_enabled) if self.current_tools_enabled is not None else False
+
+    async def _set_tools_switch_in_mode_select_menu(self, state: bool, menu=None) -> str:
+        if not self.page:
+            return "missing"
+
+        wanted = bool(state)
 
         scope = menu
         if scope is None:
@@ -2042,15 +2075,18 @@ class QwenLMDriver(BaseDriver):
                 visible_switches.append(switch)
 
         target_switches = tools_switches or visible_switches
+        if not target_switches:
+            return "missing"
 
         for switch in target_switches:
             try:
                 checked = str(await switch.get_attribute("aria-checked") or "").strip().lower()
             except Exception:
                 checked = ""
+            is_enabled = checked == "true"
 
-            if checked != "true":
-                continue
+            if is_enabled == wanted:
+                return "already"
 
             try:
                 aria_disabled = str(await switch.get_attribute("aria-disabled") or "").strip().lower()
@@ -2058,8 +2094,13 @@ class QwenLMDriver(BaseDriver):
                 aria_disabled = ""
 
             if aria_disabled == "true":
-                Logger.warning("QwenLM: Tools switch is enabled but disabled in the + menu.")
-                return False
+                if wanted:
+                    self._tools_disabled_for_request = True
+                    self.current_tools_enabled = False
+                    Logger.warning("QwenLM: Tools switch is disabled in the + menu; leaving it off.")
+                elif is_enabled:
+                    Logger.warning("QwenLM: Tools switch is enabled but disabled in the + menu.")
+                return "disabled"
 
             try:
                 await switch.click(timeout=3000)
@@ -2067,8 +2108,9 @@ class QwenLMDriver(BaseDriver):
                 try:
                     await switch.evaluate("el => el.click()")
                 except Exception as e:
-                    Logger.warning(f"QwenLM: failed to disable Tools in the + menu: {e}")
-                    return False
+                    action = "enable" if wanted else "disable"
+                    Logger.warning(f"QwenLM: failed to {action} Tools in the + menu: {e}")
+                    return "failed"
 
             await asyncio.sleep(0.15)
 
@@ -2076,17 +2118,26 @@ class QwenLMDriver(BaseDriver):
                 checked_after = str(await switch.get_attribute("aria-checked") or "").strip().lower()
             except Exception:
                 checked_after = ""
+            enabled_after = checked_after == "true"
 
-            if checked_after == "true":
-                Logger.warning("QwenLM: Tools switch stayed enabled after clicking it in the + menu.")
-                return False
+            if enabled_after != wanted:
+                action = "enabled" if wanted else "disabled"
+                Logger.warning(f"QwenLM: Tools switch did not settle to {action} in the + menu.")
+                return "mismatch"
 
-            Logger.debug("QwenLM: disabled Tools in the + menu.")
-            return True
+            Logger.debug(f"QwenLM: {'enabled' if wanted else 'disabled'} Tools in the + menu.")
+            return "changed"
 
-        return True
+        return "missing"
 
-    async def _open_mode_select_dropdown_menu_root(self):
+    async def _sync_tools_switch_in_mode_select_menu(self, menu=None) -> str:
+        return await self._set_tools_switch_in_mode_select_menu(self._desired_tools_state(), menu=menu)
+
+    async def _disable_tools_switch_in_mode_select_menu(self, menu=None) -> bool:
+        result = await self._set_tools_switch_in_mode_select_menu(False, menu=menu)
+        return result in {"already", "changed", "disabled", "missing"}
+
+    async def _open_mode_select_dropdown_menu_root(self, *, sync_tools: bool = True):
         if not self.page:
             return None
 
@@ -2157,14 +2208,15 @@ class QwenLMDriver(BaseDriver):
         if await menu.count() == 0:
             return None
 
-        try:
-            await self._disable_tools_switch_in_mode_select_menu(menu)
-        except Exception:
-            pass
+        if sync_tools:
+            try:
+                await self._sync_tools_switch_in_mode_select_menu(menu)
+            except Exception:
+                pass
 
         return menu
 
-    async def _open_mode_select_common_submenu(self) -> bool:
+    async def _open_mode_select_common_submenu(self, *, sync_tools: bool = True) -> bool:
         if not self.page:
             return False
 
@@ -2224,14 +2276,15 @@ class QwenLMDriver(BaseDriver):
         except Exception:
             pass
 
-        try:
-            menu = self.page.locator(self.MODE_SELECT_DROPDOWN_MENU_ROOT_SELECTOR)
-            if await menu.count() == 0:
-                menu = self.page.locator("ul.ant-dropdown-menu-root")
-            if await menu.count() > 0:
-                await self._disable_tools_switch_in_mode_select_menu(menu)
-        except Exception:
-            pass
+        if sync_tools:
+            try:
+                menu = self.page.locator(self.MODE_SELECT_DROPDOWN_MENU_ROOT_SELECTOR)
+                if await menu.count() == 0:
+                    menu = self.page.locator("ul.ant-dropdown-menu-root")
+                if await menu.count() > 0:
+                    await self._sync_tools_switch_in_mode_select_menu(menu)
+            except Exception:
+                pass
 
         submenu = self.page.locator(self.MODE_SELECT_COMMON_SUBMENU_SELECTOR)
         if await submenu.count() == 0:
@@ -2368,7 +2421,7 @@ class QwenLMDriver(BaseDriver):
 
         try:
             primed = await self.page.evaluate(
-                "async (triggerSel, menuSel, itemSel, toolsSwitchSel) => {"
+                "async (triggerSel, menuSel, itemSel, toolsSwitchSel, wantedTools) => {"
                 "  const sleep = (ms) => new Promise(r => setTimeout(r, ms));"
                 "  const clickEl = (el) => {"
                 "    if (!el) return false;"
@@ -2376,7 +2429,7 @@ class QwenLMDriver(BaseDriver):
                 "    try { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; } catch (e) {}"
                 "    return false;"
                 "  };"
-                "  const disableTools = (root) => {"
+                "  const syncTools = (root) => {"
                 "    const switches = Array.from((root || document).querySelectorAll(toolsSwitchSel));"
                 "    if (switches.length === 0 && root !== document) {"
                 "      switches.push(...Array.from(document.querySelectorAll(toolsSwitchSel)));"
@@ -2396,7 +2449,7 @@ class QwenLMDriver(BaseDriver):
                 "    if (!target) return;"
                 "    const checked = (target.getAttribute('aria-checked') || '').toLowerCase() === 'true';"
                 "    const disabled = (target.getAttribute('aria-disabled') || '').toLowerCase() === 'true';"
-                "    if (checked && !disabled) clickEl(target);"
+                "    if (checked !== !!wantedTools && !disabled) clickEl(target);"
                 "  };"
                 ""
                 "  const trigger = document.querySelector(triggerSel);"
@@ -2416,7 +2469,7 @@ class QwenLMDriver(BaseDriver):
                 ""
                 "  const menu = document.querySelector(menuSel) || document.querySelector('ul.ant-dropdown-menu-root');"
                 "  if (!menu) return false;"
-                "  disableTools(menu);"
+                "  syncTools(menu);"
                 ""
                 "  while (Date.now() < deadline) {"
                 "    const items = Array.from(menu.querySelectorAll(itemSel));"
@@ -2445,6 +2498,7 @@ class QwenLMDriver(BaseDriver):
                 self.MODE_SELECT_DROPDOWN_MENU_ROOT_SELECTOR,
                 self.MODE_SELECT_MENU_ITEM_SELECTOR,
                 self.MODE_SELECT_TOOLS_SWITCH_SELECTOR,
+                self._desired_tools_state(),
             )
         except Exception:
             primed = False
@@ -2562,6 +2616,39 @@ class QwenLMDriver(BaseDriver):
         after = await self._is_search_enabled()
         if after != wanted:
             Logger.warning(f"QwenLM: Search state mismatch after toggle (wanted={wanted}, actual={after}).")
+
+    async def set_tools_state(self, state: bool) -> None:
+        if not self.page:
+            return
+
+        wanted = bool(state)
+        self.current_tools_enabled = wanted
+        last_result = "missing"
+
+        for attempt in range(2):
+            menu = await self._open_mode_select_dropdown_menu_root(sync_tools=False)
+            if menu is None:
+                if wanted:
+                    Logger.warning("QwenLM: Tools switch menu was not found.")
+                return
+
+            try:
+                last_result = await self._set_tools_switch_in_mode_select_menu(wanted, menu=menu)
+            finally:
+                try:
+                    await self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
+
+            if last_result in {"already", "changed", "disabled"}:
+                return
+            if not wanted and last_result == "missing":
+                return
+            if attempt == 0:
+                await asyncio.sleep(0.15)
+
+        if wanted:
+            Logger.warning(f"QwenLM: Tools could not be enabled ({last_result}).")
 
     async def upload_file(self, file_spec: Any) -> None:
         await self._upload_file(file_spec)
@@ -2912,6 +2999,7 @@ class QwenLMDriver(BaseDriver):
 
         self.thinking_active = False
         self.abort_requested = False
+        self._tools_disabled_for_request = False
         self.current_abort_event = abort_event
         resolved_model = (model or "").strip() or "qwen-auto"
         self.current_model = resolved_model
@@ -2930,11 +3018,13 @@ class QwenLMDriver(BaseDriver):
         effective_deepthink = effective_settings["deepthink_enabled"]
         effective_send_deepthink = effective_settings["send_deepthink"]
         enable_search = effective_settings["search_enabled"]
+        enable_tools = effective_settings["tools_enabled"]
         send_as_text_file = effective_settings["send_as_text_file"]
         ui_model_label = str(
             effective_settings.get("model_label") or self._get_qwen_model_label_for_request(resolved_model)
         )
         self.current_send_deepthink = effective_send_deepthink
+        self.current_tools_enabled = bool(enable_tools)
 
         formatted_message = self._format_messages(message_for_formatting)
         qwen_extra_prompt_texts: Dict[str, str] = {}
@@ -2956,6 +3046,7 @@ class QwenLMDriver(BaseDriver):
                 "deepthink_enabled": bool(effective_deepthink),
                 "send_deepthink": bool(effective_send_deepthink),
                 "search_enabled": bool(enable_search),
+                "tools_enabled": bool(enable_tools),
                 "send_as_text_file": bool(send_as_text_file),
             },
         )
@@ -3107,9 +3198,15 @@ class QwenLMDriver(BaseDriver):
                     return
 
                 phase = str(delta.get("phase") or "").strip().lower()
+                role = str(delta.get("role") or "").strip().lower()
                 status = str(delta.get("status") or "").strip().lower()
 
-                if phase == "web_search":
+                if (
+                    phase == "web_search"
+                    or role == "function"
+                    or delta.get("function_call") is not None
+                    or delta.get("tool_calls") is not None
+                ):
                     # Ignore tool-call chatter + raw search results for stability
                     return
 
@@ -3261,12 +3358,14 @@ class QwenLMDriver(BaseDriver):
                 clean_regen_state = {
                     "deepthink_enabled": bool(effective_deepthink),
                     "search_enabled": bool(enable_search),
+                    "tools_enabled": bool(enable_tools),
                     "send_as_text_file": bool(send_as_text_file),
                     "ui_model": ui_model_label,
                 }
                 multi_slot_state = self._build_multi_slot_cache_state(
                     effective_deepthink=bool(effective_deepthink),
                     enable_search=bool(enable_search),
+                    enable_tools=bool(enable_tools),
                     send_as_text_file=bool(send_as_text_file),
                     ui_model_label=ui_model_label,
                 )
@@ -3284,6 +3383,7 @@ class QwenLMDriver(BaseDriver):
                     )
 
                     try:
+                        await self.set_tools_state(enable_tools)
                         await self.set_deepthink_state(effective_deepthink)
                         await self.set_search_state(enable_search)
                         await asyncio.sleep(0.25)
@@ -3334,6 +3434,7 @@ class QwenLMDriver(BaseDriver):
 
                 await self.apply_configured_model(model=resolved_model)
 
+                await self.set_tools_state(enable_tools)
                 await self.set_deepthink_state(effective_deepthink)
                 await self.set_search_state(enable_search)
                 await asyncio.sleep(0.25)
@@ -3431,6 +3532,8 @@ class QwenLMDriver(BaseDriver):
             self.abort_requested = False
             self.current_model = None
             self.current_send_deepthink = None
+            self.current_tools_enabled = None
+            self._tools_disabled_for_request = False
             try:
                 await self.page.unroute(self.COMPLETIONS_ROUTE_GLOB)
             except Exception:

@@ -66,6 +66,22 @@ Qwen streams tool/search payloads into the same response stream. For stability, 
 
 ---
 
+## :material-tools: Tools
+
+QwenLM's **Tools** switch lives in the same `+` menu as Search and Upload.
+
+IntenseRP keeps Tools **off by default**. If **Enable Tools** is turned on, the driver will try to flip Qwen's Tools switch on before sending. If Qwen shows the switch as disabled, IntenseRP stops trying for that request and leaves it off.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Enable Tools**
+
+!!! warning "Experimental"
+    Leave **Enable Tools** disabled unless you are intentionally testing it. Qwen's tool payloads are not a polished IntenseRP workflow yet, and anything tool/search-shaped in the stream is still treated defensively.
+
+!!! note "Separate from Search"
+    **Enable Tools** is its own toggle. It doesn't replace **Enable Search**, and enabling one does not automatically enable the other.
+
+---
+
 ## :material-calculator: Count Tokens
 
 QwenLM reports token usage during the response stream. When enabled, IntenseRP captures those values and returns them in the OpenAI-style `usage` fields (`prompt_tokens`, `completion_tokens`, `total_tokens`). This is enabled by default.
@@ -216,6 +232,8 @@ All macros are stripped from the message before sending it to QwenLM.
 | `[[nothink]]`, `[[r0]]` | Force Thinking off |
 | `[[search]]` | Force Search on |
 | `[[nosearch]]`, `[[no_search]]` | Force Search off |
+| `[[tool]]`, `[[tools]]` | Force Tools on |
+| `[[notool]]`, `[[notools]]`, `[[no_tool]]`, `[[no_tools]]` | Force Tools off |
 | `[[file]]` | Force Send As Text File on |
 | `[[nofile]]` | Force Send As Text File off |
 
@@ -233,6 +251,7 @@ All macros are stripped from the message before sending it to QwenLM.
 | **Send Thinking** | Includes thinking summaries in response | Off |
 | **Count Tokens** | Returns token usage in API responses | On |
 | **Enable Search** | Enables QwenLM Web search | Off |
+| **Enable Tools** | Enables QwenLM Tools when available | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **Text File Message** | Text pasted alongside uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait after upload | 20 |
