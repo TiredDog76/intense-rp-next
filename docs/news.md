@@ -8,6 +8,21 @@ icon: material/newspaper-variant-outline
 
 This page is the changelog for the latest news and updates about IntenseRP Next.
 
+## June 1, 2026 - Update 2.8.6
+
+IntenseRP Next v2.8.6 is mostly a follow-up to the 2.8.5 provider work, but the headline is simple: **HuggingChat support is finally here**.
+
+If DeepSeek has been giving you trouble lately, HuggingChat gives you another account-backed provider lane and broader access to some models exposed through `huggingface.co/chat`. It includes real model selection, inference provider hints, Thinking Effort, Exa search, prompt uploads, chat reuse, and account rotation.
+
+That said, it's still not a magic solution. HuggingChat is still an early integration that depends on the web UI, and its monthly credits are a little tiny. The [HuggingChat Behavior docs](providers/huggingchat-behavior.md) cover the main things, credit limits, and account rotation setup.
+
+[Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.8.6-patch){ .md-button .md-button--primary }
+[Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
+[HuggingChat Feedback](https://forms.gle/J7MVdcnorEPE249v8){ .md-button }
+[Support the Project](hands/support.md){ .md-button }
+
+---
+
 ## April 29, 2026 - Update 2.8.0
 
 IntenseRP Next v2.8.0 is here, and the headline is **Perplexity support**. It works with both free and paid accounts, can stream answer text through the normal OpenAI-compatible API, and includes Perplexity-specific settings for model selection, Thinking, Search, and text-file prompt uploads where the account allows them.
