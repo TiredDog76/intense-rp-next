@@ -6,9 +6,7 @@ icon: material/cloud
 
 IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
 
-Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, **Perplexity**, and **HuggingChat** are implemented and usable.
-
-**Google AI Studio** is implemented too, but it is temporarily locked by default because AI Studio currently appears to detect Patchright/automated browser sessions and can block automated message sends. You can still configure it, and you can deliberately bypass the lock with **Settings -> Advanced -> Provider Stability -> Ignore Provider Locks**.
+Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, **Perplexity**, **HuggingChat**, and **Google AI Studio** are implemented and usable.
 
 Search Older Matching Chats is currently supported on **DeepSeek**, **GLM Chat**, **Moonshot**, **QwenLM**, and **HuggingChat**. **Perplexity** does not support chat reuse yet, and **Google AI Studio** still only has the regular single-slot Reuse Matching Chat flow for now.
 
@@ -68,7 +66,7 @@ Providers are prioritized in this order:
 | **DeepSeek** | 1 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
 | **GLM Chat** | 2 | :material-check-circle:{ style="color: #51CF66" } **Stable (mostly)** |
 | **Moonshot** | 3 | :material-check-circle:{ style="color: #51CF66" } **Stable (mostly)** |
-| **Google AI Studio** | 4 | :material-lock-alert:{ style="color: #FF922B" } **Temporarily Locked** |
+| **Google AI Studio** | 4 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
 | **QwenLM** | 5 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
 | **Perplexity** | 6 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
 | **HuggingChat** | 7 | :material-hammer-wrench:{ style="color: #FF922B" } **Driver Implementation** |
@@ -77,7 +75,7 @@ Providers are prioritized in this order:
     Moonshot is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
 
 !!! warning "Google AI Studio status"
-    Google AI Studio's driver code and settings are still present, but normal provider selection and routing are locked for now. Enable **Ignore Provider Locks** only if you're sure your AI Studio setup can send messages from the automated browser.
+    Google AI Studio is available again with **Humanize Mouse Movements** enabled by default. Leave that setting on unless you are deliberately testing the faster, less reliable path.
 
 !!! note "Perplexity status"
     Perplexity is implemented as an early integration. It can send prompts and stream answer text, but chat reuse/regeneration and thinking-trace forwarding are not supported yet.
@@ -129,7 +127,7 @@ Providers are prioritized in this order:
 
 -   :providers-aistudio: **Google AI Studio Behavior**
 
-    AI Studio model selection, Thinking Level, Search, URL Context, and sampling controls.
+    AI Studio model selection, Thinking Level, Search, URL Context, sampling controls, and humanized mouse movement.
 
     [:arrow_right: Google AI Studio Behavior](../providers/aistudio-behavior.md)
 

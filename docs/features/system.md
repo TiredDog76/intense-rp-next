@@ -71,10 +71,10 @@ Provider locks are temporary safety blocks for providers that are implemented, b
 
 :material-arrow-right: **Settings** -> **Advanced** -> **Provider Stability** -> **Ignore Provider Locks**
 
-Right now, this mainly affects **Google AI Studio**. AI Studio currently appears to detect Patchright/automated browser sessions and can prevent IntenseRP from sending messages at all. With the lock active, AI Studio stays configurable under **Provider Behavior**, but it is hidden from normal provider selection and blocked in API routing.
+Right now, there is no default provider lock active. Google AI Studio is selectable again because its **Humanize Mouse Movements** reliability mode is enabled by default.
 
 !!! warning "The override is not a fix"
-    **Ignore Provider Locks** only bypasses IntenseRP's safety lock. It does not make the provider more automation-friendly. Use it only when you are sure your setup can send messages from that provider without issues.
+    **Ignore Provider Locks** only bypasses IntenseRP's safety lock if a future temporary lock is added. It does not make a provider more automation-friendly. Use it only when you are sure your setup can send messages from that provider without issues.
 
 ---
 

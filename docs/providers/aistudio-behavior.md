@@ -8,18 +8,16 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ---
 
-## :material-lock-alert: Temporary Provider Lock
+## :material-cursor-default-click: Recommended Reliability Mode
 
-Google AI Studio is temporarily locked by default.
+Google AI Studio is available again. The important part is that **Humanize Mouse Movements** is now enabled by default for AI Studio.
 
-AI Studio currently appears to detect Patchright/automated browser sessions, which can leave IntenseRP unable to send messages there at all. The driver and settings are still kept in place, but IntenseRP hides AI Studio from normal provider selection and blocks AI Studio routing while the lock is active.
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Humanize Mouse Movements**
 
-You can still configure the settings on this page. To deliberately try AI Studio anyway, enable:
+!!! warning "Leave this on for Google AI Studio"
+    This is the practical fix we found for reliable Google AI Studio sends in the browser driver. It slows AI Studio down because IntenseRP uses visible pointer movement, varied click points, and small pauses between UI actions, but it avoids the too-fast/teleporty interaction pattern that was breaking sends.
 
-:material-arrow-right: **Settings** -> **Advanced** -> **Provider Stability** -> **Ignore Provider Locks**
-
-!!! warning "Only bypass this if you know your setup works"
-    The override does not fix AI Studio detection. It only tells IntenseRP to ignore the safety lock and try launching/routing to AI Studio anyway.
+If you turn it off and AI Studio starts failing again, turn **Humanize Mouse Movements** back on first. It's slower, yes, but "slower and working" is a pretty good trade when the alternative is it not working at all.
 
 ---
 
@@ -98,6 +96,19 @@ If Auto Login fills your credentials but Google does not return to AI Studio qui
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Auto Login Redirect Timeout (s)**
 
 Default is 15 seconds.
+
+### Humanize Mouse Movements
+
+This is enabled by default and recommended for Google AI Studio.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Humanize Mouse Movements**
+
+When enabled, IntenseRP uses slower Playwright-native pointer movement for AI Studio clicks, adds slight variation to click points, and inserts tiny pauses around UI actions.
+
+This makes AI Studio noticeably slower, especially around clicks, file uploads, and large prompt entry. In return, it avoids the inhuman instant-move/instant-click pattern that was making Google AI Studio unreliable.
+
+!!! note "Keep the boring default"
+    You can turn this off for testing, but for normal Google AI Studio use, leave it enabled.
 
 ### Assume Paid Model Access
 
@@ -486,6 +497,7 @@ All macros are stripped before sending.
 | **Top P** | Default top-p value | `0.95` |
 | **Max Output Tokens** | Default output token budget | `65536` |
 | **Auto Login Redirect Timeout (s)** | Wait before falling back to manual Google completion | `15` |
+| **Humanize Mouse Movements** | Slows AI Studio UI actions with pointer movement and tiny pauses | On |
 | **Assume English UI** | Skips AI Studio's `<html lang>` safety check when the visible UI is definitely English | Off |
 | **Assume Paid Model Access** | Allows Gemini 2.5 requests for accounts that have paid AI Studio access | Off |
 | **Paid Model Access Emails** | Optional allowlist for paid-access Google accounts | (empty) |

@@ -70,6 +70,7 @@ class QuickSetupState:
     paste_system_instructions_into_space: bool = False
     enable_url_context: bool = False
     use_system_prompt_field: bool = False
+    humanize_mouse_movements: bool = True
     huggingchat_inference_provider: str = "auto"
     huggingchat_thinking_effort: str = "auto"
     huggingchat_text_file_message: str = "Please read the attached file and respond to it."
@@ -336,6 +337,7 @@ class WelcomeWindow(QDialog):
         state.paste_system_instructions_into_space = False
         state.enable_url_context = False
         state.use_system_prompt_field = False
+        state.humanize_mouse_movements = True
         state.huggingchat_inference_provider = "auto"
         state.huggingchat_thinking_effort = "auto"
         state.huggingchat_text_file_message = "Please read the attached file and respond to it."
@@ -354,6 +356,8 @@ class WelcomeWindow(QDialog):
             state.use_system_prompt_field = bool(
                 config.get_setting("aistudio_behavior", "use_system_prompt_field")
             )
+            raw_humanize = config.get_setting("aistudio_behavior", "humanize_mouse_movements")
+            state.humanize_mouse_movements = True if raw_humanize is None else bool(raw_humanize)
         elif provider == DriverProvider.HUGGINGCHAT:
             state.use_system_prompt_field = bool(
                 config.get_setting("huggingchat_behavior", "use_system_prompt_field")
@@ -444,8 +448,8 @@ class WelcomeWindow(QDialog):
 
         desc = QLabel(
             "IntenseRP Next is a local OpenAI-compatible API + desktop app that drives provider web UIs "
-            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat) in a real browser, so clients like SillyTavern can use them "
-            "without wiring up the paid official APIs. Google AI Studio is implemented too, but temporarily locked by default."
+            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio) in a real browser, "
+            "so clients like SillyTavern can use them without wiring up the paid official APIs."
         )
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignCenter)
@@ -742,7 +746,7 @@ class WelcomeWindow(QDialog):
             elif provider == "HuggingChat":
                 desc = "Hugging Face login. Small monthly credits, but good model variety."
             elif provider == "Google AI Studio":
-                desc = "Google login with AI Studio models. Persistent sessions recommended."
+                desc = "Google login with Gemini models. Humanized mouse movement is recommended."
 
             icon_file = PROVIDER_ICON_MAP.get(provider)
             card = ProviderChoiceCard(provider, desc, icon_file, parent=frame)
@@ -978,6 +982,17 @@ class WelcomeWindow(QDialog):
             ),
         )
         layout.addWidget(self._use_system_prompt_field_row, 0)
+
+        self._humanize_mouse_movements = Tumbler()
+        self._humanize_mouse_movements.setChecked(bool(self._state.humanize_mouse_movements))
+        self._humanize_mouse_movements_row = ToggleRow(
+            "Humanize AI Studio Mouse Movements",
+            self._humanize_mouse_movements,
+            description=(
+                "Recommended for Google AI Studio. Adds visible pointer movement and small pauses around UI actions."
+            ),
+        )
+        layout.addWidget(self._humanize_mouse_movements_row, 0)
 
         self._huggingchat_inference_provider = StyledLineEdit()
         self._huggingchat_inference_provider.setPlaceholderText("auto")
@@ -1316,6 +1331,10 @@ class WelcomeWindow(QDialog):
             self._use_system_prompt_field,
             self._state.use_system_prompt_field,
         )
+        self._set_tumbler_checked(
+            self._humanize_mouse_movements,
+            self._state.humanize_mouse_movements,
+        )
         self._huggingchat_inference_provider.setText(
             self._state.huggingchat_inference_provider
         )
@@ -1345,6 +1364,7 @@ class WelcomeWindow(QDialog):
         self._perplexity_space_instructions_row.setVisible(is_perplexity)
         self._enable_url_context_row.setVisible(is_ai_studio)
         self._use_system_prompt_field_row.setVisible(is_ai_studio or is_huggingchat)
+        self._humanize_mouse_movements_row.setVisible(is_ai_studio)
         self._huggingchat_inference_provider_row.setVisible(is_huggingchat)
         self._huggingchat_auto_disable_row.setVisible(is_huggingchat)
         self._huggingchat_thinking_effort_row.setVisible(is_huggingchat)
@@ -1728,6 +1748,7 @@ class WelcomeWindow(QDialog):
         )
         self._state.enable_url_context = bool(self._enable_url_context.isChecked())
         self._state.use_system_prompt_field = bool(self._use_system_prompt_field.isChecked())
+        self._state.humanize_mouse_movements = bool(self._humanize_mouse_movements.isChecked())
         self._state.huggingchat_inference_provider = (
             self._huggingchat_inference_provider.text().strip() or "auto"
         )
@@ -1806,6 +1827,11 @@ class WelcomeWindow(QDialog):
                 "aistudio_behavior",
                 "use_system_prompt_field",
                 bool(self._state.use_system_prompt_field),
+            )
+            cfg.set_setting(
+                "aistudio_behavior",
+                "humanize_mouse_movements",
+                bool(self._state.humanize_mouse_movements),
             )
         elif provider_enum == DriverProvider.HUGGINGCHAT:
             cfg.set_setting(

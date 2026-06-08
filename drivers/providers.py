@@ -123,14 +123,7 @@ PROVIDER_BEHAVIOR_CATEGORY_KEYS: dict[DriverProvider, str] = {
 PROVIDER_LOCK_OVERRIDE_CATEGORY = "system_settings"
 PROVIDER_LOCK_OVERRIDE_FIELD = "ignore_provider_locks"
 
-PROVIDER_LOCK_REASONS: dict[DriverProvider, str] = {
-    DriverProvider.AI_STUDIO: (
-        "Google AI Studio is temporarily locked because AI Studio currently detects "
-        "Patchright/automated browsers and blocks automated message sends. You can "
-        "still configure AI Studio settings, or enable Advanced -> Provider Stability "
-        "-> Ignore Provider Locks if you are sure your setup can use it safely."
-    ),
-}
+PROVIDER_LOCK_REASONS: dict[DriverProvider, str] = {}
 
 
 def get_provider_behavior_category_key(provider: DriverProvider) -> str | None:

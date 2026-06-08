@@ -1442,21 +1442,6 @@ SCHEMA = [
                 default=None,
             ),
             SettingField(
-                key="provider_lock_warning",
-                label="AI Studio is temporarily locked",
-                type=SettingType.HINT,
-                default=(
-                    "AI Studio currently detects Patchright/automated browsers and blocks "
-                    "automated message sends. You can still configure these settings, but "
-                    "IntenseRP will not launch or route to AI Studio unless Advanced -> "
-                    "Provider Stability -> Ignore Provider Locks is enabled."
-                ),
-                tooltip=None,
-                hint_variant="warn",
-                docs_path=DOCS_AISTUDIO,
-                docs_anchor="temporary-provider-lock",
-            ),
-            SettingField(
                 key="model",
                 label="Model",
                 type=SettingType.DROPDOWN,
@@ -1715,6 +1700,19 @@ SCHEMA = [
                 ),
                 docs_path=DOCS_AISTUDIO,
                 docs_anchor="auto-login-redirect-timeout",
+            ),
+            SettingField(
+                key="humanize_mouse_movements",
+                label="Humanize Mouse Movements",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip=(
+                    "Recommended for AI Studio. Uses slower Playwright-native pointer movement, "
+                    "varied click points, and tiny pauses around UI actions. Requests take longer, "
+                    "but sends are much more reliable."
+                ),
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="humanize-mouse-movements",
             ),
             SettingField(
                 key="assume_english_ui",
@@ -2051,9 +2049,9 @@ SCHEMA = [
                 label="Locked providers may fail hard",
                 type=SettingType.HINT,
                 default=(
-                    "This bypasses provider safety locks. Right now that mainly means "
-                    "Google AI Studio, which may detect automated browsers and prevent "
-                    "messages from sending at all."
+                    "This bypasses provider safety locks. Only use it when a future "
+                    "temporary lock is active and you are sure that provider works in "
+                    "your setup."
                 ),
                 tooltip=None,
                 hint_variant="warn",
@@ -2395,11 +2393,10 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "Include Google AI Studio in the parallel browser pool. AI Studio is "
-                    "temporarily locked unless Ignore Provider Locks is enabled."
+                    "Include Google AI Studio in the parallel browser pool."
                 ),
                 visible_depends="experimental.providers_in_parallel",
-                depends="system_settings.ignore_provider_locks&&providers_credentials.provider!=Google AI Studio",
+                depends="providers_credentials.provider!=Google AI Studio",
                 force_when_dep_unmet=False,
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
@@ -2410,8 +2407,8 @@ SCHEMA = [
                 default=1,
                 tooltip="How many Google AI Studio account/profile lanes to launch when Full Parallelization is enabled.",
                 validator=validate_integer_range(1, 32, label="Google AI Studio instances"),
-                visible_depends="system_settings.ignore_provider_locks&&experimental.full_parallelization&&experimental.parallel_enable_aistudio",
-                depends="system_settings.ignore_provider_locks&&experimental.full_parallelization&&experimental.parallel_enable_aistudio",
+                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_aistudio",
+                depends="experimental.full_parallelization&&experimental.parallel_enable_aistudio",
                 force_when_dep_unmet=1,
                 docs_path=DOCS_FULL_PARALLELIZATION,
             ),
@@ -3121,10 +3118,10 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout", "first_chunk_timeout", "model_apply_timeout", "post_action_delay"]},
     ],
     "aistudio_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["provider_lock_warning", "model", "enable_deepthink", "thinking_level", "send_deepthink"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
-        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "assume_english_ui", "assume_english_ui_warning", "assume_paid_model_access", "assume_paid_model_access_warning", "paid_model_access_emails", "clean_regeneration", "preflight_next_chat"]},
+        {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "humanize_mouse_movements", "assume_english_ui", "assume_english_ui_warning", "assume_paid_model_access", "assume_paid_model_access_warning", "paid_model_access_emails", "clean_regeneration", "preflight_next_chat"]},
     ],
 }

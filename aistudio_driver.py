@@ -3,7 +3,9 @@
 import asyncio
 import codecs
 import json
+import math
 import os
+import random
 import re
 import secrets
 import shutil
@@ -431,6 +433,7 @@ class AIStudioDriver(BaseDriver):
         self._preflight_state: Optional[Dict[str, Any]] = None
         self._preflight_system_prompt_text = ""
         self._assume_english_ui_notice_logged = False
+        self._last_mouse_position: tuple[float, float] | None = None
 
     def get_start_url(self) -> str:
         return self.START_URL
@@ -844,7 +847,208 @@ class AIStudioDriver(BaseDriver):
             await asyncio.sleep(0.4)
 
     async def _human_delay(self, delay_s: float = 0.8) -> None:
-        await asyncio.sleep(max(0.0, float(delay_s)))
+        delay = max(0.0, float(delay_s))
+        if self._humanize_mouse_movements_enabled() and delay > 0.0:
+            delay = (delay * random.uniform(0.85, 1.25)) + random.uniform(0.03, 0.16)
+        await asyncio.sleep(delay)
+
+    def _humanize_mouse_movements_enabled(self) -> bool:
+        """Return whether AI Studio should use slower, pointer-visible UI actions."""
+        try:
+            return bool(
+                self.config_manager.get_setting(
+                    "aistudio_behavior",
+                    "humanize_mouse_movements",
+                )
+            )
+        except Exception:
+            return False
+
+    async def _humanized_action_pause(
+        self,
+        min_s: float = 0.04,
+        max_s: float = 0.14,
+    ) -> None:
+        """Add a tiny optional pause around UI actions when paced interactions are enabled."""
+        if not self._humanize_mouse_movements_enabled():
+            return
+
+        low = max(0.0, float(min_s))
+        high = max(low, float(max_s))
+        await asyncio.sleep(random.uniform(low, high))
+
+    @staticmethod
+    def _click_timeout_for_probe(timeout: Any, cap_ms: float = 1500.0) -> float:
+        try:
+            value = float(timeout)
+        except Exception:
+            value = cap_ms
+        if value <= 0:
+            return 0.0
+        return min(value, cap_ms)
+
+    def _mouse_steps_for_target(self, target: tuple[float, float] | None) -> int:
+        if target is None or self._last_mouse_position is None:
+            return random.randint(12, 24)
+
+        distance = math.hypot(
+            float(target[0]) - float(self._last_mouse_position[0]),
+            float(target[1]) - float(self._last_mouse_position[1]),
+        )
+        base_steps = int(distance / 18.0) + random.randint(4, 10)
+        return max(8, min(48, base_steps))
+
+    async def _humanized_click_position(
+        self,
+        locator,
+        *,
+        timeout: Any = 3000,
+    ) -> tuple[dict[str, float] | None, tuple[float, float] | None]:
+        """Pick a slightly varied visible click point inside a locator."""
+        try:
+            await locator.scroll_into_view_if_needed(
+                timeout=self._click_timeout_for_probe(timeout)
+            )
+        except Exception:
+            pass
+
+        try:
+            box = await locator.bounding_box(
+                timeout=self._click_timeout_for_probe(timeout)
+            )
+        except Exception:
+            box = None
+        if not box:
+            return None, None
+
+        try:
+            left = float(box.get("x") or 0.0)
+            top = float(box.get("y") or 0.0)
+            width = float(box.get("width") or 0.0)
+            height = float(box.get("height") or 0.0)
+        except Exception:
+            return None, None
+        if width <= 0.0 or height <= 0.0:
+            return None, None
+
+        x_margin = min(width * 0.25, 14.0)
+        y_margin = min(height * 0.25, 10.0)
+        rel_x = (
+            width / 2.0
+            if width <= (x_margin * 2.0)
+            else random.uniform(x_margin, width - x_margin)
+        )
+        rel_y = (
+            height / 2.0
+            if height <= (y_margin * 2.0)
+            else random.uniform(y_margin, height - y_margin)
+        )
+        return {"x": rel_x, "y": rel_y}, (left + rel_x, top + rel_y)
+
+    async def _click_locator(
+        self,
+        locator,
+        *,
+        timeout: Any = 3000,
+        force: bool | None = None,
+        position: dict[str, float] | None = None,
+        button: str | None = None,
+        click_count: int | None = None,
+        no_wait_after: bool | None = None,
+    ) -> None:
+        """Click a locator, optionally adding native Playwright pointer movement and pacing."""
+        kwargs: dict[str, Any] = {"timeout": timeout}
+        if force is not None:
+            kwargs["force"] = force
+        if button is not None:
+            kwargs["button"] = button
+        if click_count is not None:
+            kwargs["click_count"] = click_count
+        if no_wait_after is not None:
+            kwargs["no_wait_after"] = no_wait_after
+
+        if not self._humanize_mouse_movements_enabled():
+            if position is not None:
+                kwargs["position"] = position
+            await locator.click(**kwargs)
+            return
+
+        target = None
+        click_position = position
+        if click_position is None:
+            click_position, target = await self._humanized_click_position(
+                locator,
+                timeout=timeout,
+            )
+        if click_position is not None:
+            kwargs["position"] = click_position
+
+        kwargs["delay"] = random.uniform(45.0, 140.0)
+        kwargs["steps"] = self._mouse_steps_for_target(target)
+
+        await self._humanized_action_pause(0.04, 0.16)
+        try:
+            await locator.click(**kwargs)
+            if target is not None:
+                self._last_mouse_position = target
+        finally:
+            await self._humanized_action_pause(0.06, 0.20)
+
+    async def _move_mouse_to_point(self, x: float, y: float) -> None:
+        if not self.page:
+            return
+
+        x = float(x)
+        y = float(y)
+        if not self._humanize_mouse_movements_enabled():
+            await self.page.mouse.move(x, y)
+            self._last_mouse_position = (x, y)
+            return
+
+        start = self._last_mouse_position
+        if start is not None:
+            distance = math.hypot(x - float(start[0]), y - float(start[1]))
+            if distance > 70.0:
+                dx = x - float(start[0])
+                dy = y - float(start[1])
+                px = -dy / distance
+                py = dx / distance
+                bend = min(distance * 0.18, 42.0) * random.uniform(-1.0, 1.0)
+                t = random.uniform(0.35, 0.65)
+                mid_x = float(start[0]) + (dx * t) + (px * bend)
+                mid_y = float(start[1]) + (dy * t) + (py * bend)
+                await self.page.mouse.move(
+                    mid_x,
+                    mid_y,
+                    steps=max(4, self._mouse_steps_for_target((mid_x, mid_y)) // 2),
+                )
+                self._last_mouse_position = (mid_x, mid_y)
+
+        await self.page.mouse.move(x, y, steps=self._mouse_steps_for_target((x, y)))
+        self._last_mouse_position = (x, y)
+
+    async def _click_mouse_point(self, x: float, y: float) -> None:
+        if not self.page:
+            return
+
+        if not self._humanize_mouse_movements_enabled():
+            await self.page.mouse.move(x, y)
+            await asyncio.sleep(0.04)
+            await self.page.mouse.click(x, y)
+            await asyncio.sleep(0.08)
+            self._last_mouse_position = (float(x), float(y))
+            return
+
+        await self._humanized_action_pause(0.03, 0.12)
+        await self._move_mouse_to_point(float(x), float(y))
+        await self._humanized_action_pause(0.04, 0.13)
+        await self.page.mouse.click(
+            float(x),
+            float(y),
+            delay=random.uniform(45.0, 130.0),
+        )
+        self._last_mouse_position = (float(x), float(y))
+        await self._humanized_action_pause(0.06, 0.18)
 
     async def _accept_terms_of_service_if_present(self, timeout_ms: int = 3500) -> None:
         """Pause automation while the AI Studio legal acknowledgement dialog is open."""
@@ -881,7 +1085,7 @@ class AIStudioDriver(BaseDriver):
             return False
 
         try:
-            await field.click(timeout=3000)
+            await self._click_locator(field, timeout=3000)
         except Exception:
             pass
 
@@ -1295,7 +1499,7 @@ class AIStudioDriver(BaseDriver):
             return False
 
         try:
-            await trigger.first.click(timeout=3000)
+            await self._click_locator(trigger.first, timeout=3000)
         except Exception as e:
             Logger.warning(f"Google AI Studio: failed to open model selector: {e}")
             return False
@@ -1314,6 +1518,28 @@ class AIStudioDriver(BaseDriver):
     async def _click_model_family_filter(self) -> bool:
         if not self.page:
             return False
+
+        try:
+            root = self.page.locator("[data-test-id='model-carousel-in-selector']")
+            buttons = root.locator("button")
+            count = await buttons.count()
+        except Exception:
+            count = 0
+
+        target_label = self._normalize_text(self.MODEL_FAMILY_FILTER_LABEL)
+        for idx in range(min(count, 24)):
+            button = buttons.nth(idx)
+            try:
+                if not await button.is_visible():
+                    continue
+                text = self._normalize_text(str(await button.inner_text() or ""))
+                if text != target_label:
+                    continue
+                await self._click_locator(button, timeout=2500)
+                await self._ui_settle_pause(0.2)
+                return True
+            except Exception:
+                continue
 
         try:
             clicked = await self.page.evaluate(
@@ -1364,7 +1590,7 @@ class AIStudioDriver(BaseDriver):
                 pass
 
             try:
-                await candidate.click(timeout=3000)
+                await self._click_locator(candidate, timeout=3000)
                 return True
             except Exception:
                 continue
@@ -1883,7 +2109,7 @@ class AIStudioDriver(BaseDriver):
             return
 
         try:
-            await toggle.click(timeout=3000)
+            await self._click_locator(toggle, timeout=3000)
         except Exception as e:
             try:
                 await self._dismiss_transient_overlays()
@@ -2006,7 +2232,10 @@ class AIStudioDriver(BaseDriver):
         return bool(applied)
 
     async def _ui_settle_pause(self, delay_s: float = 0.22) -> None:
-        await asyncio.sleep(max(0.0, float(delay_s)))
+        delay = max(0.0, float(delay_s))
+        if self._humanize_mouse_movements_enabled() and delay > 0.0:
+            delay += random.uniform(0.02, 0.12)
+        await asyncio.sleep(delay)
 
     async def _dismiss_transient_overlays(self) -> None:
         """Dismiss transient menus and backdrops that can steal subsequent clicks."""
@@ -2081,10 +2310,7 @@ class AIStudioDriver(BaseDriver):
             try:
                 x = float(box["x"]) + min(max(float(box["width"]) * 0.25, 12.0), 48.0)
                 y = float(box["y"]) + min(max(float(box["height"]) * 0.5, 8.0), 20.0)
-                await self.page.mouse.move(x, y)
-                await asyncio.sleep(0.04)
-                await self.page.mouse.click(x, y)
-                await asyncio.sleep(0.08)
+                await self._click_mouse_point(x, y)
                 Logger.extra_debug(
                     "Google AI Studio timing: refocus composer -> mouse click completed "
                     f"in {time.perf_counter() - started:.3f}s"
@@ -2099,7 +2325,7 @@ class AIStudioDriver(BaseDriver):
 
         click_started = time.perf_counter()
         try:
-            await editor.click(timeout=2000)
+            await self._click_locator(editor, timeout=2000)
             Logger.extra_debug(
                 "Google AI Studio timing: refocus composer -> locator click completed "
                 f"in {time.perf_counter() - click_started:.3f}s "
@@ -2163,7 +2389,7 @@ class AIStudioDriver(BaseDriver):
             attempt_started = time.perf_counter()
             Logger.extra_debug(f"{debug_prefix} -> attempt {attempt} start")
             try:
-                await field.click(timeout=1500, force=True)
+                await self._click_locator(field, timeout=1500, force=True)
                 Logger.extra_debug(
                     f"{debug_prefix} -> attempt {attempt} click completed in "
                     f"{time.perf_counter() - attempt_started:.3f}s"
@@ -2247,6 +2473,7 @@ class AIStudioDriver(BaseDriver):
                     f"{debug_prefix} -> applied by evaluate in "
                     f"{time.perf_counter() - started:.3f}s"
                 )
+                await self._humanized_action_pause(0.05, 0.16)
                 return True
 
             fill_started = time.perf_counter()
@@ -2266,6 +2493,7 @@ class AIStudioDriver(BaseDriver):
                         f"{time.perf_counter() - started:.3f}s "
                         f"(fill phase {time.perf_counter() - fill_started:.3f}s)"
                     )
+                    await self._humanized_action_pause(0.05, 0.16)
                     return True
                 Logger.extra_debug(
                     f"{debug_prefix} -> attempt {attempt} fill value mismatch "
@@ -2470,7 +2698,7 @@ class AIStudioDriver(BaseDriver):
             return True
 
         try:
-            await button.click(timeout=3000)
+            await self._click_locator(button, timeout=3000)
         except Exception:
             return False
 
@@ -2593,7 +2821,7 @@ class AIStudioDriver(BaseDriver):
             for _ in range(3):
                 await self._ui_settle_pause(0.16)
                 try:
-                    await close_button.click(timeout=2000, force=True)
+                    await self._click_locator(close_button, timeout=2000, force=True)
                 except Exception:
                     try:
                         await close_button.evaluate("el => el.click()")
@@ -2646,7 +2874,7 @@ class AIStudioDriver(BaseDriver):
             return False
 
         try:
-            await trigger.click(timeout=3000)
+            await self._click_locator(trigger, timeout=3000)
         except Exception as e:
             Logger.warning(f"Google AI Studio: failed to open safety settings: {e}")
             return False
@@ -2811,7 +3039,7 @@ class AIStudioDriver(BaseDriver):
             pass
 
         try:
-            await target.click(timeout=3000)
+            await self._click_locator(target, timeout=3000)
         except Exception:
             return False
         await self._ui_settle_pause(0.18)
@@ -2856,7 +3084,7 @@ class AIStudioDriver(BaseDriver):
                 continue
 
             try:
-                await candidate.click(timeout=3000)
+                await self._click_locator(candidate, timeout=3000)
                 await self._ui_settle_pause(0.18)
                 return True
             except Exception:
@@ -3186,42 +3414,64 @@ class AIStudioDriver(BaseDriver):
                 return False
 
             async with self.page.expect_file_chooser(timeout=6000) as fc_info:
-                await add_media_button.click(timeout=3000)
+                await self._click_locator(add_media_button, timeout=3000)
                 await self.page.wait_for_selector(".mat-mdc-menu-content", timeout=5000, state="visible")
-                clicked = await self.page.evaluate(
-                    """() => {
-                        const isVisible = (el) => {
-                            if (!el) return false;
-                            const rect = el.getBoundingClientRect();
-                            if (!rect || rect.width <= 0 || rect.height <= 0) return false;
-                            const style = window.getComputedStyle(el);
-                            if (!style) return false;
-                            return style.visibility !== 'hidden' && style.display !== 'none';
-                        };
+                clicked = False
+                try:
+                    menu = await self._find_first_visible(
+                        [".mat-mdc-menu-content"],
+                        timeout_ms=1000,
+                    )
+                    if menu is not None:
+                        items = menu.locator("xpath=./*")
+                        if await items.count() >= 2:
+                            target = items.nth(1)
+                            try:
+                                await self._click_locator(target, timeout=2500)
+                                clicked = True
+                            except Exception:
+                                nested = target.locator("button, [role='menuitem']")
+                                if await nested.count() > 0:
+                                    await self._click_locator(nested.first, timeout=2500)
+                                    clicked = True
+                except Exception:
+                    clicked = False
 
-                        const menus = Array.from(document.querySelectorAll('.mat-mdc-menu-content')).filter(isVisible);
-                        if (!menus.length) return false;
+                if not clicked:
+                    clicked = await self.page.evaluate(
+                        """() => {
+                            const isVisible = (el) => {
+                                if (!el) return false;
+                                const rect = el.getBoundingClientRect();
+                                if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+                                const style = window.getComputedStyle(el);
+                                if (!style) return false;
+                                return style.visibility !== 'hidden' && style.display !== 'none';
+                            };
 
-                        const menu = menus[0];
-                        const items = Array.from(menu.children).filter(isVisible);
-                        if (items.length < 2) return false;
+                            const menus = Array.from(document.querySelectorAll('.mat-mdc-menu-content')).filter(isVisible);
+                            if (!menus.length) return false;
 
-                        const target = items[1];
-                        try {
-                            target.click();
-                            return true;
-                        } catch (e) {
+                            const menu = menus[0];
+                            const items = Array.from(menu.children).filter(isVisible);
+                            if (items.length < 2) return false;
+
+                            const target = items[1];
                             try {
-                                const nested = target.querySelector('button, [role="menuitem"]');
-                                if (nested) {
-                                    nested.click();
-                                    return true;
-                                }
-                            } catch (e2) {}
-                            return false;
-                        }
-                    }"""
-                )
+                                target.click();
+                                return true;
+                            } catch (e) {
+                                try {
+                                    const nested = target.querySelector('button, [role="menuitem"]');
+                                    if (nested) {
+                                        nested.click();
+                                        return true;
+                                    }
+                                } catch (e2) {}
+                                return false;
+                            }
+                        }"""
+                    )
                 if not clicked:
                     raise RuntimeError("AI Studio file picker menu item was not clickable.")
 
@@ -3300,7 +3550,7 @@ class AIStudioDriver(BaseDriver):
                         )
                         if accept_button is not None:
                             try:
-                                await accept_button.click(timeout=3000)
+                                await self._click_locator(accept_button, timeout=3000)
                             except Exception:
                                 try:
                                     await accept_button.evaluate("el => el.click()")
@@ -3392,7 +3642,7 @@ class AIStudioDriver(BaseDriver):
             await self._dismiss_transient_overlays()
             click_started = time.perf_counter()
             try:
-                await trigger.click(timeout=2000, force=True)
+                await self._click_locator(trigger, timeout=2000, force=True)
                 Logger.extra_debug(
                     "Google AI Studio timing: system-instructions open panel -> "
                     f"attempt {attempt} click completed in "
@@ -3514,7 +3764,7 @@ class AIStudioDriver(BaseDriver):
 
             click_started = time.perf_counter()
             try:
-                await close_button.click(timeout=2000, force=True)
+                await self._click_locator(close_button, timeout=2000, force=True)
                 Logger.extra_debug(
                     "Google AI Studio timing: system-instructions close panel -> "
                     f"attempt {attempt} click completed in "
@@ -3827,12 +4077,12 @@ class AIStudioDriver(BaseDriver):
             return False
 
         try:
-            await button.click(timeout=2000)
+            await self._click_locator(button, timeout=2000)
             await self._ui_settle_pause(0.2)
             return True
         except Exception as e:
             try:
-                await button.click(timeout=2000, force=True)
+                await self._click_locator(button, timeout=2000, force=True)
                 await self._ui_settle_pause(0.2)
                 return True
             except Exception:
@@ -3891,12 +4141,12 @@ class AIStudioDriver(BaseDriver):
 
         try:
             await self._refocus_composer_before_send()
-            await button.click(timeout=3000)
+            await self._click_locator(button, timeout=3000)
             await self._ui_settle_pause(0.25)
         except Exception as e:
             try:
                 await self._refocus_composer_before_send()
-                await button.click(timeout=3000, force=True)
+                await self._click_locator(button, timeout=3000, force=True)
                 await self._ui_settle_pause(0.25)
                 return
             except Exception:
@@ -4195,10 +4445,10 @@ class AIStudioDriver(BaseDriver):
             return False
 
         try:
-            await edit_button.click(timeout=3000)
+            await self._click_locator(edit_button, timeout=3000)
         except Exception as e:
             try:
-                await edit_button.click(timeout=3000, force=True)
+                await self._click_locator(edit_button, timeout=3000, force=True)
             except Exception:
                 Logger.warning(f"Google AI Studio: failed to open assistant edit mode: {e}")
                 return False
@@ -4215,7 +4465,7 @@ class AIStudioDriver(BaseDriver):
 
         await self._ui_settle_pause(0.28)
         try:
-            await textarea.click(timeout=2000, force=True)
+            await self._click_locator(textarea, timeout=2000, force=True)
         except Exception:
             pass
 
@@ -4275,7 +4525,7 @@ class AIStudioDriver(BaseDriver):
                 continue
 
             try:
-                await button.first.click(timeout=3000)
+                await self._click_locator(button.first, timeout=3000)
                 return True
             except Exception:
                 continue
