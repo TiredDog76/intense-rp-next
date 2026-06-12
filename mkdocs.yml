@@ -40,12 +40,14 @@ nav:
           - Perplexity Behavior: providers/perplexity-behavior.md
           - HuggingChat Behavior: providers/huggingchat-behavior.md
           - Google AI Studio Behavior: providers/aistudio-behavior.md
+      - Browser & Runtime:
+          - Overview: runtime.md
+          - Browser Environment: runtime/browser-environment.md
+          - Providers in Parallel: runtime/providers-in-parallel.md
+          - Provider Stability: runtime/provider-stability.md
       - Experimental:
           - Overview: experimental.md
           - Loadouts: experimental/loadouts.md
-          - Providers in Parallel: experimental/providers-in-parallel.md
-          - Parallel Request Queue: experimental/parallel-request-queue.md
-          - Full Parallelization: experimental/full-parallelization.md
           - Remote Control: experimental/remote-control.md
       - Advanced:
           - Overview: advanced.md

@@ -217,8 +217,8 @@ By default, IntenseRP processes **one generation at a time**.
 !!! tip "Why no parallel requests?"
     The current provider implementation drives a single live browser session and installs network interception on that page. Running multiple generations in parallel would conflict with UI state and interception handlers, so requests are serialized on purpose.
 
-!!! note "Experimental parallel modes"
-    **Providers in Parallel**, **Parallel Request Queue**, and **Full Parallelization** can add more runtime lanes. Those modes are documented under [:material-flask-outline: Experimental](../experimental.md) because they are much heavier and still rougher than the normal queue.
+!!! note "Providers in Parallel"
+    **Browser & Runtime -> Providers in Parallel** can add more browser lanes and allow queued API work to overlap. Those modes are heavier than the normal single-provider queue, so use them when the extra throughput is worth the extra browser weight.
 
 What this means in practice:
 

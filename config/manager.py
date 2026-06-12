@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 from typing import Any, Dict
@@ -121,7 +122,7 @@ class ConfigManager:
             if category.key not in self.settings:
                 self.settings[category.key] = {}
             for field in self._iter_default_fields(category.fields):
-                self.settings[category.key][field.key] = field.default
+                self.settings[category.key][field.key] = copy.deepcopy(field.default)
         self._ensure_loadouts_store()
         self.save_settings()
 
@@ -133,7 +134,7 @@ class ConfigManager:
                 updated = True
             for field in self._iter_default_fields(category.fields):
                 if field.key not in self.settings[category.key]:
-                    self.settings[category.key][field.key] = field.default
+                    self.settings[category.key][field.key] = copy.deepcopy(field.default)
                     updated = True
         if updated:
             self.save_settings()

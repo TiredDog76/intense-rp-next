@@ -126,9 +126,9 @@ This page translates the names, acronyms, and weird bits that show up around Int
 | Console dump | Export of console contents. | Useful when sharing logs after something breaks. |
 | Bug report bundle | A zip with selected diagnostics. | Built to share enough context for debugging while redacting some sensitive values. |
 | Remote Control | Experimental browser page for controlling IntenseRP from another device. | Still respects IP whitelist rules when enabled. |
-| Providers in Parallel | Experimental mode that keeps multiple provider browsers alive. | Requests route by model ID. |
-| Parallel Request Queue | Experimental mode that lets different provider lanes work at once. | Requires Providers in Parallel. |
-| Full Parallelization | Experimental mode with multiple lanes per provider. | Needs saved accounts/profiles and uses much more RAM. |
+| Providers in Parallel | Runtime mode that keeps multiple provider browsers alive. | Requests route by model ID. |
+| Concurrent Requests | Runtime queue mode that lets different provider lanes work at once. | Now part of Providers in Parallel Mode. |
+| Multiple Instances per Provider | Providers in Parallel mode with multiple lanes per provider. | Needs saved accounts/profiles and uses much more RAM. |
 
 ---
 

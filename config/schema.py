@@ -27,18 +27,25 @@ DOCS_HOTSWAPS = "features/hotswaps/"
 DOCS_IP_WHITELIST = "advanced/ip-whitelist/"
 DOCS_LOGIN = "features/login-sessions/"
 DOCS_LOADOUTS = "experimental/loadouts/"
-DOCS_FULL_PARALLELIZATION = "experimental/full-parallelization/"
 DOCS_MOONSHOT = "providers/moonshot-behavior/"
 DOCS_MULTI_SLOT_CACHE = "features/multi-slot-cache/"
 DOCS_NETWORK = "features/network-api/"
 DOCS_PERPLEXITY = "providers/perplexity-behavior/"
 DOCS_PROVIDER_SUPPORT = "advanced/provider-support/"
 DOCS_QWEN = "providers/qwen-behavior/"
-DOCS_PARALLEL_REQUEST_QUEUE = "experimental/parallel-request-queue/"
 DOCS_REMOTE_CONTROL = "experimental/remote-control/"
-DOCS_PROVIDERS_IN_PARALLEL = "experimental/providers-in-parallel/"
+DOCS_RUNTIME = "runtime/"
+DOCS_RUNTIME_BROWSER_ENVIRONMENT = "runtime/browser-environment/"
+DOCS_RUNTIME_PARALLELIZATION = "runtime/providers-in-parallel/"
+DOCS_RUNTIME_PROVIDER_STABILITY = "runtime/provider-stability/"
 DOCS_SYSTEM = "features/system/"
 DOCS_UNIVERSAL_MODEL_NAMES = "features/universal-model-names/"
+
+RUNTIME_PARALLEL_MODE_OPTIONS = [
+    ("provider_lanes", "One Instance per Provider"),
+    ("concurrent_provider_lanes", "One Instance per Provider + Concurrent Requests"),
+    ("full_parallel_lanes", "Multiple Instances per Provider + Concurrent Requests"),
+]
 
 class SettingType(Enum):
     BOOLEAN = "boolean"
@@ -56,6 +63,7 @@ class SettingType(Enum):
     INPUT_PAIR = "input_pair"
     INPUT_LIST = "input_list"
     MULTI_SELECT_DROPDOWN = "multi_select_dropdown"
+    PROVIDER_LANE_SELECTOR = "provider_lane_selector"
     REDIRECT = "redirect"
 
 @dataclass
@@ -1949,7 +1957,7 @@ SCHEMA = [
                     "English helps with providers that expect English UI text, "
                     "but saved site/account language can still win."
                 ),
-                docs_path=DOCS_SYSTEM,
+                docs_path=DOCS_RUNTIME_BROWSER_ENVIRONMENT,
                 docs_anchor="browser-locale-and-timezone",
             ),
             SettingField(
@@ -1962,7 +1970,7 @@ SCHEMA = [
                     "Optional browser timezone override. Leave this on System Default "
                     "unless you specifically want provider pages to report New York time."
                 ),
-                docs_path=DOCS_SYSTEM,
+                docs_path=DOCS_RUNTIME_BROWSER_ENVIRONMENT,
                 docs_anchor="browser-locale-and-timezone",
             ),
             SettingField(
@@ -2030,6 +2038,7 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=True,
                 tooltip="Show a notification when the provider browser is closed or crashes unexpectedly.",
+                docs_path=DOCS_RUNTIME_PROVIDER_STABILITY,
             ),
             SettingField(
                 key="ignore_provider_locks",
@@ -2041,7 +2050,7 @@ SCHEMA = [
                     "and launch anyway. Only enable this if you are sure your setup can "
                     "use the locked provider without breaking requests."
                 ),
-                docs_path=DOCS_SYSTEM,
+                docs_path=DOCS_RUNTIME_PROVIDER_STABILITY,
                 docs_anchor="provider-locks",
             ),
             SettingField(
@@ -2056,7 +2065,7 @@ SCHEMA = [
                 tooltip=None,
                 hint_variant="warn",
                 visible_depends="system_settings.ignore_provider_locks",
-                docs_path=DOCS_SYSTEM,
+                docs_path=DOCS_RUNTIME_PROVIDER_STABILITY,
                 docs_anchor="provider-locks",
             ),
             SettingField(
@@ -2152,6 +2161,114 @@ SCHEMA = [
         ]
     ),
     SettingCategory(
+        name="Browser & Runtime",
+        key="runtime",
+        fields=[
+            SettingField(
+                key="providers_in_parallel",
+                label="Run Providers in Parallel",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Launch one browser per selected provider and route requests by "
+                    "their model IDs. Applies on the next browser start and can use a lot of RAM."
+                ),
+                docs_path=DOCS_RUNTIME_PARALLELIZATION,
+            ),
+            SettingField(
+                key="parallelization_mode",
+                label="Providers in Parallel Mode",
+                type=SettingType.DROPDOWN,
+                default="provider_lanes",
+                options=[label for _key, label in RUNTIME_PARALLEL_MODE_OPTIONS],
+                tooltip=(
+                    "Choose whether selected provider lanes only stay warm, whether different providers "
+                    "can answer queued API requests at the same time, or whether selected providers "
+                    "can launch multiple account-backed browser instances."
+                ),
+                front_tooltip=(
+                    "Controls request concurrency. The first mode keeps provider browsers ready, "
+                    "the second lets different providers answer at the same time, and the third "
+                    "also allows multiple instances per provider."
+                ),
+                docs_path=DOCS_RUNTIME_PARALLELIZATION,
+            ),
+            SettingField(
+                key="parallel_provider_lanes",
+                label="Provider Lanes",
+                type=SettingType.PROVIDER_LANE_SELECTOR,
+                default={"providers": [], "instances": {}},
+                options=provider_options(),
+                depends="runtime.providers_in_parallel",
+                force_when_dep_unmet={"providers": [], "instances": {}},
+                tooltip=(
+                    "Choose which providers should stay available in the parallel runtime. "
+                    "The current provider is always enabled. In the multiple-instances mode, "
+                    "enabled providers also get a small instance count input."
+                ),
+                front_tooltip=(
+                    "Select the providers to keep open in parallel. The current provider is forced on."
+                ),
+                docs_path=DOCS_RUNTIME_PARALLELIZATION,
+            ),
+            SettingField(
+                key="parallel_concurrent_launch",
+                label="Launch Provider Lanes Concurrently",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Speed up parallel startup by launching active provider lanes "
+                    "at the same time. This can make browser startup heavier while it is running."
+                ),
+                front_tooltip="Launch active parallel provider lanes at the same time.",
+                visible_depends="runtime.providers_in_parallel",
+                depends="runtime.providers_in_parallel",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_RUNTIME_PARALLELIZATION,
+            ),
+            SettingField(
+                key="parallel_launch_in_batches",
+                label="Launch in Batches",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "When concurrent launch is enabled, start only a limited number of lanes "
+                    "at once and wait for that batch to finish before starting the next one."
+                ),
+                front_tooltip="Limit how many parallel lanes start at the same time.",
+                visible_depends=(
+                    "runtime.providers_in_parallel&&runtime.parallel_concurrent_launch"
+                ),
+                depends=(
+                    "runtime.providers_in_parallel&&runtime.parallel_concurrent_launch"
+                ),
+                force_when_dep_unmet=False,
+                docs_path=DOCS_RUNTIME_PARALLELIZATION,
+            ),
+            SettingField(
+                key="parallel_launch_batch_size",
+                label="Max Lanes per Batch",
+                type=SettingType.INTEGER,
+                default=2,
+                tooltip=(
+                    "Maximum number of parallel provider lanes to launch in each batch. "
+                    "Only applies when concurrent launch and Launch in Batches are enabled."
+                ),
+                validator=validate_integer_range(1, 32, label="Max lanes per batch"),
+                visible_depends=(
+                    "runtime.providers_in_parallel&&runtime.parallel_concurrent_launch"
+                    "&&runtime.parallel_launch_in_batches"
+                ),
+                depends=(
+                    "runtime.providers_in_parallel&&runtime.parallel_concurrent_launch"
+                    "&&runtime.parallel_launch_in_batches"
+                ),
+                force_when_dep_unmet=2,
+                docs_path=DOCS_RUNTIME_PARALLELIZATION,
+            ),
+        ],
+    ),
+    SettingCategory(
         name="Experimental",
         key="experimental",
         fields=[
@@ -2166,306 +2283,6 @@ SCHEMA = [
                 ),
                 affects=["chevron_dropdown"],
                 docs_path=DOCS_LOADOUTS,
-            ),
-            SettingField(
-                key="providers_in_parallel",
-                label="Run Providers in Parallel",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip=(
-                    "Experimental. Launch one browser per selected provider and route requests by "
-                    "their model IDs. Applies on the next browser start and can use a lot of RAM."
-                ),
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="providers_in_parallel_note",
-                label="Providers in Parallel",
-                type=SettingType.HINT,
-                default=(
-                    "This opens extra browser windows, keeps them idle in memory, and routes by "
-                    "model IDs while active. Change the selection here, then restart the browser for it to take effect."
-                ),
-                tooltip=None,
-                hint_variant="warn",
-                visible_depends="experimental.providers_in_parallel",
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_concurrent_launch",
-                label="Launch Parallel Providers Concurrently",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip=(
-                    "Speed up Providers in Parallel startup by launching active provider lanes "
-                    "at the same time. This can make browser startup heavier while it is running."
-                ),
-                front_tooltip="Launch active parallel provider lanes at the same time.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="experimental.providers_in_parallel",
-                force_when_dep_unmet=False,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_launch_in_batches",
-                label="Launch in Batches",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip=(
-                    "When concurrent launch is enabled, start only a limited number of lanes "
-                    "at once and wait for that batch to finish before starting the next one."
-                ),
-                front_tooltip="Limit how many parallel lanes start at the same time.",
-                visible_depends=(
-                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
-                ),
-                depends=(
-                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
-                ),
-                force_when_dep_unmet=False,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_launch_batch_size",
-                label="Max Lanes per Batch",
-                type=SettingType.INTEGER,
-                default=2,
-                tooltip=(
-                    "Maximum number of parallel provider lanes to launch in each batch. "
-                    "Only applies when concurrent launch and Launch in Batches are enabled."
-                ),
-                validator=validate_integer_range(1, 32, label="Max lanes per batch"),
-                visible_depends=(
-                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
-                    "&&experimental.parallel_launch_in_batches"
-                ),
-                depends=(
-                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
-                    "&&experimental.parallel_launch_in_batches"
-                ),
-                force_when_dep_unmet=2,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallelize_request_queue",
-                label="Parallelize API Request Queue",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip=(
-                    "Very experimental. Allow multiple queued API requests to run at the same time "
-                    "across different active provider lanes. Requires Providers in Parallel and "
-                    "applies on the next browser start."
-                ),
-                front_tooltip="Run queued API requests concurrently across active parallel provider lanes.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="experimental.providers_in_parallel",
-                force_when_dep_unmet=True,
-                docs_path=DOCS_PARALLEL_REQUEST_QUEUE,
-            ),
-            SettingField(
-                key="parallelize_request_queue_note",
-                label="Parallel Request Queue",
-                type=SettingType.HINT,
-                default=(
-                    "This is intentionally extra experimental. Today it runs one request per active "
-                    "provider lane, but it still depends on Providers in Parallel and may use more "
-                    "RAM and CPU than the normal setup."
-                ),
-                tooltip=None,
-                hint_variant="warn",
-                visible_depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
-                docs_path=DOCS_PARALLEL_REQUEST_QUEUE,
-            ),
-            SettingField(
-                key="full_parallelization",
-                label="Full Parallelization",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip=(
-                    "Extremely experimental. Launch multiple account-backed browser "
-                    "instances per enabled parallel provider. Requires the parallelized API queue."
-                ),
-                front_tooltip="Launch multiple account-backed browser lanes per enabled parallel provider.",
-                visible_depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
-                depends="experimental.providers_in_parallel&&experimental.parallelize_request_queue",
-                force_when_dep_unmet=False,
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="full_parallelization_note",
-                label="Full Parallelization",
-                type=SettingType.HINT,
-                default=(
-                    "This is heavier than the other parallel features combined. Each extra lane "
-                    "launches another provider browser/profile and uses saved accounts when available."
-                ),
-                tooltip=None,
-                hint_variant="warn",
-                visible_depends="experimental.full_parallelization",
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="parallel_enable_deepseek",
-                label="DeepSeek",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Include DeepSeek in the parallel browser pool.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="providers_credentials.provider!=DeepSeek",
-                force_when_dep_unmet=True,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_instances_deepseek",
-                label="DeepSeek Instances",
-                type=SettingType.INTEGER,
-                default=1,
-                tooltip="How many DeepSeek account/profile lanes to launch when Full Parallelization is enabled.",
-                validator=validate_integer_range(1, 32, label="DeepSeek instances"),
-                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_deepseek",
-                depends="experimental.full_parallelization&&experimental.parallel_enable_deepseek",
-                force_when_dep_unmet=1,
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="parallel_enable_glm",
-                label="GLM Chat",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Include GLM Chat in the parallel browser pool.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="providers_credentials.provider!=GLM Chat",
-                force_when_dep_unmet=True,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_instances_glm",
-                label="GLM Chat Instances",
-                type=SettingType.INTEGER,
-                default=1,
-                tooltip="How many GLM Chat account/profile lanes to launch when Full Parallelization is enabled.",
-                validator=validate_integer_range(1, 32, label="GLM Chat instances"),
-                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_glm",
-                depends="experimental.full_parallelization&&experimental.parallel_enable_glm",
-                force_when_dep_unmet=1,
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="parallel_enable_moonshot",
-                label="Moonshot",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Include Moonshot in the parallel browser pool.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="providers_credentials.provider!=Moonshot",
-                force_when_dep_unmet=True,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_instances_moonshot",
-                label="Moonshot Instances",
-                type=SettingType.INTEGER,
-                default=1,
-                tooltip="How many Moonshot account/profile lanes to launch when Full Parallelization is enabled.",
-                validator=validate_integer_range(1, 32, label="Moonshot instances"),
-                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_moonshot",
-                depends="experimental.full_parallelization&&experimental.parallel_enable_moonshot",
-                force_when_dep_unmet=1,
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="parallel_enable_qwen",
-                label="QwenLM",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Include QwenLM in the parallel browser pool.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="providers_credentials.provider!=QwenLM",
-                force_when_dep_unmet=True,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_instances_qwen",
-                label="QwenLM Instances",
-                type=SettingType.INTEGER,
-                default=1,
-                tooltip="How many QwenLM account/profile lanes to launch when Full Parallelization is enabled.",
-                validator=validate_integer_range(1, 32, label="QwenLM instances"),
-                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_qwen",
-                depends="experimental.full_parallelization&&experimental.parallel_enable_qwen",
-                force_when_dep_unmet=1,
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="parallel_enable_perplexity",
-                label="Perplexity",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Include Perplexity in the parallel browser pool.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="providers_credentials.provider!=Perplexity",
-                force_when_dep_unmet=True,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_instances_perplexity",
-                label="Perplexity Instances",
-                type=SettingType.INTEGER,
-                default=1,
-                tooltip="How many Perplexity account/profile lanes to launch when Full Parallelization is enabled.",
-                validator=validate_integer_range(1, 32, label="Perplexity instances"),
-                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_perplexity",
-                depends="experimental.full_parallelization&&experimental.parallel_enable_perplexity",
-                force_when_dep_unmet=1,
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="parallel_enable_huggingchat",
-                label="HuggingChat",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip="Include HuggingChat in the parallel browser pool.",
-                visible_depends="experimental.providers_in_parallel",
-                depends="providers_credentials.provider!=HuggingChat",
-                force_when_dep_unmet=True,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_instances_huggingchat",
-                label="HuggingChat Instances",
-                type=SettingType.INTEGER,
-                default=1,
-                tooltip="How many HuggingChat account/profile lanes to launch when Full Parallelization is enabled.",
-                validator=validate_integer_range(1, 32, label="HuggingChat instances"),
-                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_huggingchat",
-                depends="experimental.full_parallelization&&experimental.parallel_enable_huggingchat",
-                force_when_dep_unmet=1,
-                docs_path=DOCS_FULL_PARALLELIZATION,
-            ),
-            SettingField(
-                key="parallel_enable_aistudio",
-                label="Google AI Studio",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip=(
-                    "Include Google AI Studio in the parallel browser pool."
-                ),
-                visible_depends="experimental.providers_in_parallel",
-                depends="providers_credentials.provider!=Google AI Studio",
-                force_when_dep_unmet=False,
-                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
-            ),
-            SettingField(
-                key="parallel_instances_aistudio",
-                label="Google AI Studio Instances",
-                type=SettingType.INTEGER,
-                default=1,
-                tooltip="How many Google AI Studio account/profile lanes to launch when Full Parallelization is enabled.",
-                validator=validate_integer_range(1, 32, label="Google AI Studio instances"),
-                visible_depends="experimental.full_parallelization&&experimental.parallel_enable_aistudio",
-                depends="experimental.full_parallelization&&experimental.parallel_enable_aistudio",
-                force_when_dep_unmet=1,
-                docs_path=DOCS_FULL_PARALLELIZATION,
             ),
             SettingField(
                 key="classic_title",
@@ -2849,7 +2666,7 @@ SETTINGS_SECTIONS = [
         key="provider_login",
         label="Provider and Login",
         icon="key.svg",
-        card_keys=["provider_choice", "sign_in_accounts", "saved_sessions", "browser_environment"],
+        card_keys=["provider_choice", "sign_in_accounts", "saved_sessions"],
     ),
     SettingSection(
         key="provider_behavior",
@@ -2881,6 +2698,12 @@ SETTINGS_SECTIONS = [
         card_keys=["window_behavior", "main_window", "updates"],
     ),
     SettingSection(
+        key="runtime",
+        label="Browser and Runtime",
+        icon="circle-gauge.svg",
+        card_keys=["browser_environment", "provider_stability", "runtime_parallelization"],
+    ),
+    SettingSection(
         key="logs_troubleshooting",
         label="Logs and Troubleshooting",
         icon="terminal.svg",
@@ -2890,7 +2713,7 @@ SETTINGS_SECTIONS = [
         key="advanced",
         label="Advanced",
         icon="flask-conical.svg",
-        card_keys=["provider_stability", "config_storage", "experimental_features"],
+        card_keys=["config_storage", "experimental_features"],
     ),
 ]
 
@@ -3108,32 +2931,25 @@ SETTINGS_CARDS = {
         title="Experimental Features",
         field_refs=[
             ("experimental", "enable_loadouts"),
-            ("experimental", "providers_in_parallel"),
-            ("experimental", "providers_in_parallel_note"),
-            ("experimental", "parallel_concurrent_launch"),
-            ("experimental", "parallel_launch_in_batches"),
-            ("experimental", "parallel_launch_batch_size"),
-            ("experimental", "parallelize_request_queue"),
-            ("experimental", "parallelize_request_queue_note"),
-            ("experimental", "full_parallelization"),
-            ("experimental", "full_parallelization_note"),
-            ("experimental", "parallel_enable_deepseek"),
-            ("experimental", "parallel_instances_deepseek"),
-            ("experimental", "parallel_enable_glm"),
-            ("experimental", "parallel_instances_glm"),
-            ("experimental", "parallel_enable_moonshot"),
-            ("experimental", "parallel_instances_moonshot"),
-            ("experimental", "parallel_enable_qwen"),
-            ("experimental", "parallel_instances_qwen"),
-            ("experimental", "parallel_enable_perplexity"),
-            ("experimental", "parallel_instances_perplexity"),
-            ("experimental", "parallel_enable_huggingchat"),
-            ("experimental", "parallel_instances_huggingchat"),
-            ("experimental", "parallel_enable_aistudio"),
-            ("experimental", "parallel_instances_aistudio"),
             ("experimental", "enable_remote_control"),
             ("experimental", "remote_control_password"),
         ],
+    ),
+    "runtime_parallelization": SettingCard(
+        key="runtime_parallelization",
+        title="Providers in Parallel",
+        description=(
+            "Choose which provider browsers stay open and how much queued API work can run at once."
+        ),
+        field_refs=[
+            ("runtime", "providers_in_parallel"),
+            ("runtime", "parallelization_mode"),
+            ("runtime", "parallel_provider_lanes"),
+            ("runtime", "parallel_concurrent_launch"),
+            ("runtime", "parallel_launch_in_batches"),
+            ("runtime", "parallel_launch_batch_size"),
+        ],
+        special="runtime_parallelization",
     ),
 }
 

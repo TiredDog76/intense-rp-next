@@ -46,6 +46,7 @@ from utils.news_state import NEWS_DOCS_URL, has_unviewed_news, mark_latest_news_
 from utils.providers_in_parallel import (
     get_current_provider,
     get_parallel_selected_providers,
+    is_parallel_feature_enabled,
     is_parallel_runtime_active,
 )
 from utils.update_checker import check_for_updates
@@ -3528,7 +3529,7 @@ class MainWindow(QMainWindow):
 
             required_providers = (
                 get_parallel_selected_providers(self.config_manager)
-                if bool(self.config_manager.get_setting("experimental", "providers_in_parallel"))
+                if is_parallel_feature_enabled(self.config_manager)
                 else [current_provider]
             )
             locked_required_providers = [

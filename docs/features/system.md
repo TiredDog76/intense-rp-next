@@ -13,8 +13,8 @@ This page covers the "maintenance" side of IntenseRP Next v2: where settings liv
 These controls are spread across a few of the newer Settings sections:
 
 - :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** (profiles + session cleanup)
-- :material-arrow-right: **Settings** → **Provider and Login** → **Browser Environment** (locale + optional timezone override)
-- :material-arrow-right: **Settings** → **Advanced** → **Provider Stability** (provider locks + crash warnings)
+- :material-arrow-right: **Settings** → **Browser & Runtime** → **Browser Environment** (locale + optional timezone override)
+- :material-arrow-right: **Settings** → **Browser & Runtime** → **Provider Stability** (provider locks + crash warnings)
 - :material-arrow-right: **Settings** → **Advanced** → **Config Storage** (config directory location)
 - :material-arrow-right: **Settings** → **Interface** → **Main Window** / **Updates** (queue panel, hotswap button, version checks)
 - :material-arrow-right: **Settings** → **Logs and Troubleshooting** → **Logging Levels** (per-target log severity)
@@ -47,7 +47,7 @@ Next time you start the app, it loads that same profile, so you usually won't se
 
 IntenseRP can now nudge provider pages toward a more predictable browser environment at launch time.
 
-:material-arrow-right: **Settings** → **Provider and Login** → **Browser Environment**
+:material-arrow-right: **Settings** → **Browser & Runtime** → **Browser Environment**
 
 There are two knobs here:
 
@@ -69,7 +69,7 @@ This is intentionally a best-effort hint. Locale can help with providers that ot
 
 Provider locks are temporary safety blocks for providers that are implemented, but currently known to fail in a way that makes normal automation misleading or unusable.
 
-:material-arrow-right: **Settings** -> **Advanced** -> **Provider Stability** -> **Ignore Provider Locks**
+:material-arrow-right: **Settings** -> **Browser & Runtime** -> **Provider Stability** -> **Ignore Provider Locks**
 
 Right now, there is no default provider lock active. Google AI Studio is selectable again because its **Humanize Mouse Movements** reliability mode is enabled by default.
 
