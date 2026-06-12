@@ -8,6 +8,22 @@ icon: material/newspaper-variant-outline
 
 This page is the changelog for the latest news and updates about IntenseRP Next.
 
+## June 12, 2026 - Update 2.8.8
+
+IntenseRP Next v2.8.8 is a smaller release with two very practical wins: **Google AI Studio is back**, and **Providers in Parallel is no longer tucked Experimental**.
+
+AI Studio is selectable again thanks to the new default **Humanize Mouse Movements** reliability mode. It is slower on purpose, because AI Studio really did not enjoy the instant-move / instant-click treatment, but it makes browser sends much more reliable.
+
+Providers in Parallel now lives under **Browser & Runtime**, and it can do more than keep extra provider lanes warm. Depending on the mode you choose, different provider lanes can answer queued API requests at the same time, and startup can launch active lanes concurrently. If that startup burst is too heavy, batching is there too (still speeds things up, but with more breathing room).
+
+[Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.8.8-patch){ .md-button .md-button--primary }
+[Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
+[Google AI Studio Behavior](providers/aistudio-behavior.md){ .md-button }
+[Providers in Parallel](runtime/providers-in-parallel.md){ .md-button }
+[Support the Project](hands/support.md){ .md-button }
+
+---
+
 ## June 1, 2026 - Update 2.8.6
 
 IntenseRP Next v2.8.6 is mostly a follow-up to the 2.8.5 provider work, but the headline is simple: **HuggingChat support is finally here**.

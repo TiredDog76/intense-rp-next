@@ -1,8 +1,8 @@
 {
-  "version": "2.8.7-patch",
+  "version": "2.8.8-patch",
   "aua": true,
   "severity": 4,
   "pu": "discord",
   "pufref": "none",
-  "summary": "Moonshot and Perplexity fixes, AI Studio lock"
+  "summary": "a fix for AI Studio support, non-experimental provider parallelization, Moonshot fixes, and some other small improvements"
 }
