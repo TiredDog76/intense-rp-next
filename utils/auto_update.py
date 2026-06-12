@@ -311,6 +311,17 @@ def _safe_link_target(extract_dir: Path, link_path: Path, link_name: str) -> Non
         raise AutoUpdateError(f"Archive contains an unsafe link target: {link_name}") from exc
 
 
+def _is_tar_archive_root_directory(member: tarfile.TarInfo) -> bool:
+    if not member.isdir():
+        return False
+    normalized = (member.name or "").replace("\\", "/").strip()
+    if not normalized:
+        return False
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
+        return False
+    return all(part in ("", ".") for part in normalized.split("/"))
+
+
 def _extract_zip_safely(archive_path: Path, extract_dir: Path) -> None:
     with zipfile.ZipFile(archive_path, "r") as zf:
         infos = zf.infolist()
@@ -337,18 +348,25 @@ def _extract_zip_safely(archive_path: Path, extract_dir: Path) -> None:
 
 def _validated_tar_members(tf: tarfile.TarFile, extract_dir: Path) -> list[tarfile.TarInfo]:
     members = tf.getmembers()
+    validated: list[tarfile.TarInfo] = []
     for member in members:
+        if _is_tar_archive_root_directory(member):
+            # GNU tar emits this for `tar -C dir .` -> it has no payload to extract
+            continue
         destination = _safe_archive_destination(extract_dir, member.name)
         if member.isdir() or member.isfile():
+            validated.append(member)
             continue
         if member.issym():
             _safe_link_target(extract_dir, destination, member.linkname)
+            validated.append(member)
             continue
         if member.islnk():
             _safe_archive_destination(extract_dir, member.linkname)
+            validated.append(member)
             continue
         raise AutoUpdateError(f"Archive contains an unsupported member: {member.name}")
-    return members
+    return validated
 
 
 def extract_archive(archive_path: Path, extract_dir: Path) -> None:
