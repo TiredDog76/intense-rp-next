@@ -2192,6 +2192,61 @@ SCHEMA = [
                 docs_path=DOCS_PROVIDERS_IN_PARALLEL,
             ),
             SettingField(
+                key="parallel_concurrent_launch",
+                label="Launch Parallel Providers Concurrently",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Speed up Providers in Parallel startup by launching active provider lanes "
+                    "at the same time. This can make browser startup heavier while it is running."
+                ),
+                front_tooltip="Launch active parallel provider lanes at the same time.",
+                visible_depends="experimental.providers_in_parallel",
+                depends="experimental.providers_in_parallel",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_launch_in_batches",
+                label="Launch in Batches",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "When concurrent launch is enabled, start only a limited number of lanes "
+                    "at once and wait for that batch to finish before starting the next one."
+                ),
+                front_tooltip="Limit how many parallel lanes start at the same time.",
+                visible_depends=(
+                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
+                ),
+                depends=(
+                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
+                ),
+                force_when_dep_unmet=False,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
+                key="parallel_launch_batch_size",
+                label="Max Lanes per Batch",
+                type=SettingType.INTEGER,
+                default=2,
+                tooltip=(
+                    "Maximum number of parallel provider lanes to launch in each batch. "
+                    "Only applies when concurrent launch and Launch in Batches are enabled."
+                ),
+                validator=validate_integer_range(1, 32, label="Max lanes per batch"),
+                visible_depends=(
+                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
+                    "&&experimental.parallel_launch_in_batches"
+                ),
+                depends=(
+                    "experimental.providers_in_parallel&&experimental.parallel_concurrent_launch"
+                    "&&experimental.parallel_launch_in_batches"
+                ),
+                force_when_dep_unmet=2,
+                docs_path=DOCS_PROVIDERS_IN_PARALLEL,
+            ),
+            SettingField(
                 key="parallelize_request_queue",
                 label="Parallelize API Request Queue",
                 type=SettingType.BOOLEAN,
@@ -3055,6 +3110,9 @@ SETTINGS_CARDS = {
             ("experimental", "enable_loadouts"),
             ("experimental", "providers_in_parallel"),
             ("experimental", "providers_in_parallel_note"),
+            ("experimental", "parallel_concurrent_launch"),
+            ("experimental", "parallel_launch_in_batches"),
+            ("experimental", "parallel_launch_batch_size"),
             ("experimental", "parallelize_request_queue"),
             ("experimental", "parallelize_request_queue_note"),
             ("experimental", "full_parallelization"),

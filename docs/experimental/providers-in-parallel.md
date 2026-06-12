@@ -23,6 +23,8 @@ After you enable it, you also get per-provider toggles right under that setting.
 
 - The **current provider** is always forced on.
 - The other toggles let you choose which other providers you want to keep alive in parallel.
+- **Launch Parallel Providers Concurrently** can make startup faster by starting provider lanes at the same time. It's off by default because it can hit your CPU, RAM, and browser startup all at once.
+- If concurrent launch is on, **Launch in Batches** lets you cap how many lanes start together before IntenseRP moves on to the next batch.
 - If you also want requests themselves to overlap, turn on **Parallelize API Request Queue** after this.
 - If you also want multiple account-backed instances for the same provider, turn on **Full Parallelization** after the queue mode.
 - Changes only apply after you **restart the browser** with **Stop -> Start**.
@@ -38,6 +40,11 @@ When the feature is active, IntenseRP launches 1 browser window per selected pro
 Each provider keeps using its own normal stuff (accounts, sessions, cookies, etc.) but they all run at the same time instead of just 1.
 
 At startup, each provider also logs which profile/account it selected. If one of those startup picks came from a pinned Saved Accounts row, the log line includes `[PINNED]`.
+
+By default, provider lanes still launch one after another. If you enable **Launch Parallel Providers Concurrently**, IntenseRP starts the selected lanes at the same time instead. Full Parallelization lanes are included too, so multiple account-backed instances for the same provider can launch together.
+
+!!! tip "Batching the startup rush"
+    If concurrent startup is useful but too spiky, enable **Launch in Batches** and set **Max Lanes per Batch**. IntenseRP waits for the current batch to finish launching or failing before starting the next one.
 
 !!! warn "Might not be worth it"
     Most of those browser windows are idle until you send a request that belongs to them. Do keep that in mind if you don't jump between providers often, as the extra windows will just consume resources without much benefit.
@@ -91,6 +98,7 @@ If you turn **Full Parallelization** on after that, enabled providers can get mo
 ## :material-alert-circle-outline: Good to know
 
 - Browser restarts are still required after changing the provider selection for this feature.
+- If a lane fails during startup, IntenseRP disables that failed lane and keeps any successfully launched lanes running. If every lane fails, startup still fails normally.
 - If one of the managed provider browser windows crashes or gets closed, IntenseRP currently stops the parallel runtime and expects you to start it again.
 - This feature does not rewrite provider behavior logic. It mostly reuses the normal provider drivers and runs more than 1 of them at once.
 

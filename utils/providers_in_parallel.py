@@ -52,14 +52,52 @@ def is_parallel_request_queue_feature_enabled(config_manager: Any) -> bool:
         return False
 
 
-def _get_effective_bool_setting(config_manager: Any, category: str, field: str) -> bool:
+def _get_effective_setting(config_manager: Any, category: str, field: str) -> Any:
     getter = getattr(config_manager, "get_effective_setting", None)
     try:
         if callable(getter):
-            return bool(getter(category, field))
-        return bool(config_manager.get_setting(category, field))
+            return getter(category, field)
+        return config_manager.get_setting(category, field)
     except Exception:
-        return False
+        return None
+
+
+def _get_effective_bool_setting(config_manager: Any, category: str, field: str) -> bool:
+    return bool(_get_effective_setting(config_manager, category, field))
+
+
+def is_parallel_concurrent_launch_enabled(config_manager: Any) -> bool:
+    return _get_effective_bool_setting(
+        config_manager,
+        "experimental",
+        "parallel_concurrent_launch",
+    )
+
+
+def is_parallel_launch_batching_enabled(config_manager: Any) -> bool:
+    return (
+        is_parallel_concurrent_launch_enabled(config_manager)
+        and _get_effective_bool_setting(
+            config_manager,
+            "experimental",
+            "parallel_launch_in_batches",
+        )
+    )
+
+
+def get_parallel_launch_batch_size(config_manager: Any) -> int:
+    raw_value = _get_effective_setting(
+        config_manager,
+        "experimental",
+        "parallel_launch_batch_size",
+    )
+
+    try:
+        count = int(raw_value)
+    except (TypeError, ValueError):
+        count = 2
+
+    return max(1, min(MAX_FULL_PARALLEL_PROVIDER_INSTANCES, count))
 
 
 def is_full_parallelization_feature_enabled(config_manager: Any) -> bool:

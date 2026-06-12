@@ -31,6 +31,8 @@ After Full Parallelization is on, the enabled provider toggles get an **Instance
 
 Restart the browser with **Stop -> Start** after changing these settings.
 
+If **Launch Parallel Providers Concurrently** is enabled in the Providers in Parallel settings, these extra same-provider lanes are included in that concurrent startup too. Use **Launch in Batches** if starting all of them at once feels too heavy on your machine.
+
 ---
 
 ## :material-account-multiple: Accounts and Instance Counts
