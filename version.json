@@ -1,8 +1,8 @@
 {
-  "version": "2.8.8-patch",
+  "version": "2.8.8-rev1",
   "aua": true,
-  "severity": 4,
+  "severity": 3,
   "pu": "discord",
   "pufref": "none",
-  "summary": "a fix for AI Studio support, non-experimental provider parallelization, Moonshot fixes, and some other small improvements"
+  "summary": "GLM fixes and Linux auto-update improvements"
 }
