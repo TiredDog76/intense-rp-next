@@ -84,6 +84,7 @@ class GLMDriver(BaseDriver):
     MODEL_SELECTOR_BUTTON_SELECTOR = "button.modelSelectorButton"
     MODEL_DROPDOWN_ID = "f8T9iEf1QC"
     MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
+    MODEL_OPTION_SELECTOR = "button[aria-label='model-item'][data-value], div[role='menu'] button[data-value]"
     MODEL_DATA_VALUE_BY_FRIENDLY: Dict[str, str] = {
         "GLM-5.1": "GLM-5.1",
         "GLM-5": "glm-5",
@@ -488,7 +489,19 @@ class GLMDriver(BaseDriver):
         if not await self._click_glm_model_selector_button():
             return False
 
-        # Wait for the dropdown content to appear.
+        # Wait for the dropdown content to appear. The old dropdown had a fixed
+        # id, but the current Bits UI generates dynamic wrapper ids.
+        try:
+            await self.page.wait_for_selector(
+                self.MODEL_OPTION_SELECTOR,
+                timeout=int(timeout_ms),
+                state="visible",
+            )
+            return True
+        except Exception:
+            pass
+
+        # Legacy fallback for older GLM sessions.
         try:
             await self.page.wait_for_selector(
                 f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value]",
@@ -507,9 +520,80 @@ class GLMDriver(BaseDriver):
             Logger.warning("GLM Chat: model dropdown did not appear after clicking the selector (this is usually very bad).")
             return False
 
+    async def _is_glm_model_dropdown_open(self) -> bool:
+        if not self.page:
+            return False
+
+        try:
+            return bool(
+                await self.page.evaluate(
+                    """(optionSelector) => {
+                        const isVisible = (element) => {
+                            if (!element) return false;
+                            const style = window.getComputedStyle(element);
+                            const rect = element.getBoundingClientRect();
+                            return (
+                                style.display !== 'none' &&
+                                style.visibility !== 'hidden' &&
+                                rect.width > 0 &&
+                                rect.height > 0
+                            );
+                        };
+
+                        const selector = document.querySelector('button.modelSelectorButton');
+                        const expanded = String(selector?.getAttribute('aria-expanded') || '')
+                            .trim()
+                            .toLowerCase();
+                        if (expanded === 'true') {
+                            return true;
+                        }
+
+                        return Array.from(document.querySelectorAll(optionSelector)).some(isVisible);
+                    }""",
+                    self.MODEL_OPTION_SELECTOR,
+                )
+            )
+        except Exception:
+            pass
+
+        try:
+            options = self.page.locator(self.MODEL_OPTION_SELECTOR)
+            count = await options.count()
+            for idx in range(min(count, 10)):
+                try:
+                    if await options.nth(idx).is_visible():
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        return False
+
+    async def _wait_for_glm_model_dropdown_closed(self, timeout_ms: int | None = None) -> bool:
+        timeout = int(timeout_ms or self._ui_timeout)
+        deadline = time.time() + max(0.0, float(timeout) / 1000.0)
+
+        while True:
+            if not await self._is_glm_model_dropdown_open():
+                return True
+            if time.time() >= deadline:
+                return False
+            await asyncio.sleep(0.1)
+
     async def _close_glm_model_dropdown(self) -> None:
         if not self.page:
             return
+
+        if not await self._is_glm_model_dropdown_open():
+            return
+
+        try:
+            await self.page.keyboard.press("Escape")
+            if await self._wait_for_glm_model_dropdown_closed(timeout_ms=self._ui_timeout):
+                return
+        except Exception:
+            pass
 
         button = self.page.locator(self.MODEL_SELECTOR_BUTTON_SELECTOR)
         if await button.count() == 0:
@@ -530,7 +614,7 @@ class GLMDriver(BaseDriver):
                 return
 
         try:
-            await self.page.wait_for_selector(self.MODEL_DROPDOWN_SELECTOR, timeout=self._ui_timeout, state="hidden")
+            await self._wait_for_glm_model_dropdown_closed(timeout_ms=self._ui_timeout)
         except Exception:
             return
 
@@ -573,14 +657,16 @@ class GLMDriver(BaseDriver):
             await self._expand_collapsible_section()
 
         option = self.page.locator(
-            f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value='{safe_value}']"
+            f"button[aria-label='model-item'][data-value='{safe_value}'], "
+            f"div[role='menu'] button[data-value='{safe_value}']"
         )
         if await option.count() == 0:
             option = self.page.locator(f"button[data-value='{safe_value}']")
         if await option.count() == 0 and friendly_name not in self.MODELS_IN_COLLAPSIBLE:
             await self._expand_collapsible_section()
             option = self.page.locator(
-                f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value='{safe_value}']"
+                f"button[aria-label='model-item'][data-value='{safe_value}'], "
+                f"div[role='menu'] button[data-value='{safe_value}']"
             )
             if await option.count() == 0:
                 option = self.page.locator(f"button[data-value='{safe_value}']")
@@ -609,7 +695,7 @@ class GLMDriver(BaseDriver):
         if not self.page:
             return None
 
-        options = self.page.locator(f"{self.MODEL_DROPDOWN_SELECTOR} button[data-value]")
+        options = self.page.locator(self.MODEL_OPTION_SELECTOR)
         if await options.count() == 0:
             options = self.page.locator("button[data-value]")
 
@@ -1638,6 +1724,8 @@ class GLMDriver(BaseDriver):
         if not self.page:
             return
 
+        await self._close_glm_model_dropdown()
+
         button = await self._find_deepthink_button()
         if not button:
             Logger.warning("GLM Chat: Deep Think button not found.")
@@ -1660,6 +1748,8 @@ class GLMDriver(BaseDriver):
     async def set_search_state(self, state: bool) -> None:
         if not self.page:
             return
+
+        await self._close_glm_model_dropdown()
 
         button = await self._find_search_button()
         if not button:
@@ -1686,6 +1776,8 @@ class GLMDriver(BaseDriver):
         """Find the Advanced Search switch that appears while Search is hovered."""
         if not self.page:
             return None
+
+        await self._close_glm_model_dropdown()
 
         button = search_button or await self._find_search_button()
         if not button:
@@ -1805,6 +1897,8 @@ class GLMDriver(BaseDriver):
     async def set_tools_state(self, state: bool) -> None:
         if not self.page:
             return
+
+        await self._close_glm_model_dropdown()
 
         supported = self._glm_tools_supported_for_model(self._get_configured_glm_model_friendly())
         wanted = bool(state) and supported
@@ -1999,6 +2093,8 @@ class GLMDriver(BaseDriver):
     ) -> None:
         if not self.page:
             return
+
+        await self._close_glm_model_dropdown()
 
         send_button = self.page.locator("button#send-message-button")
         if await send_button.count() == 0:
