@@ -117,8 +117,8 @@ IntenseRP accepts either top-level `reasoning_effort` or nested `reasoning.effor
 
 When this is enabled, use **Reasoning Effort Providers** to choose which providers honor the request field. For selected providers, the request's effort takes priority over the reasoning part of the `model` ID. Providers left unchecked ignore `reasoning_effort` and keep using the model ID suffix, Provider Behavior settings, or loadout values.
 
-!!! tip "Recommend to leave only AIStudio enabled"
-     AI Studio is the only provider so far with a built-in reasoning effort parameter, so it benefits the most from this setting. For other providers, the API effort is just a toggle that turns reasoning on or off based on the value sent.
+!!! tip "AI Studio and GLM-5.2 benefit most here"
+     AI Studio has a built-in Thinking Level control, and GLM-5.2 has a Deep Think effort menu. For most other providers, the API effort is just a toggle that turns reasoning on or off based on the value sent.
 
 For most providers, this is mapped to the existing on/off reasoning controls:
 
@@ -128,6 +128,8 @@ For most providers, this is mapped to the existing on/off reasoning controls:
 | `medium`, `high`, `max`, `xhigh`, and similar higher values | Reasoning on |
 
 Google AI Studio is more granular: `minimum`/`minimal`, `low`, `medium`, and `high` map to AI Studio's Thinking Level controls instead. Very high values like `max` and `xhigh` are rounded to `High`.
+
+GLM-5.2 is the GLM special case: `medium` and `high` select **High**, while `max` and `xhigh` select **Max**. Disabled and low-effort values still turn Deep Think off.
 
 !!! warning "Gemini 2.5 in AI Studio"
     Gemini 2.5 models are paid in Google AI Studio now, so IntenseRP rejects AI Studio requests that resolve to Gemini 2.5 unless **Assume Paid Model Access** is enabled for the active AI Studio account.

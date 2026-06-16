@@ -150,8 +150,8 @@ Top-level `reasoning_effort` wins if both are present.
 
 When this compatibility setting is enabled, **Reasoning Effort Providers** controls where it applies. For selected providers, the resolved effort takes priority over the reasoning part of the `model` ID for that request. Providers left unchecked ignore the request field and keep using the model ID suffix, Provider Behavior settings, or loadout values.
 
-!!! tip "AI Studio benefits most here"
-     AI Studio is the only provider so far with a built-in reasoning effort parameter, so it benefits the most from this setting. For other providers, the API effort is just a toggle that turns reasoning on or off based on the value sent.
+!!! tip "AI Studio and GLM-5.2 benefit most here"
+     AI Studio has a built-in Thinking Level control, and GLM-5.2 has a Deep Think effort menu. For most other providers, the API effort is just a toggle that turns reasoning on or off based on the value sent.
 
 For most providers, effort values are simplified into the existing reasoning toggle:
 
@@ -161,6 +161,8 @@ For most providers, effort values are simplified into the existing reasoning tog
 | `medium`, `high`, `max`, `xhigh`, and similar higher values | Forces reasoner/on mode |
 
 For Google AI Studio, explicit efforts are mapped to Thinking Level instead: `minimum`/`minimal` -> `Minimal`, `low` -> `Low`, `medium` -> `Medium`, and `high`/`max`/`xhigh` -> `High`. If no effort is sent, IntenseRP still treats that as chat/off mode because clients like SillyTavern use "Auto" by omitting the field.
+
+For GLM-5.2, enabled efforts also select the Deep Think effort menu: `medium`/`high` -> `High`, and `max`/`xhigh` -> `Max`. Disabled and low-effort values still force Deep Think off.
 
 !!! note "AI Studio rounding"
     AI Studio models don't expose the same controls. IntenseRP may round to the closest available Thinking Level. The old Gemini 2.5 manual thinking-budget mappings are still kept in the driver, but requests that resolve to Gemini 2.5 are rejected because those models have become paid in AI Studio.

@@ -446,8 +446,8 @@ SCHEMA = [
                 key="model",
                 label="Model",
                 type=SettingType.DROPDOWN,
-                default="GLM-5",
-                options=["GLM-5.1", "GLM-5-Turbo", "GLM-5V-Turbo", "GLM-5", "GLM-4.7"],
+                default="GLM-5.2",
+                options=["GLM-5.2", "GLM-5.1", "GLM-5-Turbo", "GLM-5V-Turbo", "GLM-4.7"],
                 tooltip="Select which GLM model to use in the web UI. Not related to the API model IDs.",
                 docs_path=DOCS_GLM,
                 docs_anchor="modes-model-ids",
@@ -460,6 +460,17 @@ SCHEMA = [
                 tooltip="Toggle the Deep Think button on the GLM interface.",
                 docs_path=DOCS_GLM,
                 docs_anchor="enable-deep-think",
+            ),
+            SettingField(
+                key="deepthink_effort",
+                label="Deep Think Effort",
+                type=SettingType.DROPDOWN,
+                default="Max",
+                options=["High", "Max"],
+                tooltip="Select GLM-5.2's Deep Think effort when Deep Think is enabled.",
+                visible_depends="glm_behavior.model==GLM-5.2&&glm_behavior.enable_deepthink",
+                docs_path=DOCS_GLM,
+                docs_anchor="deep-think-effort",
             ),
             SettingField(
                 key="send_deepthink",
@@ -2586,7 +2597,8 @@ SCHEMA = [
                     "`reasoning.effort`) to control provider reasoning for that request. "
                     "No effort, Minimum, and Low map to chat/off for most providers; "
                     "Medium and above map to reasoning/on. Google AI Studio maps efforts "
-                    "to its Thinking Level controls."
+                    "to its Thinking Level controls, and GLM-5.2 can map High/Max efforts "
+                    "to its Deep Think effort menu."
                 ),
                 front_tooltip="Allow API requests to set supported providers' reasoning level.",
                 docs_path=DOCS_NETWORK,
@@ -2962,7 +2974,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "glm_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_advanced_search", "enable_tools"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "deepthink_effort", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_advanced_search", "enable_tools"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "repetition_buster", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "completion_request_timeout", "first_chunk_timeout", "refresh_after_generation"]},

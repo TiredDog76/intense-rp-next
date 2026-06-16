@@ -1063,6 +1063,14 @@ class API:
             return "high"
         return effort
 
+    @staticmethod
+    def _glm_deepthink_effort_for_reasoning_effort(effort: str) -> str:
+        if effort in REASONING_EFFORT_DISABLED_VALUES:
+            return ""
+        if effort in {"max", "maximum", "xhigh", "x-high", "extra-high", "extra-highest"}:
+            return "max"
+        return "high"
+
     @classmethod
     def _huggingchat_reasoning_effort_enables_reasoning(cls, effort: str) -> bool:
         return cls._huggingchat_effort_for_reasoning_effort(effort) not in {"", "default"}
@@ -1102,10 +1110,18 @@ class API:
         request: QueuedRequest,
         provider: DriverProvider,
     ) -> dict[str, Any]:
-        if provider != DriverProvider.HUGGINGCHAT:
-            return {}
-
         overrides: dict[str, Any] = {}
+        if provider == DriverProvider.GLM_CHAT:
+            if self._provider_accepts_api_reasoning_effort(provider):
+                effort = _normalize_reasoning_effort(_extract_reasoning_effort_value(request))
+                deepthink_effort = self._glm_deepthink_effort_for_reasoning_effort(effort)
+                if deepthink_effort:
+                    overrides["deepthink_effort"] = deepthink_effort
+            return overrides
+
+        if provider != DriverProvider.HUGGINGCHAT:
+            return overrides
+
         for attr_name in (
             "inference_provider",
             "huggingchat_inference_provider",
