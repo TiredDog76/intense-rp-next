@@ -1,8 +1,8 @@
 {
-  "version": "2.8.8-rev1",
+  "version": "2.8.8-rev2",
   "aua": true,
   "severity": 3,
   "pu": "discord",
   "pufref": "none",
-  "summary": "GLM fixes and Linux auto-update improvements"
+  "summary": "full support for GLM-5.2"
 }
