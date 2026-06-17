@@ -49,6 +49,9 @@ If you ask for 3 DeepSeek instances but only have 2 usable DeepSeek accounts sav
 !!! tip "Account selection"
     If **Prefer the Least Used Account** is enabled, startup account selection favors saved accounts with older last-used timestamps before newer ones.
 
+!!! note "DeepSeek Conservative Mode"
+    **Provider Behavior** -> **DeepSeek** -> **Conservative Mode** keeps DeepSeek to a single non-parallel lane. If DeepSeek is selected here, that setting wins when the runtime starts.
+
 ---
 
 ## :material-rocket-launch-outline: Startup

@@ -2,6 +2,7 @@ import codecs
 import time
 import json
 import asyncio
+import random
 import re
 import httpx
 from typing import List, Union, Any, Dict, Callable, Optional
@@ -99,6 +100,49 @@ class DeepSeekDriver(BaseDriver):
         self._stream_active_fragment_type: Optional[str] = None
         self._stream_active_fragment_base_path: Optional[str] = None
         self._stream_provider_abort_requested = False
+
+    def _conservative_mode_enabled(self) -> bool:
+        """Return whether DeepSeek should use slower, quieter UI pacing."""
+        try:
+            return bool(
+                self.config_manager.get_setting(
+                    "deepseek_behavior",
+                    "conservative_mode",
+                )
+            )
+        except Exception:
+            return False
+
+    async def _conservative_action_pause(
+        self,
+        min_s: float = 0.35,
+        max_s: float = 1.15,
+    ) -> None:
+        if not self._conservative_mode_enabled():
+            return
+
+        low = max(0.0, float(min_s))
+        high = max(low, float(max_s))
+        await asyncio.sleep(random.uniform(low, high))
+
+    async def _click_with_conservative_pacing(self, locator: Any, **kwargs) -> None:
+        await self._conservative_action_pause()
+        try:
+            await locator.click(**kwargs)
+        finally:
+            await self._conservative_action_pause(0.25, 0.85)
+
+    async def _fill_with_conservative_pacing(
+        self,
+        locator: Any,
+        value: str,
+        **kwargs,
+    ) -> None:
+        await self._conservative_action_pause(0.25, 0.80)
+        try:
+            await locator.fill(value, **kwargs)
+        finally:
+            await self._conservative_action_pause(0.30, 0.95)
 
     def get_start_url(self) -> str:
         return "https://chat.deepseek.com/"
@@ -292,14 +336,14 @@ class DeepSeekDriver(BaseDriver):
                     )
                     if await email_input.count() == 0:
                         email_input = form_root.first.locator("input[type='text']")
-                    await email_input.first.fill(email)
+                    await self._fill_with_conservative_pacing(email_input.first, email)
                     
                     # Fill password
                     Logger.debug("Entering password...")
                     password_input = form_root.first.locator(
                         "input[autocomplete='current-password'], input[type='password']"
                     )
-                    await password_input.first.fill(password)
+                    await self._fill_with_conservative_pacing(password_input.first, password)
                     
                     # Click login button
                     Logger.debug("Clicking login button...")
@@ -308,7 +352,7 @@ class DeepSeekDriver(BaseDriver):
                         login_button = form_root.first.locator("button.ds-basic-button--primary")
                     if await login_button.count() == 0:
                         login_button = self.page.locator("button", has_text="Log in")
-                    await login_button.first.click()
+                    await self._click_with_conservative_pacing(login_button.first)
                     
                     # Wait for navigation back to the chat page
                     await self.page.wait_for_selector("textarea", timeout=60000)
@@ -1603,7 +1647,7 @@ class DeepSeekDriver(BaseDriver):
         
         if is_selected != state:
             Logger.debug(f"Toggling DeepThink to {state}...")
-            await button.first.click()
+            await self._click_with_conservative_pacing(button.first)
         else:
             Logger.debug(f"DeepThink is already {state}.")
 
@@ -1644,7 +1688,7 @@ class DeepSeekDriver(BaseDriver):
         
         if is_selected != state:
             Logger.debug(f"Toggling Search to {state}...")
-            await button.click()
+            await self._click_with_conservative_pacing(button)
         else:
             Logger.debug(f"Search is already {state}.")
 
@@ -1782,7 +1826,7 @@ class DeepSeekDriver(BaseDriver):
                 return True, f"{label}: already selected"
 
             Logger.debug(f"Switching DeepSeek model type to '{desired_type}' via {label}...")
-            await option.first.click(timeout=2000)
+            await self._click_with_conservative_pacing(option.first, timeout=2000)
         except Exception as exc:
             reason = self._format_picker_error(exc)
             return False, f"{label}: {display_name} click failed ({reason})"
@@ -1890,7 +1934,7 @@ class DeepSeekDriver(BaseDriver):
                 return
 
             try:
-                await open_btn.click(timeout=2000)
+                await self._click_with_conservative_pacing(open_btn, timeout=2000)
             except Exception as e:
                 Logger.warning(f"Failed to click open sidebar button: {e}")
                 return
@@ -1907,7 +1951,7 @@ class DeepSeekDriver(BaseDriver):
                 return
 
             try:
-                await close_btn.click(timeout=2000)
+                await self._click_with_conservative_pacing(close_btn, timeout=2000)
             except Exception as e:
                 Logger.warning(f"Failed to click close sidebar button: {e}")
                 return
@@ -1954,14 +1998,14 @@ class DeepSeekDriver(BaseDriver):
                 is_disabled = (await btn.first.get_attribute("aria-disabled")) == "true"
                 if not is_disabled:
                     Logger.debug("Clicking New Chat (Sidebar)...")
-                    await btn.first.click(timeout=2000)
+                    await self._click_with_conservative_pacing(btn.first, timeout=2000)
                     return True
 
             # Fallback: locate by visible text
             btn = self.page.locator("div[tabindex='0']", has_text="New chat")
             if await btn.count() > 0 and await btn.first.is_visible():
                 Logger.debug("Clicking New Chat (Sidebar text)...")
-                await btn.first.click(timeout=2000)
+                await self._click_with_conservative_pacing(btn.first, timeout=2000)
                 return True
 
             return False
@@ -1972,7 +2016,7 @@ class DeepSeekDriver(BaseDriver):
                 is_disabled = (await btn.first.get_attribute("aria-disabled")) == "true"
                 if not is_disabled:
                     Logger.debug("Clicking New Chat (Quick action)...")
-                    await btn.first.click(timeout=2000)
+                    await self._click_with_conservative_pacing(btn.first, timeout=2000)
                     return True
             return False
 
@@ -2053,7 +2097,7 @@ class DeepSeekDriver(BaseDriver):
                 Logger.warning("Message textarea not found.")
                 return
         Logger.debug(f"Entering message: {message[:50]}..." if len(message) > 50 else f"Entering message: {message}")
-        await textarea.first.fill(message)
+        await self._fill_with_conservative_pacing(textarea.first, message)
 
     async def _send_message(self, timeout: int = None):
         """
@@ -2076,7 +2120,7 @@ class DeepSeekDriver(BaseDriver):
             
             if not await self._is_deepseek_control_disabled(send_button):
                 Logger.debug("Clicking send button...")
-                await send_button.click()
+                await self._click_with_conservative_pacing(send_button)
             else:
                 Logger.warning("Send button is disabled. Cannot send message.")
         else:
@@ -2139,7 +2183,7 @@ class DeepSeekDriver(BaseDriver):
                         return False
 
                     Logger.debug("Clicking regenerate button...")
-                    await regen_button.click()
+                    await self._click_with_conservative_pacing(regen_button)
                     return True
 
             Logger.warning("Regenerate button not found.")
@@ -2180,7 +2224,7 @@ class DeepSeekDriver(BaseDriver):
                 return False
 
             Logger.debug("Clicking regenerate button from DeepSeek action bar...")
-            await regen_button.click()
+            await self._click_with_conservative_pacing(regen_button)
             return True
 
         return None

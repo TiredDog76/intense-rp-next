@@ -109,6 +109,14 @@ def get_parallel_launch_batch_size(config_manager: Any) -> int:
     return max(1, min(MAX_FULL_PARALLEL_PROVIDER_INSTANCES, count))
 
 
+def is_deepseek_conservative_mode_enabled(config_manager: Any) -> bool:
+    return _get_effective_bool_setting(
+        config_manager,
+        "deepseek_behavior",
+        "conservative_mode",
+    )
+
+
 def is_full_parallelization_feature_enabled(config_manager: Any) -> bool:
     return get_parallelization_mode(config_manager) == PARALLEL_MODE_FULL_PARALLEL_LANES
 
@@ -163,9 +171,14 @@ def get_parallel_selected_providers(config_manager: Any) -> list[DriverProvider]
     current_provider = get_current_provider(config_manager)
     selected, _counts = get_parallel_lane_settings(config_manager)
     resolved: list[DriverProvider] = [current_provider]
+    deepseek_conservative = is_deepseek_conservative_mode_enabled(config_manager)
+    if deepseek_conservative and current_provider == DriverProvider.DEEPSEEK:
+        return resolved
 
     for provider in selected:
         if provider == current_provider:
+            continue
+        if deepseek_conservative and provider == DriverProvider.DEEPSEEK:
             continue
         if is_provider_locked(provider, config_manager):
             continue
@@ -175,6 +188,12 @@ def get_parallel_selected_providers(config_manager: Any) -> list[DriverProvider]
 
 
 def get_parallel_provider_instance_count(config_manager: Any, provider: DriverProvider) -> int:
+    if (
+        provider == DriverProvider.DEEPSEEK
+        and is_deepseek_conservative_mode_enabled(config_manager)
+    ):
+        return 1
+
     if not is_full_parallelization_active(config_manager):
         return 1
 
