@@ -424,6 +424,151 @@ class GLMDriver(BaseDriver):
             await asyncio.sleep(0.1)
         return clicked_count
 
+    async def _read_glm_pointer_events_state(self) -> dict[str, Any]:
+        """Return whether GLM's app shell is currently accepting pointer events."""
+        if not self.page:
+            return {"ready": True}
+
+        try:
+            state = await self.page.evaluate(
+                """() => {
+                    const normalize = (value) => String(value || '')
+                        .replace(/\\s+/g, ' ')
+                        .trim();
+
+                    const visibleOpenControls = Array.from(
+                        document.querySelectorAll('[data-state="open"], [aria-expanded="true"]')
+                    ).filter((element) => {
+                        const style = window.getComputedStyle(element);
+                        const rect = element.getBoundingClientRect();
+                        return (
+                            style.display !== 'none' &&
+                            style.visibility !== 'hidden' &&
+                            rect.width > 0 &&
+                            rect.height > 0
+                        );
+                    }).slice(0, 8).map((element) => ({
+                        tag: normalize(element.tagName).toLowerCase(),
+                        id: normalize(element.id),
+                        text: normalize(element.textContent).slice(0, 80),
+                        dataState: normalize(element.getAttribute('data-state')),
+                        ariaExpanded: normalize(element.getAttribute('aria-expanded')),
+                    }));
+
+                    const bodyStyle = document.body
+                        ? window.getComputedStyle(document.body)
+                        : null;
+                    const htmlStyle = document.documentElement
+                        ? window.getComputedStyle(document.documentElement)
+                        : null;
+                    const bodyPointerEvents = normalize(bodyStyle?.pointerEvents || '');
+                    const htmlPointerEvents = normalize(htmlStyle?.pointerEvents || '');
+                    return {
+                        bodyPointerEvents,
+                        htmlPointerEvents,
+                        openControls: visibleOpenControls,
+                        ready: bodyPointerEvents.toLowerCase() !== 'none',
+                    };
+                }"""
+            )
+        except Exception as e:
+            Logger.debug(f"GLM Chat: failed to read pointer-events state: {e}")
+            return {"ready": True}
+
+        return state if isinstance(state, dict) else {"ready": True}
+
+    async def _ensure_glm_pointer_events_ready(
+        self,
+        *,
+        context: str = "GLM Chat",
+        timeout_ms: int | None = None,
+        send_escape: bool = True,
+    ) -> bool:
+        """Close stale popovers until GLM restores normal click hit-testing."""
+        if not self.page:
+            return False
+
+        timeout = int(timeout_ms or self._ui_timeout)
+        deadline = time.time() + max(0.0, float(timeout) / 1000.0)
+        last_state: dict[str, Any] = {}
+        last_escape_at = 0.0
+
+        while True:
+            last_state = await self._read_glm_pointer_events_state()
+            if last_state.get("ready"):
+                return True
+
+            now = time.time()
+            if send_escape and (last_escape_at <= 0.0 or (now - last_escape_at) >= 0.35):
+                try:
+                    await self.page.keyboard.press("Escape")
+                except Exception as e:
+                    Logger.debug(f"{context}: failed to press Escape while unblocking UI: {e}")
+                last_escape_at = now
+
+            if now >= deadline:
+                Logger.debug(
+                    f"{context}: UI still has body pointer-events='{last_state.get('bodyPointerEvents', '')}' "
+                    f"after {timeout}ms; open controls={last_state.get('openControls', [])}"
+                )
+                return False
+
+            await asyncio.sleep(0.1)
+
+    async def _click_glm_control(
+        self,
+        target: Any,
+        *,
+        label: str,
+        timeout_ms: int | None = None,
+        ensure_unblocked: bool = True,
+        evaluate_fallback: bool = True,
+    ) -> bool:
+        """Click a GLM control with fallbacks for transient overlay hit-test failures."""
+        if not self.page or target is None:
+            return False
+
+        timeout = int(timeout_ms or self._ui_timeout)
+        if ensure_unblocked:
+            await self._ensure_glm_pointer_events_ready(
+                context=f"GLM Chat: before clicking {label}",
+                timeout_ms=min(timeout, 1000),
+            )
+
+        try:
+            await target.scroll_into_view_if_needed(timeout=timeout)
+        except Exception:
+            pass
+
+        try:
+            await target.click(timeout=timeout)
+            return True
+        except Exception as e:
+            Logger.debug(f"GLM Chat: {label} click failed, trying fallbacks: {e}")
+
+        try:
+            await target.click(timeout=timeout, force=True)
+            return True
+        except Exception as e:
+            Logger.debug(f"GLM Chat: {label} forced click failed: {e}")
+
+        if not evaluate_fallback:
+            return False
+
+        try:
+            return bool(
+                await target.evaluate(
+                    """(element) => {
+                        if (!element) return false;
+                        element.click();
+                        return true;
+                    }"""
+                )
+            )
+        except Exception as e:
+            Logger.debug(f"GLM Chat: {label} DOM click fallback failed: {e}")
+            return False
+
     async def _read_glm_model_selector_state(self) -> dict[str, Any]:
         if not self.page:
             return {"exists": False, "ready": False}
@@ -668,11 +813,19 @@ class GLMDriver(BaseDriver):
             return
 
         if not await self._is_glm_model_dropdown_open():
+            await self._ensure_glm_pointer_events_ready(
+                context="GLM Chat: after model dropdown check",
+                timeout_ms=min(self._ui_timeout, 1000),
+            )
             return
 
         try:
             await self.page.keyboard.press("Escape")
             if await self._wait_for_glm_model_dropdown_closed(timeout_ms=self._ui_timeout):
+                await self._ensure_glm_pointer_events_ready(
+                    context="GLM Chat: after closing model dropdown",
+                    timeout_ms=self._ui_timeout,
+                )
                 return
         except Exception:
             pass
@@ -699,6 +852,11 @@ class GLMDriver(BaseDriver):
             await self._wait_for_glm_model_dropdown_closed(timeout_ms=self._ui_timeout)
         except Exception:
             return
+
+        await self._ensure_glm_pointer_events_ready(
+            context="GLM Chat: after closing model dropdown",
+            timeout_ms=self._ui_timeout,
+        )
 
     async def _expand_collapsible_section(self) -> bool:
         """Expand the model dropdown's More Models section when it is collapsed."""
@@ -2026,6 +2184,10 @@ class GLMDriver(BaseDriver):
             expanded = ""
 
         if expanded != "true":
+            await self._ensure_glm_pointer_events_ready(
+                context="GLM Chat: before opening GLM-5.2 Deep Think menu",
+                timeout_ms=min(self._ui_timeout, 1000),
+            )
             try:
                 await trigger.click(timeout=self._ui_timeout)
             except Exception as e:
@@ -2050,6 +2212,33 @@ class GLMDriver(BaseDriver):
             await self.page.keyboard.press("Escape")
         except Exception:
             pass
+
+        if await self._ensure_glm_pointer_events_ready(
+            context="GLM Chat: closing GLM-5.2 Deep Think menu",
+            timeout_ms=self._ui_timeout,
+        ):
+            return
+
+        trigger = await self._find_glm_52_deepthink_trigger()
+        if not trigger:
+            return
+
+        try:
+            await trigger.evaluate(
+                """(element) => {
+                    if (!element) return;
+                    if (String(element.getAttribute('aria-expanded') || '').toLowerCase() === 'true') {
+                        element.click();
+                    }
+                }"""
+            )
+        except Exception as e:
+            Logger.debug(f"GLM Chat: DOM close for GLM-5.2 Deep Think menu failed: {e}")
+
+        await self._ensure_glm_pointer_events_ready(
+            context="GLM Chat: after DOM-closing GLM-5.2 Deep Think menu",
+            timeout_ms=self._ui_timeout,
+        )
 
     async def _read_glm_52_deepthink_switch_enabled(self) -> bool:
         if not self.page:
@@ -2195,10 +2384,8 @@ class GLMDriver(BaseDriver):
         if is_enabled == state:
             return
 
-        try:
-            await button.click()
-        except Exception as e:
-            Logger.warning(f"GLM Chat: failed to toggle Deep Think: {e}")
+        if not await self._click_glm_control(button, label="Deep Think"):
+            Logger.warning("GLM Chat: failed to toggle Deep Think.")
 
     async def set_search_state(self, state: bool) -> None:
         if not self.page:
@@ -2223,10 +2410,8 @@ class GLMDriver(BaseDriver):
         if is_enabled == state:
             return
 
-        try:
-            await button.click(timeout=self._ui_timeout)
-        except Exception as e:
-            Logger.warning(f"GLM Chat: failed to toggle Search: {e}")
+        if not await self._click_glm_control(button, label="Search"):
+            Logger.warning("GLM Chat: failed to toggle Search.")
 
     async def _find_advanced_search_switch(self, search_button: Any | None = None):
         """Find the Advanced Search switch that appears while Search is hovered."""
@@ -2234,6 +2419,10 @@ class GLMDriver(BaseDriver):
             return None
 
         await self._close_glm_model_dropdown()
+        await self._ensure_glm_pointer_events_ready(
+            context="GLM Chat: before hovering Search for Advanced Search",
+            timeout_ms=min(self._ui_timeout, 1000),
+        )
 
         button = search_button or await self._find_search_button()
         if not button:
@@ -2411,10 +2600,8 @@ class GLMDriver(BaseDriver):
         if is_enabled == wanted:
             return
 
-        try:
-            await button.click(timeout=self._ui_timeout)
-        except Exception as e:
-            Logger.warning(f"GLM Chat: failed to toggle Tools: {e}")
+        if not await self._click_glm_control(button, label="Tools"):
+            Logger.warning("GLM Chat: failed to toggle Tools.")
 
     async def upload_file(self, file_spec: Any) -> None:
         await self._upload_file(file_spec)
@@ -2625,10 +2812,13 @@ class GLMDriver(BaseDriver):
                 pass
 
         for attempt in range(max_retries):
-            try:
-                await send_button.first.click()
-            except Exception as e:
-                Logger.debug(f"GLM Chat: send button click failed: {e}")
+            clicked = await self._click_glm_control(
+                send_button.first,
+                label="send button",
+                timeout_ms=max(int(getattr(self, "_ui_timeout", 3000)), 3000),
+            )
+            if not clicked:
+                Logger.debug("GLM Chat: send button click failed.")
                 await asyncio.sleep(0.4)
                 continue
 
