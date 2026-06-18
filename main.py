@@ -396,13 +396,21 @@ class MainWindow(QMainWindow):
     DEFAULT_WINDOW_WIDTH = 450
     DEFAULT_WINDOW_HEIGHT = 520
 
-    def __init__(self, *, fake_update: bool = False, fake_pufref: str | None = None):
+    def __init__(
+        self,
+        *,
+        fake_update: bool = False,
+        fake_pufref: str | None = None,
+        extra_debug_logs_cli: bool = False,
+    ):
         super().__init__()
         self.setWindowTitle("IntenseRP Next")
         self.resize(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT)
         self.setStyleSheet(f"background-color: {BrandColors.WINDOW_BG}; color: {BrandColors.TEXT_PRIMARY};")
 
         self.config_manager = ConfigManager()
+        self._extra_debug_logs_cli_enabled = bool(extra_debug_logs_cli)
+        self._sync_extra_debug_logs_setting()
         sync_animations_disabled_from_config(self.config_manager)
         self._queue_preview_min_width = 300
         self._queue_preview_handle_width = 12
@@ -1689,6 +1697,12 @@ class MainWindow(QMainWindow):
         # Defer until the UI loop is running
         QTimer.singleShot(0, show)
 
+    def _sync_extra_debug_logs_setting(self):
+        Logger.set_extra_debug_logs_enabled(
+            bool(self.config_manager.get_setting("diagnostics", "extra_debug_logs"))
+            or self._extra_debug_logs_cli_enabled
+        )
+
     def _setup_logging(self):
         """Setup logging (console and file) based on settings."""
         # Console window (separate from mini-console)
@@ -1723,6 +1737,7 @@ class MainWindow(QMainWindow):
         configure_internal_diagnostics_logging(self.config_manager)
         if not bool(self.config_manager.get_setting("diagnostics", "save_last_prompt")):
             clear_prompt_snapshots(self.config_manager.config_dir)
+        self._sync_extra_debug_logs_setting()
 
         # Logging levels
         stdout_lvl = self.config_manager.get_setting("system_settings", "stdout_log_level") or "Debug"
@@ -4100,7 +4115,11 @@ def main():
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    window = MainWindow(fake_update=fake_update, fake_pufref=fake_pufref)
+    window = MainWindow(
+        fake_update=fake_update,
+        fake_pufref=fake_pufref,
+        extra_debug_logs_cli=extra_debug_logs,
+    )
     window.show()
 
     def _request_quit() -> None:

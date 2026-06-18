@@ -1882,6 +1882,18 @@ SCHEMA = [
                 docs_path=DOCS_CONSOLE,
                 docs_anchor="file-logging",
             ),
+            SettingField(
+                key="extra_debug_logs",
+                label="Extra Debug Logs",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Reveal additional developer-focused debug messages. "
+                    "Mostly useful when troubleshooting tricky desktop or provider behavior."
+                ),
+                docs_path=DOCS_CONSOLE,
+                docs_anchor="extra-debug-logs",
+            ),
         ],
     ),
     SettingCategory(
@@ -2738,7 +2750,7 @@ SETTINGS_SECTIONS = [
         key="advanced",
         label="Advanced",
         icon="flask-conical.svg",
-        card_keys=["config_storage", "experimental_features"],
+        card_keys=["config_storage", "advanced_diagnostics", "experimental_features"],
     ),
 ]
 
@@ -2949,6 +2961,13 @@ SETTINGS_CARDS = {
         field_refs=[
             ("system_settings", "config_storage_location"),
             ("system_settings", "config_storage_custom_path"),
+        ],
+    ),
+    "advanced_diagnostics": SettingCard(
+        key="advanced_diagnostics",
+        title="Diagnostics",
+        field_refs=[
+            ("diagnostics", "extra_debug_logs"),
         ],
     ),
     "experimental_features": SettingCard(
