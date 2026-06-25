@@ -29,6 +29,18 @@ Authorization: Bearer YOUR_KEY
 
 ---
 
+## :material-flask: Dry Run Mode
+
+**Settings -> API Server -> Dry Run -> Dry Run Mode** starts the API server without launching a provider browser. The display window opens immediately and waits for an incoming request.
+
+When a chat or text completion request arrives, IntenseRP captures the raw JSON body, renders the formatted prompt through the same formatting pipeline used for real provider sends, updates the display, and returns HTTP `418 I'm a teapot`. No request is queued and no provider page is touched.
+
+Dry Run Mode applies only when services start. If a browser is already running, stop services and start again with Dry Run Mode enabled.
+
+All parallel runtime paths are bypassed in this mode, meaning you can't submit multiple requests simultaneously, and each new captured request simply replaces the previous one in the display.
+
+---
+
 ## :material-robot: Models and what they mean
 
 The API reports provider-specific "model" IDs, but they are best thought of as **behavior presets**.

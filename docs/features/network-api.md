@@ -107,6 +107,29 @@ Disable this if you'd rather not have the address logged on every start.
 
 ---
 
+## :material-flask: Dry Run Mode { #dry-run-mode }
+
+Dry Run Mode starts the API server without opening a provider browser. It's for checking what your client is actually sending before IntenseRP tries to drive a provider page.
+
+:material-arrow-right: **Settings** → **API Server** → **Dry Run** → **Dry Run Mode**
+
+When you start services with this enabled, IntenseRP opens the **Dry Run Display** right away. It waits for a request, then shows:
+
+- The raw request JSON exactly as the client sent it
+- The formatted generation text produced by IntenseRP's normal formatting pipeline
+
+The request is not sent anywhere. Instead, the API returns HTTP `418 I'm a teapot` with a message saying Dry Run captured the request and it's inspectable in the display window. New incoming requests replace the current capture, and the copy buttons let you grab either the raw JSON or the formatted text.
+
+!!! note "Launch-time setting"
+    Dry Run Mode applies when services start. If a provider browser is already running, stop services first, then start again with Dry Run Mode enabled.
+
+!!! tip "Parallelization is ignored here"
+    Dry Run Mode always runs as a single API capture path. Providers in Parallel, concurrent request queues, and full parallel lanes are not launched or used.
+
+Closing the Dry Run Display also stops the API server, since there is no provider browser to keep alive.
+
+---
+
 ## :material-brain: API Reasoning Effort { #api-reasoning-effort }
 
 OpenAI-compatible clients can send a per-request reasoning effort. This is disabled by default:

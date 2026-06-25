@@ -2595,6 +2595,20 @@ SCHEMA = [
                 docs_anchor="show-ip",
             ),
             SettingField(
+                key="dry_run_mode",
+                label="Dry Run Mode",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Start only the API server and capture incoming request payloads instead "
+                    "of launching a provider browser. This applies when services start; stop "
+                    "the current browser/API first if you are switching into dry run."
+                ),
+                front_tooltip="Capture request structure without launching a provider browser.",
+                docs_path=DOCS_NETWORK,
+                docs_anchor="dry-run-mode",
+            ),
+            SettingField(
                 key="enable_umm",
                 label="Use Universal Model Names",
                 type=SettingType.BOOLEAN,
@@ -2717,6 +2731,7 @@ SETTINGS_SECTIONS = [
         icon="share-2.svg",
         card_keys=[
             "server_access",
+            "server_dry_run",
             "server_model_ids",
             "server_request_controls",
             "server_security",
@@ -2805,6 +2820,15 @@ SETTINGS_CARDS = {
             ("network_settings", "available_on_lan"),
             ("network_settings", "show_ip"),
         ],
+    ),
+    "server_dry_run": SettingCard(
+        key="server_dry_run",
+        title="Dry Run",
+        description=(
+            "Inspect incoming request payloads and formatted prompts without sending "
+            "anything to a provider."
+        ),
+        field_refs=[("network_settings", "dry_run_mode")],
     ),
     "server_model_ids": SettingCard(
         key="server_model_ids",

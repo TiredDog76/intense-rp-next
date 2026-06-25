@@ -20,12 +20,13 @@ import qasync
 
 from drivers.factory import create_driver
 from drivers.providers import DriverProvider, is_provider_locked, provider_lock_reason, provider_options
-from api import API
+from api import API, DryRunCapture, DryRunDriver
 from config.manager import ConfigManager
 from config.loadouts import get_behavior_category_for_provider, get_loadout_field_defs
 from remote_control import RemoteControlActions
 from ui.windows.settings_window import SettingsWindow
 from ui.windows.console_window import ConsoleWindow
+from ui.windows.dry_run_window import DryRunWindow
 from ui.windows.help_window import HelpWindow
 from ui.windows.welcome_window import WelcomeWindow
 from ui.widgets.mini_console import MiniConsole
@@ -393,6 +394,7 @@ def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
 
 class MainWindow(QMainWindow):
     update_available_found = Signal(object)
+    dry_run_capture_received = Signal(object)
     DEFAULT_WINDOW_WIDTH = 450
     DEFAULT_WINDOW_HEIGHT = 520
 
@@ -610,6 +612,7 @@ class MainWindow(QMainWindow):
         self.settings_window = None
         self._settings_button_loading = False
         self.console_window = None
+        self.dry_run_window = None
         self.help_window = None
         self._welcome_window = None
         self._main_logging_enabled = True
@@ -628,6 +631,7 @@ class MainWindow(QMainWindow):
         # Always set the log callback for the mini-console
         Logger.set_console_callback(self._on_log_message)
         self.update_available_found.connect(self._show_update_available_dialog)
+        self.dry_run_capture_received.connect(self._on_dry_run_capture_received)
 
         self._tray_icon = None
         self._tray_menu = None
@@ -776,7 +780,7 @@ class MainWindow(QMainWindow):
 
     def _iter_tray_windows(self):
         windows = [self]
-        for attr in ("settings_window", "help_window", "console_window"):
+        for attr in ("settings_window", "help_window", "console_window", "dry_run_window"):
             win = getattr(self, attr, None)
             if win is not None:
                 windows.append(win)
@@ -2455,6 +2459,64 @@ class MainWindow(QMainWindow):
             port = 7777
         return f"Running (Port {port})"
 
+    def _dry_run_mode_enabled(self) -> bool:
+        try:
+            return bool(self.config_manager.get_setting("network_settings", "dry_run_mode"))
+        except Exception:
+            return False
+
+    def _dry_run_status_text(self, port: int | None = None) -> str:
+        if port is None:
+            port_setting = self.config_manager.get_setting("network_settings", "port")
+            try:
+                port = int(port_setting) if port_setting else 7777
+            except (TypeError, ValueError):
+                port = 7777
+        return f"Dry Run (Port {port})"
+
+    def _emit_dry_run_capture(self, capture: DryRunCapture) -> None:
+        self.dry_run_capture_received.emit(capture)
+
+    def _show_dry_run_window(self) -> None:
+        window = getattr(self, "dry_run_window", None)
+        if window is None:
+            window = DryRunWindow(None)
+            window.stop_requested.connect(self._on_dry_run_window_stop_requested)
+            self.dry_run_window = window
+
+        window.show_waiting()
+        window.present()
+
+    def _close_dry_run_window(self) -> None:
+        window = getattr(self, "dry_run_window", None)
+        if window is None:
+            return
+
+        try:
+            window.force_close()
+        except Exception:
+            try:
+                window.close()
+            except Exception:
+                pass
+        finally:
+            self.dry_run_window = None
+
+    def _on_dry_run_window_stop_requested(self) -> None:
+        if getattr(self, "_stop_task", None) is not None:
+            return
+        asyncio.create_task(self.stop_services())
+
+    def _on_dry_run_capture_received(self, capture: DryRunCapture) -> None:
+        window = getattr(self, "dry_run_window", None)
+        if window is None:
+            window = DryRunWindow(None)
+            window.stop_requested.connect(self._on_dry_run_window_stop_requested)
+            self.dry_run_window = window
+
+        window.set_capture(capture)
+        window.present()
+
     def _reset_start_controls_to_idle(self) -> None:
         self.start_button.setText("Start")
         self.start_button.apply_icon(IconType.START, BrandColors.TEXT_PRIMARY)
@@ -2813,7 +2875,10 @@ class MainWindow(QMainWindow):
         """Show or hide the discrete hotswap button based on setting + running state."""
         mode = self.config_manager.get_setting("application_settings", "hotswap_experience")
         running = self.start_button.text() == "Stop"
-        show = (mode == "Persistent Discrete") or ((mode == "Discrete") and running)
+        dry_run_active = isinstance(getattr(self, "driver", None), DryRunDriver)
+        show = (not dry_run_active) and (
+            (mode == "Persistent Discrete") or ((mode == "Discrete") and running)
+        )
 
         self.hotswap_button.setVisible(show)
         if show:
@@ -3536,6 +3601,63 @@ class MainWindow(QMainWindow):
                 self._update_tray_menu_state()
                 return
 
+            if self._dry_run_mode_enabled():
+                Logger.info("Dry Run Mode active: starting API server without launching a provider browser.")
+                self.driver = DryRunDriver(self.config_manager)
+
+                for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+                    logger = logging.getLogger(logger_name)
+                    logger.handlers = [logging.NullHandler()]
+                    logger.setLevel(logging.CRITICAL)
+                    logger.propagate = False
+                    logger.disabled = True
+
+                self.api = API(
+                    self.driver,
+                    dry_run=True,
+                    dry_run_capture_callback=self._emit_dry_run_capture,
+                )
+                self._set_queue_preview_api(self.api)
+
+                config = uvicorn.Config(
+                    app=self.api.app,
+                    host=host,
+                    port=port,
+                    log_level="critical",
+                    log_config=None,
+                    access_log=False,
+                )
+
+                self.server = uvicorn.Server(config)
+
+                self._update_status("Starting Dry Run API Server...", "info")
+                self.server_task = asyncio.create_task(self.server.serve())
+
+                self._show_dry_run_window()
+                self._update_status(self._dry_run_status_text(port), "running")
+
+                if self.config_manager.get_setting("network_settings", "show_ip"):
+                    addrs = [f"http://127.0.0.1:{port}"]
+                    if available_on_lan:
+                        try:
+                            hostname = socket.gethostname()
+                            for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+                                ip = info[4][0]
+                                if not ip.startswith("127."):
+                                    addrs.append(f"http://{ip}:{port}")
+                        except Exception:
+                            pass
+                    for addr in set(addrs):
+                        Logger.success(f"Dry run server running at {addr}")
+
+                self.start_button.setText("Stop")
+                self.start_button.apply_icon(IconType.STOP, BrandColors.TEXT_PRIMARY)
+                self.start_button.setEnabled(True)
+                self.start_button.set_chevron_visible(False)
+                self._sync_hotswap_button()
+                self._update_tray_menu_state()
+                return
+
             current_provider = get_current_provider(self.config_manager)
             if is_provider_locked(current_provider, self.config_manager):
                 self._show_provider_locked_notice(current_provider)
@@ -3834,6 +3956,8 @@ class MainWindow(QMainWindow):
                     Logger.error(f"Error closing driver: {e}")
                 finally:
                     self.driver = None
+
+            self._close_dry_run_window()
 
             if update_ui:
                 self._update_status("Stopped", "ready")
