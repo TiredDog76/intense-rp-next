@@ -13,7 +13,7 @@ This page covers the "maintenance" side of IntenseRP Next v2: where settings liv
 These controls are spread across a few of the newer Settings sections:
 
 - :material-arrow-right: **Settings** → **Provider and Login** → **Saved Sessions** (profiles + session cleanup)
-- :material-arrow-right: **Settings** → **Browser & Runtime** → **Browser Environment** (locale + optional timezone override)
+- :material-arrow-right: **Settings** → **Browser & Runtime** → **Browser Environment** (locale, optional timezone override, and browser proxy URL)
 - :material-arrow-right: **Settings** → **Browser & Runtime** → **Provider Stability** (provider locks + crash warnings)
 - :material-arrow-right: **Settings** → **Advanced** → **Config Storage** (config directory location)
 - :material-arrow-right: **Settings** → **Interface** → **Main Window** / **Updates** (queue panel, hotswap button, version checks)
@@ -34,7 +34,7 @@ When enabled, IntenseRP launches Chromium using a **persistent browser context**
 ```
 [config_dir]/playwright_profiles/accounts/<provider>/<identity>/
 ```
-The `<provider>` is one of `deepseek`, `glm_chat`, `moonshot_kimi`, `qwen_lm`, `perplexity`, `huggingchat`, or `aistudio`. The `<identity>` is either a hashed email/username hash (when an account is selected) or `manual` (when no account is selected).
+The `<provider>` is one of `deepseek`, `glm_chat`, `moonshot_kimi`, `qwenlm`, `perplexity`, `huggingchat`, `aistudio`, or `mimo`. The `<identity>` is either a hashed email/username hash (when an account is selected) or `manual` (when no account is selected).
 
 Next time you start the app, it loads that same profile, so you usually won't see a login page at all.
 
@@ -49,10 +49,11 @@ IntenseRP can now nudge provider pages toward a more predictable browser environ
 
 :material-arrow-right: **Settings** → **Browser & Runtime** → **Browser Environment**
 
-There are two knobs here:
+There are three knobs here:
 
 - **Preferred Browser Locale** defaults to **English (en-US)**. This uses Playwright's locale emulation, which affects things like `navigator.language`, the `Accept-Language` header, and locale-sensitive formatting.
 - **Browser Timezone** is optional and defaults to **System Default**. Right now the built-in override is **New York (`America/New_York`)**.
+- **Browser Proxy URL** is optional. It routes provider browser contexts through an HTTP, HTTPS, SOCKS4, or SOCKS5 proxy.
 
 This is intentionally a best-effort hint. Locale can help with providers that otherwise open in a non-English UI, especially on fresh sessions. IntenseRP requires the locale to be English for all drivers to work (because of some hooks we rely on), so this can be reasonable to set even if you don't care about the locale itself.
 
@@ -62,6 +63,9 @@ This is intentionally a best-effort hint. Locale can help with providers that ot
 
 !!! note "Practical recommendation"
     Keeping the locale on **English (en-US)** is pretty reasonable for IntenseRP, because **all** drivers currently expect English UI text anyway. The timezone override is more situational, so it's left off by default.
+
+!!! tip "MiMo geoblocking"
+    Xiaomi MiMo also has a provider-specific proxy setting under **Provider Behavior -> Xiaomi MiMo -> Proxy**. Use that if only MiMo needs a supported-region proxy.
 
 ---
 
@@ -188,7 +192,7 @@ During migration, IntenseRP will:
 
 ---
 
-## :material-content-save: Backup & Restore
+## :material-content-save: Backup & Restore { #backup--restore }
 
 IntenseRP Next v2 includes a built-in backup/import tool that packages your active config directory into a `.zip`.
 

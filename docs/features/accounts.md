@@ -74,7 +74,7 @@ Under the hood, accounts are used by the drivers at login time, and by the reque
 
 ## :material-account-switch: How account selection works
 
-Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio).
+Accounts are stored per provider (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio / Xiaomi MiMo).
 
 When **Sign In Automatically** is enabled, IntenseRP selects an account on driver start and logs in automatically. If it is disabled, you can still log in manually and use **Keep Provider Sessions Signed In** to stay signed in between restarts.
 
@@ -124,6 +124,7 @@ IntenseRP stores one profile per identity (account or manual) under:
 [config_dir]/playwright_profiles/accounts/perplexity/<hash>/
 [config_dir]/playwright_profiles/accounts/huggingchat/<hash>/
 [config_dir]/playwright_profiles/accounts/aistudio/<hash>/
+[config_dir]/playwright_profiles/accounts/mimo/<hash>/
 ```
 
 The `<hash>` is derived from your email (SHA-256, truncated). It's only there so your email doesn't show up in folder names.
@@ -198,6 +199,8 @@ These files are encrypted using the same `settings.key` used for your main setti
 **HuggingChat:** username/email + password login. HuggingChat monthly credits are small (`$0.1/month` for free accounts, `$2/month` for Pro), so add multiple accounts if you have them and disable rows that hit the monthly limit until they reset.
 
 **Google AI Studio:** Google login with optional credential autofill. Persistent Sessions are strongly recommended because Google may still ask for manual confirmation/challenge steps.
+
+**Xiaomi MiMo:** Xiaomi account login with email/password and an agreement checkbox. MiMo is heavily region-dependent, so if the page itself refuses to connect, configure a MiMo proxy or use a VPN before troubleshooting credentials.
 
 ---
 

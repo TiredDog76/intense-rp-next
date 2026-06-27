@@ -6,9 +6,9 @@ icon: material/cloud
 
 IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
 
-Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, **Perplexity**, **HuggingChat**, and **Google AI Studio** are implemented and usable.
+Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, **Perplexity**, **HuggingChat**, **Google AI Studio**, and **Xiaomi MiMo** are implemented and usable.
 
-Search Older Matching Chats is currently supported on **DeepSeek**, **GLM Chat**, **Moonshot**, **QwenLM**, and **HuggingChat**. **Perplexity** does not support chat reuse yet, and **Google AI Studio** still only has the regular single-slot Reuse Matching Chat flow for now.
+Search Older Matching Chats is currently supported on **DeepSeek**, **GLM Chat**, **Moonshot**, **QwenLM**, **HuggingChat**, and **Xiaomi MiMo**. **Perplexity** does not support chat reuse yet, and **Google AI Studio** still only has the regular single-slot Reuse Matching Chat flow for now.
 
 !!! note "GLM status (important)"
     The GLM driver is still beta-like. It is mostly usable, but:
@@ -70,6 +70,7 @@ Providers are prioritized in this order:
 | **QwenLM** | 5 | :material-check-circle:{ style="color: #51CF66" } **Stable** |
 | **Perplexity** | 6 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
 | **HuggingChat** | 7 | :material-hammer-wrench:{ style="color: #FF922B" } **Driver Implementation** |
+| **Xiaomi MiMo** | 8 | :material-shield-check:{ style="color: #FFD43B" } **Verification** |
 
 !!! note "What 'Verification' means for Moonshot"
     Moonshot is implemented and usable, but this is the first integration pass. Expect selector and stream-shape adjustments as the provider UI evolves.
@@ -82,6 +83,9 @@ Providers are prioritized in this order:
 
 !!! note "HuggingChat status"
     HuggingChat is implemented as an early integration. It supports model selection, inference provider selection, thinking effort, Exa search, uploads, chat reuse, and account rotation, but HuggingChat's web UI and monthly credits are both easy to run into. Disable spent accounts until their credits reset.
+
+!!! note "Xiaomi MiMo status"
+    MiMo is implemented as an early integration. It supports model selection, thinking output filtering, token usage, uploads, chat reuse, and provider-specific proxy settings, but availability is heavily region-dependent.
 
 ---
 
@@ -130,6 +134,12 @@ Providers are prioritized in this order:
     AI Studio model selection, Thinking Level, Search, URL Context, sampling controls, and humanized mouse movement.
 
     [:arrow_right: Google AI Studio Behavior](../providers/aistudio-behavior.md)
+
+-   :material-chat-processing: **Xiaomi MiMo Behavior**
+
+    MiMo model selection, thinking output filtering, proxy setup, uploads, and geoblock notes.
+
+    [:arrow_right: Xiaomi MiMo Behavior](../providers/mimo-behavior.md)
 
 -   :material-key: **Login & Sessions**
 

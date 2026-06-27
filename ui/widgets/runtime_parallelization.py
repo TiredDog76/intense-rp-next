@@ -653,6 +653,7 @@ class RuntimeProviderLaneDropdown(QFrame):
             DriverProvider.PERPLEXITY: "providers/perplexity.svg",
             DriverProvider.HUGGINGCHAT: "providers/huggingface.svg",
             DriverProvider.AI_STUDIO: "providers/aistudio.svg",
+            DriverProvider.MIMO: "providers/xiaomi.svg",
         }.get(provider)
 
     def _ensure_popup(self) -> _RuntimeProviderLanePopup:

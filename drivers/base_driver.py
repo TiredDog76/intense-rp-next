@@ -7,6 +7,7 @@ import string
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Optional, Union
+from urllib.parse import unquote, urlparse
 
 import httpx
 from patchright.async_api import Browser, BrowserContext, Page, async_playwright
@@ -923,7 +924,62 @@ class BaseDriver(ABC):
         if timezone_id:
             options["timezone_id"] = timezone_id
 
+        proxy = self._get_browser_proxy_option()
+        if proxy:
+            options["proxy"] = proxy
+
         return options
+
+    def _parse_browser_proxy_option(
+        self,
+        raw_proxy: str,
+        *,
+        setting_label: str = "Browser proxy URL",
+    ) -> dict[str, str] | None:
+        raw_proxy = str(raw_proxy or "").strip()
+        if not raw_proxy:
+            return None
+
+        parsed = urlparse(raw_proxy)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https", "socks4", "socks5"}:
+            Logger.warning(
+                f"{setting_label} ignored: use http://, https://, socks4://, or socks5://."
+            )
+            return None
+
+        host = parsed.hostname or ""
+        if not host:
+            Logger.warning(f"{setting_label} ignored: missing proxy host.")
+            return None
+
+        try:
+            port = parsed.port
+        except ValueError:
+            Logger.warning(f"{setting_label} ignored: invalid proxy port.")
+            return None
+
+        host_part = f"[{host}]" if ":" in host and not host.startswith("[") else host
+        server = f"{scheme}://{host_part}"
+        if port:
+            server = f"{server}:{port}"
+
+        proxy: dict[str, str] = {"server": server}
+        if parsed.username:
+            proxy["username"] = unquote(parsed.username)
+        if parsed.password:
+            proxy["password"] = unquote(parsed.password)
+        return proxy
+
+    def _get_browser_proxy_option(self) -> dict[str, str] | None:
+        try:
+            raw_proxy = str(
+                self.config_manager.get_setting("system_settings", "browser_proxy_url") or ""
+            ).strip()
+        except Exception:
+            raw_proxy = ""
+
+        return self._parse_browser_proxy_option(raw_proxy)
 
     def _get_browser_launch_args(self) -> list[str]:
         """

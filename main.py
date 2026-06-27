@@ -3130,6 +3130,24 @@ class MainWindow(QMainWindow):
                     )
             return
 
+        if provider == DriverProvider.MIMO:
+            apply_model = getattr(runtime_driver, "apply_configured_model", None)
+            if not callable(apply_model):
+                raise RuntimeError("Xiaomi MiMo does not expose model switching right now.")
+
+            await apply_model()
+
+            read_label = getattr(runtime_driver, "_read_current_mimo_model_label", None)
+            canonicalize_label = getattr(runtime_driver, "_canonicalize_model_label", None)
+            if callable(read_label) and callable(canonicalize_label):
+                current_label = str(await read_label() or "").strip()
+                if canonicalize_label(current_label) != canonicalize_label(desired):
+                    shown = current_label or "Unknown"
+                    raise RuntimeError(
+                        f"Xiaomi MiMo did not confirm the requested model switch (still showing '{shown}')."
+                    )
+            return
+
         raise RuntimeError(f"{provider.value} does not support remote model switching.")
 
     async def _remote_switch_model(self, selected_models: dict[str, str] | str) -> None:

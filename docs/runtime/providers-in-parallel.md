@@ -66,7 +66,7 @@ If concurrent launch is useful but too slow/heavy, enable **Launch in Batches** 
 
 ## :material-routes: Routing
 
-When multiple providers are active, API requests use provider-prefixed model IDs such as `deepseek-auto`, `glm-chat`, `huggingchat-reasoner`, or `aistudio-reasoner`.
+When multiple providers are active, API requests use provider-prefixed model IDs such as `deepseek-auto`, `glm-chat`, `huggingchat-reasoner`, `aistudio-reasoner`, or `mimo-auto`.
 
 The model ID tells IntenseRP which provider lane should receive the request. If you send a model ID for a provider that is not enabled in the parallel runtime, IntenseRP returns an error instead of guessing.
 

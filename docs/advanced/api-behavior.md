@@ -7,7 +7,7 @@ icon: material/api
 This page documents how the built-in OpenAI-compatible API behaves at runtime: what routes exist, how streaming works, and why requests are queued instead of running in parallel.
 
 !!! note "Implementation detail"
-    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `qwen_driver.py`, `perplexity_driver.py`, `huggingchat_driver.py`, `aistudio_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
+    This is based on the current FastAPI + driver implementation (`api.py`, `deepseek_driver.py`, `glm_driver.py`, `moonshot_driver.py`, `qwen_driver.py`, `perplexity_driver.py`, `huggingchat_driver.py`, `aistudio_driver.py`, `mimo_driver.py`, `main.py`). If a provider changes their web app, behavior may need to change as well.
 
 ---
 
@@ -57,7 +57,7 @@ If **Settings -> API Server -> Model IDs -> Use Universal Model Names** is enabl
 
 Provider-prefixed behavior IDs still continue to work either way. **Providers in Parallel** still rejects `intenserp-*`, but it can expose UMM real-model IDs when this setting is enabled.
 
-For GLM Chat, Google AI Studio, QwenLM, Perplexity, and HuggingChat, Universal Model Names also exposes real model IDs in `/v1/models`. They are lowercase, with spaces and dots converted to `-`, and they keep the normal `-auto`, `-reasoner`, and `-chat` suffixes. For example, **GLM-5.1** appears as `glm-5-1-auto`, `glm-5-1-reasoner`, and `glm-5-1-chat`.
+For GLM Chat, Google AI Studio, QwenLM, Perplexity, HuggingChat, and Xiaomi MiMo, Universal Model Names also exposes real model IDs in `/v1/models`. They are lowercase, with spaces and dots converted to `-`, and they keep the normal `-auto`, `-reasoner`, and `-chat` suffixes. For example, **GLM-5.1** appears as `glm-5-1-auto`, `glm-5-1-reasoner`, and `glm-5-1-chat`.
 
 In Providers in Parallel, only conflicting real-model IDs get provider prefixes so they can route to the right browser. For example, Google AI Studio's **Gemini 3.1 Pro** can appear as `aistudio-gemini-3-1-pro-reasoner` if another active provider also exposes `gemini-3-1-pro-reasoner`.
 
@@ -138,6 +138,18 @@ Google AI Studio model IDs are also behavior presets:
 | `aistudio-chat` | Lowers Thinking Level on supported AI Studio models | Forced off |
 | `aistudio-reasoner` | Uses your configured Thinking Level | Uses your settings |
 
+### Xiaomi MiMo
+
+MiMo model IDs are behavior presets:
+
+| Model ID | Thinking Output | Send Thinking |
+|---|---|---|
+| `mimo-auto` | MiMo decides internally | Uses your settings |
+| `mimo-chat` | MiMo decides internally | Forced off |
+| `mimo-reasoner` | MiMo decides internally | Forced on |
+
+MiMo's web UI does not expose a thinking toggle; these modes control whether IntenseRP forwards or filters MiMo's streamed `<think>` text.
+
 ### Request `reasoning_effort`
 
 If **Settings -> API Server -> Request Controls -> Accept API Reasoning Effort** is enabled (it is off by default), IntenseRP also accepts OpenAI-style per-request reasoning effort fields:
@@ -182,7 +194,7 @@ For GLM-5.2, enabled efforts also select the Deep Think effort menu: `medium`/`h
 !!! info "What these IDs are (and are not)"
     Provider-prefixed and `intenserp-*` IDs are behavior presets. IntenseRP uses them to decide which provider UI toggles to click before sending.
 
-    For providers with a real web UI model picker (GLM Chat, QwenLM, Perplexity, HuggingChat, Google AI Studio), the extra real-model IDs can override the **Provider Behavior** model for a single request.
+    For providers with a real web UI model picker (GLM Chat, QwenLM, Perplexity, HuggingChat, Google AI Studio, Xiaomi MiMo), the extra real-model IDs can override the **Provider Behavior** model for a single request.
 
 !!! note "AI Studio anti-censorship retries"
     When **Settings -> Provider Behavior -> Google AI Studio -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.
@@ -281,7 +293,7 @@ data: [DONE]
 ```
 
 !!! note "Usage in streams"
-    For GLM Chat and QwenLM, if **Count Tokens** is enabled in the provider Behavior settings, IntenseRP emits one extra final chunk with `usage` (and `choices: []`) right before `data: [DONE]`.
+    For GLM Chat, QwenLM, and Xiaomi MiMo, if **Count Tokens** is enabled in the provider Behavior settings, IntenseRP emits one extra final chunk with `usage` (and `choices: []`) right before `data: [DONE]`.
 
 ### Text completions stream shape
 
@@ -314,7 +326,7 @@ If a streaming client disconnects, IntenseRP will:
 When you set `stream: false`, the server still generates via streaming internally, but it accumulates all `delta.content` pieces into one final response:
 
 - `choices[0].message.content` is the concatenated text
-- `usage` GLM Chat and QwenLM can populate it when **Count Tokens** is enabled in the provider Behavior settings
+- `usage` GLM Chat, QwenLM, and Xiaomi MiMo can populate it when **Count Tokens** is enabled in the provider Behavior settings
 
 !!! note "Compatibility fields"
     `temperature`, `top_p`, `max_tokens`, and `reasoning_effort` are accepted for OpenAI compatibility.

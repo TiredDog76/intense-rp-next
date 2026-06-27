@@ -14,6 +14,7 @@ class DriverProvider(str, Enum):
     PERPLEXITY = "Perplexity"
     HUGGINGCHAT = "HuggingChat"
     AI_STUDIO = "Google AI Studio"
+    MIMO = "Xiaomi MiMo"
     # Backwards compatible alias (legacy label was "Moonshot / Kimi")
     MOONSHOT_KIMI = "Moonshot"
 
@@ -93,6 +94,18 @@ class DriverProvider(str, Enum):
             "gemini web",
         }:
             return cls.AI_STUDIO
+        if normalized in {
+            "xiaomi mimo",
+            "xiaomi-mimo",
+            "xiaomi_mimo",
+            "xiaomimimo",
+            "mimo",
+            "mi mo",
+            "mi-mo",
+            "mi_mo",
+            "aistudio.xiaomimimo.com",
+        }:
+            return cls.MIMO
 
         return None
 
@@ -106,6 +119,8 @@ class DriverProvider(str, Enum):
             return "aistudio"
         if self is DriverProvider.HUGGINGCHAT:
             return "huggingchat"
+        if self is DriverProvider.MIMO:
+            return "mimo"
         raw = (self.value or "").strip().lower()
         return re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
 
@@ -118,6 +133,7 @@ PROVIDER_BEHAVIOR_CATEGORY_KEYS: dict[DriverProvider, str] = {
     DriverProvider.PERPLEXITY: "perplexity_behavior",
     DriverProvider.HUGGINGCHAT: "huggingchat_behavior",
     DriverProvider.AI_STUDIO: "aistudio_behavior",
+    DriverProvider.MIMO: "mimo_behavior",
 }
 
 PROVIDER_LOCK_OVERRIDE_CATEGORY = "system_settings"

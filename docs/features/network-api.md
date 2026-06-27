@@ -226,7 +226,7 @@ If you enable **Use Universal Model Names** in **Settings** -> **API Server** ->
 
 Provider-specific behavior IDs still work either way. In **Providers in Parallel**, `intenserp-*` stays invalid, but UMM real-model IDs can appear when this setting is enabled.
 
-The `intenserp-*` and provider-prefixed IDs are behavior presets (modes), not true model selection. For GLM Chat, Google AI Studio, QwenLM, Perplexity, and HuggingChat, Universal Model Names also exposes real model IDs that override the provider UI model for that request. They are lowercase, with spaces and dots converted to `-`, and use the same `-auto`, `-reasoner`, and `-chat` suffixes.
+The `intenserp-*` and provider-prefixed IDs are behavior presets (modes), not true model selection. For GLM Chat, Google AI Studio, QwenLM, Perplexity, HuggingChat, and Xiaomi MiMo, Universal Model Names also exposes real model IDs that override the provider UI model for that request. They are lowercase, with spaces and dots converted to `-`, and use the same `-auto`, `-reasoner`, and `-chat` suffixes.
 
 When Providers in Parallel exposes real-model IDs, only exact conflicts get provider prefixes so they can route cleanly. For example, Google AI Studio's **Gemini 3.1 Pro** can appear as `aistudio-gemini-3-1-pro-reasoner` if another active provider also exposes `gemini-3-1-pro-reasoner`.
 
@@ -292,6 +292,16 @@ When Providers in Parallel exposes real-model IDs, only exact conflicts get prov
     | `aistudio-reasoner` | Uses your configured Thinking Level and Send Thinking setting |
 
     Requests that resolve to Gemini 2.5 require **Assume Paid Model Access**, because those models have become paid in AI Studio. A paid AI Studio API key is still better used with the actual AI Studio API instead of IRP.
+
+=== ":material-chat-processing: Xiaomi MiMo"
+
+    | Model ID | Behavior |
+    |----------|----------|
+    | `mimo-auto` | Uses your MiMo Behavior settings |
+    | `mimo-chat` | Filters MiMo `<think>` output |
+    | `mimo-reasoner` | Forwards MiMo `<think>` output |
+
+    With **Use Universal Model Names** enabled, MiMo's real web UI models can also appear as IDs such as `mimo-v2-5-pro-auto` and `mimo-v2-5-reasoner`.
 
 ---
 

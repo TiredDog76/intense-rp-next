@@ -27,6 +27,7 @@ def _all_parallel_providers() -> list[DriverProvider]:
         DriverProvider.PERPLEXITY,
         DriverProvider.HUGGINGCHAT,
         DriverProvider.AI_STUDIO,
+        DriverProvider.MIMO,
     ]
 
 

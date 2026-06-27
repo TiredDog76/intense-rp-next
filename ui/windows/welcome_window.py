@@ -448,7 +448,7 @@ class WelcomeWindow(QDialog):
 
         desc = QLabel(
             "IntenseRP Next is a local OpenAI-compatible API + desktop app that drives provider web UIs "
-            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio) in a real browser, "
+            "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio / Xiaomi MiMo) in a real browser, "
             "so clients like SillyTavern can use them without wiring up the paid official APIs."
         )
         desc.setWordWrap(True)
@@ -747,6 +747,8 @@ class WelcomeWindow(QDialog):
                 desc = "Hugging Face login. Small monthly credits, but good model variety."
             elif provider == "Google AI Studio":
                 desc = "Google login with Gemini models. Humanized mouse movement is recommended."
+            elif provider == "Xiaomi MiMo":
+                desc = "Xiaomi account login. May need a VPN or Browser Proxy URL in geoblocked regions."
 
             icon_file = PROVIDER_ICON_MAP.get(provider)
             card = ProviderChoiceCard(provider, desc, icon_file, parent=frame)
@@ -775,7 +777,7 @@ class WelcomeWindow(QDialog):
         self._auto_login_row = ToggleRow(
             "Enable Auto Login",
             self._auto_login,
-            description="Fill credentials automatically (DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio).",
+            description="Fill credentials automatically for supported browser providers.",
         )
         layout.addWidget(self._auto_login_row, 0)
 
@@ -1231,6 +1233,7 @@ class WelcomeWindow(QDialog):
             DriverProvider.PERPLEXITY,
             DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
+            DriverProvider.MIMO,
         }
 
     def _sync_provider_dependent_ui(self) -> None:
@@ -1263,6 +1266,11 @@ class WelcomeWindow(QDialog):
             self._account_info.setText(
                 "Google AI Studio can attempt Auto Login through the Google sign-in flow, but Persistent "
                 "Sessions are strongly recommended because Google may still ask for manual confirmation."
+            )
+        elif provider == DriverProvider.MIMO:
+            self._account_info.setText(
+                "Xiaomi MiMo supports email/password Auto Login. If the page refuses the connection, "
+                "your region is probably geoblocked; use a system VPN or Browser Proxy URL."
             )
         else:
             self._account_info.setText(
@@ -1359,6 +1367,7 @@ class WelcomeWindow(QDialog):
         is_perplexity = provider == DriverProvider.PERPLEXITY
         is_ai_studio = provider == DriverProvider.AI_STUDIO
         is_huggingchat = provider == DriverProvider.HUGGINGCHAT
+        is_mimo = provider == DriverProvider.MIMO
 
         self._perplexity_spaces_row.setVisible(is_perplexity)
         self._perplexity_space_instructions_row.setVisible(is_perplexity)
@@ -1369,12 +1378,17 @@ class WelcomeWindow(QDialog):
         self._huggingchat_auto_disable_row.setVisible(is_huggingchat)
         self._huggingchat_thinking_effort_row.setVisible(is_huggingchat)
         self._huggingchat_text_file_message_row.setVisible(is_huggingchat)
+        self._enable_reasoning_row.setVisible(not is_mimo)
+        self._enable_search_row.setVisible(not is_mimo)
 
         # Perplexity doesn't expose usable thinking traces in the stream yet, so
         # showing "Send Thinking" in first-run setup is mostly useless and just weird
         self._send_reasoning_row.setVisible(not is_perplexity)
         if is_perplexity:
             self._set_tumbler_checked(self._send_reasoning, False)
+        if is_mimo:
+            self._set_tumbler_checked(self._enable_reasoning, True)
+            self._set_tumbler_checked(self._enable_search, False)
         self._sync_huggingchat_parameter_state()
 
     def _set_toggle_row_text(
@@ -1451,6 +1465,12 @@ class WelcomeWindow(QDialog):
                 "Enable Exa Search",
                 "Let HuggingChat use the Exa MCP web search server. Tool payloads are filtered from API responses.",
             )
+        elif provider == DriverProvider.MIMO:
+            self._set_toggle_row_text(
+                self._send_reasoning_row,
+                "Send Thinking",
+                "Forward <think> text from MiMo responses to the API client. MiMo keeps thinking on server-side either way.",
+            )
         elif provider in {DriverProvider.MOONSHOT, DriverProvider.QWEN_LM}:
             self._set_toggle_row_text(
                 self._enable_reasoning_row,
@@ -1498,6 +1518,12 @@ class WelcomeWindow(QDialog):
             self._clear_account_errors()
 
     def _on_reasoning_toggles_changed(self) -> None:
+        provider = DriverProvider.from_setting(self._state.provider)
+        if provider == DriverProvider.MIMO:
+            self._send_reasoning_row.setEnabled(True)
+            self._sync_huggingchat_parameter_state()
+            return
+
         enabled = bool(self._enable_reasoning.isChecked())
         self._send_reasoning_row.setEnabled(enabled)
         if not enabled:
@@ -1700,6 +1726,8 @@ class WelcomeWindow(QDialog):
             model_text = "huggingchat-auto\nhuggingchat-chat\nhuggingchat-reasoner"
         elif provider == DriverProvider.AI_STUDIO:
             model_text = "aistudio-auto\naistudio-chat\naistudio-reasoner"
+        elif provider == DriverProvider.MIMO:
+            model_text = "mimo-auto\nmimo-chat\nmimo-reasoner"
         else:
             model_text = (
                 "deepseek-auto\n"
@@ -1798,9 +1826,11 @@ class WelcomeWindow(QDialog):
 
         provider_enum = DriverProvider.from_setting(provider)
         behavior_key = self._behavior_category_for_provider(provider_enum)
-        cfg.set_setting(behavior_key, "enable_deepthink", bool(self._state.enable_reasoning))
+        if provider_enum != DriverProvider.MIMO:
+            cfg.set_setting(behavior_key, "enable_deepthink", bool(self._state.enable_reasoning))
         cfg.set_setting(behavior_key, "send_deepthink", bool(self._state.send_reasoning))
-        cfg.set_setting(behavior_key, "enable_search", bool(self._state.enable_search))
+        if provider_enum != DriverProvider.MIMO:
+            cfg.set_setting(behavior_key, "enable_search", bool(self._state.enable_search))
         cfg.set_setting(behavior_key, "send_as_text_file", bool(self._state.send_as_text_file))
 
         if provider_enum == DriverProvider.PERPLEXITY:
@@ -1870,6 +1900,7 @@ class WelcomeWindow(QDialog):
             DriverProvider.PERPLEXITY,
             DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
+            DriverProvider.MIMO,
         }
         should_write_identity = bool(supports_auto_login and self._state.auto_login)
         if should_write_identity:

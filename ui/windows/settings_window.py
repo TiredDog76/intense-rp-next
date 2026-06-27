@@ -842,6 +842,7 @@ class SettingsWindow(QMainWindow):
         "perplexity_behavior": "providers/perplexity.svg",
         "huggingchat_behavior": "providers/huggingface.svg",
         "aistudio_behavior": "providers/aistudio.svg",
+        "mimo_behavior": "providers/xiaomi.svg",
         "diagnostics": "bug.svg",
         "logfiles": "file.svg",
         "application_settings": "settings.svg",
@@ -1377,6 +1378,7 @@ class SettingsWindow(QMainWindow):
                         "Perplexity": "providers/perplexity.svg",
                         "HuggingChat": "providers/huggingface.svg",
                         "Google AI Studio": "providers/aistudio.svg",
+                        "Xiaomi MiMo": "providers/xiaomi.svg",
                     }.get(provider_name)
                     if not icon_file:
                         continue
@@ -2525,6 +2527,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.PERPLEXITY: "providers/perplexity.svg",
             DriverProvider.HUGGINGCHAT: "providers/huggingface.svg",
             DriverProvider.AI_STUDIO: "providers/aistudio.svg",
+            DriverProvider.MIMO: "providers/xiaomi.svg",
         }.get(provider)
 
     def _all_runtime_parallel_providers(self) -> list[DriverProvider]:
@@ -2536,6 +2539,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.PERPLEXITY,
             DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
+            DriverProvider.MIMO,
         ]
 
     def _available_runtime_parallel_providers(self) -> list[DriverProvider]:
@@ -2970,6 +2974,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.PERPLEXITY,
             DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
+            DriverProvider.MIMO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
             if not behavior_key:
@@ -2995,6 +3000,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.PERPLEXITY,
             DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
+            DriverProvider.MIMO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
             if not behavior_key:
@@ -3104,6 +3110,7 @@ class SettingsWindow(QMainWindow):
             DriverProvider.PERPLEXITY,
             DriverProvider.HUGGINGCHAT,
             DriverProvider.AI_STUDIO,
+            DriverProvider.MIMO,
         ):
             behavior_key = self.BEHAVIOR_CATEGORY_BY_PROVIDER.get(provider)
             if not behavior_key:

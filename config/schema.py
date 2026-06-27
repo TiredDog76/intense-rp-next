@@ -27,6 +27,7 @@ DOCS_HOTSWAPS = "features/hotswaps/"
 DOCS_IP_WHITELIST = "advanced/ip-whitelist/"
 DOCS_LOGIN = "features/login-sessions/"
 DOCS_LOADOUTS = "experimental/loadouts/"
+DOCS_MIMO = "providers/mimo-behavior/"
 DOCS_MOONSHOT = "providers/moonshot-behavior/"
 DOCS_MULTI_SLOT_CACHE = "features/multi-slot-cache/"
 DOCS_NETWORK = "features/network-api/"
@@ -1050,6 +1051,173 @@ SCHEMA = [
         ],
     ),
     SettingCategory(
+        name="Xiaomi MiMo Behavior",
+        key="mimo_behavior",
+        fields=[
+            SettingField(
+                key="model",
+                label="Model",
+                type=SettingType.DROPDOWN,
+                default="MiMo-V2.5-Pro",
+                options=[
+                    "MiMo-V2.5-Pro",
+                    "MiMo-V2.5",
+                ],
+                tooltip="Select which MiMo model to use in the web UI. Not related to the API model IDs.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="real-mimo-model-selection-web-ui",
+            ),
+            SettingField(
+                key="thinking_forced_note",
+                label="Thinking",
+                type=SettingType.HINT,
+                default=(
+                    "MiMo does not expose a Thinking toggle in the web UI. The driver can either "
+                    "forward the streamed <think> text or filter it out before it reaches the API client."
+                ),
+                tooltip=None,
+                hint_variant="info",
+            ),
+            SettingField(
+                key="send_deepthink",
+                label="Send Thinking",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Forward MiMo <think>...</think> text to the API client.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="send-thinking",
+            ),
+            SettingField(
+                key="count_tokens",
+                label="Count Tokens",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip="Forward MiMo token usage metadata when the stream includes it.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="count-tokens",
+            ),
+            SettingField(
+                key="search_forced_off_note",
+                label="Search",
+                type=SettingType.HINT,
+                default="MiMo does not currently expose a Search toggle in the web UI.",
+                tooltip=None,
+                hint_variant="info",
+            ),
+            SettingField(
+                key="send_as_text_file",
+                label="Send As Text File",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Upload the prompt as a text file instead of typing it into MiMo.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="file-upload-mode",
+            ),
+            SettingField(
+                key="text_file_message",
+                label="Text File Message",
+                type=SettingType.TEXTAREA,
+                default="Please read the attached file and respond to it.",
+                tooltip="Text pasted alongside the uploaded file. MiMo requires text with file uploads.",
+                depends="mimo_behavior.send_as_text_file",
+                docs_path=DOCS_MIMO,
+                docs_anchor="text-file-message",
+            ),
+            SettingField(
+                key="file_upload_timeout",
+                label="File Upload Timeout",
+                type=SettingType.INTEGER,
+                default=30,
+                tooltip="Max seconds to wait for MiMo to finish parsing the uploaded text file.",
+                depends="mimo_behavior.send_as_text_file",
+                docs_path=DOCS_MIMO,
+                docs_anchor="file-upload-timeout",
+            ),
+            SettingField(
+                key="message_send_timeout",
+                label="Message Send Timeout (s)",
+                type=SettingType.INTEGER,
+                default=8,
+                tooltip="Max seconds to wait for the send button to become available after text entry.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="message-send-timeout",
+            ),
+            SettingField(
+                key="auto_decline_cookies",
+                label="Decline Cookies Automatically",
+                type=SettingType.BOOLEAN,
+                default=True,
+                tooltip="Click MiMo's Decline All cookie button when the cookie consent popup appears.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="decline-cookies-automatically",
+            ),
+            SettingField(
+                key="use_proxy",
+                label="Use Proxy",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Route only MiMo's provider browser through a proxy. Takes effect after "
+                    "restarting the provider browser."
+                ),
+                docs_path=DOCS_MIMO,
+                docs_anchor="proxy",
+            ),
+            SettingField(
+                key="proxy_url",
+                label="Proxy URL",
+                type=SettingType.STRING,
+                default="",
+                tooltip=(
+                    "HTTP, HTTPS, SOCKS4, or SOCKS5 proxy URL for MiMo. Examples: "
+                    "http://127.0.0.1:8080 or socks5://user:pass@127.0.0.1:1080."
+                ),
+                depends="mimo_behavior.use_proxy",
+                visible_depends="mimo_behavior.use_proxy",
+                docs_path=DOCS_MIMO,
+                docs_anchor="proxy-url",
+            ),
+            SettingField(
+                key="clean_regeneration",
+                label="Reuse Matching Chat",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Regenerate the last message instead of creating a new chat when the prompt and settings match.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="reuse-matching-chat",
+            ),
+            SettingField(
+                key="multi_slot_cache",
+                label="Search Older Matching Chats",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip="Reuse up to 7 older cached MiMo chats for duplicate prompts instead of only the most recent one.",
+                depends="mimo_behavior.clean_regeneration",
+                force_when_dep_unmet=False,
+                docs_path=DOCS_MULTI_SLOT_CACHE,
+                docs_anchor="how-it-works",
+            ),
+            SettingField(
+                key="completion_request_timeout",
+                label="Completion Request Timeout (s)",
+                type=SettingType.INTEGER,
+                default=150,
+                tooltip="Max seconds to wait after clicking Send or Regenerate for MiMo's chat request to appear.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="completion-request-timeout",
+            ),
+            SettingField(
+                key="first_chunk_timeout",
+                label="First Chunk Timeout (s)",
+                type=SettingType.INTEGER,
+                default=150,
+                tooltip="Max seconds to wait for MiMo's response stream to start before timing out.",
+                docs_path=DOCS_MIMO,
+                docs_anchor="first-chunk-timeout",
+            ),
+        ],
+    ),
+    SettingCategory(
         name="Perplexity Behavior",
         key="perplexity_behavior",
         fields=[
@@ -2010,6 +2178,18 @@ SCHEMA = [
                 docs_anchor="browser-locale-and-timezone",
             ),
             SettingField(
+                key="browser_proxy_url",
+                label="Browser Proxy URL",
+                type=SettingType.STRING,
+                default="",
+                tooltip=(
+                    "Optional HTTP, HTTPS, SOCKS4, or SOCKS5 proxy used by provider browser "
+                    "contexts. Example: socks5://127.0.0.1:1080. Leave blank to connect directly."
+                ),
+                docs_path=DOCS_RUNTIME_BROWSER_ENVIRONMENT,
+                docs_anchor="browser-proxy-url",
+            ),
+            SettingField(
                 key="delete_persistent_profile_row",
                 label="Delete Profile",
                 type=SettingType.ROW,
@@ -2805,6 +2985,7 @@ SETTINGS_CARDS = {
         field_refs=[
             ("system_settings", "browser_locale"),
             ("system_settings", "browser_timezone"),
+            ("system_settings", "browser_proxy_url"),
         ],
     ),
     "provider_defaults": SettingCard(
@@ -3045,6 +3226,13 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_tools"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
+        {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout", "first_chunk_timeout"]},
+    ],
+    "mimo_behavior": [
+        {"title": "Core", "icon": "settings.svg", "fields": ["model", "thinking_forced_note", "send_deepthink", "count_tokens", "search_forced_off_note", "auto_decline_cookies"]},
+        {"title": "Proxy", "icon": "globe.svg", "fields": ["use_proxy", "proxy_url"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
+        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout", "first_chunk_timeout"]},
     ],
     "perplexity_behavior": [

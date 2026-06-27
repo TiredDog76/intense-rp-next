@@ -16,7 +16,7 @@ This page translates the names, acronyms, and weird bits that show up around Int
 | IntenseRP / IRP | The local desktop app and API bridge. | "IRP" is just the short name people use when typing fast. |
 | IRP Next v2 | The current rewritten version of IntenseRP Next. | v2 uses FastAPI, PySide6, and Playwright/Patchright instead of the older v1 stack. |
 | Client | The app sending requests to IntenseRP. | Usually SillyTavern, but any OpenAI-compatible client can work. |
-| Provider | The AI service IntenseRP is driving in a browser. | Examples: DeepSeek, GLM Chat, Kimi / Moonshot, QwenLM, Perplexity, HuggingChat, and Google AI Studio. |
+| Provider | The AI service IntenseRP is driving in a browser. | Examples: DeepSeek, GLM Chat, Kimi / Moonshot, QwenLM, Perplexity, HuggingChat, Google AI Studio, and Xiaomi MiMo. |
 | Provider web UI | The normal website interface for a provider. | IntenseRP automates this page instead of calling the provider's official API. |
 | Driver | Provider-specific automation code. | A driver knows which buttons, streams, model pickers, and quirks belong to one provider. |
 | OpenAI-compatible API | An API shaped like OpenAI's chat/completions endpoints. | It lets clients reuse their OpenAI-style connection settings with IntenseRP. |
@@ -24,7 +24,7 @@ This page translates the names, acronyms, and weird bits that show up around Int
 | `/v1` | The API route prefix IntenseRP exposes. | The main routes are `/v1/models`, `/v1/chat/completions`, and `/v1/completions`. |
 | Model ID | The model name sent by the client. | In IntenseRP, many model IDs are really behavior presets rather than exact provider models. |
 | Behavior preset | A model ID that selects a behavior mode. | Example: `deepseek-reasoner` turns DeepThink on, while `deepseek-chat` turns it off. |
-| Real model ID | A model ID that maps to an actual provider model picker entry. | Used for providers with real model selection, such as GLM Chat, QwenLM, Perplexity, HuggingChat, and Google AI Studio. |
+| Real model ID | A model ID that maps to an actual provider model picker entry. | Used for providers with real model selection, such as GLM Chat, QwenLM, Perplexity, HuggingChat, Google AI Studio, and Xiaomi MiMo. |
 | UMM / Universal Model Names | Provider-neutral model names like `intenserp-auto`. | Handy if you switch providers often. See [Universal Model Names](features/universal-model-names.md). |
 | Hotswap | Switching providers from the main window while the app is running. | It saves a trip into Settings. See [Hotswaps](features/hotswaps.md). |
 | Loadout | A named set of formatting and provider behavior settings. | Experimental, provider-scoped, and useful for quickly changing "profiles" of settings. |
@@ -117,6 +117,7 @@ This page translates the names, acronyms, and weird bits that show up around Int
 | Playwright | Browser automation library. | IntenseRP uses it to control the provider web UI. |
 | Patchright | Playwright-compatible browser automation fork used here. | Helps IntenseRP drive provider pages in a real browser. |
 | Browser Manager | Utility window for installing, reinstalling, or deleting the browser bundle. | See [Browser Manager](util-reference/browser-manager.md). |
+| Browser proxy | Optional proxy passed to provider browser contexts. | Useful for providers with regional access issues, especially MiMo. |
 | WAF | Web Application Firewall. | A provider-side protection layer that can sometimes dislike automated browsers. |
 | Config directory | The folder where IntenseRP stores settings, keys, profiles, and logs. | Treat it as sensitive. It can contain credentials and session data. |
 | App flags | Hidden persistent app switches. | Advanced/internal state stored separately from normal settings. |
