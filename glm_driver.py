@@ -64,6 +64,7 @@ class GLMDriver(BaseDriver):
         "peak hours",
         "switch to another model",
     )
+    EMPTY_COMPLETION_STREAM_ERROR_CODE = "20001"
 
     REFRESH_AFTER_GENERATION_DELAY_S = 2.0
     COMPLETION_REQUEST_TIMEOUT_S = 150.0
@@ -231,7 +232,7 @@ class GLMDriver(BaseDriver):
         except asyncio.CancelledError:
             return
         except Exception as e:
-            Logger.warning(f"GLM Chat: failed to reload after generation: {e}")
+            Logger.warning(f"GLM Chat: failed to reload page: {e}")
             return
 
         try:
@@ -1491,7 +1492,15 @@ class GLMDriver(BaseDriver):
 
         capacity_error_message = self._extract_model_capacity_error_from_text(response_text)
         if not capacity_error_message:
-            return None
+            if self._glm_frontend_would_see_sse_data_event(response_text):
+                return None
+
+            empty_stream_message = self._build_empty_completion_stream_error_message()
+            Logger.warning(empty_stream_message)
+            await self._reload_chat_page(
+                f"empty completion stream (GLM Error code: {self.EMPTY_COMPLETION_STREAM_ERROR_CODE})"
+            )
+            return empty_stream_message
 
         Logger.warning(capacity_error_message)
         await self._refresh_page_after_capacity_error()
@@ -2737,6 +2746,35 @@ class GLMDriver(BaseDriver):
         )
 
     @classmethod
+    def _build_empty_completion_stream_error_message(cls) -> str:
+        return (
+            "GLM Chat returned an empty completion stream "
+            f"(the condition GLM shows as Error code: {cls.EMPTY_COMPLETION_STREAM_ERROR_CODE}). "
+            "IntenseRP attempted to refresh the page; please retry the request."
+        )
+
+    @staticmethod
+    def _glm_frontend_would_see_sse_data_event(body: bytes | bytearray | str | None) -> bool:
+        """
+        Mirror GLM's own fallback check for Error code 20001.
+
+        GLM's frontend splits the decoded stream on LF/LF and only clears its
+        empty-stream fallback when a complete event block starts with "data:".
+        A trailing partial event is ignored by that code path, so we ignore it too.
+        """
+        if body is None:
+            return False
+        if isinstance(body, str):
+            raw = body.encode("utf-8", errors="ignore")
+        else:
+            raw = bytes(body)
+        if not raw:
+            return False
+
+        complete_events = raw.split(b"\n\n")[:-1]
+        return any(event.startswith(b"data:") for event in complete_events)
+
+    @classmethod
     def _extract_model_capacity_error_from_data(cls, data: Any) -> str | None:
         if not isinstance(data, dict):
             return None
@@ -3611,11 +3649,18 @@ class GLMDriver(BaseDriver):
                 if msg:
                     await self._refresh_page_after_capacity_error()
                 if not msg:
-                    # Surface a helpful error instead of silently returning an empty stream.
-                    msg = (
-                        "GLM Chat: intercepted completion produced no streamable output. "
-                        "This may indicate a GLM API / frontend change."
-                    )
+                    if self._glm_frontend_would_see_sse_data_event(full_response_body):
+                        # Surface a helpful error instead of silently returning an empty stream.
+                        msg = (
+                            "GLM Chat: intercepted completion produced no streamable output. "
+                            "This may indicate a GLM API / frontend change."
+                        )
+                    else:
+                        msg = self._build_empty_completion_stream_error_message()
+                        await self._reload_chat_page(
+                            "empty completion stream "
+                            f"(GLM Error code: {self.EMPTY_COMPLETION_STREAM_ERROR_CODE})"
+                        )
                 Logger.warning(msg)
                 response_queue.put_nowait(f"data: {json.dumps({'error': msg})}\n\n")
 
