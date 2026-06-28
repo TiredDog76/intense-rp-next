@@ -1149,7 +1149,14 @@ class BaseDriver(ABC):
         Run the browser installation using the patchright CLI (async).
         """
         try:
-            await install_chromium_browser(status_callback=status_callback)
+            download_host = self.config_manager.get_setting(
+                "system_settings",
+                "browser_download_mirror_url",
+            )
+            await install_chromium_browser(
+                status_callback=status_callback,
+                download_host=download_host,
+            )
             return True
         except Exception:
             raise

@@ -7,6 +7,7 @@ from .validators import (
     validate_ip_address_list,
     validate_email_list,
     validate_float_range,
+    validate_http_base_url,
     validate_integer_range,
 )
 from .formatting_presets import FORMATTING_PRESET_OPTIONS
@@ -37,6 +38,7 @@ DOCS_QWEN = "providers/qwen-behavior/"
 DOCS_REMOTE_CONTROL = "experimental/remote-control/"
 DOCS_RUNTIME = "runtime/"
 DOCS_RUNTIME_BROWSER_ENVIRONMENT = "runtime/browser-environment/"
+DOCS_RUNTIME_BROWSER_INSTALLATION = "runtime/browser-installation/"
 DOCS_RUNTIME_PARALLELIZATION = "runtime/providers-in-parallel/"
 DOCS_RUNTIME_PROVIDER_STABILITY = "runtime/provider-stability/"
 DOCS_SYSTEM = "features/system/"
@@ -2190,6 +2192,36 @@ SCHEMA = [
                 docs_anchor="browser-proxy-url",
             ),
             SettingField(
+                key="browser_download_mirror_url",
+                label="Chromium Download Mirror",
+                type=SettingType.STRING,
+                default="",
+                tooltip=(
+                    "Optional Playwright/Patchright Chromium download host used only when "
+                    "IntenseRP installs or reinstalls its browser. Leave blank to use "
+                    "Patchright's default CDNs."
+                ),
+                validator=validate_http_base_url,
+                docs_path=DOCS_RUNTIME_BROWSER_INSTALLATION,
+                docs_anchor="chromium-download-mirror",
+            ),
+            SettingField(
+                key="browser_download_mirror_warning",
+                label="Use only trusted mirrors",
+                type=SettingType.HINT,
+                default=(
+                    "This replaces Patchright's default browser download CDNs for install "
+                    "and reinstall actions. A broken mirror can make browser installation "
+                    "fail, and an untrusted mirror can provide malware."
+                    "Clear this field to return to the official defaults."
+                ),
+                tooltip=None,
+                hint_variant="warn",
+                visible_depends="system_settings.browser_download_mirror_url",
+                docs_path=DOCS_RUNTIME_BROWSER_INSTALLATION,
+                docs_anchor="chromium-download-mirror",
+            ),
+            SettingField(
                 key="delete_persistent_profile_row",
                 label="Delete Profile",
                 type=SettingType.ROW,
@@ -2933,7 +2965,7 @@ SETTINGS_SECTIONS = [
         key="runtime",
         label="Browser and Runtime",
         icon="circle-gauge.svg",
-        card_keys=["browser_environment", "provider_stability", "runtime_parallelization"],
+        card_keys=["browser_installation", "browser_environment", "provider_stability", "runtime_parallelization"],
     ),
     SettingSection(
         key="logs_troubleshooting",
@@ -2986,6 +3018,17 @@ SETTINGS_CARDS = {
             ("system_settings", "browser_locale"),
             ("system_settings", "browser_timezone"),
             ("system_settings", "browser_proxy_url"),
+        ],
+    ),
+    "browser_installation": SettingCard(
+        key="browser_installation",
+        title="Browser Installation",
+        description=(
+            "Download settings for the Playwright/Patchright Chromium bundle IntenseRP manages."
+        ),
+        field_refs=[
+            ("system_settings", "browser_download_mirror_url"),
+            ("system_settings", "browser_download_mirror_warning"),
         ],
     ),
     "provider_defaults": SettingCard(

@@ -43,6 +43,7 @@ nav:
           - Xiaomi MiMo Behavior: providers/mimo-behavior.md
       - Browser & Runtime:
           - Overview: runtime.md
+          - Browser Installation: runtime/browser-installation.md
           - Browser Environment: runtime/browser-environment.md
           - Providers in Parallel: runtime/providers-in-parallel.md
           - Provider Stability: runtime/provider-stability.md

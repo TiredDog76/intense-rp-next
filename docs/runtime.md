@@ -6,9 +6,15 @@ icon: material/speedometer
 
 Browser & Runtime settings control what IntenseRP launches, keeps alive, and does when provider browser windows are already running.
 
-This is the home for browser launch context, provider stability behavior, and parallel runtime lanes.
+This is the home for browser installation, browser launch context, provider stability behavior, and parallel runtime lanes.
 
 <div class="grid cards" markdown>
+
+-   :material-download-circle: **Browser Installation**
+
+    Install-time download settings for the Playwright/Patchright Chromium bundle.
+
+    [:arrow_right: Browser Installation](runtime/browser-installation.md)
 
 -   :material-earth: **Browser Environment**
 
