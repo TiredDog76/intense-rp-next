@@ -1,8 +1,8 @@
 ---
-icon: material/chat-processing
+icon: providers/xiaomi
 ---
 
-# :material-chat-processing: Xiaomi MiMo Behavior
+# :providers-xiaomi: Xiaomi MiMo Behavior
 
 This page covers the toggles and notes for **Xiaomi MiMo** (`aistudio.xiaomimimo.com`).
 

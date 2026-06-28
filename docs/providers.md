@@ -55,7 +55,7 @@ Each provider has its own Behavior page because the web UIs don't all expose the
 
     [:arrow_right: Open AI Studio](providers/aistudio-behavior.md)
 
--   :material-chat-processing: **Xiaomi MiMo Behavior**
+-   :providers-xiaomi: **Xiaomi MiMo Behavior**
 
     MiMo model selection, thinking output filtering, uploads, geoblock proxy setup, token usage, and chat reuse.
 

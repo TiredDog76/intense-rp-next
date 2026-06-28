@@ -135,7 +135,7 @@ Providers are prioritized in this order:
 
     [:arrow_right: Google AI Studio Behavior](../providers/aistudio-behavior.md)
 
--   :material-chat-processing: **Xiaomi MiMo Behavior**
+-   :providers-xiaomi: **Xiaomi MiMo Behavior**
 
     MiMo model selection, thinking output filtering, proxy setup, uploads, and geoblock notes.
 
