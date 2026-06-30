@@ -1656,6 +1656,7 @@ class MoonshotDriver(BaseDriver):
         self.abort_requested = False
         self.current_abort_event = abort_event
         self._degrade_notice_logged = False
+        provider_activity_count = 0
 
         resolved_model = (model or "").strip() or "moonshot-auto"
         self.current_model = resolved_model
@@ -1678,6 +1679,7 @@ class MoonshotDriver(BaseDriver):
         self.current_send_deepthink = effective_send_deepthink
 
         async def handle_route(route):
+            nonlocal provider_activity_count
             request = route.request
             Logger.info("Intercepting Moonshot API request...")
             Logger.debug(f"Intercepted request to: {request.url}")
@@ -1714,6 +1716,8 @@ class MoonshotDriver(BaseDriver):
                         response_headers[k] = v
 
                     async for chunk in response.aiter_bytes():
+                        if chunk:
+                            provider_activity_count += 1
                         if self.abort_requested or (abort_event and abort_event.is_set()):
                             Logger.debug("Abort detected during Moonshot streaming, stopping...")
                             aborted = True
@@ -1885,6 +1889,7 @@ class MoonshotDriver(BaseDriver):
                 first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
                 idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
                 on_timeout=self._click_stop_button,
+                activity_counter=lambda: provider_activity_count,
             ):
                 if isinstance(item, dict) and "error" in item:
                     stream_had_error = True
