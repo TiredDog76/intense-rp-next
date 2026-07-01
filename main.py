@@ -1676,16 +1676,23 @@ class MainWindow(QMainWindow):
 
     def _maybe_show_welcome_window(self) -> None:
         try:
-            is_first_run = bool(getattr(self.config_manager, "is_first_run", False))
+            should_show_welcome = bool(self.config_manager.should_show_welcome())
         except Exception:
-            is_first_run = False
+            should_show_welcome = bool(getattr(self.config_manager, "is_first_run", False))
 
-        if not is_first_run:
+        if not should_show_welcome:
             return
 
         def show() -> None:
             existing = getattr(self, "_welcome_window", None)
             if existing is not None and existing.isVisible():
+                return
+
+            try:
+                should_show = bool(self.config_manager.should_show_welcome())
+            except Exception:
+                should_show = bool(getattr(self.config_manager, "is_first_run", False))
+            if not should_show:
                 return
 
             welcome = WelcomeWindow(self.config_manager, None)

@@ -530,7 +530,7 @@ class WelcomeWindow(QDialog):
         )
         IconUtils.apply_icon(manual, IconType.CANCEL, BrandColors.TEXT_PRIMARY, size=16, y_offset=2)
         manual.setIconSize(QSize(16, 16))
-        manual.clicked.connect(self.close)
+        manual.clicked.connect(self._dismiss_welcome)
         button_row.addWidget(manual, 1)
 
         layout.addLayout(button_row, 0)
@@ -731,7 +731,7 @@ class WelcomeWindow(QDialog):
         layout.addWidget(intro, 0)
 
         self._provider_cards = {}
-        for provider in provider_options(include_locked=False, config_manager=self.config_manager):
+        for provider in provider_options(include_locked=False, config_manager=self._config):
             desc = ""
             if provider == "DeepSeek":
                 desc = "Default choice. Simple login flow."
@@ -1204,10 +1204,19 @@ class WelcomeWindow(QDialog):
         self._set_provider(self._state.provider)
         self._set_step(0)
 
+    def _mark_welcome_dismissed(self) -> None:
+        marker = getattr(self._config, "mark_welcome_dismissed", None)
+        if callable(marker):
+            marker()
+
+    def _dismiss_welcome(self) -> None:
+        self._mark_welcome_dismissed()
+        self.close()
+
     def _set_provider(self, provider: str) -> None:
         provider_value = str(provider or "").strip() or "DeepSeek"
         provider_enum = DriverProvider.from_setting(provider_value)
-        if provider_enum is None or is_provider_locked(provider_enum, self.config_manager):
+        if provider_enum is None or is_provider_locked(provider_enum, self._config):
             provider_enum = DriverProvider.DEEPSEEK
         provider_label = provider_enum.value
         self._state.provider = provider_label
@@ -1796,6 +1805,7 @@ class WelcomeWindow(QDialog):
             QMessageBox.warning(self, "Quick Setup", error or "Failed to apply settings.")
             return
 
+        self._mark_welcome_dismissed()
         self.settings_applied.emit()
         self.accept()
 

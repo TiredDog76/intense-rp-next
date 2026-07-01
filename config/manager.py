@@ -24,6 +24,7 @@ from utils.logger import Logger
 
 
 _MISSING = object()
+_WELCOME_DISMISSED_FLAG_KEY = "welcome_screen_dismissed"
 
 class ConfigManager:
     def __init__(self, config_dir: str | Path | None = None):
@@ -57,6 +58,17 @@ class ConfigManager:
         self._load_key()
         self.load_settings()
         self.clear_runtime_loadouts()
+
+    def should_show_welcome(self) -> bool:
+        if not self.is_first_run:
+            return False
+        return not self.app_flags.get_bool(_WELCOME_DISMISSED_FLAG_KEY, default=False)
+
+    def mark_welcome_dismissed(self) -> bool:
+        ok = self.app_flags.set(_WELCOME_DISMISSED_FLAG_KEY, True)
+        if ok:
+            self.is_first_run = False
+        return ok
 
     def _ensure_dir(self):
         if not self.config_dir.exists():
