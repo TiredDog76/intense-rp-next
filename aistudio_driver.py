@@ -206,6 +206,24 @@ class AIStudioDriver(BaseDriver):
         "button[aria-label='Agree to the copyright acknowledgement']"
     )
     PROMPT_MEDIA_CONTAINER_SELECTOR = "[data-test-id='prompt-media-container']"
+    ADD_MEDIA_BUTTON_SELECTORS = [
+        "button[data-test-id='add-media-button']",
+        "[data-test-id='add-media-button']",
+        "button[aria-label='Insert images, videos, audio, or files']",
+        "button.mat-mdc-menu-trigger[aria-label*='files']",
+    ]
+    UPLOAD_FILE_MENU_ITEM_SELECTORS = [
+        "button.upload-file-menu-item",
+        ".upload-file-menu-item",
+        "button[role='menuitem']:has-text('Upload files')",
+        "[role='menuitem']:has-text('Upload files')",
+        "button:has-text('Upload files')",
+    ]
+    UPLOAD_FILE_INPUT_SELECTORS = [
+        "input.file-input[type='file']",
+        "input[type='file'][accept*='text/*']",
+        "input[type='file']",
+    ]
     ASSISTANT_TURN_SELECTOR = "div.chat-turn-container.code-block-aligner.model.render.ng-star-inserted"
     ASSISTANT_EDIT_BUTTON_SELECTORS = [
         "button.toggle-edit-button",
@@ -215,6 +233,15 @@ class AIStudioDriver(BaseDriver):
         "textarea.textarea",
         "textarea[class*='textarea']",
         "textarea",
+    ]
+    ASSISTANT_EDIT_SAVE_BUTTON_SELECTORS = [
+        "button[data-test-id*='save']",
+        "button[name*='save']",
+        "button[aria-label='Save']",
+        "button[aria-label*='Save']",
+        "button:has-text('Save')",
+        "button:has-text('Done')",
+        "button:has-text('Update')",
     ]
     SAFETY_RATINGS_BUTTON_SELECTOR = "button[aria-label*='Safety Ratings']"
     RUN_SAFETY_SETTINGS_PANEL_SELECTOR = "div.run-safety-settings"
@@ -3404,81 +3431,135 @@ class AIStudioDriver(BaseDriver):
             )
             return dialog is not None
 
+        async def _find_upload_file_input(timeout_ms: int = 0):
+            deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+            while True:
+                for selector in self.UPLOAD_FILE_INPUT_SELECTORS:
+                    locator = self.page.locator(selector)
+                    try:
+                        count = await locator.count()
+                    except Exception:
+                        count = 0
+                    if count > 0:
+                        return locator.nth(0)
+
+                if timeout_ms <= 0 or time.time() >= deadline:
+                    return None
+                await asyncio.sleep(0.1)
+
         async def _trigger_picker_upload(chooser_files_value: Any) -> bool:
             add_media_button = await self._find_first_visible(
-                ["button[data-test-id='add-media-button']", "[data-test-id='add-media-button']"],
+                self.ADD_MEDIA_BUTTON_SELECTORS,
                 timeout_ms=8000,
             )
             if add_media_button is None:
                 Logger.warning("Google AI Studio: add-media button was not found.")
                 return False
 
-            async with self.page.expect_file_chooser(timeout=6000) as fc_info:
+            try:
                 await self._click_locator(add_media_button, timeout=3000)
-                await self.page.wait_for_selector(".mat-mdc-menu-content", timeout=5000, state="visible")
-                clicked = False
+            except Exception as e:
                 try:
-                    menu = await self._find_first_visible(
-                        [".mat-mdc-menu-content"],
-                        timeout_ms=1000,
+                    await self._click_locator(add_media_button, timeout=3000, force=True)
+                except Exception:
+                    Logger.warning(f"Google AI Studio: failed to click add-media button: {e}")
+                    return False
+
+            try:
+                await self.page.wait_for_selector(
+                    ".mat-mdc-menu-content, .mat-mdc-menu-panel, .cdk-overlay-pane",
+                    timeout=5000,
+                    state="visible",
+                )
+            except Exception:
+                pass
+
+            file_input = await _find_upload_file_input(timeout_ms=800)
+            if file_input is None:
+                try:
+                    file_input = await _find_upload_file_input(timeout_ms=0)
+                except Exception:
+                    file_input = None
+
+            if file_input is not None:
+                try:
+                    await file_input.set_input_files(chooser_files_value)
+                    await self._ui_settle_pause(0.4)
+                    return True
+                except Exception as e:
+                    Logger.debug(
+                        f"Google AI Studio: direct upload input failed, trying picker menu: {e}"
                     )
-                    if menu is not None:
-                        items = menu.locator("xpath=./*")
-                        if await items.count() >= 2:
-                            target = items.nth(1)
+
+            try:
+                async with self.page.expect_file_chooser(timeout=6000) as fc_info:
+                    upload_item = await self._find_first_visible(
+                        self.UPLOAD_FILE_MENU_ITEM_SELECTORS,
+                        timeout_ms=2500,
+                    )
+                    clicked = False
+                    if upload_item is not None:
+                        try:
+                            await self._click_locator(upload_item, timeout=2500)
+                            clicked = True
+                        except Exception:
                             try:
-                                await self._click_locator(target, timeout=2500)
+                                await self._click_locator(upload_item, timeout=2500, force=True)
                                 clicked = True
                             except Exception:
-                                nested = target.locator("button, [role='menuitem']")
-                                if await nested.count() > 0:
-                                    await self._click_locator(nested.first, timeout=2500)
-                                    clicked = True
-                except Exception:
-                    clicked = False
+                                clicked = False
 
-                if not clicked:
-                    clicked = await self.page.evaluate(
-                        """() => {
-                            const isVisible = (el) => {
-                                if (!el) return false;
-                                const rect = el.getBoundingClientRect();
-                                if (!rect || rect.width <= 0 || rect.height <= 0) return false;
-                                const style = window.getComputedStyle(el);
-                                if (!style) return false;
-                                return style.visibility !== 'hidden' && style.display !== 'none';
-                            };
+                    if not clicked:
+                        clicked = await self.page.evaluate(
+                            """() => {
+                                const normalize = (value) => (value || '').toString().replace(/\\s+/g, ' ').trim().toLowerCase();
+                                const isVisible = (el) => {
+                                    if (!el) return false;
+                                    const rect = el.getBoundingClientRect();
+                                    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+                                    const style = window.getComputedStyle(el);
+                                    if (!style) return false;
+                                    return style.visibility !== 'hidden' && style.display !== 'none';
+                                };
 
-                            const menus = Array.from(document.querySelectorAll('.mat-mdc-menu-content')).filter(isVisible);
-                            if (!menus.length) return false;
-
-                            const menu = menus[0];
-                            const items = Array.from(menu.children).filter(isVisible);
-                            if (items.length < 2) return false;
-
-                            const target = items[1];
-                            try {
-                                target.click();
-                                return true;
-                            } catch (e) {
+                                const candidates = Array.from(document.querySelectorAll(
+                                    'button.upload-file-menu-item, .upload-file-menu-item, button[role="menuitem"], [role="menuitem"], button'
+                                )).filter(isVisible);
+                                const target = candidates.find((el) => {
+                                    const text = normalize(el.innerText || el.textContent || '');
+                                    const aria = normalize(el.getAttribute('aria-label'));
+                                    const classes = normalize(el.className);
+                                    return classes.includes('upload-file-menu-item')
+                                        || text.includes('upload files')
+                                        || aria.includes('upload files');
+                                });
+                                if (!target) return false;
                                 try {
-                                    const nested = target.querySelector('button, [role="menuitem"]');
-                                    if (nested) {
-                                        nested.click();
-                                        return true;
-                                    }
-                                } catch (e2) {}
-                                return false;
-                            }
-                        }"""
-                    )
-                if not clicked:
-                    raise RuntimeError("AI Studio file picker menu item was not clickable.")
+                                    target.click();
+                                    return true;
+                                } catch (e) {
+                                    return false;
+                                }
+                            }"""
+                        )
+                    if not clicked:
+                        raise RuntimeError("AI Studio file picker menu item was not clickable.")
 
-            chooser = await fc_info.value
-            await chooser.set_files(chooser_files_value)
-            await self._ui_settle_pause(0.4)
-            return True
+                chooser = await fc_info.value
+                await chooser.set_files(chooser_files_value)
+                await self._ui_settle_pause(0.4)
+                return True
+            except Exception as e:
+                file_input = await _find_upload_file_input(timeout_ms=1000)
+                if file_input is not None:
+                    try:
+                        await file_input.set_input_files(chooser_files_value)
+                        await self._ui_settle_pause(0.4)
+                        return True
+                    except Exception:
+                        pass
+                Logger.warning(f"Google AI Studio: upload file picker did not open: {e}")
+                return False
 
         def _materialize_payload(payload: dict) -> str | None:
             nonlocal temp_dir, temp_path
@@ -4415,6 +4496,269 @@ class AIStudioDriver(BaseDriver):
         """Return whether the latest assistant turn has visible generated text."""
         return bool(await self._latest_assistant_turn_visible_text())
 
+    def _anti_censorship_edit_save_timeout_ms(self) -> int:
+        value = self._clamp_int(
+            self.config_manager.get_setting(
+                "aistudio_behavior",
+                "anti_censorship_edit_save_timeout",
+            ),
+            10,
+            1,
+            60,
+        )
+        return int(value) * 1000
+
+    def _anti_censorship_edit_save_retries(self) -> int:
+        return self._clamp_int(
+            self.config_manager.get_setting(
+                "aistudio_behavior",
+                "anti_censorship_edit_save_retries",
+            ),
+            2,
+            0,
+            5,
+        )
+
+    async def _track_assistant_edit_textarea(self, textarea):
+        """Return a locator tied to the exact assistant edit textarea when possible."""
+        if not self.page or textarea is None:
+            return textarea
+
+        token = f"irp-edit-{secrets.token_hex(8)}"
+        try:
+            await textarea.evaluate(
+                "(el, value) => el.setAttribute('data-irp-assistant-edit-token', value)",
+                token,
+            )
+            return self.page.locator(f"textarea[data-irp-assistant-edit-token='{token}']")
+        except Exception:
+            return textarea
+
+    async def _assistant_edit_textarea_visible(self, textarea) -> bool:
+        if textarea is None:
+            return False
+
+        try:
+            count = await textarea.count()
+            if count <= 0:
+                return False
+        except Exception:
+            pass
+
+        try:
+            return bool(await textarea.is_visible())
+        except Exception:
+            return False
+
+    async def _looks_like_prompt_composer_textarea(self, textarea) -> bool:
+        """Return whether a textarea is AI Studio's main prompt composer."""
+        if textarea is None:
+            return False
+
+        try:
+            return bool(
+                await textarea.evaluate(
+                    r"""(el) => {
+                        const normalize = (value) => (value || '').toString().replace(/\s+/g, ' ').trim().toLowerCase();
+                        const placeholder = normalize(el.getAttribute('placeholder'));
+                        if (placeholder.includes('start typing a prompt')) return true;
+                        if (placeholder.includes('enter a prompt')) return true;
+                        if (placeholder.includes('type a prompt')) return true;
+
+                        const label = normalize(el.getAttribute('aria-label'));
+                        if (label.includes('prompt')) return true;
+
+                        const composerHost = el.closest(
+                            'ms-prompt-input, ms-run-input, xap-prompt-input, ' +
+                            '.prompt-input, .prompt-input-wrapper, .prompt-input-container, ' +
+                            '.composer, .composer-container, .input-area, .input-container'
+                        );
+                        const turnHost = el.closest(
+                            'div.chat-turn-container.code-block-aligner.model.render.ng-star-inserted, ' +
+                            'ms-chat-turn'
+                        );
+                        return Boolean(composerHost && !turnHost);
+                    }"""
+                )
+            )
+        except Exception:
+            return False
+
+    async def _is_assistant_edit_textarea_candidate(self, textarea) -> bool:
+        if textarea is None:
+            return False
+        try:
+            if not await textarea.is_visible():
+                return False
+        except Exception:
+            return False
+        return not await self._looks_like_prompt_composer_textarea(textarea)
+
+    async def _find_first_assistant_edit_textarea_within(self, root, timeout_ms: int = 0):
+        if root is None:
+            return None
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            for selector in self.ASSISTANT_EDIT_TEXTAREA_SELECTORS:
+                locator = root.locator(selector)
+                try:
+                    count = await locator.count()
+                except Exception:
+                    count = 0
+
+                for idx in range(min(count, 10)):
+                    candidate = locator.nth(idx)
+                    if await self._is_assistant_edit_textarea_candidate(candidate):
+                        return candidate
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return None
+            await asyncio.sleep(0.1)
+
+    async def _find_assistant_edit_save_button(self, container, timeout_ms: int = 0):
+        """Find the visible Save/Done button for an assistant edit session."""
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            button = None
+            if container is not None:
+                button = await self._find_first_visible_within(
+                    container,
+                    self.ASSISTANT_EDIT_SAVE_BUTTON_SELECTORS,
+                    timeout_ms=0,
+                )
+            if button is None:
+                button = await self._find_first_visible(
+                    self.ASSISTANT_EDIT_SAVE_BUTTON_SELECTORS,
+                    timeout_ms=0,
+                )
+
+            if button is not None:
+                try:
+                    if await button.is_enabled():
+                        return button
+                except Exception:
+                    return button
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return None
+            await asyncio.sleep(0.15)
+
+    async def _wait_for_assistant_edit_to_close(self, textarea, timeout_ms: int) -> bool:
+        """Wait until AI Studio has left assistant edit mode."""
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            if not await self._assistant_edit_textarea_visible(textarea):
+                return True
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return False
+            await asyncio.sleep(0.15)
+
+    async def _press_assistant_edit_shortcut(self, textarea) -> bool:
+        try:
+            await textarea.press("Control+Enter", timeout=3000)
+            return True
+        except Exception:
+            try:
+                if self.page:
+                    await self.page.keyboard.press("Control+Enter")
+                    return True
+            except Exception:
+                return False
+        return False
+
+    async def _submit_assistant_edit(self, textarea, container) -> bool:
+        """Click/wait for AI Studio's assistant edit save instead of racing the composer."""
+        timeout_ms = self._anti_censorship_edit_save_timeout_ms()
+        attempts = self._anti_censorship_edit_save_retries() + 1
+
+        for attempt in range(1, attempts + 1):
+            button_wait_ms = timeout_ms if attempt > 1 else min(timeout_ms, 2000)
+            save_button = await self._find_assistant_edit_save_button(
+                container,
+                timeout_ms=button_wait_ms,
+            )
+            if save_button is not None:
+                try:
+                    await self._click_locator(save_button, timeout=3000)
+                except Exception:
+                    try:
+                        await self._click_locator(save_button, timeout=3000, force=True)
+                    except Exception as e:
+                        Logger.debug(
+                            "Google AI Studio: assistant edit save button click failed "
+                            f"on attempt {attempt}: {e}"
+                        )
+            else:
+                Logger.debug(
+                    "Google AI Studio: assistant edit save button was not visible "
+                    f"on attempt {attempt}; trying Ctrl+Enter."
+                )
+                await self._press_assistant_edit_shortcut(textarea)
+
+            if await self._wait_for_assistant_edit_to_close(textarea, timeout_ms=timeout_ms):
+                await self._ui_settle_pause(0.25)
+                return True
+
+            Logger.warning(
+                "Google AI Studio: assistant edit did not finish saving "
+                f"on attempt {attempt}/{attempts}."
+            )
+            await self._ui_settle_pause(0.35)
+
+        return False
+
+    async def _open_assistant_edit_mode(self, turn, container):
+        """Open assistant edit mode and return its textarea, proving it is not the composer."""
+        for attempt in range(1, 4):
+            if not await self._hover_assistant_turn_controls(turn, container):
+                Logger.warning(
+                    "Google AI Studio: could not reveal assistant controls "
+                    f"for anti-censorship replacement on attempt {attempt}/3."
+                )
+                await self._ui_settle_pause(0.3)
+                continue
+
+            await self._ui_settle_pause(0.25)
+            edit_button = await self._find_first_visible_within(
+                container,
+                self.ASSISTANT_EDIT_BUTTON_SELECTORS,
+                timeout_ms=1600,
+            )
+            if edit_button is None:
+                Logger.warning(
+                    "Google AI Studio: assistant edit button was not found "
+                    f"on attempt {attempt}/3."
+                )
+                await self._ui_settle_pause(0.35)
+                continue
+
+            try:
+                await self._click_locator(edit_button, timeout=3500)
+            except Exception as e:
+                try:
+                    await self._click_locator(edit_button, timeout=3500, force=True)
+                except Exception:
+                    Logger.warning(
+                        f"Google AI Studio: failed to click assistant edit button "
+                        f"on attempt {attempt}/3: {e}"
+                    )
+                    await self._ui_settle_pause(0.35)
+                    continue
+
+            await self._ui_settle_pause(0.45)
+            textarea = await self._find_assistant_edit_textarea(container, timeout_ms=3000)
+            if textarea is not None:
+                return textarea
+
+            Logger.warning(
+                "Google AI Studio: assistant edit button was clicked, but edit mode "
+                f"did not open on attempt {attempt}/3."
+            )
+            await self._ui_settle_pause(0.45)
+
+        return None
+
     async def _replace_latest_assistant_message(self, replacement_text: str) -> bool:
         """Edit the latest assistant turn in-place and replace it with the provided text."""
         if await self._is_system_prompt_panel_open():
@@ -4431,33 +4775,14 @@ class AIStudioDriver(BaseDriver):
             Logger.warning("Google AI Studio: assistant turn for anti-censorship replacement was not found.")
             return False
 
-        if not await self._hover_assistant_turn_controls(turn, container):
-            Logger.warning("Google AI Studio: could not reveal assistant controls for anti-censorship replacement.")
-            return False
-
-        edit_button = await self._find_first_visible_within(
-            container,
-            self.ASSISTANT_EDIT_BUTTON_SELECTORS,
-            timeout_ms=1200,
-        )
-        if edit_button is None:
-            Logger.warning("Google AI Studio: assistant edit button was not found.")
-            return False
-
-        try:
-            await self._click_locator(edit_button, timeout=3000)
-        except Exception as e:
-            try:
-                await self._click_locator(edit_button, timeout=3000, force=True)
-            except Exception:
-                Logger.warning(f"Google AI Studio: failed to open assistant edit mode: {e}")
-                return False
-
-        await self._ui_settle_pause(0.18)
-        textarea = await self._find_assistant_edit_textarea(container, timeout_ms=5000)
+        textarea = await self._open_assistant_edit_mode(turn, container)
         if textarea is None:
-            Logger.warning("Google AI Studio: assistant edit textarea was not found.")
+            Logger.warning(
+                "Google AI Studio: assistant edit mode did not open; refusing to write "
+                "the replacement into the prompt composer."
+            )
             return False
+        textarea = await self._track_assistant_edit_textarea(textarea)
 
         if not await self._set_text_control_value(textarea, str(replacement_text or "")):
             Logger.warning("Google AI Studio: failed to replace the blocked assistant message.")
@@ -4469,28 +4794,42 @@ class AIStudioDriver(BaseDriver):
         except Exception:
             pass
 
-        try:
-            await textarea.press("Control+Enter", timeout=3000)
-        except Exception as e:
-            try:
-                if self.page:
-                    await self.page.keyboard.press("Control+Enter")
-            except Exception:
-                Logger.warning(f"Google AI Studio: failed to submit assistant edit with Ctrl+Enter: {e}")
-                return False
+        if not await self._submit_assistant_edit(textarea, container):
+            Logger.warning("Google AI Studio: assistant edit save did not complete.")
+            return False
 
-        await self._ui_settle_pause(0.35)
         await self._refocus_composer_before_send()
         return True
 
     async def _find_assistant_edit_textarea(self, container, timeout_ms: int = 0):
-        """Find the assistant-edit textarea using a global visible lookup only."""
-        _ = container
-        return await self._find_first_visible(
-            self.ASSISTANT_EDIT_TEXTAREA_SELECTORS,
-            timeout_ms=int(timeout_ms or 0),
-            poll_interval_s=0.1,
+        """Find the assistant-edit textarea, explicitly excluding the prompt composer."""
+        scoped = await self._find_first_assistant_edit_textarea_within(
+            container,
+            timeout_ms=min(int(timeout_ms or 0), 1200),
         )
+        if scoped is not None:
+            return scoped
+
+        if not self.page:
+            return None
+
+        deadline = time.time() + max(0.0, float(timeout_ms) / 1000.0)
+        while True:
+            for selector in self.ASSISTANT_EDIT_TEXTAREA_SELECTORS:
+                locator = self.page.locator(selector)
+                try:
+                    count = await locator.count()
+                except Exception:
+                    count = 0
+
+                for idx in range(min(count, 10)):
+                    candidate = locator.nth(idx)
+                    if await self._is_assistant_edit_textarea_candidate(candidate):
+                        return candidate
+
+            if timeout_ms <= 0 or time.time() >= deadline:
+                return None
+            await asyncio.sleep(0.1)
 
     async def _click_regenerate(self) -> bool:
         """Click the most recent visible regenerate button in the chat transcript."""

@@ -364,6 +364,27 @@ Default is `Continue.`.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Continue Nudge**
 
+### Edit Save Timeout
+
+How long IntenseRP waits for AI Studio to finish saving the edited assistant turn before it sends the continue nudge.
+
+Default is `10` seconds.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Edit Save Timeout**
+
+If the continue nudge appears before the blocked assistant message has actually changed to your **Replacement Message**, increase this first.
+
+### Edit Save Retries
+
+How many extra times IntenseRP tries to save the edited assistant turn if AI Studio is slow to expose or accept the save action.
+
+Default is `2`.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Edit Save Retries**
+
+!!! note "Why this exists"
+    AI Studio sometimes renders the assistant edit controls before the save action is really ready. This setting gives the workaround a couple more chances before it gives up and sends an error instead of accidentally nudging from an unsaved blocked turn.
+
 !!! tip "Sent as plain text"
     The continue nudge is always typed into the composer normally.
 
@@ -483,6 +504,8 @@ All macros are stripped before sending.
 | **Savior Model** | Model used for the CAARS prelude | `Gemini 3.1 Flash Lite` |
 | **Replacement Message** | Text used to replace a blocked assistant turn before retrying | `.` |
 | **Continue Nudge** | Follow-up user message sent after a blocked turn | `Continue.` |
+| **Edit Save Timeout** | Seconds to wait for the blocked-turn edit to save | `10` |
+| **Edit Save Retries** | Extra save attempts before giving up | `2` |
 | **Temperature** | Default temperature | `1.0` |
 | **Top P** | Default top-p value | `0.95` |
 | **Max Output Tokens** | Default output token budget | `65536` |

@@ -1842,6 +1842,32 @@ SCHEMA = [
                 docs_anchor="continue-nudge",
             ),
             SettingField(
+                key="anti_censorship_edit_save_timeout",
+                label="Edit Save Timeout",
+                type=SettingType.INTEGER,
+                default=10,
+                tooltip=(
+                    "Seconds to wait for AI Studio to finish saving the edited assistant turn "
+                    "before sending the continue nudge."
+                ),
+                depends="aistudio_behavior.anti_censorship",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="edit-save-timeout",
+            ),
+            SettingField(
+                key="anti_censorship_edit_save_retries",
+                label="Edit Save Retries",
+                type=SettingType.INTEGER,
+                default=2,
+                tooltip=(
+                    "Extra save attempts for the edited assistant turn when AI Studio is slow "
+                    "to expose or accept the save action."
+                ),
+                depends="aistudio_behavior.anti_censorship",
+                docs_path=DOCS_AISTUDIO,
+                docs_anchor="edit-save-retries",
+            ),
+            SettingField(
                 key="sampling_divider",
                 label="Sampling",
                 type=SettingType.DIVIDER,
@@ -3293,7 +3319,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
     "aistudio_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
-        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge"]},
+        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge", "anti_censorship_edit_save_timeout", "anti_censorship_edit_save_retries"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
         {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "humanize_mouse_movements", "assume_english_ui", "assume_english_ui_warning", "assume_paid_model_access", "assume_paid_model_access_warning", "paid_model_access_emails", "clean_regeneration", "preflight_next_chat"]},
     ],
