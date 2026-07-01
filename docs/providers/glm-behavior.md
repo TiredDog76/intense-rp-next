@@ -28,13 +28,7 @@ For GLM, these model IDs map to simple behavior presets:
 
     :material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Model**
 
-    Supported options:
-
-    - **GLM-5.2**
-    - **GLM-5.1**
-    - **GLM-5-Turbo**
-    - **GLM-5V-Turbo**
-    - **GLM-4.7**
+    The Settings dropdown shows the supported GLM web UI entries. Use it as the exact list, since GLM can change model availability through rollouts or maintenance.
 
     Right now, **GLM-5.2** is the only model where IntenseRP exposes the separate **Deep Think Effort** setting, and **GLM-5V-Turbo** is the only model where IntenseRP exposes the separate **Enable Tools** toggle. On other GLM models, those settings are ignored or forced off as needed.
 

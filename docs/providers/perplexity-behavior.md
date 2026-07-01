@@ -36,17 +36,7 @@ IntenseRP can switch Perplexity's real model picker in the web UI when your acco
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Perplexity** -> **Model**
 
-Current options:
-
-- `Best (Auto)`
-- `Sonar 2`
-- `GPT-5.4`
-- `GPT-5.5`
-- `Gemini 3.1 Pro`
-- `Claude Sonnet 4.6`
-- `Claude Opus 4.7`
-- `Kimi K2.6`
-- `Nemotron 3 Super`
+The dropdown includes **Best (Auto)** plus the paid-account model entries IntenseRP knows how to select. Exact labels live in Settings, since Perplexity's picker can change faster than this page should try to keep up with.
 
 !!! note "Paid-account controls"
     Perplexity only exposes model and Thinking controls on paid accounts. Free accounts can still send prompts, but IntenseRP skips those controls and uses whatever the Perplexity UI allows.

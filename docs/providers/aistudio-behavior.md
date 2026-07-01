@@ -49,19 +49,9 @@ Google AI Studio has a real model picker in the web UI:
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Model**
 
-Current model entries:
+Use this setting to pick from the AI Studio model entries exposed in IntenseRP Settings. The dropdown is the source of truth for exact labels, while the docs only call out the important behavior differences.
 
-- `Gemini 3.5 Flash`
-- `Gemini 3.1 Pro`
-- `Gemini 3.1 Flash Lite`
-- `Gemini 3 Flash`
-- `Gemini 2.5 Pro` (paid in AI Studio; requires the paid-access override)
-- `Gemini 2.5 Flash` (paid in AI Studio; requires the paid-access override)
-- `Gemini 2.5 Flash Lite` (paid in AI Studio; requires the paid-access override)
-- `Gemma 4 26B-A4B`
-- `Gemma 4 31B`
-
-This is separate from the API `aistudio-*` behavior presets.
+This is separate from the API `aistudio-*` behavior presets. Gemini 2.5 entries are the special case since they stay visible for compatibility, but runtime requests require the paid-access override below.
 
 !!! warning "Gemini 2.5 models need paid account access"
     Gemini 2.5 Pro, Flash, and Flash Lite have become paid in Google AI Studio. IntenseRP keeps their model entries and old thinking-budget mappings so existing settings don't disappear, but runtime requests that resolve to a Gemini 2.5 model stop unless **Assume Paid Model Access** is enabled for the active account.

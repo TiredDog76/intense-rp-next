@@ -164,23 +164,10 @@ Click the :material-power-plug: **API** button in SillyTavern's top bar.
 | :material-key: **API Key** | Leave blank |
 | :material-robot: **Model** | `deepseek-*` / `glm-*` / `moonshot-*` / `qwen-*` / `perplexity-*` / `huggingchat-*` / `aistudio-*` / `mimo-*` |
 
-!!! note
-    Use the model ID that matches your active provider:
+!!! note "Model IDs"
+    Use `<provider>-auto` for your active provider. The current prefixes are `deepseek`, `glm`, `moonshot`, `qwen`, `perplexity`, `huggingchat`, `aistudio`, and `mimo`, so GLM uses `glm-auto`, AI Studio uses `aistudio-auto`, etc.
 
-    - DeepSeek -> `deepseek-auto`
-    - GLM Chat -> `glm-auto`
-    - Moonshot -> `moonshot-auto`
-    - QwenLM -> `qwen-auto`
-    - Perplexity -> `perplexity-auto`
-    - HuggingChat -> `huggingchat-auto`
-    - Google AI Studio -> `aistudio-auto`
-    - Xiaomi MiMo -> `mimo-auto`
-
-!!! info "Model IDs"
-    The `*-auto` model is the default and respects your IntenseRP settings for the active provider.
-
-    There are also `*-chat` and `*-reasoner` variants.
-    For the full list, see [:material-lan: Network & API](features/network-api.md).
+    `*-auto` respects your IntenseRP settings. There are also `*-chat` and `*-reasoner` variants; for the full behavior reference, see [:material-lan: Network & API](features/network-api.md).
 
 ![SillyTavern Endpoint Settings](pics/getting-started/preview_of_settings.png)
 
