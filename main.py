@@ -1716,6 +1716,15 @@ class MainWindow(QMainWindow):
 
     def _setup_logging(self):
         """Setup logging (console and file) based on settings."""
+        def _coerce_int_setting(value, default: int, label: str) -> int:
+            try:
+                return int(value)
+            except Exception:
+                Logger.warning(
+                    f"Invalid {label} value after settings reload ({value!r}); using {default}."
+                )
+                return default
+
         # Console window (separate from mini-console)
         enable_console = self.config_manager.get_setting("console_settings", "enable_console")
 
@@ -1743,8 +1752,10 @@ class MainWindow(QMainWindow):
         if max_files is None: max_files = 5
         if max_size_val is None: max_size_val = 10
         if size_unit is None: size_unit = "MB"
-        
-        Logger.configure_file_logging(bool(enable_files), str(log_dir), int(max_files) if max_files is not None else 5, int(max_size_val) if max_size_val is not None else 10, str(size_unit))
+
+        max_files_int = _coerce_int_setting(max_files, 5, "logfiles.max_files")
+        max_size_int = _coerce_int_setting(max_size_val, 10, "logfiles.size_val")
+        Logger.configure_file_logging(bool(enable_files), str(log_dir), max_files_int, max_size_int, str(size_unit))
         configure_internal_diagnostics_logging(self.config_manager)
         if not bool(self.config_manager.get_setting("diagnostics", "save_last_prompt")):
             clear_prompt_snapshots(self.config_manager.config_dir)
@@ -3243,17 +3254,20 @@ class MainWindow(QMainWindow):
 
     def on_settings_reloaded(self):
         Logger.info("Settings reloaded.")
-        sync_animations_disabled_from_config(self.config_manager)
-        self._setup_logging()
-        self._refresh_news_state()
-        self._sync_news_button()
+        try:
+            sync_animations_disabled_from_config(self.config_manager)
+            self._setup_logging()
+            self._refresh_news_state()
+            self._sync_news_button()
 
-        if self.console_window:
-            self.console_window.apply_settings()
+            if self.console_window:
+                self.console_window.apply_settings()
 
-        if self.settings_window and self.settings_window.isVisible():
-            # Importing settings is effectively an external change; force refresh
-            self.settings_window.refresh_from_config(force=True)
+            if self.settings_window and self.settings_window.isVisible():
+                # importing settings is effectively an external change -=> force refresh
+                self.settings_window.refresh_from_config(force=True)
+        except Exception as exc:
+            Logger.error(f"Failed to apply reloaded settings: {exc}")
 
     def on_restart_requested(self):
         asyncio.create_task(self._restart_application())

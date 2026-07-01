@@ -58,9 +58,13 @@ If some files are locked, the backup can still succeed, but it may warn that it 
 
 ## :material-archive-arrow-down: Import from .zip
 
-With all Customize options enabled, Import restores a backup by **replacing the contents** of your active config directory, and then reloading settings automatically.
+With all Customize options enabled, Import restores a complete backup by **replacing the contents** of your active config directory, and then reloading settings automatically.
 
 If you turn some options off, Import only updates the selected parts found in the `.zip` and leaves the rest of your active config directory alone.
+
+If a backup doesn't actually contain an optional selected category, like Profiles or Credentials, Import now uses the safer selective path for the data that exists and leaves that missing local category alone.
+
+It'll tell you what wasn't found instead of treating checked but empty states as a reason to delete local data. (and crashing the app)
 
 1. Click **Import from .zip**
 2. Select a backup `.zip`

@@ -511,6 +511,21 @@ def _iter_settings_state_entries(root: Path) -> list[Path]:
     return result
 
 
+def _missing_selected_backup_categories(root: Path, options: ConfigBackupOptions) -> list[str]:
+    missing: list[str] = []
+
+    if options.settings_state and not _iter_settings_state_entries(root):
+        missing.append("Settings & State")
+
+    if options.profiles and not (root / _PROFILES_ROOT).exists():
+        missing.append("Profiles")
+
+    if options.credentials and not any((root / name).exists() for name in _CREDENTIALS_ROOTS):
+        missing.append("Credentials")
+
+    return missing
+
+
 def _restore_moved_paths(moved_paths: list[tuple[Path, Path]]) -> None:
     for target_path, rollback_path in reversed(moved_paths):
         try:
@@ -686,6 +701,13 @@ def import_config_backup_zip(
             ok, reason = _validate_decryptable_settings(root)
             if not ok:
                 return False, reason
-            return _replace_entire_config_dir(root, target_dir)
+            missing_categories = _missing_selected_backup_categories(root, options)
+            if not missing_categories:
+                return _replace_entire_config_dir(root, target_dir)
+
+            Logger.info(
+                "Full config import requested, but the backup is missing selected "
+                f"data ({', '.join(missing_categories)}). Using selective import."
+            )
 
         return _import_selected_config_data(root, target_dir, options)

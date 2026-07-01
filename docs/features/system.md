@@ -202,10 +202,12 @@ IntenseRP Next v2 includes a built-in backup/import tool that packages your acti
 2. Click **Backup to .zip** and choose a save location
 3. To restore, click **Import from .zip** and select your backup zip
 
-After backup/import, settings reload automatically. Import replaces the contents of your active `[config_dir]`.
+After backup/import, settings reload automatically. A complete import replaces the contents of your active `[config_dir]`.
+
+If the backup is missing an optional selected category, such as Profiles or Credentials, IntenseRP imports the data it found and leaves that missing local category alone.
 
 !!! warning "Import overwrites your current config"
-    Import replaces your active config directory contents. Create a backup zip first if you want an easy rollback.
+    A complete import replaces your active config directory contents. Create a backup zip first if you want an easy rollback.
 
 !!! tip "Stop services for reliable imports"
     If Persistent Sessions are enabled and the browser is running, profile files can be in use. Click **Stop** in the main window before importing.
