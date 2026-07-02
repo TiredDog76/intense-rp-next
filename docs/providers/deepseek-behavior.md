@@ -61,19 +61,6 @@ Toggles DeepSeek's web search feature. When enabled, the model can look things u
 
 ---
 
-## :material-shield-check: Conservative Mode
-
-Conservative Mode makes DeepSeek sessions quieter on DeepSeek's radars. When enabled, IntenseRP adds short pauses around normal DeepSeek UI actions like filling the composer, toggling DeepThink/Search, opening a new chat, sending, and regenerating.
-
-:material-arrow-right: **Settings** -> **Provider Behavior** -> **DeepSeek** -> **Conservative Mode**
-
-It also keeps DeepSeek out of **Providers in Parallel**. If DeepSeek is your current provider, it stays as a single lane. If another provider is current and DeepSeek was selected as an extra lane, DeepSeek is skipped when the parallel runtime starts.
-
-!!! note "Not magic account armor"
-    I'm not sure how effective this is just yet, this is mainly an experiment to see if it can help with DeepSeek's anti-automation measures. It could potentially reduce the risk of bans, but I wouldn't count on it as a shield.
-
----
-
 ## :material-file-upload: File Upload Mode
 
 Instead of typing your message into DeepSeek's chat box, IntenseRP can upload it as a text file attachment. This is useful for very long prompts that might hit DeepSeek's input limits.
@@ -204,7 +191,6 @@ All macros are stripped from the message before sending it to DeepSeek.
 | **Enable DeepThink** | Toggles reasoning mode | Off |
 | **Send DeepThink** | Includes thinking in response | Off |
 | **Enable Search** | Allows web search | Off |
-| **Conservative Mode** | Adds short UI pauses and keeps DeepSeek to one non-parallel lane | Off |
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |

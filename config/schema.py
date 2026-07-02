@@ -356,19 +356,6 @@ SCHEMA = [
                 docs_anchor="search",
             ),
             SettingField(
-                key="conservative_mode",
-                label="Conservative Mode",
-                type=SettingType.BOOLEAN,
-                default=False,
-                tooltip=(
-                    "Slow down DeepSeek UI actions and keep DeepSeek out of parallel lanes. "
-                    "Meant to attempt to bypass some of DeepSeek's built-in anti-automation measures, but I'm not yet sure how effective it is. "
-                    "Could help with bans, but possibly also just a placebo."
-                ),
-                docs_path=DOCS_DEEPSEEK,
-                docs_anchor="conservative-mode",
-            ),
-            SettingField(
                 key="send_as_text_file",
                 label="Send As Text File",
                 type=SettingType.BOOLEAN,
@@ -3274,7 +3261,7 @@ SETTINGS_CARDS = {
 
 PROVIDER_BEHAVIOR_GROUPS = {
     "deepseek_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "enable_search", "conservative_mode"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache", "first_chunk_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},

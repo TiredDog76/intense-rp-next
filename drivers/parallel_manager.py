@@ -17,7 +17,6 @@ from utils.providers_in_parallel import (
     get_parallel_launch_batch_size,
     get_parallel_provider_instance_count,
     get_parallel_selected_providers,
-    is_deepseek_conservative_mode_enabled,
     is_parallel_concurrent_launch_enabled,
     is_parallel_launch_batching_enabled,
     is_full_parallelization_active,
@@ -46,11 +45,6 @@ class ParallelDriversManager:
         self.current_provider = get_current_provider(config_manager)
         self.providers = get_parallel_selected_providers(config_manager)
         self._full_parallelization_active = is_full_parallelization_active(config_manager)
-        if is_deepseek_conservative_mode_enabled(config_manager):
-            Logger.info(
-                "DeepSeek Conservative Mode: DeepSeek parallel lanes are disabled "
-                "for this runtime."
-            )
         self._driver_entries: list[tuple[DriverProvider, BaseDriver]] = []
         self._driver_labels_by_id: dict[int, str] = {}
         self.drivers: dict[DriverProvider, BaseDriver] = {}
