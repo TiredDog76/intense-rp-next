@@ -27,6 +27,8 @@ The backup is made from your **active config directory** (shown at the top of th
 - `playwright_profiles/` (used for Persistent Sessions)
 - `accounts/` (Saved Accounts credentials and usage state)
 
+Browser profiles include the important durable parts, like cookies, local storage, IndexedDB, and preferences. Disposable Chromium cache folders are skipped because they can get huge, locked, or long enough to make Windows throw path length errors (like `WinError 206` and subsequently `WinError 3`). Chromium recreates those caches when it needs them.
+
 !!! note "Tip: stop services for a cleaner backup"
     If the browser/services are running, some profile files can be in use. For the most complete backup, click **Stop** in the main window first.
 
