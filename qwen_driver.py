@@ -65,6 +65,11 @@ class QwenLMDriver(BaseDriver):
     COMPLETION_REQUEST_TIMEOUT_S = 150.0
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 150.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
+    DATA_INSPECTION_FAILED_CODE = "data_inspection_failed"
+    DATA_INSPECTION_FAILED_MESSAGE = (
+        "QwenLM data_inspection_failed: Qwen censored this request (sadly :<), "
+        "so the message has been aborted."
+    )
 
     COMPLETIONS_ROUTE_GLOB = "**/api/v2/chat/completions*"
 
@@ -169,6 +174,22 @@ class QwenLMDriver(BaseDriver):
 
     def get_start_url(self) -> str:
         return self.CHAT_URL
+
+    @classmethod
+    def _qwen_provider_error_message(cls, payload: Any) -> str | None:
+        """Return an IntenseRP-facing message for terminal Qwen stream errors."""
+        if not isinstance(payload, dict):
+            return None
+
+        error = payload.get("error")
+        if not isinstance(error, dict):
+            return None
+
+        code = str(error.get("code") or "").strip().lower()
+        if code == cls.DATA_INSPECTION_FAILED_CODE:
+            return cls.DATA_INSPECTION_FAILED_MESSAGE
+
+        return None
 
     async def after_start(self, status_callback: Optional[Callable[[str], None]] = None) -> None:
         await self.check_ui_language(status_callback=status_callback)
@@ -3087,6 +3108,7 @@ class QwenLMDriver(BaseDriver):
             response_headers: Dict[str, str] = {}
             full_response_body = bytearray()
             aborted = False
+            encountered_error = False
             text_buffer = bytearray()
             text_buffer_pos = 0
 
@@ -3164,6 +3186,7 @@ class QwenLMDriver(BaseDriver):
 
             def process_sse_line(line: str) -> None:
                 nonlocal thinking_emitted, answer_started, openai_usage, openai_finish_emitted
+                nonlocal encountered_error
                 line = line.strip()
                 if not line.startswith("data:"):
                     return
@@ -3178,6 +3201,13 @@ class QwenLMDriver(BaseDriver):
                     return
 
                 if not isinstance(payload, dict):
+                    return
+
+                error_message = self._qwen_provider_error_message(payload)
+                if error_message:
+                    Logger.warning(error_message)
+                    encountered_error = True
+                    response_queue.put_nowait({"error": error_message})
                     return
 
                 if count_tokens_enabled:
@@ -3296,13 +3326,18 @@ class QwenLMDriver(BaseDriver):
                             except Exception:
                                 continue
                             process_sse_line(line)
+                            if encountered_error:
+                                break
+
+                        if encountered_error:
+                            break
 
                         if text_buffer_pos > 8192:
                             del text_buffer[:text_buffer_pos]
                             text_buffer_pos = 0
 
                     tail = bytes(text_buffer[text_buffer_pos:])
-                    if tail.strip():
+                    if tail.strip() and not encountered_error:
                         process_sse_line(tail.decode("utf-8", errors="ignore"))
                     text_buffer.clear()
                     text_buffer_pos = 0
@@ -3325,7 +3360,7 @@ class QwenLMDriver(BaseDriver):
                 Logger.error(f"QwenLM: error fulfilling route: {e}")
 
             await response_queue.put(None)
-            if not aborted and not self.abort_requested:
+            if not aborted and not encountered_error and not self.abort_requested:
                 Logger.success("QwenLM response streaming completed.")
 
         await self.page.route(self.COMPLETIONS_ROUTE_GLOB, handle_route)

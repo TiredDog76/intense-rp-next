@@ -82,6 +82,16 @@ IntenseRP keeps Tools **off by default**. If **Enable Tools** is turned on, the 
 
 ---
 
+## :material-shield-alert-outline: Provider-side filtering
+
+QwenLM can abort a request with a `data_inspection_failed` stream event, sometimes even after part of the assistant response has already arrived. When that happens, IntenseRP returns a clear terminal error instead of waiting for the response timeout:
+
+`QwenLM data_inspection_failed: Qwen censored this request (sadly :<), so the message has been aborted.`
+
+There isn't a Qwen recovery flow for this event yet. It happens on Qwen's side, so IntenseRP reports it and stops the request.
+
+---
+
 ## :material-calculator: Count Tokens
 
 QwenLM reports token usage during the response stream. When enabled, IntenseRP captures those values and returns them in the OpenAI-style `usage` fields (`prompt_tokens`, `completion_tokens`, `total_tokens`). This is enabled by default.

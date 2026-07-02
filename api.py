@@ -37,7 +37,12 @@ _RATE_LIMIT_LIKE_RE = re.compile(
 )
 _NON_RETRYABLE_PROVIDER_ERROR_RE = re.compile(
     r"(peak\s*hours|at\s*capacity|model\s*concurrency\s*limit|concurrency\s*limit|"
-    r"regeneration[_\s-]*limit|sensitive[_\s-]*query|provider-side\s+sensitive)",
+    r"regeneration[_\s-]*limit|sensitive[_\s-]*query|provider-side\s+sensitive|"
+    r"data_inspection_failed|qwen\s+censored)",
+    flags=re.IGNORECASE,
+)
+_TERMINAL_PARTIAL_ERROR_RE = re.compile(
+    r"(data_inspection_failed|qwen\s+censored)",
     flags=re.IGNORECASE,
 )
 
@@ -194,6 +199,10 @@ def _is_rate_limit_like_error(message: str) -> bool:
 
 def _is_non_retryable_provider_error(message: str) -> bool:
     return bool(_NON_RETRYABLE_PROVIDER_ERROR_RE.search(str(message or "")))
+
+
+def _is_terminal_partial_error(message: str) -> bool:
+    return bool(_TERMINAL_PARTIAL_ERROR_RE.search(str(message or "")))
 
 
 def _make_openai_error_sse_chunk(message: str) -> str:
@@ -1742,6 +1751,8 @@ class API:
                     # Prefer returning partial content for non-streaming clients if we already have
                     # meaningful output (i.e., avoid losing all progress)
                     if content_parts:
+                        if _is_terminal_partial_error(error_message):
+                            raise HTTPException(status_code=500, detail=error_message)
                         Logger.warning(
                             "Non-streaming request returned partial content due to error: "
                             + str(error_message)
@@ -1892,6 +1903,8 @@ class API:
                 self._request_abort_for_abort_event(abort_event)
 
                 if content_parts:
+                    if _is_terminal_partial_error(error_message):
+                        raise HTTPException(status_code=500, detail=error_message)
                     Logger.warning(
                         "Non-streaming text completion returned partial content due to error: "
                         + str(error_message)
