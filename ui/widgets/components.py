@@ -736,8 +736,8 @@ class _SegmentedSwitcherButton(QPushButton):
         if self._selection_opacity > 0.0:
             painter.save()
             painter.setOpacity(self._selection_opacity)
-            painter.setPen(QPen(QColor(BrandColors.INPUT_BORDER), 1))
-            painter.setBrush(QColor(BrandColors.ITEM_SELECTED))
+            painter.setPen(QPen(QColor(BrandColors.ACCENT), 1))
+            painter.setBrush(QColor(BrandColors.ACCENT))
             painter.drawRoundedRect(rect, radius, radius)
             painter.restore()
 
