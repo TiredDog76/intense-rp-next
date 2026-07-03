@@ -35,7 +35,7 @@ from config.schema import (
 )
 from drivers.providers import DriverProvider, provider_options
 from ui.core.brand import BrandColors
-from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, HintCard, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry
+from ui.widgets.components import Tumbler, StyledLineEdit, StyledTextEdit, StyledComboBox, Divider, Description, HintCard, StyledButton, MultiColumnRow, SettingRow, ToggleRow, InputPairsWidget, InputListWidget, DirectoryEntry, SegmentedSwitcher
 from ui.widgets.marshmallow_dropdown import MarshmallowDropdown, MarshmallowMultiSelectDropdown, MarshmallowOption
 from ui.widgets.redirect_card import RedirectCard
 from ui.widgets.runtime_parallelization import RuntimeProviderLaneDropdown
@@ -1405,6 +1405,13 @@ class SettingsWindow(QMainWindow):
                         force=not self._persistent_profile_options_loaded,
                     )
                 )
+        elif field.type == SettingType.SWITCHER:
+            widget = SegmentedSwitcher(
+                field.options or [],
+                default_value=str(field.default or ""),
+            )
+            if not getattr(field, "transient", False):
+                widget.valueChanged.connect(self._on_setting_changed)
         elif field.type == SettingType.INPUT_PAIR:
             widget = InputPairsWidget(alternative_actions=field.alternative_actions)
             widget.pairsChanged.connect(self._on_setting_changed)
@@ -1629,6 +1636,8 @@ class SettingsWindow(QMainWindow):
                     value_text = str(value)
                     if widget.findText(value_text) >= 0:
                         widget.setCurrentText(value_text)
+            elif field.type == SettingType.SWITCHER and isinstance(widget, SegmentedSwitcher):
+                widget.set_value(str(value or field.default or ""), emit=False, animate=False)
             elif field.type == SettingType.INPUT_PAIR:
                 widget.set_pairs(value or [])
             elif field.type == SettingType.INPUT_LIST:
@@ -4342,6 +4351,8 @@ class SettingsWindow(QMainWindow):
             value = self._runtime_parallel_mode_key()
         elif field_def.type == SettingType.DROPDOWN:
             value = widget.currentText()
+        elif field_def.type == SettingType.SWITCHER and isinstance(widget, SegmentedSwitcher):
+            value = widget.current_value()
         elif field_def.type == SettingType.INPUT_PAIR:
             value = []
             for pair in widget.get_pairs():
@@ -4600,6 +4611,8 @@ class SettingsWindow(QMainWindow):
             return widget.text()
         if isinstance(widget, StyledComboBox):
             return widget.currentText()
+        if isinstance(widget, SegmentedSwitcher):
+            return widget.current_value()
         if isinstance(widget, StyledTextEdit):
             return widget.toPlainText()
         if isinstance(widget, InputPairsWidget):
@@ -4619,6 +4632,8 @@ class SettingsWindow(QMainWindow):
                 widget.setText("" if value is None else str(value))
             elif isinstance(widget, StyledComboBox):
                 widget.setCurrentText("" if value is None else str(value))
+            elif isinstance(widget, SegmentedSwitcher):
+                widget.set_value("" if value is None else str(value), emit=False, animate=False)
             elif isinstance(widget, StyledTextEdit):
                 widget.setPlainText("" if value is None else str(value))
             elif isinstance(widget, InputPairsWidget):
@@ -5687,6 +5702,8 @@ class SettingsWindow(QMainWindow):
                         value = self._runtime_parallel_mode_key()
                     elif field.type == SettingType.DROPDOWN:
                         value = widget.currentText()
+                    elif field.type == SettingType.SWITCHER and isinstance(widget, SegmentedSwitcher):
+                        value = widget.current_value()
                     elif field.type == SettingType.INPUT_PAIR:
                         value = widget.get_pairs()
                     elif field.type == SettingType.INPUT_LIST:

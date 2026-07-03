@@ -50,6 +50,33 @@ RUNTIME_PARALLEL_MODE_OPTIONS = [
     ("full_parallel_lanes", "Multiple Instances per Provider + Concurrent Requests"),
 ]
 
+REQUEST_CAPTURE_REPLAY = "replay"
+REQUEST_CAPTURE_CDP_TEEING = "cdp_teeing"
+
+REQUEST_CAPTURE_MODE_OPTIONS = [
+    {
+        "label": "Replay",
+        "value": REQUEST_CAPTURE_REPLAY,
+    },
+    {
+        "label": "CDP Teeing",
+        "value": REQUEST_CAPTURE_CDP_TEEING,
+    },
+]
+
+REQUEST_CAPTURE_CDP_ONLY_OPTIONS = [
+    {
+        "label": "Replay",
+        "value": REQUEST_CAPTURE_REPLAY,
+        "enabled": False,
+        "tooltip": "Replay isn't available for this provider.",
+    },
+    {
+        "label": "CDP Teeing",
+        "value": REQUEST_CAPTURE_CDP_TEEING,
+    },
+]
+
 class SettingType(Enum):
     BOOLEAN = "boolean"
     STRING = "string"
@@ -67,6 +94,7 @@ class SettingType(Enum):
     INPUT_LIST = "input_list"
     MULTI_SELECT_DROPDOWN = "multi_select_dropdown"
     PROVIDER_LANE_SELECTOR = "provider_lane_selector"
+    SWITCHER = "switcher"
     REDIRECT = "redirect"
 
 @dataclass
@@ -87,7 +115,7 @@ class SettingField:
     required: bool = False
     nullable: bool = False
     depends: Optional[str] = None
-    options: Optional[List[str]] = None # For dropdowns
+    options: Optional[List[Any]] = None # For dropdowns/switchers
     transient: bool = False # For UI-only fields (not persisted)
     action: Optional[str] = None # For buttons (function name to call)
     sub_fields: Optional[List["SettingField"]] = None # For ROW type
@@ -329,6 +357,17 @@ SCHEMA = [
         key="deepseek_behavior",
         fields=[
             SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_REPLAY,
+                options=REQUEST_CAPTURE_MODE_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "This is saved now and will be wired into runtime behavior in a later update."
+                ),
+            ),
+            SettingField(
                 key="enable_deepthink",
                 label="Enable DeepThink",
                 type=SettingType.BOOLEAN,
@@ -445,6 +484,17 @@ SCHEMA = [
         name="GLM Behavior",
         key="glm_behavior",
         fields=[
+            SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_REPLAY,
+                options=REQUEST_CAPTURE_MODE_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "This is saved now and will be wired into runtime behavior in a later update."
+                ),
+            ),
             SettingField(
                 key="model",
                 label="Model",
@@ -712,6 +762,17 @@ SCHEMA = [
         key="moonshot_behavior",
         fields=[
             SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_REPLAY,
+                options=REQUEST_CAPTURE_MODE_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "This is saved now and will be wired into runtime behavior in a later update."
+                ),
+            ),
+            SettingField(
                 key="enable_deepthink",
                 label="Enable Thinking",
                 type=SettingType.BOOLEAN,
@@ -840,6 +901,17 @@ SCHEMA = [
         name="QwenLM Behavior",
         key="qwen_behavior",
         fields=[
+            SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_REPLAY,
+                options=REQUEST_CAPTURE_MODE_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "This is saved now and will be wired into runtime behavior in a later update."
+                ),
+            ),
             SettingField(
                 key="model",
                 label="Model",
@@ -1044,6 +1116,17 @@ SCHEMA = [
         key="mimo_behavior",
         fields=[
             SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_CDP_TEEING,
+                options=REQUEST_CAPTURE_CDP_ONLY_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "Replay is disabled for MiMo, so CDP Teeing is selected."
+                ),
+            ),
+            SettingField(
                 key="model",
                 label="Model",
                 type=SettingType.DROPDOWN,
@@ -1211,6 +1294,17 @@ SCHEMA = [
         key="perplexity_behavior",
         fields=[
             SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_CDP_TEEING,
+                options=REQUEST_CAPTURE_CDP_ONLY_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "Replay is disabled for Perplexity, so CDP Teeing is selected."
+                ),
+            ),
+            SettingField(
                 key="model",
                 label="Model",
                 type=SettingType.DROPDOWN,
@@ -1355,6 +1449,17 @@ SCHEMA = [
         name="HuggingChat Behavior",
         key="huggingchat_behavior",
         fields=[
+            SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_CDP_TEEING,
+                options=REQUEST_CAPTURE_CDP_ONLY_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "Replay is disabled for HuggingChat, so CDP Teeing is selected."
+                ),
+            ),
             SettingField(
                 key="model",
                 label="Model",
@@ -1624,6 +1729,17 @@ SCHEMA = [
         name="Google AI Studio Behavior",
         key="aistudio_behavior",
         fields=[
+            SettingField(
+                key="request_capture_mode",
+                label="Request Capture Mode",
+                type=SettingType.SWITCHER,
+                default=REQUEST_CAPTURE_REPLAY,
+                options=REQUEST_CAPTURE_MODE_OPTIONS,
+                tooltip=(
+                    "Choose how IntenseRP should capture provider responses. "
+                    "This is saved now and will be wired into runtime behavior in a later update."
+                ),
+            ),
             SettingField(
                 key="model_divider",
                 label="Model & Thinking",
@@ -3261,50 +3377,50 @@ SETTINGS_CARDS = {
 
 PROVIDER_BEHAVIOR_GROUPS = {
     "deepseek_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "enable_search"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "enable_deepthink", "send_deepthink", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache", "first_chunk_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "glm_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "deepthink_effort", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_advanced_search", "enable_tools"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "enable_deepthink", "deepthink_effort", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_advanced_search", "enable_tools"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "repetition_buster", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "completion_request_timeout", "first_chunk_timeout", "refresh_after_generation"]},
     ],
     "moonshot_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["enable_deepthink", "send_deepthink", "search_and_think_note", "enable_search"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "enable_deepthink", "send_deepthink", "search_and_think_note", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "qwen_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_tools"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_tools"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout", "first_chunk_timeout"]},
     ],
     "mimo_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "thinking_forced_note", "send_deepthink", "count_tokens", "search_forced_off_note", "auto_decline_cookies"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "thinking_forced_note", "send_deepthink", "count_tokens", "search_forced_off_note", "auto_decline_cookies"]},
         {"title": "Proxy", "icon": "globe.svg", "fields": ["use_proxy", "proxy_url"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout", "first_chunk_timeout"]},
     ],
     "perplexity_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "subscription_note", "enable_deepthink", "send_deepthink", "search_forced_off_note", "enable_search"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "subscription_note", "enable_deepthink", "send_deepthink", "search_forced_off_note", "enable_search"]},
         {"title": "Spaces", "icon": "sparkles.svg", "fields": ["use_spaces", "paste_system_instructions_into_space"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "message_send_timeout"]},
     ],
     "huggingchat_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "inference_provider", "subscription_note", "auto_disable_ratelimited_accounts", "enable_deepthink", "thinking_effort", "send_deepthink", "search_forced_off_note", "enable_search"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "inference_provider", "subscription_note", "auto_disable_ratelimited_accounts", "enable_deepthink", "thinking_effort", "send_deepthink", "search_forced_off_note", "enable_search"]},
         {"title": "System Prompt", "icon": "type.svg", "fields": ["use_system_prompt_field", "paste_leading_system_messages"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "text_file_message", "file_upload_timeout", "file_upload_settle_delay", "message_send_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["completion_request_timeout", "first_chunk_timeout", "model_apply_timeout", "post_action_delay"]},
     ],
     "aistudio_behavior": [
-        {"title": "Core", "icon": "settings.svg", "fields": ["model", "enable_deepthink", "thinking_level", "send_deepthink"]},
+        {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "enable_deepthink", "thinking_level", "send_deepthink"]},
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
         {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge", "anti_censorship_edit_save_timeout", "anti_censorship_edit_save_retries"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
