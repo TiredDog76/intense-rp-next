@@ -8,6 +8,21 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ---
 
+## :material-call-split: Request Capture Mode
+
+Controls how IntenseRP captures QwenLM's streaming response.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Request Capture Mode**
+
+**Replay** is the default. IntenseRP intercepts the Qwen request, replays it internally, streams that replay to the API client, and then gives the captured response back to the page. It's the older, known-good path.
+
+**CDP Teeing** is the newer alternative. IntenseRP leaves Qwen's real browser request alone, tees the real response through Chrome DevTools Protocol, and feeds those bytes through the same Qwen stream parser. This lets Qwen's page JavaScript receive and process its own response normally while IntenseRP observes the stream.
+
+!!! note "Default stays Replay"
+    CDP Teeing is off by default for QwenLM. It's available if you want the browser-native request path, but Replay remains the safer default while this newer path gets more real-world mileage.
+
+---
+
 ## :material-tune: Modes (model IDs)
 
 In IntenseRP Next v2, the `model` you select in SillyTavern is mostly a **mode selector**, not a true model picker.
@@ -256,6 +271,7 @@ All macros are stripped from the message before sending it to QwenLM.
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
+| **Request Capture Mode** | Captures responses with Replay or CDP Teeing | Replay |
 | **Model** | Selects QwenLM's real model picker (UI) | Qwen3.5-Plus |
 | **Enable Thinking** | Switches QwenLM into Thinking (vs Fast) | Off |
 | **Send Thinking** | Includes thinking summaries in response | Off |
