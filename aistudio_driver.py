@@ -298,6 +298,8 @@ class AIStudioDriver(BaseDriver):
     ]
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 180.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
+    SEND_CLICK_CONFIRM_TIMEOUT_MS = 2200
+    SEND_CLICK_MAX_ATTEMPTS = 3
     MAX_ANTI_CENSORSHIP_NUDGES = 3
     CAARS_MEANINGFUL_CHUNK_TARGET = 5
     RATE_LIMIT_HINT_RE = re.compile(
@@ -4074,6 +4076,106 @@ class AIStudioDriver(BaseDriver):
         """Locate the first visible AI Studio send/run button."""
         return await self._find_first_visible(self.SEND_BUTTON_SELECTORS, timeout_ms=timeout_ms)
 
+    async def _read_prompt_composer_text(self, timeout_ms: int = 0) -> str | None:
+        """Return the current visible prompt composer text, if it can be read."""
+        editor = await self._find_first_visible(self.CHAT_READY_SELECTORS, timeout_ms=timeout_ms)
+        if editor is None:
+            return None
+
+        try:
+            return str(
+                await editor.evaluate(
+                    """(el) => {
+                        const target = (el && typeof el.value !== 'undefined')
+                            ? el
+                            : (el && el.querySelector ? el.querySelector('textarea') : null);
+                        if (!target) return '';
+                        return (target.value ?? target.textContent ?? '').toString();
+                    }"""
+                )
+                or ""
+            )
+        except Exception:
+            return None
+
+    async def _prompt_has_attached_media(self, timeout_ms: int = 0) -> bool:
+        """Return whether the prompt composer currently shows an attached media chip."""
+        media = await self._find_first_visible(
+            [self.PROMPT_MEDIA_CONTAINER_SELECTOR],
+            timeout_ms=timeout_ms,
+        )
+        return media is not None
+
+    async def _send_button_is_clickable(self, button) -> bool:
+        """Return whether AI Studio's run control currently looks ready to submit."""
+        if button is None:
+            return False
+
+        try:
+            if not await button.is_visible():
+                return False
+        except Exception:
+            return False
+
+        if await self._run_control_looks_like_stop(button):
+            return False
+
+        try:
+            if not await button.is_enabled():
+                return False
+        except Exception:
+            pass
+
+        disabled_attr = None
+        try:
+            disabled_attr = await button.get_attribute("disabled")
+        except Exception:
+            disabled_attr = None
+
+        aria_disabled = ""
+        try:
+            aria_disabled = str(await button.get_attribute("aria-disabled") or "").strip().lower()
+        except Exception:
+            aria_disabled = ""
+
+        return disabled_attr is None and aria_disabled != "true"
+
+    async def _wait_for_send_click_observed(
+        self,
+        *,
+        previous_composer_text: str | None,
+        previous_prompt_had_media: bool = False,
+        completion_started: asyncio.Event | None = None,
+        timeout_ms: int | None = None,
+    ) -> bool:
+        """Wait until the UI proves a send click was accepted."""
+        timeout = (
+            self.SEND_CLICK_CONFIRM_TIMEOUT_MS
+            if timeout_ms is None
+            else max(0, int(timeout_ms))
+        )
+        deadline = time.time() + (float(timeout) / 1000.0)
+        had_text = bool(str(previous_composer_text or "").strip())
+
+        while True:
+            if completion_started is not None and completion_started.is_set():
+                return True
+
+            if await self._find_stop_generation_button(timeout_ms=0) is not None:
+                return True
+
+            if had_text:
+                current_text = await self._read_prompt_composer_text(timeout_ms=0)
+                if current_text is not None and not current_text.strip():
+                    return True
+
+            if previous_prompt_had_media and not await self._prompt_has_attached_media(timeout_ms=0):
+                return True
+
+            if timeout <= 0 or time.time() >= deadline:
+                return False
+            await asyncio.sleep(0.1)
+
     async def _run_control_looks_like_stop(self, button) -> bool:
         """Return whether AI Studio's run control is currently in Stop mode."""
         if button is None:
@@ -4180,7 +4282,12 @@ class AIStudioDriver(BaseDriver):
                 return False
             await asyncio.sleep(0.15)
 
-    async def send_message(self, timeout: int | None = None) -> None:
+    async def send_message(
+        self,
+        timeout: int | None = None,
+        *,
+        completion_started: asyncio.Event | None = None,
+    ) -> None:
         """Wait for the send button to become enabled and click it."""
         wait_timeout_s = 15.0 if timeout is None else max(float(timeout), 0.0)
         deadline = time.time() + wait_timeout_s
@@ -4196,19 +4303,10 @@ class AIStudioDriver(BaseDriver):
                 await asyncio.sleep(0.15)
                 continue
 
-            disabled_attr = None
-            try:
-                disabled_attr = await button.get_attribute("disabled")
-            except Exception:
-                disabled_attr = None
+            if await self._run_control_looks_like_stop(button):
+                return
 
-            aria_disabled = ""
-            try:
-                aria_disabled = str(await button.get_attribute("aria-disabled") or "").strip().lower()
-            except Exception:
-                aria_disabled = ""
-
-            if disabled_attr is None and aria_disabled != "true":
+            if await self._send_button_is_clickable(button):
                 break
 
             last_state = "disabled"
@@ -4220,18 +4318,81 @@ class AIStudioDriver(BaseDriver):
                 return
             await asyncio.sleep(0.15)
 
-        try:
-            await self._refocus_composer_before_send()
-            await self._click_locator(button, timeout=3000)
-            await self._ui_settle_pause(0.25)
-        except Exception as e:
+        last_error: Exception | None = None
+        previous_composer_text = await self._read_prompt_composer_text(timeout_ms=0)
+        previous_prompt_had_media = await self._prompt_has_attached_media(timeout_ms=0)
+        for attempt in range(1, self.SEND_CLICK_MAX_ATTEMPTS + 1):
+            if completion_started is not None and completion_started.is_set():
+                return
+            if await self._find_stop_generation_button(timeout_ms=0) is not None:
+                return
+
+            if attempt > 1:
+                button = await self._find_send_button(timeout_ms=1200)
+                if button is None:
+                    last_state = "not found"
+                    if await self._wait_for_send_click_observed(
+                        previous_composer_text=previous_composer_text,
+                        previous_prompt_had_media=previous_prompt_had_media,
+                        completion_started=completion_started,
+                        timeout_ms=900,
+                    ):
+                        return
+                    continue
+                if await self._run_control_looks_like_stop(button):
+                    return
+                if not await self._send_button_is_clickable(button):
+                    last_state = "disabled"
+                    if await self._wait_for_send_click_observed(
+                        previous_composer_text=previous_composer_text,
+                        previous_prompt_had_media=previous_prompt_had_media,
+                        completion_started=completion_started,
+                        timeout_ms=900,
+                    ):
+                        return
+                    await self._ui_settle_pause(0.2)
+                    continue
+
             try:
                 await self._refocus_composer_before_send()
-                await self._click_locator(button, timeout=3000, force=True)
+                await self._click_locator(button, timeout=3000)
                 await self._ui_settle_pause(0.25)
+            except Exception as e:
+                last_error = e
+                try:
+                    await self._refocus_composer_before_send()
+                    await self._click_locator(button, timeout=3000, force=True)
+                    await self._ui_settle_pause(0.25)
+                except Exception as force_error:
+                    last_error = force_error
+                    Logger.debug(
+                        "Google AI Studio: send button click failed "
+                        f"on attempt {attempt}/{self.SEND_CLICK_MAX_ATTEMPTS}: "
+                        f"{force_error} (initial click error: {e})"
+                    )
+                    await self._ui_settle_pause(0.25)
+                    continue
+
+            if await self._wait_for_send_click_observed(
+                previous_composer_text=previous_composer_text,
+                previous_prompt_had_media=previous_prompt_had_media,
+                completion_started=completion_started,
+            ):
                 return
-            except Exception:
-                Logger.warning(f"Google AI Studio: failed to click the send button: {e}")
+
+            Logger.warning(
+                "Google AI Studio: send click was not confirmed "
+                f"on attempt {attempt}/{self.SEND_CLICK_MAX_ATTEMPTS}; retrying."
+            )
+            await self._ui_settle_pause(0.35)
+
+        if last_error:
+            Logger.warning(f"Google AI Studio: failed to click the send button: {last_error}")
+        else:
+            Logger.warning(
+                "Google AI Studio: send button click did not register "
+                f"(last state: {last_state})."
+            )
 
     @staticmethod
     def _is_generate_content_url(url: str) -> bool:
@@ -5313,7 +5474,10 @@ class AIStudioDriver(BaseDriver):
 
             completion_armed.set()
             Logger.info("Google AI Studio: sending request...")
-            await self.send_message(timeout=send_timeout)
+            await self.send_message(
+                timeout=send_timeout,
+                completion_started=completion_started,
+            )
 
             if await _wait_for_attempt_start("Google AI Studio"):
                 return None
@@ -5459,7 +5623,7 @@ class AIStudioDriver(BaseDriver):
                 Logger.info("Google AI Studio CAARS: sending main continue nudge...")
             else:
                 Logger.info("Google AI Studio: sending anti-censorship continue nudge...")
-            await self.send_message()
+            await self.send_message(completion_started=completion_started)
             if await _wait_for_attempt_start(log_label):
                 return None
             return (
