@@ -13,6 +13,21 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ---
 
+## :material-call-split: Request Capture Mode
+
+Controls how IntenseRP captures Moonshot's streaming response.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Moonshot** -> **Request Capture Mode**
+
+**Replay** is the default. IntenseRP intercepts the Kimi request, replays it internally, streams that replay to the API client, and then gives the captured response back to the page. It's the older, known-good path.
+
+**CDP Teeing** is the newer alternative. IntenseRP leaves Kimi's real browser request alone, tees the real response through Chrome DevTools Protocol, and feeds those bytes through the same Moonshot stream parser. This lets the page JavaScript receive and process its own response normally while IntenseRP observes the stream.
+
+!!! note "Default stays Replay"
+    CDP Teeing is off by default for Moonshot. It's available if you want the browser-native request path, but Replay remains the safer default while this newer path gets more real-world mileage.
+
+---
+
 ## :material-login: Authentication
 
 Kimi uses a Google sign-in popup rather than a normal in-page email/password form.
@@ -169,6 +184,7 @@ All macros are stripped before sending.
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
+| **Request Capture Mode** | Captures responses with Replay or CDP Teeing | Replay |
 | **Enable Thinking** | Switches Kimi mode between Instant and Thinking | Off |
 | **Send Thinking** | Includes reasoning in response | Off |
 | **Enable Search** | Toggles Kimi search | Off |

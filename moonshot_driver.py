@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import re
 import time
@@ -33,8 +34,14 @@ load_dotenv()
 
 
 class MoonshotDriver(BaseDriver):
+    REQUEST_CAPTURE_MODE_REPLAY = "replay"
+    REQUEST_CAPTURE_MODE_CDP_TEEING = "cdp_teeing"
     CHAT_ROUTE_GLOB = "**/apiv2/kimi.gateway.chat.v1.ChatService/Chat*"
     REGEN_ROUTE_GLOB = "**/apiv2/kimi.gateway.chat.v1.ChatService/RegenerateMessage*"
+    COMPLETION_URL_PATH_PREFIXES = (
+        "/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
+        "/apiv2/kimi.gateway.chat.v1.ChatService/RegenerateMessage",
+    )
     USER_SETTINGS_ROUTE_GLOB = "**/apiv2/kimi.usersetting.v1.UserSettingService/GetUserSetting*"
     USER_SETTINGS_UPDATE_URL = "https://www.kimi.com/apiv2/kimi.usersetting.v1.UserSettingService/UpdateUserSetting"
     NEW_CHAT_URL = "https://www.kimi.com/?chat_enter_method=new_chat"
@@ -62,6 +69,7 @@ class MoonshotDriver(BaseDriver):
     MODEL_REASONER_API = "moonshot-reasoner"
     INTERCEPT_FIRST_CHUNK_TIMEOUT_S = 45.0
     INTERCEPT_IDLE_TIMEOUT_S = 75.0
+    COMPLETION_REQUEST_TIMEOUT_S = 20.0
     AUTH_STATE_SETTLE_TIMEOUT_MS = 12000
     AUTH_STATE_STABLE_SIGNED_OUT_MS = 1800
     GOOGLE_AUTO_LOGIN_TIMEOUT_MS = 20000
@@ -1354,6 +1362,28 @@ class MoonshotDriver(BaseDriver):
 
         return settings
 
+    def _get_request_capture_mode(self) -> str:
+        try:
+            mode = str(
+                self.config_manager.get_setting("moonshot_behavior", "request_capture_mode")
+                or self.REQUEST_CAPTURE_MODE_REPLAY
+            ).strip().lower()
+        except Exception:
+            mode = self.REQUEST_CAPTURE_MODE_REPLAY
+
+        if mode == self.REQUEST_CAPTURE_MODE_CDP_TEEING:
+            return self.REQUEST_CAPTURE_MODE_CDP_TEEING
+        return self.REQUEST_CAPTURE_MODE_REPLAY
+
+    @classmethod
+    def _is_completion_request_url(cls, url: Any) -> bool:
+        try:
+            parsed = urlsplit(str(url or ""))
+        except Exception:
+            return False
+        path = str(parsed.path or "")
+        return any(path.startswith(prefix) for prefix in cls.COMPLETION_URL_PATH_PREFIXES)
+
     def _extract_moonshot_macros_from_text(self, text: str) -> tuple[str, Dict[str, bool]]:
         return extract_macro_overrides(text, macro_actions=COMMON_REQUEST_MACRO_ACTIONS)
 
@@ -1548,6 +1578,8 @@ class MoonshotDriver(BaseDriver):
         *,
         formatted_message: str,
         multi_slot_state: Dict[str, Any],
+        completion_armed: asyncio.Event | None = None,
+        completion_started: asyncio.Event | None = None,
     ) -> bool:
         account_key = self._get_multi_slot_cache_account_key()
         payload = read_multi_slot_cache_payload(
@@ -1581,7 +1613,11 @@ class MoonshotDriver(BaseDriver):
             pass
 
         Logger.info("Multi-Slot Cache (Moonshot): cached prompt match found. Attempting to regenerate...")
+        if completion_armed is not None:
+            completion_armed.set()
         if not await self._click_regenerate():
+            if completion_armed is not None:
+                completion_armed.clear()
             Logger.warning(
                 "Multi-Slot Cache (Moonshot): regenerate button unavailable. Removing cached entry."
             )
@@ -1593,6 +1629,21 @@ class MoonshotDriver(BaseDriver):
                 log_label="Multi-Slot Cache (Moonshot)",
             )
             return False
+
+        if completion_started is not None:
+            try:
+                await asyncio.wait_for(
+                    completion_started.wait(),
+                    timeout=self.COMPLETION_REQUEST_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                if completion_armed is not None:
+                    completion_armed.clear()
+                Logger.warning(
+                    "Multi-Slot Cache (Moonshot): completion request not observed after clicking "
+                    "Regenerate. Falling back to a new chat."
+                )
+                return False
 
         return True
 
@@ -1648,6 +1699,25 @@ class MoonshotDriver(BaseDriver):
     ):
         _ = (stream, temperature, top_p, max_tokens)
         response_queue = asyncio.Queue()
+        completion_armed = asyncio.Event()
+        completion_started = asyncio.Event()
+        completion_claim_lock = asyncio.Lock()
+        completion_claimed = False
+        intercepted_response: httpx.Response | None = None
+        intercepted_request_abort = asyncio.Event()
+        intercepted_request_finished = asyncio.Event()
+        request_capture_mode = self._get_request_capture_mode()
+        use_cdp_teeing = request_capture_mode == self.REQUEST_CAPTURE_MODE_CDP_TEEING
+        route_handlers_registered = False
+        cdp_session: Any = None
+        cdp_listeners_registered = False
+        cdp_tasks: set[asyncio.Task] = set()
+        request_methods: dict[str, str] = {}
+        cdp_pending_response_urls: dict[str, str] = {}
+        cdp_active_request_id: Optional[str] = None
+        cdp_stream_started = False
+        cdp_stream_finished = False
+        cdp_had_data = False
 
         await self.require_english_ui()
 
@@ -1657,6 +1727,22 @@ class MoonshotDriver(BaseDriver):
         self.current_abort_event = abort_event
         self._degrade_notice_logged = False
         provider_activity_count = 0
+
+        def get_provider_activity_count() -> int:
+            return provider_activity_count
+
+        async def abort_intercepted_request() -> None:
+            intercepted_request_abort.set()
+            response = intercepted_response
+            if response is not None:
+                try:
+                    await response.aclose()
+                except Exception as e:
+                    Logger.debug(f"Moonshot: failed to close intercepted response: {e}")
+            try:
+                await self._click_stop_button()
+            except Exception as e:
+                Logger.debug(f"Moonshot: failed to click Stop during timeout handling: {e}")
 
         resolved_model = (model or "").strip() or "moonshot-auto"
         self.current_model = resolved_model
@@ -1679,10 +1765,34 @@ class MoonshotDriver(BaseDriver):
         self.current_send_deepthink = effective_send_deepthink
 
         async def handle_route(route):
-            nonlocal provider_activity_count
+            nonlocal completion_claimed, provider_activity_count, intercepted_response
             request = route.request
+            try:
+                method = str(request.method or "").upper()
+            except Exception:
+                method = ""
+            try:
+                request_url = str(request.url or "")
+            except Exception:
+                request_url = ""
+
+            if (
+                method != "POST"
+                or not self._is_completion_request_url(request_url)
+                or not completion_armed.is_set()
+            ):
+                await route.continue_()
+                return
+
+            async with completion_claim_lock:
+                if completion_claimed:
+                    await route.continue_()
+                    return
+                completion_claimed = True
+                completion_started.set()
+
             Logger.info("Intercepting Moonshot API request...")
-            Logger.debug(f"Intercepted request to: {request.url}")
+            Logger.debug(f"Intercepted request to: {request_url}")
 
             headers = await request.all_headers()
             forwarded_followup_headers = self._build_settings_request_headers(headers)
@@ -1710,7 +1820,8 @@ class MoonshotDriver(BaseDriver):
                 if request_body is not None:
                     request_kwargs["content"] = request_body
 
-                async with client.stream(request.method, request.url, **request_kwargs) as response:
+                async with client.stream(method, request_url, **request_kwargs) as response:
+                    intercepted_response = response
                     response_status = int(response.status_code)
                     for k, v in response.headers.items():
                         response_headers[k] = v
@@ -1718,7 +1829,11 @@ class MoonshotDriver(BaseDriver):
                     async for chunk in response.aiter_bytes():
                         if chunk:
                             provider_activity_count += 1
-                        if self.abort_requested or (abort_event and abort_event.is_set()):
+                        if (
+                            intercepted_request_abort.is_set()
+                            or self.abort_requested
+                            or (abort_event and abort_event.is_set())
+                        ):
                             Logger.debug("Abort detected during Moonshot streaming, stopping...")
                             aborted = True
                             break
@@ -1733,15 +1848,25 @@ class MoonshotDriver(BaseDriver):
                             send_deepthink=bool(effective_send_deepthink),
                         )
             except httpx.ReadError as e:
-                if not aborted and not self.abort_requested:
+                if (
+                    not aborted
+                    and (not intercepted_request_abort.is_set())
+                    and not self.abort_requested
+                ):
                     Logger.error(f"Read error during Moonshot intercepted request: {e}")
                     await response_queue.put({"error": str(e)})
             except Exception as e:
-                if not aborted and not self.abort_requested:
+                if (
+                    not aborted
+                    and (not intercepted_request_abort.is_set())
+                    and not self.abort_requested
+                ):
                     Logger.error(f"Error during Moonshot intercepted request: {e}")
                     await response_queue.put({"error": str(e)})
+            finally:
+                intercepted_response = None
 
-            if aborted or self.abort_requested:
+            if aborted or intercepted_request_abort.is_set() or self.abort_requested:
                 Logger.warning("Moonshot generation aborted by user.")
                 await self._click_stop_button()
 
@@ -1751,13 +1876,260 @@ class MoonshotDriver(BaseDriver):
                 Logger.error(f"Moonshot: error fulfilling route: {e}")
 
             await response_queue.put(None)
-            if not aborted and not self.abort_requested:
+            intercepted_request_finished.set()
+            if (
+                not aborted
+                and (not intercepted_request_abort.is_set())
+                and not self.abort_requested
+            ):
                 Logger.success("Moonshot response streaming completed.")
 
-        await self.page.route(self.CHAT_ROUTE_GLOB, handle_route)
-        await self.page.route(self.REGEN_ROUTE_GLOB, handle_route)
+        def _schedule_cdp_task(coro: Any, label: str) -> None:
+            try:
+                task = asyncio.create_task(coro)
+            except Exception as exc:
+                Logger.debug(f"Moonshot: failed to schedule CDP handler for {label}: {exc}")
+                return
+
+            cdp_tasks.add(task)
+
+            def _on_done(done_task: asyncio.Task) -> None:
+                cdp_tasks.discard(done_task)
+                try:
+                    done_task.exception()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    Logger.debug(f"Moonshot: CDP handler for {label} failed: {exc}")
+
+            task.add_done_callback(_on_done)
+
+        def request_aborted() -> bool:
+            return bool(
+                intercepted_request_abort.is_set()
+                or self.abort_requested
+                or (abort_event and abort_event.is_set())
+            )
+
+        async def finish_cdp_stream(
+            request_id: str,
+            *,
+            aborted: bool = False,
+            encountered_error: bool = False,
+        ) -> None:
+            nonlocal cdp_stream_finished
+            if request_id != cdp_active_request_id or cdp_stream_finished:
+                return
+
+            cdp_stream_finished = True
+            await response_queue.put(None)
+            intercepted_request_finished.set()
+            request_methods.pop(request_id, None)
+            cdp_pending_response_urls.pop(request_id, None)
+
+            if not aborted and not encountered_error and not request_aborted():
+                Logger.success("Moonshot CDP stream completed.")
+
+        async def feed_cdp_stream_chunk(request_id: str, data: bytes) -> None:
+            nonlocal provider_activity_count, cdp_had_data
+            if request_id != cdp_active_request_id or not data or cdp_stream_finished:
+                return
+
+            cdp_had_data = True
+            provider_activity_count += 1
+            if request_aborted():
+                await finish_cdp_stream(request_id, aborted=True)
+                return
+
+            await self._process_connect_chunk(
+                data,
+                response_queue,
+                anti_censorship=bool(
+                    self.config_manager.get_setting("moonshot_behavior", "anti_censorship")
+                ),
+                send_deepthink=bool(effective_send_deepthink),
+            )
+            if request_aborted():
+                await finish_cdp_stream(request_id, aborted=True)
+
+        async def feed_base64_cdp_stream_chunk(request_id: str, encoded_data: Any) -> None:
+            if not encoded_data:
+                return
+            encoded_text = str(encoded_data)
+            try:
+                data = base64.b64decode(encoded_text, validate=True)
+            except Exception:
+                data = encoded_text.encode("utf-8", errors="ignore")
+            await feed_cdp_stream_chunk(request_id, data)
+
+        async def start_cdp_stream(request_id: str, url: str) -> None:
+            nonlocal cdp_stream_started
+            if (
+                request_id != cdp_active_request_id
+                or not cdp_session
+                or cdp_stream_started
+                or cdp_stream_finished
+            ):
+                return
+
+            cdp_stream_started = True
+            Logger.info("Teeing Moonshot API response via CDP...")
+            Logger.debug(f"Teeing request to: {url}")
+            try:
+                result = await cdp_session.send(
+                    "Network.streamResourceContent",
+                    {"requestId": request_id},
+                )
+            except Exception as exc:
+                message_text = f"Moonshot CDP response streaming failed: {exc}"
+                Logger.error(message_text)
+                await response_queue.put({"error": message_text})
+                await finish_cdp_stream(request_id, encountered_error=True)
+                return
+
+            if isinstance(result, dict):
+                await feed_base64_cdp_stream_chunk(request_id, result.get("bufferedData"))
+
+        async def handle_cdp_request_will_be_sent(params: Any) -> None:
+            nonlocal completion_claimed, cdp_active_request_id
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            request = params.get("request")
+            if not request_id or not isinstance(request, dict):
+                return
+
+            method = str(request.get("method") or "").upper()
+            request_methods[request_id] = method
+            url = str(request.get("url") or "")
+            if method != "POST" or not self._is_completion_request_url(url):
+                return
+            if not completion_armed.is_set():
+                return
+
+            async with completion_claim_lock:
+                if completion_claimed:
+                    return
+                completion_claimed = True
+                cdp_active_request_id = request_id
+                completion_started.set()
+
+            forwarded_followup_headers = self._build_settings_request_headers(
+                request.get("headers")
+            )
+            if forwarded_followup_headers:
+                self._last_followup_request_headers = dict(forwarded_followup_headers)
+            Logger.info("Observing Moonshot API request via CDP...")
+            Logger.debug(f"Observed request to: {url}")
+            pending_url = cdp_pending_response_urls.get(request_id)
+            if pending_url:
+                await start_cdp_stream(request_id, pending_url)
+
+        async def handle_cdp_response_received(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            response = params.get("response")
+            if not request_id or not isinstance(response, dict):
+                return
+            url = str(response.get("url") or "")
+            if not self._is_completion_request_url(url):
+                return
+            method = request_methods.get(request_id, "").upper()
+            if method and method != "POST":
+                return
+            cdp_pending_response_urls[request_id] = url
+            if request_id != cdp_active_request_id:
+                return
+            await start_cdp_stream(request_id, url)
+
+        async def handle_cdp_data_received(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id == cdp_active_request_id:
+                await feed_base64_cdp_stream_chunk(request_id, params.get("data"))
+
+        async def handle_cdp_loading_finished(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id == cdp_active_request_id:
+                await finish_cdp_stream(request_id)
+            else:
+                request_methods.pop(request_id, None)
+                cdp_pending_response_urls.pop(request_id, None)
+
+        async def handle_cdp_loading_failed(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id != cdp_active_request_id:
+                request_methods.pop(request_id, None)
+                cdp_pending_response_urls.pop(request_id, None)
+                return
+
+            if request_aborted():
+                await finish_cdp_stream(request_id, aborted=True)
+                return
+
+            error_text = str(params.get("errorText") or "network loading failed").strip()
+            if "ERR_ABORTED" in error_text.upper() and cdp_had_data:
+                Logger.debug(
+                    "Moonshot CDP stream ended with net::ERR_ABORTED after data arrived; "
+                    "treating it as complete."
+                )
+                await finish_cdp_stream(request_id)
+                return
+
+            message_text = f"Moonshot CDP stream failed: {error_text}"
+            Logger.error(message_text)
+            await response_queue.put({"error": message_text})
+            await finish_cdp_stream(request_id, encountered_error=True)
+
+        def on_cdp_request_will_be_sent(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_request_will_be_sent(params), "requestWillBeSent")
+
+        def on_cdp_response_received(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_response_received(params), "responseReceived")
+
+        def on_cdp_data_received(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_data_received(params), "dataReceived")
+
+        def on_cdp_loading_finished(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_loading_finished(params), "loadingFinished")
+
+        def on_cdp_loading_failed(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_loading_failed(params), "loadingFailed")
 
         try:
+            if use_cdp_teeing:
+                if not self.context or not self.page:
+                    message_text = "Moonshot CDP setup failed: browser context is not available."
+                    Logger.error(message_text)
+                    yield f"data: {json.dumps({'error': message_text})}\n\n"
+                    return
+                try:
+                    cdp_session = await self.context.new_cdp_session(self.page)
+                    await cdp_session.send("Network.enable", {})
+                    cdp_session.on("Network.requestWillBeSent", on_cdp_request_will_be_sent)
+                    cdp_session.on("Network.responseReceived", on_cdp_response_received)
+                    cdp_session.on("Network.dataReceived", on_cdp_data_received)
+                    cdp_session.on("Network.loadingFinished", on_cdp_loading_finished)
+                    cdp_session.on("Network.loadingFailed", on_cdp_loading_failed)
+                    cdp_listeners_registered = True
+                    Logger.info("Moonshot Request Capture Mode: CDP Teeing.")
+                except Exception as exc:
+                    message_text = f"Moonshot CDP setup failed: {exc}"
+                    Logger.error(message_text)
+                    yield f"data: {json.dumps({'error': message_text})}\n\n"
+                    return
+            else:
+                await self.page.route(self.CHAT_ROUTE_GLOB, handle_route)
+                await self.page.route(self.REGEN_ROUTE_GLOB, handle_route)
+                route_handlers_registered = True
+                Logger.info("Moonshot Request Capture Mode: Replay.")
+
             formatted_message = self._format_messages(message_for_formatting)
             moonshot_extra_prompt_texts: Dict[str, str] = {}
             if send_as_text_file:
@@ -1824,12 +2196,26 @@ class MoonshotDriver(BaseDriver):
                 if message_matches and state_matches:
                     current_cache_matched = True
                     Logger.info("Clean Regeneration (Moonshot): Message and settings match cache. Attempting to regenerate...")
+                    completion_armed.set()
                     if await self._click_regenerate():
                         Logger.info("Clean Regeneration (Moonshot): Button clicked. Regenerating...")
-                        regenerated = True
-                        self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
-                        self._write_clean_regeneration_state(clean_regen_state)
+                        try:
+                            await asyncio.wait_for(
+                                completion_started.wait(),
+                                timeout=self.COMPLETION_REQUEST_TIMEOUT_S,
+                            )
+                        except asyncio.TimeoutError:
+                            completion_armed.clear()
+                            Logger.warning(
+                                "Clean Regeneration (Moonshot): completion request not observed after "
+                                "clicking Regenerate. Falling back to new chat."
+                            )
+                        else:
+                            regenerated = True
+                            self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
+                            self._write_clean_regeneration_state(clean_regen_state)
                     else:
+                        completion_armed.clear()
                         Logger.warning("Clean Regeneration (Moonshot): Button not found. Falling back to new chat.")
 
             if (
@@ -1841,6 +2227,8 @@ class MoonshotDriver(BaseDriver):
                 regenerated = await self._try_multi_slot_regeneration(
                     formatted_message=formatted_message,
                     multi_slot_state=multi_slot_state,
+                    completion_armed=completion_armed,
+                    completion_started=completion_started,
                 )
                 if regenerated and clean_regen_state:
                     self.cache_manager.write_cache(self.clean_regen_message_cache_key, formatted_message)
@@ -1871,10 +2259,12 @@ class MoonshotDriver(BaseDriver):
                         self.config_manager.get_setting("moonshot_behavior", "file_upload_timeout") or 15
                     )
                     Logger.info("Moonshot: sending request...")
+                    completion_armed.set()
                     await self._send_message(timeout=upload_timeout)
                 else:
                     await self._enter_message(formatted_message)
                     Logger.info("Moonshot: sending request...")
+                    completion_armed.set()
                     await self._send_message()
 
                 if clean_regeneration:
@@ -1882,14 +2272,28 @@ class MoonshotDriver(BaseDriver):
                     self._write_clean_regeneration_state(clean_regen_state)
                     should_record_multi_slot = bool(multi_slot_cache_enabled and multi_slot_state)
 
+            if not completion_started.is_set():
+                try:
+                    await asyncio.wait_for(
+                        completion_started.wait(),
+                        timeout=self.COMPLETION_REQUEST_TIMEOUT_S,
+                    )
+                except asyncio.TimeoutError:
+                    Logger.error(
+                        "Moonshot: completion request was not observed. "
+                        "The UI may have swallowed the click or the endpoint changed."
+                    )
+                    yield f"data: {json.dumps({'error': 'Moonshot: completion request not observed'})}\n\n"
+                    return
+
             stream_had_error = False
             async for item in self._iterate_response_queue(
                 response_queue,
                 abort_event=abort_event,
                 first_chunk_timeout_s=self.INTERCEPT_FIRST_CHUNK_TIMEOUT_S,
                 idle_timeout_s=self.INTERCEPT_IDLE_TIMEOUT_S,
-                on_timeout=self._click_stop_button,
-                activity_counter=lambda: provider_activity_count,
+                on_timeout=abort_intercepted_request,
+                activity_counter=get_provider_activity_count,
             ):
                 if isinstance(item, dict) and "error" in item:
                     stream_had_error = True
@@ -1897,6 +2301,9 @@ class MoonshotDriver(BaseDriver):
                     break
 
                 yield item
+
+            if self.abort_requested or (abort_event and abort_event.is_set()):
+                await abort_intercepted_request()
 
             if should_record_multi_slot and (not stream_had_error) and (not self.abort_requested):
                 conversation_info = await self._wait_for_current_conversation_info(timeout_ms=6000)
@@ -1928,20 +2335,58 @@ class MoonshotDriver(BaseDriver):
                 await self._auto_delete_current_chat()
 
         finally:
+            if completion_started.is_set() and not intercepted_request_finished.is_set():
+                try:
+                    await asyncio.wait_for(intercepted_request_finished.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    Logger.debug("Moonshot: timed out waiting for intercepted request cleanup.")
             self.current_abort_event = None
             self.abort_requested = False
             self.current_model = None
             self.current_send_deepthink = None
             self.thinking_active = False
             self._connect_buffer = bytearray()
-            try:
-                await self.page.unroute(self.CHAT_ROUTE_GLOB)
-            except Exception:
-                pass
-            try:
-                await self.page.unroute(self.REGEN_ROUTE_GLOB)
-            except Exception:
-                pass
+            if route_handlers_registered:
+                try:
+                    await self.page.unroute(self.CHAT_ROUTE_GLOB, handle_route)
+                except Exception:
+                    try:
+                        await self.page.unroute(self.CHAT_ROUTE_GLOB)
+                    except Exception:
+                        pass
+                try:
+                    await self.page.unroute(self.REGEN_ROUTE_GLOB, handle_route)
+                except Exception:
+                    try:
+                        await self.page.unroute(self.REGEN_ROUTE_GLOB)
+                    except Exception:
+                        pass
+            if cdp_session and cdp_listeners_registered:
+                for event_name, listener in (
+                    ("Network.requestWillBeSent", on_cdp_request_will_be_sent),
+                    ("Network.responseReceived", on_cdp_response_received),
+                    ("Network.dataReceived", on_cdp_data_received),
+                    ("Network.loadingFinished", on_cdp_loading_finished),
+                    ("Network.loadingFailed", on_cdp_loading_failed),
+                ):
+                    try:
+                        cdp_session.remove_listener(event_name, listener)
+                    except Exception:
+                        pass
+            for task in list(cdp_tasks):
+                if not task.done():
+                    task.cancel()
+            tasks_to_wait = set(cdp_tasks)
+            if tasks_to_wait:
+                try:
+                    await asyncio.wait(tasks_to_wait, timeout=1.0)
+                except Exception:
+                    pass
+            if cdp_session:
+                try:
+                    await cdp_session.detach()
+                except Exception as exc:
+                    Logger.debug(f"Moonshot: CDP detach failed: {exc}")
 
     async def abort_generation(self):
         Logger.info("Moonshot: abort generation requested...")
