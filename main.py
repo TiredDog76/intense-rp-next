@@ -644,6 +644,7 @@ class MainWindow(QMainWindow):
         self._tray_action_exit = None
         self._desktop_notifier = None
         self._desktop_notifier_unavailable = False
+        self._open_notification_dialogs = []
         self._exit_requested = False
         self._setup_tray_icon()
 
@@ -1412,24 +1413,71 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             Logger.extra_debug(f"Windows FlashWindowEx failed: {exc}")
 
-    def _notify_user(self, title: str, message: str, level: str = "info") -> None:
+    def _open_notification_dialog(
+        self,
+        title: str,
+        message: str,
+        level: str,
+        *,
+        request_attention: bool = False,
+    ) -> None:
+        dialog = QMessageBox(self)
+        level_norm = str(level or "info").strip().lower()
+        if level_norm in {"warn", "warning"}:
+            dialog.setIcon(QMessageBox.Warning)
+        elif level_norm in {"err", "error", "critical"}:
+            dialog.setIcon(QMessageBox.Critical)
+        else:
+            dialog.setIcon(QMessageBox.Information)
+        dialog.setWindowTitle(str(title or "Notification"))
+        dialog.setText(str(message or ""))
+        dialog.setStandardButtons(QMessageBox.Ok)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+
+        self._open_notification_dialogs.append(dialog)
+
+        def _forget_dialog(_result=None, current_dialog=dialog) -> None:
+            try:
+                self._open_notification_dialogs.remove(current_dialog)
+            except ValueError:
+                pass
+
+        dialog.finished.connect(_forget_dialog)
+        dialog.open()
+        if request_attention:
+            try:
+                QApplication.beep()
+            except Exception:
+                pass
+            self._flash_attention_window(dialog)
+
+    def _notify_user(
+        self,
+        title: str,
+        message: str,
+        level: str = "info",
+        dialog_message: str | None = None,
+    ) -> None:
         title = str(title or "Notification")
         message = str(message or "")
         level_norm = str(level or "info").strip().lower()
+        dialog_message = str(dialog_message or "").strip()
 
         is_focused = bool(self.isVisible() and self.isActiveWindow())
+        if dialog_message:
+            if not is_focused:
+                if not self._schedule_desktop_notification(title, message, level_norm):
+                    self._show_tray_message(title, message, level_norm)
+            self._open_notification_dialog(
+                title,
+                dialog_message,
+                level_norm,
+                request_attention=not is_focused,
+            )
+            return
+
         if is_focused:
-            dialog = QMessageBox(self)
-            if level_norm in {"warn", "warning"}:
-                dialog.setIcon(QMessageBox.Warning)
-            elif level_norm in {"err", "error", "critical"}:
-                dialog.setIcon(QMessageBox.Critical)
-            else:
-                dialog.setIcon(QMessageBox.Information)
-            dialog.setWindowTitle(title)
-            dialog.setText(message)
-            dialog.setStandardButtons(QMessageBox.Ok)
-            dialog.open()
+            self._open_notification_dialog(title, message, level_norm)
             return
 
         if self._schedule_desktop_notification(title, message, level_norm):

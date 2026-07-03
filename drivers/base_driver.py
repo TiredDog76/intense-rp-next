@@ -87,7 +87,7 @@ class BaseDriver(ABC):
         self.on_crash_callback = None
         self.monitoring_active = False
         self._monitor_task: Optional[asyncio.Task] = None
-        self.notify_user_callback: Optional[Callable[[str, str, str], None]] = None
+        self.notify_user_callback: Optional[Callable[..., None]] = None
         self.request_user_text_callback: Optional[Callable[..., Any]] = None
         self.profile_compatibility_warning_callback: Optional[Callable[[dict[str, Any]], None]] = None
 
@@ -702,13 +702,33 @@ class BaseDriver(ABC):
             Logger.error(f"Account rotation: driver restart failed: {e}")
             return False
 
-    def notify_user(self, title: str, message: str, level: str = "info") -> None:
+    def notify_user(
+        self,
+        title: str,
+        message: str,
+        level: str = "info",
+        *,
+        dialog_message: str | None = None,
+    ) -> None:
         cb = getattr(self, "notify_user_callback", None)
         if not cb:
             return
 
         try:
-            cb(str(title or ""), str(message or ""), str(level or "info"))
+            if dialog_message is None:
+                cb(str(title or ""), str(message or ""), str(level or "info"))
+            else:
+                cb(
+                    str(title or ""),
+                    str(message or ""),
+                    str(level or "info"),
+                    str(dialog_message or ""),
+                )
+        except TypeError:
+            try:
+                cb(str(title or ""), str(message or ""), str(level or "info"))
+            except Exception:
+                return
         except Exception:
             return
 

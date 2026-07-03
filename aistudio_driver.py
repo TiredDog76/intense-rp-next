@@ -302,6 +302,11 @@ class AIStudioDriver(BaseDriver):
     SEND_CLICK_MAX_ATTEMPTS = 3
     MAX_ANTI_CENSORSHIP_NUDGES = 3
     CAARS_MEANINGFUL_CHUNK_TARGET = 5
+    BACKGROUND_RESILIENCE_BROWSER_ARGS: tuple[str, ...] = (
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+    )
     RATE_LIMIT_HINT_RE = re.compile(
         r"(rate\s*limit|too\s*many\s*requests|\b429\b|quota|limit\s*reached)",
         flags=re.IGNORECASE,
@@ -462,10 +467,19 @@ class AIStudioDriver(BaseDriver):
         self._preflight_state: Optional[Dict[str, Any]] = None
         self._preflight_system_prompt_text = ""
         self._assume_english_ui_notice_logged = False
+        self._minimized_hmm_notice_sent = False
         self._last_mouse_position: tuple[float, float] | None = None
 
     def get_start_url(self) -> str:
         return self.START_URL
+
+    def _get_browser_launch_args(self) -> list[str]:
+        """Add AI Studio-only launch flags that keep hidden windows responsive."""
+        args = super()._get_browser_launch_args()
+        for arg in self.BACKGROUND_RESILIENCE_BROWSER_ARGS:
+            if arg not in args:
+                args.append(arg)
+        return args
 
     def should_apply_configured_model_before_request(self) -> bool:
         """Let the AI Studio request flow own model selection."""
@@ -893,6 +907,70 @@ class AIStudioDriver(BaseDriver):
         except Exception:
             return False
 
+    async def _restore_minimized_window_for_hmm(self) -> None:
+        """Restore AI Studio if Chromium is minimized before humanized pointer work."""
+        if not self.page or not self.context:
+            return
+        if not self._humanize_mouse_movements_enabled():
+            return
+
+        cdp_session = None
+        try:
+            cdp_session = await self.context.new_cdp_session(self.page)
+            window_info = await cdp_session.send("Browser.getWindowForTarget")
+            bounds = window_info.get("bounds") if isinstance(window_info, dict) else None
+            if not isinstance(bounds, dict):
+                return
+
+            window_state = str(bounds.get("windowState") or "").strip().lower()
+            if window_state != "minimized":
+                return
+
+            window_id = window_info.get("windowId")
+            await cdp_session.send(
+                "Browser.setWindowBounds",
+                {
+                    "windowId": window_id,
+                    "bounds": {"windowState": "normal"},
+                },
+            )
+            try:
+                await self.page.bring_to_front()
+            except Exception:
+                pass
+
+            Logger.warning(
+                "Google AI Studio: browser window was minimized while Humanize Mouse "
+                "Movements was enabled; restored it before a pointer action."
+            )
+            if not self._minimized_hmm_notice_sent:
+                self._minimized_hmm_notice_sent = True
+                self.notify_user(
+                    "Google AI Studio Browser Restored",
+                    "AI Studio was minimized with Humanize Mouse Movements enabled, so IntenseRP restored the browser window. Check the app for more info.",
+                    level="warning",
+                    dialog_message=(
+                        "AI Studio was minimized while Humanize Mouse Movements was enabled, "
+                        "so IntenseRP restored the browser window before clicking.\n\n"
+                        "Minimized AI Studio windows can miss clicks, hover actions, and "
+                        "file-picker actions. You can still leave the browser unfocused: "
+                        "just open another window or focus a different one instead of "
+                        "minimizing the AI Studio browser."
+                    ),
+                )
+            await asyncio.sleep(0.15)
+        except Exception as e:
+            Logger.debug(
+                "Google AI Studio: minimized-window restore check failed before "
+                f"humanized action: {e}"
+            )
+        finally:
+            if cdp_session is not None:
+                try:
+                    await cdp_session.detach()
+                except Exception:
+                    pass
+
     async def _humanized_action_pause(
         self,
         min_s: float = 0.04,
@@ -1002,6 +1080,8 @@ class AIStudioDriver(BaseDriver):
             await locator.click(**kwargs)
             return
 
+        await self._restore_minimized_window_for_hmm()
+
         target = None
         click_position = position
         if click_position is None:
@@ -1017,6 +1097,7 @@ class AIStudioDriver(BaseDriver):
 
         await self._humanized_action_pause(0.04, 0.16)
         try:
+            await self._restore_minimized_window_for_hmm()
             await locator.click(**kwargs)
             if target is not None:
                 self._last_mouse_position = target
@@ -1033,6 +1114,8 @@ class AIStudioDriver(BaseDriver):
             await self.page.mouse.move(x, y)
             self._last_mouse_position = (x, y)
             return
+
+        await self._restore_minimized_window_for_hmm()
 
         start = self._last_mouse_position
         if start is not None:
@@ -1071,6 +1154,7 @@ class AIStudioDriver(BaseDriver):
         await self._humanized_action_pause(0.03, 0.12)
         await self._move_mouse_to_point(float(x), float(y))
         await self._humanized_action_pause(0.04, 0.13)
+        await self._restore_minimized_window_for_hmm()
         await self.page.mouse.click(
             float(x),
             float(y),
@@ -4574,6 +4658,7 @@ class AIStudioDriver(BaseDriver):
             if target is None:
                 continue
             try:
+                await self._restore_minimized_window_for_hmm()
                 await target.hover(timeout=3000)
                 await asyncio.sleep(0.15)
                 return True
