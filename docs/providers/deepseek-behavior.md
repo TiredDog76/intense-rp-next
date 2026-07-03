@@ -8,6 +8,21 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ---
 
+## :material-call-split: Request Capture Mode
+
+Controls how IntenseRP captures DeepSeek's streaming response.
+
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Request Capture Mode**
+
+**Replay** is the default. IntenseRP intercepts the DeepSeek request, replays it internally, streams that replay to the API client, and then gives the captured response back to the page. It's the older and battle-tested method, and it works well in most cases.
+
+**CDP Teeing** is the newer alternative path. IntenseRP leaves DeepSeek's browser request alone, tees the real response through Chrome DevTools Protocol, and feeds those bytes through the same DeepSeek stream parser. This lets the page JavaScript receive and process its own response normally while IntenseRP observes the stream.
+
+!!! note "Default stays Replay"
+    CDP Teeing is off by default for DeepSeek. It's there if you want the browser-native request path, but Replay remains the known-good default.
+
+---
+
 ## :material-head-cog: DeepThink
 
 DeepThink is DeepSeek's reasoning mode. When enabled, the model "thinks through" problems step-by-step before giving you an answer. This can make responses smarter and more thorough, but also slower and sometimes changes the tone. (for better or worse!)
@@ -188,6 +203,7 @@ All macros are stripped from the message before sending it to DeepSeek.
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
+| **Request Capture Mode** | Captures responses with Replay or CDP Teeing | Replay |
 | **Enable DeepThink** | Toggles reasoning mode | Off |
 | **Send DeepThink** | Includes thinking in response | Off |
 | **Enable Search** | Allows web search | Off |
