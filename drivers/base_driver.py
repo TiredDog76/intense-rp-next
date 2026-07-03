@@ -944,6 +944,18 @@ class BaseDriver(ABC):
         if timezone_id:
             options["timezone_id"] = timezone_id
 
+        try:
+            resize_viewport_with_window = bool(
+                self.config_manager.get_setting(
+                    "system_settings",
+                    "browser_resize_viewport_with_window",
+                )
+            )
+        except Exception:
+            resize_viewport_with_window = False
+        if resize_viewport_with_window:
+            options["no_viewport"] = True
+
         proxy = self._get_browser_proxy_option()
         if proxy:
             options["proxy"] = proxy
@@ -1456,6 +1468,8 @@ class BaseDriver(ABC):
                     "Provider browser timezone override enabled: "
                     f"{browser_context_options['timezone_id']}"
                 )
+            if browser_context_options.get("no_viewport"):
+                Logger.info("Provider browser viewport will follow browser window size.")
 
             if persistent_sessions:
                 user_data_dir = self._get_persistent_profile_dir()

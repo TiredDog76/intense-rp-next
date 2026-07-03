@@ -8,10 +8,11 @@ Browser Environment controls the launch-time hints IntenseRP passes to provider 
 
 :material-arrow-right: **Settings** -> **Browser & Runtime** -> **Browser Environment**
 
-There are three settings here:
+The settings here cover a few launch-time browser hints:
 
 - **Preferred Browser Locale** defaults to **English (en-US)**. It affects browser language signals such as `navigator.language`, request language headers, and locale-sensitive formatting.
 - **Browser Timezone** defaults to **System Default**. The built-in override is **New York (`America/New_York`)**.
+- **Resize Viewport With Window** is off by default. It lets the provider page viewport follow the real browser window size instead of Playwright's fixed viewport.
 - **Browser Proxy URL** is optional. It routes provider browser contexts through an HTTP, HTTPS, SOCKS4, or SOCKS5 proxy.
 
 This is best-effort, not a magic cloak. Saved provider preferences, account settings, cookies, local storage, and IP geolocation can still matter.
@@ -20,6 +21,19 @@ This is best-effort, not a magic cloak. Saved provider preferences, account sett
     Keep the locale on **English (en-US)** unless you have a specific reason not to. IntenseRP's provider drivers expect English UI text, so this tends to be the most predictable choice.
 
 Timezone is more situational. Leave it on **System Default** unless you specifically need a browser page to report New York time.
+
+---
+
+## :material-fit-to-screen-outline: Resize Viewport With Window
+
+:material-arrow-right: **Settings** -> **Browser & Runtime** -> **Browser Environment** -> **Resize Viewport With Window**
+
+By default, Playwright/Patchright gives provider pages a fixed viewport. That keeps existing behavior predictable, but on some systems the real browser window can resize while the page viewport stays stuck at the original size. The result is the empty-space windows or clipped content you sometimes see when maximizing or resizing the provider browser window.
+
+Turn this on if maximizing or resizing the provider browser window doesn't resize the actual page area. IntenseRP will launch the provider browser context with Playwright's fixed viewport disabled, so the page viewport follows the browser window instead.
+
+!!! note "Restart required"
+    This setting applies when the provider browser context is created. Stop and start the provider browser after changing it.
 
 ---
 

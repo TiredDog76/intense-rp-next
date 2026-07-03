@@ -2309,6 +2309,20 @@ SCHEMA = [
                 docs_anchor="browser-locale-and-timezone",
             ),
             SettingField(
+                key="browser_resize_viewport_with_window",
+                label="Resize Viewport With Window",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Let the provider page viewport follow the real browser window size "
+                    "instead of Playwright's fixed viewport. This can help if maximizing "
+                    "the browser leaves empty space or clips the page. Restart the provider "
+                    "browser after changing this."
+                ),
+                docs_path=DOCS_RUNTIME_BROWSER_ENVIRONMENT,
+                docs_anchor="resize-viewport-with-window",
+            ),
+            SettingField(
                 key="browser_proxy_url",
                 label="Browser Proxy URL",
                 type=SettingType.STRING,
@@ -3141,11 +3155,12 @@ SETTINGS_CARDS = {
         key="browser_environment",
         title="Browser Environment",
         description=(
-            "Launch-time browser overrides for provider pages, especially helpful for non-English systems."
+            "Launch-time browser overrides for provider pages, window sizing, and network routing."
         ),
         field_refs=[
             ("system_settings", "browser_locale"),
             ("system_settings", "browser_timezone"),
+            ("system_settings", "browser_resize_viewport_with_window"),
             ("system_settings", "browser_proxy_url"),
         ],
     ),
