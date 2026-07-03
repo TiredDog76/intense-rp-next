@@ -8,6 +8,21 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ---
 
+## :material-call-split: Request Capture Mode
+
+Controls how IntenseRP captures Google AI Studio's streaming response.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Request Capture Mode**
+
+**Replay** is the default. IntenseRP intercepts the AI Studio request, replays it internally, streams that replay to the API client, and then gives the captured response back to the page. It's the older, known-good path.
+
+**CDP Teeing** is the newer alternative. IntenseRP leaves AI Studio's real browser request alone, tees the real response through Chrome DevTools Protocol, and feeds those bytes through the same AI Studio stream parser. This lets AI Studio's page JavaScript receive and process its own response normally while IntenseRP observes the stream.
+
+!!! note "Default stays Replay"
+    CDP Teeing is off by default for Google AI Studio. It's available if you want the browser-native request path, but Replay remains the safer default while this newer path gets more real-world mileage.
+
+---
+
 ## :material-cursor-default-click: Recommended Reliability Mode
 
 Google AI Studio is available again. The important part is that **Humanize Mouse Movements** is now enabled by default for AI Studio.
@@ -489,6 +504,7 @@ All macros are stripped before sending.
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
+| **Request Capture Mode** | Captures responses with Replay or CDP Teeing | Replay |
 | **Model** | Selects AI Studio's real model picker | Gemini 3.1 Pro |
 | **Enable Thinking** | Uses a higher Thinking Level on supported AI Studio models | Off |
 | **Thinking Level** | Picks the Thinking Level when Thinking is enabled | Medium |

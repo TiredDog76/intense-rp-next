@@ -1,6 +1,7 @@
 """Browser driver for Google AI Studio, including UI control and stream interception."""
 
 import asyncio
+import base64
 import codecs
 import json
 import math
@@ -157,6 +158,8 @@ class _AiStudioJsonEventStreamParser:
 class AIStudioDriver(BaseDriver):
     """Drive the Google AI Studio web UI and expose OpenAI-style streaming output."""
 
+    REQUEST_CAPTURE_MODE_REPLAY = "replay"
+    REQUEST_CAPTURE_MODE_CDP_TEEING = "cdp_teeing"
     START_URL = "https://aistudio.google.com/prompts/new_chat?temporary=true"
     AISTUDIO_HOST = "aistudio.google.com"
     AUTH_HOST_MARKER = "accounts.google.com"
@@ -4482,6 +4485,19 @@ class AIStudioDriver(BaseDriver):
     def _is_generate_content_url(url: str) -> bool:
         return AIStudioDriver.GENERATE_URL_SUBSTRING in str(url or "")
 
+    def _get_request_capture_mode(self) -> str:
+        try:
+            mode = str(
+                self.config_manager.get_setting("aistudio_behavior", "request_capture_mode")
+                or self.REQUEST_CAPTURE_MODE_REPLAY
+            ).strip().lower()
+        except Exception:
+            mode = self.REQUEST_CAPTURE_MODE_REPLAY
+
+        if mode == self.REQUEST_CAPTURE_MODE_CDP_TEEING:
+            return self.REQUEST_CAPTURE_MODE_CDP_TEEING
+        return self.REQUEST_CAPTURE_MODE_REPLAY
+
     def _is_generate_content_response(self, response) -> bool:
         """Return whether a Playwright response matches AI Studio's GenerateContent call."""
         try:
@@ -5366,6 +5382,19 @@ class AIStudioDriver(BaseDriver):
         self.current_send_deepthink = bool(effective_settings["send_deepthink"])
         anti_censorship_enabled = bool(effective_settings.get("anti_censorship"))
         caars_enabled = bool(effective_settings.get("caars_enabled"))
+        request_capture_mode = self._get_request_capture_mode()
+        use_cdp_teeing = request_capture_mode == self.REQUEST_CAPTURE_MODE_CDP_TEEING
+        route_handlers_registered = False
+        cdp_session: Any = None
+        cdp_listeners_registered = False
+        cdp_tasks: set[asyncio.Task] = set()
+        cdp_request_methods: Dict[str, str] = {}
+        cdp_pending_response_meta: Dict[str, Dict[str, Any]] = {}
+        cdp_active_request_id: str | None = None
+        cdp_stream_started = False
+        cdp_stream_finished = False
+        cdp_had_data = False
+        cdp_stream_state: Dict[str, Any] | None = None
 
         def _build_caars_savior_settings() -> Dict[str, Any]:
             savior_label = str(
@@ -5390,6 +5419,8 @@ class AIStudioDriver(BaseDriver):
         def _reset_attempt_state() -> None:
             nonlocal response_queue, completion_armed, completion_started
             nonlocal completion_claim_lock, completion_claimed, current_attempt_meta
+            nonlocal cdp_active_request_id, cdp_stream_started, cdp_stream_finished
+            nonlocal cdp_had_data, cdp_stream_state
             response_queue = asyncio.Queue()
             completion_armed = asyncio.Event()
             completion_started = asyncio.Event()
@@ -5405,6 +5436,13 @@ class AIStudioDriver(BaseDriver):
                 "aborted": False,
             }
             self.thinking_active = False
+            cdp_active_request_id = None
+            cdp_stream_started = False
+            cdp_stream_finished = False
+            cdp_had_data = False
+            cdp_stream_state = None
+            cdp_request_methods.clear()
+            cdp_pending_response_meta.clear()
 
         async def _wait_for_attempt_start(log_label: str) -> bool:
             if completion_started.is_set():
@@ -5716,6 +5754,388 @@ class AIStudioDriver(BaseDriver):
                 "completion request."
             )
 
+        def _new_stream_state(status_code: int = 200) -> Dict[str, Any]:
+            return {
+                "parser": _AiStudioJsonEventStreamParser(),
+                "response_status": int(status_code or 200),
+                "aborted": False,
+                "encountered_error": False,
+                "emitted_text": False,
+                "hard_censorship_hint": False,
+                "rate_limit_hint": False,
+            }
+
+        async def _process_attempt_stream_event(
+            stream_state: Dict[str, Any],
+            parsed_event: Any,
+        ) -> None:
+            stream_state["hard_censorship_hint"] = (
+                bool(stream_state.get("hard_censorship_hint"))
+                or self._event_looks_hard_censored(parsed_event)
+            )
+            stream_state["rate_limit_hint"] = (
+                bool(stream_state.get("rate_limit_hint"))
+                or self._event_looks_rate_limited(parsed_event)
+            )
+            emitted = await self._process_stream_event(
+                parsed_event,
+                response_queue,
+                send_deepthink=bool(effective_settings["send_deepthink"]),
+            )
+            stream_state["emitted_text"] = bool(stream_state.get("emitted_text")) or emitted
+
+        async def _feed_attempt_stream_chunk(
+            stream_state: Dict[str, Any],
+            chunk: bytes,
+        ) -> None:
+            if not chunk or bool(stream_state.get("encountered_error")):
+                return
+
+            parser = stream_state.get("parser")
+            if not isinstance(parser, _AiStudioJsonEventStreamParser):
+                return
+
+            try:
+                parsed_events = parser.feed(chunk)
+            except Exception as e:
+                stream_state["encountered_error"] = True
+                Logger.error(f"Google AI Studio: failed to parse response stream: {e}")
+                await response_queue.put({"error": str(e)})
+                return
+
+            for parsed_event in parsed_events:
+                try:
+                    await _process_attempt_stream_event(stream_state, parsed_event)
+                except Exception as e:
+                    stream_state["encountered_error"] = True
+                    Logger.error(f"Google AI Studio: failed to process response stream: {e}")
+                    await response_queue.put({"error": str(e)})
+                    return
+                if bool(stream_state.get("encountered_error")):
+                    return
+
+        async def _finalize_attempt_stream_state(
+            stream_state: Dict[str, Any],
+            *,
+            flush_parser: bool = True,
+        ) -> bool:
+            nonlocal current_attempt_meta
+
+            if (
+                flush_parser
+                and not bool(stream_state.get("aborted"))
+                and not bool(stream_state.get("encountered_error"))
+            ):
+                parser = stream_state.get("parser")
+                if isinstance(parser, _AiStudioJsonEventStreamParser):
+                    try:
+                        parsed_events = parser.finish()
+                    except Exception as e:
+                        stream_state["encountered_error"] = True
+                        Logger.error(f"Google AI Studio: failed to parse response stream: {e}")
+                        await response_queue.put({"error": str(e)})
+                    else:
+                        for parsed_event in parsed_events:
+                            try:
+                                await _process_attempt_stream_event(stream_state, parsed_event)
+                            except Exception as e:
+                                stream_state["encountered_error"] = True
+                                Logger.error(f"Google AI Studio: failed to process response stream: {e}")
+                                await response_queue.put({"error": str(e)})
+                                break
+                            if bool(stream_state.get("encountered_error")):
+                                break
+
+            if self.thinking_active:
+                if bool(effective_settings["send_deepthink"]):
+                    await self._enqueue_openai_delta(response_queue, "</think>")
+                self.thinking_active = False
+
+            response_status = int(stream_state.get("response_status") or 0)
+            stream_state["rate_limit_hint"] = bool(
+                stream_state.get("rate_limit_hint") or response_status == 429
+            )
+            emitted_text = bool(stream_state.get("emitted_text"))
+            encountered_error = bool(stream_state.get("encountered_error"))
+            aborted = bool(stream_state.get("aborted"))
+            no_text_detected = (not emitted_text) and (not encountered_error) and (not aborted)
+
+            if no_text_detected:
+                if bool(stream_state.get("rate_limit_hint")):
+                    message_text = self._build_rate_limit_error_message(response_status)
+                    Logger.warning(message_text)
+                    await response_queue.put({"error": message_text})
+                    encountered_error = True
+                    stream_state["encountered_error"] = True
+                elif anti_censorship_enabled:
+                    Logger.warning(
+                        "Google AI Studio returned no assistant text, but anti-censorship is enabled. "
+                        "Deferring the final decision until blocked-turn checks finish."
+                    )
+                else:
+                    message_text = (
+                        "Google AI Studio returned no assistant text. "
+                        "The request may have been submitted before the UI fully settled."
+                    )
+                    Logger.warning(message_text)
+                    await response_queue.put({"error": message_text})
+                    encountered_error = True
+                    stream_state["encountered_error"] = True
+
+            current_attempt_meta = {
+                "hard_censorship_hint": bool(stream_state.get("hard_censorship_hint")),
+                "rate_limit_hint": bool(stream_state.get("rate_limit_hint")),
+                "no_text_detected": bool(no_text_detected),
+                "response_status": int(response_status),
+                "encountered_error": bool(encountered_error),
+                "emitted_text": bool(emitted_text),
+                "aborted": bool(aborted),
+            }
+
+            if emitted_text and (not encountered_error) and (not aborted) and (not self.abort_requested):
+                await self._enqueue_openai_delta(response_queue, "", finish_reason="stop")
+
+            return bool(encountered_error)
+
+        def _schedule_cdp_task(coro: Any, label: str) -> None:
+            try:
+                task = asyncio.create_task(coro)
+            except Exception as exc:
+                Logger.debug(f"Google AI Studio: failed to schedule CDP handler for {label}: {exc}")
+                return
+
+            cdp_tasks.add(task)
+
+            def _on_done(done_task: asyncio.Task) -> None:
+                cdp_tasks.discard(done_task)
+                try:
+                    done_task.exception()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    Logger.debug(f"Google AI Studio: CDP handler for {label} failed: {exc}")
+
+            task.add_done_callback(_on_done)
+
+        def _request_aborted() -> bool:
+            return bool(self.abort_requested or (abort_event and abort_event.is_set()))
+
+        async def _finish_cdp_stream(
+            request_id: str,
+            *,
+            aborted: bool = False,
+            encountered_error: bool = False,
+        ) -> None:
+            nonlocal cdp_stream_finished, cdp_active_request_id, cdp_stream_state
+            if request_id != cdp_active_request_id or cdp_stream_finished:
+                return
+
+            cdp_stream_finished = True
+            if cdp_stream_state is None:
+                meta = cdp_pending_response_meta.get(request_id) or {}
+                cdp_stream_state = _new_stream_state(int(meta.get("status") or 200))
+            cdp_stream_state["aborted"] = bool(cdp_stream_state.get("aborted")) or aborted
+            cdp_stream_state["encountered_error"] = (
+                bool(cdp_stream_state.get("encountered_error")) or encountered_error
+            )
+
+            await _finalize_attempt_stream_state(
+                cdp_stream_state,
+                flush_parser=not bool(cdp_stream_state.get("aborted")),
+            )
+            await response_queue.put(None)
+            cdp_request_methods.pop(request_id, None)
+            cdp_pending_response_meta.pop(request_id, None)
+            cdp_active_request_id = None
+            cdp_stream_state = None
+
+            if (
+                not aborted
+                and not encountered_error
+                and not bool(current_attempt_meta.get("encountered_error"))
+                and not _request_aborted()
+            ):
+                Logger.success("Google AI Studio CDP stream completed.")
+
+        async def _feed_cdp_stream_chunk(request_id: str, data: bytes) -> None:
+            nonlocal cdp_had_data, cdp_stream_state
+            if request_id != cdp_active_request_id or not data or cdp_stream_finished:
+                return
+
+            if cdp_stream_state is None:
+                meta = cdp_pending_response_meta.get(request_id) or {}
+                cdp_stream_state = _new_stream_state(int(meta.get("status") or 200))
+
+            cdp_had_data = True
+            if _request_aborted():
+                await _finish_cdp_stream(request_id, aborted=True)
+                return
+
+            await _feed_attempt_stream_chunk(cdp_stream_state, data)
+            if bool(cdp_stream_state.get("encountered_error")):
+                await _finish_cdp_stream(request_id, encountered_error=True)
+                return
+
+            if _request_aborted():
+                await _finish_cdp_stream(request_id, aborted=True)
+
+        async def _feed_base64_cdp_stream_chunk(request_id: str, encoded_data: Any) -> None:
+            if not encoded_data:
+                return
+            encoded_text = str(encoded_data)
+            try:
+                data = base64.b64decode(encoded_text, validate=True)
+            except Exception:
+                data = encoded_text.encode("utf-8", errors="ignore")
+            await _feed_cdp_stream_chunk(request_id, data)
+
+        async def _start_cdp_stream(request_id: str, meta: Dict[str, Any]) -> None:
+            nonlocal cdp_stream_started, cdp_stream_state
+            if (
+                request_id != cdp_active_request_id
+                or not cdp_session
+                or cdp_stream_started
+                or cdp_stream_finished
+            ):
+                return
+
+            cdp_stream_started = True
+            cdp_stream_state = _new_stream_state(int(meta.get("status") or 200))
+            url = str(meta.get("url") or "")
+            Logger.info("Teeing Google AI Studio API response via CDP...")
+            Logger.debug(f"Teeing request to: {url}")
+            try:
+                result = await cdp_session.send(
+                    "Network.streamResourceContent",
+                    {"requestId": request_id},
+                )
+            except Exception as exc:
+                message_text = f"Google AI Studio CDP response streaming failed: {exc}"
+                Logger.error(message_text)
+                await response_queue.put({"error": message_text})
+                await _finish_cdp_stream(request_id, encountered_error=True)
+                return
+
+            if isinstance(result, dict):
+                await _feed_base64_cdp_stream_chunk(request_id, result.get("bufferedData"))
+
+        async def _handle_cdp_request_will_be_sent(params: Any) -> None:
+            nonlocal completion_claimed, cdp_active_request_id
+            nonlocal cdp_stream_started, cdp_stream_finished, cdp_had_data, cdp_stream_state
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            request = params.get("request")
+            if not request_id or not isinstance(request, dict):
+                return
+
+            method = str(request.get("method") or "").upper()
+            cdp_request_methods[request_id] = method
+            url = str(request.get("url") or "")
+            if method != "POST" or not self._is_generate_content_url(url):
+                return
+            if not completion_armed.is_set():
+                return
+
+            async with completion_claim_lock:
+                if completion_claimed:
+                    return
+                completion_claimed = True
+                cdp_active_request_id = request_id
+                cdp_stream_started = False
+                cdp_stream_finished = False
+                cdp_had_data = False
+                cdp_stream_state = None
+                completion_started.set()
+
+            Logger.info("Observing Google AI Studio API request via CDP...")
+            Logger.debug(f"Observed request to: {url}")
+            pending_meta = cdp_pending_response_meta.get(request_id)
+            if pending_meta:
+                await _start_cdp_stream(request_id, pending_meta)
+
+        async def _handle_cdp_response_received(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            response = params.get("response")
+            if not request_id or not isinstance(response, dict):
+                return
+            url = str(response.get("url") or "")
+            if not self._is_generate_content_url(url):
+                return
+            method = cdp_request_methods.get(request_id, "").upper()
+            if method and method != "POST":
+                return
+            try:
+                status = int(response.get("status") or 200)
+            except Exception:
+                status = 200
+            meta = {"url": url, "status": status}
+            cdp_pending_response_meta[request_id] = meta
+            if request_id != cdp_active_request_id:
+                return
+            await _start_cdp_stream(request_id, meta)
+
+        async def _handle_cdp_data_received(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id == cdp_active_request_id:
+                await _feed_base64_cdp_stream_chunk(request_id, params.get("data"))
+
+        async def _handle_cdp_loading_finished(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id == cdp_active_request_id:
+                await _finish_cdp_stream(request_id)
+            else:
+                cdp_request_methods.pop(request_id, None)
+                cdp_pending_response_meta.pop(request_id, None)
+
+        async def _handle_cdp_loading_failed(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id != cdp_active_request_id:
+                cdp_request_methods.pop(request_id, None)
+                cdp_pending_response_meta.pop(request_id, None)
+                return
+
+            if _request_aborted():
+                await _finish_cdp_stream(request_id, aborted=True)
+                return
+
+            error_text = str(params.get("errorText") or "network loading failed").strip()
+            if "ERR_ABORTED" in error_text.upper() and cdp_had_data:
+                Logger.debug(
+                    "Google AI Studio CDP stream ended with net::ERR_ABORTED after data arrived; "
+                    "treating it as complete."
+                )
+                await _finish_cdp_stream(request_id)
+                return
+
+            message_text = f"Google AI Studio CDP stream failed: {error_text}"
+            Logger.error(message_text)
+            await response_queue.put({"error": message_text})
+            await _finish_cdp_stream(request_id, encountered_error=True)
+
+        def _on_cdp_request_will_be_sent(params: Any) -> None:
+            _schedule_cdp_task(_handle_cdp_request_will_be_sent(params), "requestWillBeSent")
+
+        def _on_cdp_response_received(params: Any) -> None:
+            _schedule_cdp_task(_handle_cdp_response_received(params), "responseReceived")
+
+        def _on_cdp_data_received(params: Any) -> None:
+            _schedule_cdp_task(_handle_cdp_data_received(params), "dataReceived")
+
+        def _on_cdp_loading_finished(params: Any) -> None:
+            _schedule_cdp_task(_handle_cdp_loading_finished(params), "loadingFinished")
+
+        def _on_cdp_loading_failed(params: Any) -> None:
+            _schedule_cdp_task(_handle_cdp_loading_failed(params), "loadingFailed")
+
         async def handle_route(route):
             nonlocal completion_claimed, current_attempt_meta
             request = route.request
@@ -5754,15 +6174,11 @@ class AIStudioDriver(BaseDriver):
             cookie_dict = {c["name"]: c["value"] for c in cookies}
             request_body = self._extract_request_body_bytes(request)
 
-            parser = _AiStudioJsonEventStreamParser()
+            stream_state = _new_stream_state()
             response_headers: Dict[str, str] = {}
             full_response_body = bytearray()
             response_status = 200
             aborted = False
-            encountered_error = False
-            emitted_text = False
-            hard_censorship_hint = False
-            rate_limit_hint = False
 
             try:
                 client = await self._get_http_client()
@@ -5776,6 +6192,7 @@ class AIStudioDriver(BaseDriver):
 
                 async with client.stream(request.method, request.url, **request_kwargs) as response:
                     response_status = int(response.status_code)
+                    stream_state["response_status"] = response_status
                     for k, v in response.headers.items():
                         response_headers[k] = v
                     response_headers.pop("content-encoding", None)
@@ -5786,87 +6203,26 @@ class AIStudioDriver(BaseDriver):
                         if self.abort_requested or (abort_event and abort_event.is_set()):
                             Logger.debug("Abort detected during Google AI Studio streaming, stopping...")
                             aborted = True
+                            stream_state["aborted"] = True
                             break
 
                         full_response_body.extend(chunk)
-                        for parsed_event in parser.feed(chunk):
-                            hard_censorship_hint = (
-                                hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
-                            )
-                            rate_limit_hint = (
-                                rate_limit_hint or self._event_looks_rate_limited(parsed_event)
-                            )
-                            emitted = await self._process_stream_event(
-                                parsed_event,
-                                response_queue,
-                                send_deepthink=bool(effective_settings["send_deepthink"]),
-                            )
-                            emitted_text = emitted_text or emitted
-
-                    if not aborted:
-                        for parsed_event in parser.finish():
-                            hard_censorship_hint = (
-                                hard_censorship_hint or self._event_looks_hard_censored(parsed_event)
-                            )
-                            rate_limit_hint = (
-                                rate_limit_hint or self._event_looks_rate_limited(parsed_event)
-                            )
-                            emitted = await self._process_stream_event(
-                                parsed_event,
-                                response_queue,
-                                send_deepthink=bool(effective_settings["send_deepthink"]),
-                            )
-                            emitted_text = emitted_text or emitted
+                        await _feed_attempt_stream_chunk(stream_state, chunk)
+                        if bool(stream_state.get("encountered_error")):
+                            break
             except httpx.ReadError as e:
                 if not aborted and not self.abort_requested:
-                    encountered_error = True
+                    stream_state["encountered_error"] = True
                     Logger.error(f"Google AI Studio: read error during intercepted request: {e}")
                     await response_queue.put({"error": str(e)})
             except Exception as e:
                 if not aborted and not self.abort_requested:
-                    encountered_error = True
+                    stream_state["encountered_error"] = True
                     Logger.error(f"Google AI Studio: error during intercepted request: {e}")
                     await response_queue.put({"error": str(e)})
 
-            if self.thinking_active:
-                if bool(effective_settings["send_deepthink"]):
-                    await self._enqueue_openai_delta(response_queue, "</think>")
-                self.thinking_active = False
-
-            rate_limit_hint = bool(rate_limit_hint or response_status == 429)
-            no_text_detected = (not emitted_text) and (not encountered_error) and (not aborted)
-            if no_text_detected:
-                if rate_limit_hint:
-                    message = self._build_rate_limit_error_message(response_status)
-                    Logger.warning(message)
-                    await response_queue.put({"error": message})
-                    encountered_error = True
-                elif anti_censorship_enabled:
-                    Logger.warning(
-                        "Google AI Studio returned no assistant text, but anti-censorship is enabled. "
-                        "Deferring the final decision until blocked-turn checks finish."
-                    )
-                else:
-                    message = (
-                        "Google AI Studio returned no assistant text. "
-                        "The request may have been submitted before the UI fully settled."
-                    )
-                    Logger.warning(message)
-                    await response_queue.put({"error": message})
-                    encountered_error = True
-
-            current_attempt_meta = {
-                "hard_censorship_hint": bool(hard_censorship_hint),
-                "rate_limit_hint": bool(rate_limit_hint),
-                "no_text_detected": bool(no_text_detected),
-                "response_status": int(response_status),
-                "encountered_error": bool(encountered_error),
-                "emitted_text": bool(emitted_text),
-                "aborted": bool(aborted),
-            }
-
-            if emitted_text and (not encountered_error) and (not aborted) and (not self.abort_requested):
-                await self._enqueue_openai_delta(response_queue, "", finish_reason="stop")
+            await _finalize_attempt_stream_state(stream_state, flush_parser=not aborted)
+            encountered_error = bool(stream_state.get("encountered_error"))
 
             if "content-type" not in response_headers:
                 response_headers["content-type"] = "application/json+protobuf; charset=UTF-8"
@@ -5884,9 +6240,33 @@ class AIStudioDriver(BaseDriver):
             if not encountered_error and not aborted and not self.abort_requested:
                 Logger.success("Google AI Studio response streaming completed.")
 
-        await self.page.route(self.GENERATE_ROUTE_GLOB, handle_route)
-
         try:
+            if use_cdp_teeing:
+                if not self.context or not self.page:
+                    message_text = "Google AI Studio CDP setup failed: browser context is not available."
+                    Logger.error(message_text)
+                    yield f"data: {json.dumps({'error': message_text})}\n\n"
+                    return
+                try:
+                    cdp_session = await self.context.new_cdp_session(self.page)
+                    await cdp_session.send("Network.enable", {})
+                    cdp_session.on("Network.requestWillBeSent", _on_cdp_request_will_be_sent)
+                    cdp_session.on("Network.responseReceived", _on_cdp_response_received)
+                    cdp_session.on("Network.dataReceived", _on_cdp_data_received)
+                    cdp_session.on("Network.loadingFinished", _on_cdp_loading_finished)
+                    cdp_session.on("Network.loadingFailed", _on_cdp_loading_failed)
+                    cdp_listeners_registered = True
+                    Logger.info("Google AI Studio Request Capture Mode: CDP Teeing.")
+                except Exception as exc:
+                    message_text = f"Google AI Studio CDP setup failed: {exc}"
+                    Logger.error(message_text)
+                    yield f"data: {json.dumps({'error': message_text})}\n\n"
+                    return
+            else:
+                await self.page.route(self.GENERATE_ROUTE_GLOB, handle_route)
+                route_handlers_registered = True
+                Logger.info("Google AI Studio Request Capture Mode: Replay.")
+
             formatted_message, system_prompt_text = self._prepare_prompt_payload(message_for_formatting)
             aistudio_extra_prompt_texts: Dict[str, str] = {}
             text_file_message = str(effective_settings.get("text_file_message") or "")
@@ -6136,10 +6516,40 @@ class AIStudioDriver(BaseDriver):
             self.current_model = None
             self.current_send_deepthink = None
             self.thinking_active = False
-            try:
-                await self.page.unroute(self.GENERATE_ROUTE_GLOB)
-            except Exception:
-                pass
+            if route_handlers_registered:
+                try:
+                    await self.page.unroute(self.GENERATE_ROUTE_GLOB, handle_route)
+                except Exception:
+                    try:
+                        await self.page.unroute(self.GENERATE_ROUTE_GLOB)
+                    except Exception:
+                        pass
+            if cdp_session and cdp_listeners_registered:
+                for event_name, listener in (
+                    ("Network.requestWillBeSent", _on_cdp_request_will_be_sent),
+                    ("Network.responseReceived", _on_cdp_response_received),
+                    ("Network.dataReceived", _on_cdp_data_received),
+                    ("Network.loadingFinished", _on_cdp_loading_finished),
+                    ("Network.loadingFailed", _on_cdp_loading_failed),
+                ):
+                    try:
+                        cdp_session.remove_listener(event_name, listener)
+                    except Exception:
+                        pass
+            for task in list(cdp_tasks):
+                if not task.done():
+                    task.cancel()
+            tasks_to_wait = set(cdp_tasks)
+            if tasks_to_wait:
+                try:
+                    await asyncio.wait(tasks_to_wait, timeout=1.0)
+                except Exception:
+                    pass
+            if cdp_session:
+                try:
+                    await cdp_session.detach()
+                except Exception as exc:
+                    Logger.debug(f"Google AI Studio: CDP detach failed: {exc}")
             if preflight_settings_for_next_chat is not None:
                 self._schedule_preflight_next_chat(
                     preflight_settings_for_next_chat,

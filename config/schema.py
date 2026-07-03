@@ -1737,7 +1737,7 @@ SCHEMA = [
                 options=REQUEST_CAPTURE_MODE_OPTIONS,
                 tooltip=(
                     "Choose how IntenseRP should capture provider responses. "
-                    "This is saved now and will be wired into runtime behavior in a later update."
+                    "Replay is the default; CDP Teeing is the newer alternative."
                 ),
             ),
             SettingField(
