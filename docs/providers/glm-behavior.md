@@ -11,6 +11,21 @@ This page covers the toggles and options that control how IntenseRP interacts wi
 
 ---
 
+## :material-call-split: Request Capture Mode
+
+Controls how IntenseRP captures GLM's streaming response.
+
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Request Capture Mode**
+
+**Replay** is the default. IntenseRP intercepts the GLM request, replays it internally, streams that replay to the API client, and then gives the captured response back to the page. It's the older, known-good path.
+
+**CDP Teeing** is the newer alternative. IntenseRP leaves GLM's real browser request alone, tees the real response through Chrome DevTools Protocol, and feeds those bytes through the same GLM stream parser. This lets the page JavaScript receive and process its own response normally while IntenseRP observes the stream.
+
+!!! note "Default stays Replay"
+    CDP Teeing is off by default for GLM. It's available if you want the browser-native request path, but Replay remains the safer default while this newer path gets more real-world mileage.
+
+---
+
 ## :material-tune: Modes (model IDs)
 
 In IntenseRP Next v2, the `model` you select in SillyTavern is mostly a **mode selector**, not a true model picker.
@@ -267,6 +282,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 
 | Setting | What It Does | Default |
 |---------|--------------|---------|
+| **Request Capture Mode** | Captures responses with Replay or CDP Teeing | Replay |
 | **Model** | Selects GLM's real model picker (UI) | GLM-5.2 |
 | **Enable Deep Think** | Toggles GLM reasoning mode | Off |
 | **Deep Think Effort** | Picks GLM-5.2's Deep Think effort | Max |

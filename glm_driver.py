@@ -1,8 +1,10 @@
 import asyncio
+import base64
 import json
 import re
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
+from urllib.parse import urlsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -51,9 +53,13 @@ GLM_REQUEST_MACRO_ACTIONS: Dict[str, tuple[str, Any]] = {
 
 
 class GLMDriver(BaseDriver):
+    REQUEST_CAPTURE_MODE_REPLAY = "replay"
+    REQUEST_CAPTURE_MODE_CDP_TEEING = "cdp_teeing"
     CHAT_URL = "https://chat.z.ai/"
     AUTH_URL = "https://chat.z.ai/auth"
     CONVERSATION_URL_RE = re.compile(r"^https://chat\.z\.ai/c/([^/?#]+)", re.IGNORECASE)
+    COMPLETION_ROUTE_GLOB = "**/api/v2/chat/completions**"
+    COMPLETION_URL_PATHS = {"/api/v2/chat/completions"}
     MODEL_CONCURRENCY_LIMIT_CODE = "MODEL_CONCURRENCY_LIMIT"
     GLM_52_MODEL_FRIENDLY = "GLM-5.2"
     TOOLS_SUPPORTED_MODEL_FRIENDLY = "GLM-5V-Turbo"
@@ -377,6 +383,27 @@ class GLMDriver(BaseDriver):
         if normalized in {"high", "medium", "med"}:
             return "high"
         return fallback if fallback in {"high", "max"} else cls.DEFAULT_GLM_52_DEEPTHINK_EFFORT
+
+    def _get_request_capture_mode(self) -> str:
+        try:
+            mode = str(
+                self.config_manager.get_setting("glm_behavior", "request_capture_mode")
+                or self.REQUEST_CAPTURE_MODE_REPLAY
+            ).strip().lower()
+        except Exception:
+            mode = self.REQUEST_CAPTURE_MODE_REPLAY
+
+        if mode == self.REQUEST_CAPTURE_MODE_CDP_TEEING:
+            return self.REQUEST_CAPTURE_MODE_CDP_TEEING
+        return self.REQUEST_CAPTURE_MODE_REPLAY
+
+    @classmethod
+    def _is_completion_request_url(cls, url: Any) -> bool:
+        try:
+            parsed = urlsplit(str(url or ""))
+        except Exception:
+            return False
+        return parsed.path in cls.COMPLETION_URL_PATHS
 
     async def _dismiss_dialog_close_buttons(self, context: str = "GLM Chat") -> int:
         if not self.page:
@@ -3109,6 +3136,18 @@ class GLMDriver(BaseDriver):
         intercepted_response: httpx.Response | None = None
         intercepted_request_abort = asyncio.Event()
         intercepted_request_finished = asyncio.Event()
+        request_capture_mode = self._get_request_capture_mode()
+        use_cdp_teeing = request_capture_mode == self.REQUEST_CAPTURE_MODE_CDP_TEEING
+        route_handlers_registered = False
+        cdp_session: Any = None
+        cdp_listeners_registered = False
+        cdp_tasks: set[asyncio.Task] = set()
+        request_methods: dict[str, str] = {}
+        cdp_pending_response_urls: dict[str, str] = {}
+        cdp_active_request_id: Optional[str] = None
+        cdp_stream_started = False
+        cdp_stream_finished = False
+        cdp_had_data = False
 
         def get_intercepted_activity_count() -> int:
             return intercepted_activity_count
@@ -3259,12 +3298,331 @@ class GLMDriver(BaseDriver):
                 yield f"data: {json.dumps({'error': repetition_buster_error})}\n\n"
                 return
 
+        full_response_body = bytearray()
+        text_buffer = bytearray()
+        text_buffer_pos = 0
+        thinking_emitted = IncrementalTextAccumulator()
+        answer_emitted = False
+        glm_block_active = False
+        emitted_openai_chunk = False
+        openai_usage: dict[str, Any] | None = None
+        openai_usage_emitted = False
+        openai_finish_emitted = False
+        capacity_error_message: str | None = None
+
+        try:
+            count_tokens_setting = self.config_manager.get_setting("glm_behavior", "count_tokens")
+        except Exception:
+            count_tokens_setting = None
+        # Default to enabled, even if the setting isn't present (older configs).
+        count_tokens_enabled = True if count_tokens_setting is None else bool(count_tokens_setting)
+
+        def request_aborted() -> bool:
+            return bool(
+                intercepted_request_abort.is_set()
+                or self.abort_requested
+                or (abort_event and abort_event.is_set())
+            )
+
+        def _normalize_openai_usage(raw: Any) -> dict[str, Any] | None:
+            if not isinstance(raw, dict):
+                return None
+
+            def _to_int(value: Any) -> int | None:
+                try:
+                    return int(value)
+                except Exception:
+                    return None
+
+            prompt_tokens = _to_int(raw.get("prompt_tokens"))
+            completion_tokens = _to_int(raw.get("completion_tokens"))
+            total_tokens = _to_int(raw.get("total_tokens"))
+
+            if prompt_tokens is None and completion_tokens is None and total_tokens is None:
+                return None
+
+            prompt_tokens = 0 if prompt_tokens is None else max(prompt_tokens, 0)
+            completion_tokens = 0 if completion_tokens is None else max(completion_tokens, 0)
+            if total_tokens is None:
+                total_tokens = prompt_tokens + completion_tokens
+            else:
+                total_tokens = max(total_tokens, 0)
+
+            usage: dict[str, Any] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            }
+
+            prompt_details = raw.get("prompt_tokens_details")
+            if isinstance(prompt_details, dict):
+                usage["prompt_tokens_details"] = prompt_details
+
+            completion_details = raw.get("completion_tokens_details")
+            if isinstance(completion_details, dict):
+                usage["completion_tokens_details"] = completion_details
+
+            return usage
+
+        def enqueue_openai_delta(content: str, finish_reason: str | None = None) -> None:
+            nonlocal emitted_openai_chunk
+            if (not content) and (not finish_reason):
+                return
+            model_name = self.current_model or "glm-auto"
+            response_queue.put_nowait(
+                make_openai_delta_sse(
+                    model_name,
+                    content,
+                    finish_reason=finish_reason,
+                )
+            )
+            emitted_openai_chunk = True
+
+        def enqueue_openai_usage(usage: dict[str, Any]) -> None:
+            nonlocal emitted_openai_chunk, openai_usage_emitted
+            if openai_usage_emitted:
+                return
+
+            model_name = self.current_model or "glm-auto"
+            response_queue.put_nowait(make_openai_usage_sse(model_name, usage))
+            emitted_openai_chunk = True
+            openai_usage_emitted = True
+
+        def process_sse_line(line: str) -> None:
+            nonlocal thinking_emitted, answer_emitted, glm_block_active, openai_usage
+            nonlocal openai_finish_emitted, capacity_error_message
+            line = line.strip()
+            if not line.startswith("data:"):
+                return
+
+            data_str = line[len("data:") :].strip()
+            if not data_str or data_str == "[DONE]":
+                return
+
+            try:
+                payload = json.loads(data_str)
+            except Exception:
+                return
+
+            if not isinstance(payload, dict):
+                return
+
+            payload_type = str(payload.get("type") or "").strip().lower()
+            # Regeneration can use the same endpoint with slightly different type labels.
+            if not payload_type.startswith("chat:completion"):
+                return
+
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                return
+
+            capacity_error_message = self._extract_model_capacity_error_from_data(data)
+            if capacity_error_message:
+                return
+
+            phase = str(data.get("phase") or "").strip().lower()
+
+            if count_tokens_enabled:
+                normalized_usage = _normalize_openai_usage(data.get("usage"))
+                if normalized_usage:
+                    openai_usage = normalized_usage
+
+            if phase == "done" and bool(data.get("done")):
+                if not openai_finish_emitted:
+                    if self.thinking_active and self.current_send_deepthink:
+                        enqueue_openai_delta("</think>")
+                        self.thinking_active = False
+                    enqueue_openai_delta("", finish_reason="stop")
+                    openai_finish_emitted = True
+                return
+
+            delta_content = data.get("delta_content")
+            edit_content = data.get("edit_content")
+
+            if isinstance(delta_content, str):
+                if phase == "thinking":
+                    if not self.current_send_deepthink:
+                        return
+                    if not self.thinking_active:
+                        enqueue_openai_delta("<think>")
+                        self.thinking_active = True
+                    stripped = self._strip_details_tags(delta_content)
+                    if stripped:
+                        enqueue_openai_delta(stripped)
+                        thinking_emitted.append(stripped)
+                    return
+
+                if phase == "answer":
+                    if self.thinking_active and self.current_send_deepthink:
+                        enqueue_openai_delta("</think>")
+                        self.thinking_active = False
+                    enqueue_openai_delta(delta_content)
+                    answer_emitted = True
+                    return
+
+                return
+
+            if isinstance(edit_content, str):
+                edit_content, glm_block_active = self._strip_glm_blocks_from_stream_chunk(
+                    edit_content, glm_block_active
+                )
+
+                # When thinking is enabled, GLM often sends a huge edit_content that includes the full
+                # <details> reasoning plus the first token(s) of the answer. Extract only the answer tail.
+                if phase == "answer":
+                    if self.current_send_deepthink and (self.thinking_active or not answer_emitted):
+                        reasoning = self._extract_reasoning_from_edit_content(edit_content)
+                        if reasoning:
+                            missing = thinking_emitted.missing_suffix(reasoning)
+                            if missing:
+                                if not self.thinking_active:
+                                    enqueue_openai_delta("<think>")
+                                    self.thinking_active = True
+                                enqueue_openai_delta(missing)
+                                thinking_emitted.append(missing)
+
+                    if self.thinking_active and self.current_send_deepthink:
+                        enqueue_openai_delta("</think>")
+                        self.thinking_active = False
+                    tail = self._extract_answer_tail_from_edit_content(edit_content)
+                    if tail:
+                        enqueue_openai_delta(tail)
+                        answer_emitted = True
+                    return
+
+                # GLM sometimes finalizes the answer with an "other" edit_content frame (tail append).
+                if phase == "other":
+                    if self.thinking_active and self.current_send_deepthink:
+                        enqueue_openai_delta("</think>")
+                        self.thinking_active = False
+                    if edit_content:
+                        enqueue_openai_delta(edit_content)
+                        answer_emitted = True
+                    return
+
+                # At this point answer content may already be streaming via delta_content; only
+                # treat tool_call edit_content as answer tail if we've already emitted answer.
+                if phase == "tool_call":
+                    if self.thinking_active and self.current_send_deepthink:
+                        enqueue_openai_delta("</think>")
+                        self.thinking_active = False
+                    if answer_emitted and edit_content:
+                        enqueue_openai_delta(edit_content)
+                        answer_emitted = True
+                    return
+
+        def process_glm_stream_chunk(chunk: bytes) -> None:
+            nonlocal intercepted_activity_count, text_buffer_pos
+            if not chunk:
+                return
+
+            intercepted_activity_count += 1
+            full_response_body.extend(chunk)
+            if capacity_error_message:
+                return
+
+            text_buffer.extend(chunk)
+
+            while True:
+                newline_idx = text_buffer.find(b"\n", text_buffer_pos)
+                if newline_idx == -1:
+                    break
+
+                line_bytes = text_buffer[text_buffer_pos:newline_idx]
+                text_buffer_pos = newline_idx + 1
+                try:
+                    process_sse_line(bytes(line_bytes).decode("utf-8", errors="ignore"))
+                except Exception:
+                    continue
+                if capacity_error_message:
+                    break
+
+            if text_buffer_pos > 8192:
+                del text_buffer[:text_buffer_pos]
+                text_buffer_pos = 0
+
+        def finalize_glm_stream_processing(*, aborted: bool = False) -> None:
+            nonlocal text_buffer_pos
+            if not capacity_error_message:
+                tail = bytes(text_buffer[text_buffer_pos:])
+                if tail.strip():
+                    try:
+                        process_sse_line(tail.decode("utf-8", errors="ignore"))
+                    except Exception:
+                        pass
+            text_buffer.clear()
+            text_buffer_pos = 0
+
+            if (
+                (not aborted)
+                and (not request_aborted())
+                and (not capacity_error_message)
+                and count_tokens_enabled
+                and (openai_usage is not None)
+                and (not openai_usage_emitted)
+            ):
+                enqueue_openai_usage(openai_usage)
+
+        async def finish_glm_stream_result(
+            *,
+            aborted: bool = False,
+            encountered_error: bool = False,
+        ) -> None:
+            if aborted or request_aborted():
+                Logger.warning("GLM Chat generation was aborted before completion.")
+
+            should_report_empty_stream_error = bool(
+                (not aborted)
+                and (not encountered_error)
+                and (not request_aborted())
+                and (not capacity_error_message)
+                and (not emitted_openai_chunk)
+            )
+
+            if capacity_error_message:
+                Logger.warning(capacity_error_message)
+                await self._refresh_page_after_capacity_error()
+                response_queue.put_nowait(
+                    f"data: {json.dumps({'error': capacity_error_message})}\n\n"
+                )
+            elif should_report_empty_stream_error:
+                msg = self._extract_model_capacity_error_from_text(
+                    full_response_body.decode("utf-8", errors="ignore")
+                )
+                if msg:
+                    await self._refresh_page_after_capacity_error()
+                if not msg:
+                    if self._glm_frontend_would_see_sse_data_event(full_response_body):
+                        # Surface a helpful error instead of silently returning an empty stream.
+                        msg = (
+                            "GLM Chat: intercepted completion produced no streamable output. "
+                            "This may indicate a GLM API / frontend change."
+                        )
+                    else:
+                        msg = self._build_empty_completion_stream_error_message()
+                        await self._reload_chat_page(
+                            "empty completion stream "
+                            f"(GLM Error code: {self.EMPTY_COMPLETION_STREAM_ERROR_CODE})"
+                        )
+                Logger.warning(msg)
+                response_queue.put_nowait(f"data: {json.dumps({'error': msg})}\n\n")
+
+            await response_queue.put(None)
+            intercepted_request_finished.set()
+            if (
+                not aborted
+                and (not encountered_error)
+                and (not request_aborted())
+                and (not capacity_error_message)
+            ):
+                Logger.success("GLM Chat response streaming completed.")
+
         async def handle_route(route):
-            nonlocal completion_claimed, intercepted_activity_count, intercepted_response
+            nonlocal completion_claimed, intercepted_response
             request = route.request
 
-            # Ignore preflight and any requests we aren't actively expecting to stream.
-            # GLM can sometimes fire background requests to the same endpoint.
+            # Ignore preflight and any requests we aren't actively expecting to stream
+            # GLM can sometimes fire background requests to the same endpoint
             try:
                 method = str(request.method or "").upper()
             except Exception:
@@ -3295,214 +3653,8 @@ class GLMDriver(BaseDriver):
             cookie_dict = {c["name"]: c["value"] for c in cookies}
 
             response_headers: Dict[str, str] = {}
-            full_response_body = bytearray()
             aborted = False
-            text_buffer = bytearray()
-            text_buffer_pos = 0
-            thinking_emitted = IncrementalTextAccumulator()
-            answer_emitted = False
-            glm_block_active = False
-            emitted_openai_chunk = False
-            openai_usage: dict[str, Any] | None = None
-            openai_usage_emitted = False
-            openai_finish_emitted = False
-            capacity_error_message: str | None = None
-
-            try:
-                count_tokens_setting = self.config_manager.get_setting("glm_behavior", "count_tokens")
-            except Exception:
-                count_tokens_setting = None
-            # Default to enabled, even if the setting isn't present (older configs)
-            count_tokens_enabled = True if count_tokens_setting is None else bool(count_tokens_setting)
-
-            def _normalize_openai_usage(raw: Any) -> dict[str, Any] | None:
-                if not isinstance(raw, dict):
-                    return None
-
-                def _to_int(value: Any) -> int | None:
-                    try:
-                        return int(value)
-                    except Exception:
-                        return None
-
-                prompt_tokens = _to_int(raw.get("prompt_tokens"))
-                completion_tokens = _to_int(raw.get("completion_tokens"))
-                total_tokens = _to_int(raw.get("total_tokens"))
-
-                if prompt_tokens is None and completion_tokens is None and total_tokens is None:
-                    return None
-
-                prompt_tokens = 0 if prompt_tokens is None else max(prompt_tokens, 0)
-                completion_tokens = 0 if completion_tokens is None else max(completion_tokens, 0)
-                if total_tokens is None:
-                    total_tokens = prompt_tokens + completion_tokens
-                else:
-                    total_tokens = max(total_tokens, 0)
-
-                usage: dict[str, Any] = {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": total_tokens,
-                }
-
-                prompt_details = raw.get("prompt_tokens_details")
-                if isinstance(prompt_details, dict):
-                    usage["prompt_tokens_details"] = prompt_details
-
-                completion_details = raw.get("completion_tokens_details")
-                if isinstance(completion_details, dict):
-                    usage["completion_tokens_details"] = completion_details
-
-                return usage
-
-            def enqueue_openai_delta(content: str, finish_reason: str | None = None) -> None:
-                nonlocal emitted_openai_chunk
-                if (not content) and (not finish_reason):
-                    return
-                model_name = self.current_model or "glm-auto"
-                response_queue.put_nowait(
-                    make_openai_delta_sse(
-                        model_name,
-                        content,
-                        finish_reason=finish_reason,
-                    )
-                )
-                emitted_openai_chunk = True
-
-            def enqueue_openai_usage(usage: dict[str, Any]) -> None:
-                nonlocal emitted_openai_chunk, openai_usage_emitted
-                if openai_usage_emitted:
-                    return
-
-                model_name = self.current_model or "glm-auto"
-                response_queue.put_nowait(make_openai_usage_sse(model_name, usage))
-                emitted_openai_chunk = True
-                openai_usage_emitted = True
-
-            def process_sse_line(line: str) -> None:
-                nonlocal thinking_emitted, answer_emitted, glm_block_active, openai_usage
-                nonlocal openai_finish_emitted, capacity_error_message
-                line = line.strip()
-                if not line.startswith("data:"):
-                    return
-
-                data_str = line[len("data:") :].strip()
-                if not data_str or data_str == "[DONE]":
-                    return
-
-                try:
-                    payload = json.loads(data_str)
-                except Exception:
-                    return
-
-                if not isinstance(payload, dict):
-                    return
-
-                payload_type = str(payload.get("type") or "").strip().lower()
-                # Regeneration can use the same endpoint with slightly different type labels.
-                if not payload_type.startswith("chat:completion"):
-                    return
-
-                data = payload.get("data")
-                if not isinstance(data, dict):
-                    return
-
-                capacity_error_message = self._extract_model_capacity_error_from_data(data)
-                if capacity_error_message:
-                    return
-
-                phase = str(data.get("phase") or "").strip().lower()
-
-                if count_tokens_enabled:
-                    normalized_usage = _normalize_openai_usage(data.get("usage"))
-                    if normalized_usage:
-                        openai_usage = normalized_usage
-
-                if phase == "done" and bool(data.get("done")):
-                    if not openai_finish_emitted:
-                        if self.thinking_active and self.current_send_deepthink:
-                            enqueue_openai_delta("</think>")
-                            self.thinking_active = False
-                        enqueue_openai_delta("", finish_reason="stop")
-                        openai_finish_emitted = True
-                    return
-
-                delta_content = data.get("delta_content")
-                edit_content = data.get("edit_content")
-
-                if isinstance(delta_content, str):
-                    if phase == "thinking":
-                        if not self.current_send_deepthink:
-                            return
-                        if not self.thinking_active:
-                            enqueue_openai_delta("<think>")
-                            self.thinking_active = True
-                        stripped = self._strip_details_tags(delta_content)
-                        if stripped:
-                            enqueue_openai_delta(stripped)
-                            thinking_emitted.append(stripped)
-                        return
-
-                    if phase == "answer":
-                        if self.thinking_active and self.current_send_deepthink:
-                            enqueue_openai_delta("</think>")
-                            self.thinking_active = False
-                        enqueue_openai_delta(delta_content)
-                        answer_emitted = True
-                        return
-
-                    return
-
-                if isinstance(edit_content, str):
-                    edit_content, glm_block_active = self._strip_glm_blocks_from_stream_chunk(
-                        edit_content, glm_block_active
-                    )
-
-                    # When thinking is enabled, GLM often sends a huge edit_content that includes the full
-                    # <details> reasoning plus the first token(s) of the answer. Extract only the answer tail
-                    if phase == "answer":
-                        if self.current_send_deepthink and (self.thinking_active or not answer_emitted):
-                            reasoning = self._extract_reasoning_from_edit_content(edit_content)
-                            if reasoning:
-                                missing = thinking_emitted.missing_suffix(reasoning)
-                                if missing:
-                                    if not self.thinking_active:
-                                        enqueue_openai_delta("<think>")
-                                        self.thinking_active = True
-                                    enqueue_openai_delta(missing)
-                                    thinking_emitted.append(missing)
-
-                        if self.thinking_active and self.current_send_deepthink:
-                            enqueue_openai_delta("</think>")
-                            self.thinking_active = False
-                        tail = self._extract_answer_tail_from_edit_content(edit_content)
-                        if tail:
-                            enqueue_openai_delta(tail)
-                            answer_emitted = True
-                        return
-
-                    # GLM sometimes finalizes the answer with an "other" edit_content frame (tail append)
-                    # If we ignore this, the client can miss the last chunk of the message
-                    # So we handle it here
-                    if phase == "other":
-                        if self.thinking_active and self.current_send_deepthink:
-                            enqueue_openai_delta("</think>")
-                            self.thinking_active = False
-                        if edit_content:
-                            enqueue_openai_delta(edit_content)
-                            answer_emitted = True
-                        return
-
-                    # At this point answer content may already be streaming via delta_content; only
-                    # treat tool_call edit_content as answer tail if we've already emitted answer
-                    if phase == "tool_call":
-                        if self.thinking_active and self.current_send_deepthink:
-                            enqueue_openai_delta("</think>")
-                            self.thinking_active = False
-                        if answer_emitted and edit_content:
-                            enqueue_openai_delta(edit_content)
-                            answer_emitted = True
-                        return
+            encountered_error = False
 
             try:
                 json_body = None
@@ -3535,75 +3687,25 @@ class GLMDriver(BaseDriver):
                             response_headers[k] = v
 
                         async for chunk in response.aiter_bytes():
-                            intercepted_activity_count += 1
-                            if (
-                                intercepted_request_abort.is_set()
-                                or self.abort_requested
-                                or (abort_event and abort_event.is_set())
-                            ):
+                            if request_aborted():
                                 Logger.debug("Abort detected during GLM streaming, stopping...")
                                 aborted = True
                                 break
 
-                            full_response_body.extend(chunk)
-                            text_buffer.extend(chunk)
-
-                            while True:
-                                newline_idx = text_buffer.find(b"\n", text_buffer_pos)
-                                if newline_idx == -1:
-                                    break
-
-                                line_bytes = text_buffer[text_buffer_pos:newline_idx]
-                                text_buffer_pos = newline_idx + 1
-                                try:
-                                    process_sse_line(
-                                        bytes(line_bytes).decode("utf-8", errors="ignore")
-                                    )
-                                except Exception:
-                                    continue
-                                if capacity_error_message:
-                                    break
-
+                            process_glm_stream_chunk(chunk)
                             if capacity_error_message:
                                 break
 
-                            # Periodically compact the buffer to avoid unbounded growth
-                            if text_buffer_pos > 8192:
-                                del text_buffer[:text_buffer_pos]
-                                text_buffer_pos = 0
-
-                        # Flush any final SSE line if the stream didn't end with a newline
                         if not capacity_error_message:
-                            tail = bytes(text_buffer[text_buffer_pos:])
-                            if tail.strip():
-                                process_sse_line(tail.decode("utf-8", errors="ignore"))
-                        text_buffer.clear()
-                        text_buffer_pos = 0
-
-                        if (
-                            (not aborted)
-                            and (not intercepted_request_abort.is_set())
-                            and (not self.abort_requested)
-                            and (not capacity_error_message)
-                            and count_tokens_enabled
-                            and (openai_usage is not None)
-                            and (not openai_usage_emitted)
-                        ):
-                            enqueue_openai_usage(openai_usage)
+                            finalize_glm_stream_processing(aborted=aborted)
                 except httpx.ReadError as e:
-                    if (
-                        not aborted
-                        and (not intercepted_request_abort.is_set())
-                        and not self.abort_requested
-                    ):
+                    if not aborted and not request_aborted():
+                        encountered_error = True
                         Logger.error(f"Read error during GLM intercepted request: {e}")
                         response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
                 except Exception as e:
-                    if (
-                        not aborted
-                        and (not intercepted_request_abort.is_set())
-                        and not self.abort_requested
-                    ):
+                    if not aborted and not request_aborted():
+                        encountered_error = True
                         Logger.error(f"Error during GLM intercepted request: {e}")
                         response_queue.put_nowait(f"data: {json.dumps({'error': str(e)})}\n\n")
             except RuntimeError as e:
@@ -3614,73 +3716,257 @@ class GLMDriver(BaseDriver):
             finally:
                 intercepted_response = None
 
-            if aborted or intercepted_request_abort.is_set() or self.abort_requested:
-                Logger.warning("GLM Chat generation was aborted before completion.")
-
-            should_report_empty_stream_error = bool(
-                (not aborted)
-                and (not intercepted_request_abort.is_set())
-                and (not self.abort_requested)
-                and (not capacity_error_message)
-                and (not emitted_openai_chunk)
-            )
-
-            if (
-                aborted or intercepted_request_abort.is_set() or self.abort_requested
-            ):
+            if aborted or request_aborted():
                 try:
                     await route.abort()
                 except Exception as e:
                     Logger.error(f"GLM Chat: error finalizing route: {e}")
             else:
                 try:
-                    await route.fulfill(body=bytes(full_response_body), status=200, headers=response_headers)
+                    await route.fulfill(
+                        body=bytes(full_response_body),
+                        status=200,
+                        headers=response_headers,
+                    )
                 except Exception as e:
                     Logger.error(f"GLM Chat: error finalizing route: {e}")
 
-            if capacity_error_message:
-                Logger.warning(capacity_error_message)
-                await self._refresh_page_after_capacity_error()
-                response_queue.put_nowait(f"data: {json.dumps({'error': capacity_error_message})}\n\n")
-            elif should_report_empty_stream_error:
-                msg = self._extract_model_capacity_error_from_text(
-                    full_response_body.decode("utf-8", errors="ignore")
-                )
-                if msg:
-                    await self._refresh_page_after_capacity_error()
-                if not msg:
-                    if self._glm_frontend_would_see_sse_data_event(full_response_body):
-                        # Surface a helpful error instead of silently returning an empty stream.
-                        msg = (
-                            "GLM Chat: intercepted completion produced no streamable output. "
-                            "This may indicate a GLM API / frontend change."
-                        )
-                    else:
-                        msg = self._build_empty_completion_stream_error_message()
-                        await self._reload_chat_page(
-                            "empty completion stream "
-                            f"(GLM Error code: {self.EMPTY_COMPLETION_STREAM_ERROR_CODE})"
-                        )
-                Logger.warning(msg)
-                response_queue.put_nowait(f"data: {json.dumps({'error': msg})}\n\n")
+            await finish_glm_stream_result(
+                aborted=aborted,
+                encountered_error=encountered_error,
+            )
 
-            await response_queue.put(None)
-            intercepted_request_finished.set()
+        def _schedule_cdp_task(coro: Any, label: str) -> None:
+            try:
+                task = asyncio.create_task(coro)
+            except Exception as exc:
+                Logger.debug(f"GLM Chat: failed to schedule CDP handler for {label}: {exc}")
+                return
+
+            cdp_tasks.add(task)
+
+            def _on_done(done_task: asyncio.Task) -> None:
+                cdp_tasks.discard(done_task)
+                try:
+                    done_task.exception()
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    Logger.debug(f"GLM Chat: CDP handler for {label} failed: {exc}")
+
+            task.add_done_callback(_on_done)
+
+        async def finish_cdp_stream(
+            request_id: str,
+            *,
+            aborted: bool = False,
+            encountered_error: bool = False,
+        ) -> None:
+            nonlocal cdp_stream_finished
+            if request_id != cdp_active_request_id or cdp_stream_finished:
+                return
+
+            cdp_stream_finished = True
+            if not aborted and not encountered_error:
+                finalize_glm_stream_processing(aborted=False)
+
+            await finish_glm_stream_result(
+                aborted=aborted,
+                encountered_error=encountered_error,
+            )
+            request_methods.pop(request_id, None)
+            cdp_pending_response_urls.pop(request_id, None)
+
+        async def feed_cdp_stream_chunk(request_id: str, data: bytes) -> None:
+            nonlocal cdp_had_data
+            if request_id != cdp_active_request_id or not data or cdp_stream_finished:
+                return
+
+            cdp_had_data = True
+            if request_aborted():
+                await finish_cdp_stream(request_id, aborted=True)
+                return
+
+            process_glm_stream_chunk(data)
+            if request_aborted():
+                await finish_cdp_stream(request_id, aborted=True)
+
+        async def feed_base64_cdp_stream_chunk(request_id: str, encoded_data: Any) -> None:
+            if not encoded_data:
+                return
+            encoded_text = str(encoded_data)
+            try:
+                data = base64.b64decode(encoded_text, validate=True)
+            except Exception:
+                data = encoded_text.encode("utf-8", errors="ignore")
+            await feed_cdp_stream_chunk(request_id, data)
+
+        async def start_cdp_stream(request_id: str, url: str) -> None:
+            nonlocal cdp_stream_started
             if (
-                not aborted
-                and (not intercepted_request_abort.is_set())
-                and not self.abort_requested
-                and (not capacity_error_message)
+                request_id != cdp_active_request_id
+                or not cdp_session
+                or cdp_stream_started
+                or cdp_stream_finished
             ):
-                Logger.success("GLM Chat response streaming completed.")
+                return
+
+            cdp_stream_started = True
+            Logger.info("Teeing GLM Chat API response via CDP...")
+            Logger.debug(f"Teeing request to: {url}")
+            try:
+                result = await cdp_session.send(
+                    "Network.streamResourceContent",
+                    {"requestId": request_id},
+                )
+            except Exception as exc:
+                message_text = f"GLM Chat CDP response streaming failed: {exc}"
+                Logger.error(message_text)
+                await response_queue.put({"error": message_text})
+                await finish_cdp_stream(request_id, encountered_error=True)
+                return
+
+            if isinstance(result, dict):
+                await feed_base64_cdp_stream_chunk(request_id, result.get("bufferedData"))
+
+        async def handle_cdp_request_will_be_sent(params: Any) -> None:
+            nonlocal completion_claimed, cdp_active_request_id
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            request = params.get("request")
+            if not request_id or not isinstance(request, dict):
+                return
+
+            method = str(request.get("method") or "").upper()
+            request_methods[request_id] = method
+            url = str(request.get("url") or "")
+            if method != "POST" or not self._is_completion_request_url(url):
+                return
+            if not completion_armed.is_set():
+                return
+
+            async with completion_claim_lock:
+                if completion_claimed:
+                    return
+                completion_claimed = True
+                cdp_active_request_id = request_id
+                completion_started.set()
+
+            Logger.info("Observing GLM Chat API request via CDP...")
+            Logger.debug(f"Observed request to: {url}")
+            pending_url = cdp_pending_response_urls.get(request_id)
+            if pending_url:
+                await start_cdp_stream(request_id, pending_url)
+
+        async def handle_cdp_response_received(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            response = params.get("response")
+            if not request_id or not isinstance(response, dict):
+                return
+            url = str(response.get("url") or "")
+            if not self._is_completion_request_url(url):
+                return
+            method = request_methods.get(request_id, "").upper()
+            if method and method != "POST":
+                return
+            cdp_pending_response_urls[request_id] = url
+            if request_id != cdp_active_request_id:
+                return
+            await start_cdp_stream(request_id, url)
+
+        async def handle_cdp_data_received(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id == cdp_active_request_id:
+                await feed_base64_cdp_stream_chunk(request_id, params.get("data"))
+
+        async def handle_cdp_loading_finished(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id == cdp_active_request_id:
+                await finish_cdp_stream(request_id)
+            else:
+                request_methods.pop(request_id, None)
+                cdp_pending_response_urls.pop(request_id, None)
+
+        async def handle_cdp_loading_failed(params: Any) -> None:
+            if not isinstance(params, dict):
+                return
+            request_id = str(params.get("requestId") or "").strip()
+            if request_id != cdp_active_request_id:
+                request_methods.pop(request_id, None)
+                cdp_pending_response_urls.pop(request_id, None)
+                return
+
+            if request_aborted():
+                await finish_cdp_stream(request_id, aborted=True)
+                return
+
+            error_text = str(params.get("errorText") or "network loading failed").strip()
+            if "ERR_ABORTED" in error_text.upper() and cdp_had_data:
+                Logger.debug(
+                    "GLM Chat CDP stream ended with net::ERR_ABORTED after data arrived; "
+                    "treating it as complete."
+                )
+                await finish_cdp_stream(request_id)
+                return
+
+            message_text = f"GLM Chat CDP stream failed: {error_text}"
+            Logger.error(message_text)
+            await response_queue.put({"error": message_text})
+            await finish_cdp_stream(request_id, encountered_error=True)
+
+        def on_cdp_request_will_be_sent(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_request_will_be_sent(params), "requestWillBeSent")
+
+        def on_cdp_response_received(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_response_received(params), "responseReceived")
+
+        def on_cdp_data_received(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_data_received(params), "dataReceived")
+
+        def on_cdp_loading_finished(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_loading_finished(params), "loadingFinished")
+
+        def on_cdp_loading_failed(params: Any) -> None:
+            _schedule_cdp_task(handle_cdp_loading_failed(params), "loadingFailed")
 
         route_owner = self.context or self.page
         if not route_owner:
             raise RuntimeError("GLM Chat: browser context is not available.")
 
-        await route_owner.route("**/api/v2/chat/completions**", handle_route)
-
         try:
+            if use_cdp_teeing:
+                if not self.context or not self.page:
+                    message_text = "GLM Chat CDP setup failed: browser context is not available."
+                    Logger.error(message_text)
+                    yield f"data: {json.dumps({'error': message_text})}\n\n"
+                    return
+                try:
+                    cdp_session = await self.context.new_cdp_session(self.page)
+                    await cdp_session.send("Network.enable", {})
+                    cdp_session.on("Network.requestWillBeSent", on_cdp_request_will_be_sent)
+                    cdp_session.on("Network.responseReceived", on_cdp_response_received)
+                    cdp_session.on("Network.dataReceived", on_cdp_data_received)
+                    cdp_session.on("Network.loadingFinished", on_cdp_loading_finished)
+                    cdp_session.on("Network.loadingFailed", on_cdp_loading_failed)
+                    cdp_listeners_registered = True
+                    Logger.info("GLM Chat Request Capture Mode: CDP Teeing.")
+                except Exception as exc:
+                    message_text = f"GLM Chat CDP setup failed: {exc}"
+                    Logger.error(message_text)
+                    yield f"data: {json.dumps({'error': message_text})}\n\n"
+                    return
+            else:
+                await route_owner.route(self.COMPLETION_ROUTE_GLOB, handle_route)
+                route_handlers_registered = True
+                Logger.info("GLM Chat Request Capture Mode: Replay.")
+
             regenerated = False
             clean_regen_state: Dict[str, Any] | None = None
             multi_slot_state: Dict[str, Any] | None = None
@@ -3899,10 +4185,37 @@ class GLMDriver(BaseDriver):
                     Logger.debug("GLM Chat: timed out waiting for intercepted request cleanup.")
             self._reset_generation_state()
             self._pending_request_overrides = {}
-            try:
-                await route_owner.unroute("**/api/v2/chat/completions**", handle_route)
-            except Exception:
+            if route_handlers_registered:
                 try:
-                    await route_owner.unroute("**/api/v2/chat/completions**")
+                    await route_owner.unroute(self.COMPLETION_ROUTE_GLOB, handle_route)
+                except Exception:
+                    try:
+                        await route_owner.unroute(self.COMPLETION_ROUTE_GLOB)
+                    except Exception:
+                        pass
+            if cdp_session and cdp_listeners_registered:
+                for event_name, listener in (
+                    ("Network.requestWillBeSent", on_cdp_request_will_be_sent),
+                    ("Network.responseReceived", on_cdp_response_received),
+                    ("Network.dataReceived", on_cdp_data_received),
+                    ("Network.loadingFinished", on_cdp_loading_finished),
+                    ("Network.loadingFailed", on_cdp_loading_failed),
+                ):
+                    try:
+                        cdp_session.remove_listener(event_name, listener)
+                    except Exception:
+                        pass
+            for task in list(cdp_tasks):
+                if not task.done():
+                    task.cancel()
+            tasks_to_wait = set(cdp_tasks)
+            if tasks_to_wait:
+                try:
+                    await asyncio.wait(tasks_to_wait, timeout=1.0)
                 except Exception:
                     pass
+            if cdp_session:
+                try:
+                    await cdp_session.detach()
+                except Exception as exc:
+                    Logger.debug(f"GLM Chat: CDP detach failed: {exc}")
