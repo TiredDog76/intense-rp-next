@@ -5216,6 +5216,7 @@ class SettingsWindow(QMainWindow):
                     remote_version=str(result.remote_version or "unknown"),
                     remote_auto_updateable=getattr(result, "remote_auto_updateable", None),
                     remote_severity=getattr(result, "remote_severity", None),
+                    remote_summary=getattr(result, "remote_summary", None),
                 ),
                 parent=self,
             )

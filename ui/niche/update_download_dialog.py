@@ -172,6 +172,7 @@ class UpdateDownloadDialog(QDialog):
         self._cancel_requested = False
         self._install_started = False
         self._install_task: asyncio.Task | None = None
+        self._legacy_restore_config_logs = self._read_legacy_restore_config_logs_setting()
 
         self.setWindowTitle("Downloading Update")
         self.setModal(True)
@@ -461,6 +462,27 @@ class UpdateDownloadDialog(QDialog):
                 return None
         return None
 
+    def _read_legacy_restore_config_logs_setting(self) -> bool:
+        current = self.parent()
+        while current is not None:
+            config_manager = getattr(current, "config_manager", None)
+            get_setting = getattr(config_manager, "get_setting", None)
+            if callable(get_setting):
+                try:
+                    return bool(
+                        get_setting(
+                            "application_settings",
+                            "legacy_update_restore_config_logs",
+                        )
+                    )
+                except Exception:
+                    return False
+            try:
+                current = current.parent()
+            except Exception:
+                return False
+        return False
+
     async def _stop_services_before_update(self) -> None:
         owner = self._find_stop_services_owner()
         if owner is None:
@@ -525,7 +547,11 @@ class UpdateDownloadDialog(QDialog):
             str(exe_name),
             "--payload-dir",
             str(prepared.extracted_app_root),
+            "--release-url",
+            str(prepared.release_html_url or ""),
         ]
+        if self._legacy_restore_config_logs:
+            cmd.append("--legacy-restore-config-logs")
 
         self._launcher_thread = QThread(self)
         self._launcher_worker = _UpdaterLauncher(cmd, tempfile.gettempdir())

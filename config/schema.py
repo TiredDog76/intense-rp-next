@@ -2759,6 +2759,19 @@ SCHEMA = [
                 docs_anchor="updates",
             ),
             SettingField(
+                key="legacy_update_restore_config_logs",
+                label="Use Legacy Update Data Restore",
+                type=SettingType.BOOLEAN,
+                default=False,
+                tooltip=(
+                    "Use the older update flow that copies config_data and logs from the "
+                    "old install into the new one. Leave this off unless you're "
+                    "troubleshooting updater behavior."
+                ),
+                docs_path=DOCS_SYSTEM,
+                docs_anchor="updates",
+            ),
+            SettingField(
                 key="collapse_to_tray_on_close",
                 label="Keep Running in the Tray When Closed",
                 type=SettingType.BOOLEAN,
@@ -3284,6 +3297,7 @@ SETTINGS_CARDS = {
             ("application_settings", "update_status_info"),
             ("application_settings", "check_for_updates_btn"),
             ("application_settings", "check_for_updates_on_startup"),
+            ("application_settings", "legacy_update_restore_config_logs"),
         ],
     ),
     "log_to_files": SettingCard(

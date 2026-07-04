@@ -334,6 +334,16 @@ def get_version():
 
 
 POSTUPDATE_FLAG_FILENAME = "postupdate_notes_url.txt"
+POSTUPDATE_CLEANUP_FILENAME = "postupdate_cleanup.json"
+
+
+def _get_update_app_root() -> Path | None:
+    try:
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent
+        return Path(__file__).resolve().parent
+    except Exception:
+        return None
 
 
 def _release_notes_url_for_version(version: str) -> str:
@@ -345,13 +355,96 @@ def _release_notes_url_for_version(version: str) -> str:
     return f"https://github.com/LyubomirT/intense-rp-next/releases/tag/v{value}"
 
 
-def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
+def _read_postupdate_cleanup_backup_dir(app_root: Path) -> tuple[Path, Path] | None:
+    marker_path = app_root / POSTUPDATE_CLEANUP_FILENAME
     try:
-        if getattr(sys, "frozen", False):
-            app_root = Path(sys.executable).resolve().parent
-        else:
-            app_root = Path(__file__).resolve().parent
+        if not marker_path.is_file():
+            return None
     except Exception:
+        return None
+
+    try:
+        payload = json.loads(marker_path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        try:
+            marker_path.unlink()
+        except Exception:
+            pass
+        return None
+
+    raw_backup_dir = ""
+    if isinstance(payload, dict):
+        raw_backup_dir = str(payload.get("backup_dir") or "").strip()
+    if not raw_backup_dir:
+        try:
+            marker_path.unlink()
+        except Exception:
+            pass
+        return None
+
+    try:
+        backup_dir = Path(raw_backup_dir).expanduser().resolve()
+        app_root_resolved = app_root.resolve()
+    except Exception:
+        return None
+
+    # The updater only creates backup folders next to the app root
+    try:
+        expected_prefix = f"{app_root_resolved.name}-backup"
+        if backup_dir.parent != app_root_resolved.parent:
+            return None
+        if not backup_dir.name.startswith(expected_prefix):
+            return None
+        if backup_dir == app_root_resolved:
+            return None
+    except Exception:
+        return None
+
+    return backup_dir, marker_path
+
+
+def _cleanup_postupdate_backup_best_effort() -> None:
+    app_root = _get_update_app_root()
+    if app_root is None:
+        return
+
+    cleanup_info = _read_postupdate_cleanup_backup_dir(app_root)
+    if cleanup_info is None:
+        return
+
+    backup_dir, marker_path = cleanup_info
+    if not backup_dir.exists():
+        try:
+            marker_path.unlink()
+        except Exception:
+            pass
+        return
+
+    def worker() -> None:
+        # Let startup finish first. This backup is our rollback until relaunch.
+        time.sleep(2.0)
+        for attempt in range(60):
+            try:
+                if backup_dir.exists():
+                    shutil.rmtree(backup_dir)
+                try:
+                    marker_path.unlink()
+                except Exception:
+                    pass
+                Logger.info(f"Post-update backup cleaned up: {backup_dir}")
+                return
+            except Exception as exc:
+                if attempt == 0:
+                    Logger.warning(f"Post-update backup cleanup is waiting: {exc}")
+                time.sleep(0.5)
+        Logger.warning(f"Post-update backup cleanup failed: {backup_dir}")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def _consume_postupdate_installed_info() -> UpdateInstalledInfo | None:
+    app_root = _get_update_app_root()
+    if app_root is None:
         return None
 
     flag_path = app_root / POSTUPDATE_FLAG_FILENAME
@@ -675,6 +768,7 @@ class MainWindow(QMainWindow):
                 summary=version_info.summary,
             )
         self._maybe_show_update_installed_dialog()
+        QTimer.singleShot(3000, _cleanup_postupdate_backup_best_effort)
 
         self._maybe_check_for_updates_on_startup()
         self._apply_queue_preview_setting(force=True)
@@ -1714,6 +1808,7 @@ class MainWindow(QMainWindow):
                             remote_version=str(result.remote_version or "unknown"),
                             remote_auto_updateable=result.remote_auto_updateable,
                             remote_severity=result.remote_severity,
+                            remote_summary=result.remote_summary,
                         )
                     )
                 return

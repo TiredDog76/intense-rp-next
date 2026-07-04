@@ -31,6 +31,7 @@ class UpdateAvailableInfo:
     remote_version: str
     remote_auto_updateable: Optional[bool] = None
     remote_severity: Optional[int] = None
+    remote_summary: Optional[str] = None
 
     @property
     def release_notes_url(self) -> str:
@@ -93,6 +94,9 @@ class UpdateAvailableDialog(QDialog):
                 "An update is available, but Auto-Update is disabled for this release. "
                 "Use Git (source runs) or download manually from the release page."
             )
+        summary = str(info.remote_summary or "").strip()
+        if summary:
+            desc_text = f"{desc_text}\n\nThis update brings: {summary}"
 
         desc = QLabel(desc_text)
         desc.setWordWrap(True)

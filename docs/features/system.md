@@ -293,6 +293,10 @@ You'll get an "Update Available" dialog and can choose a method based on how you
     - Stages an update payload
     - Runs a small updater and restarts the app
 
+    By default, Auto-Update keeps your existing `config_data/` and `logs/` as whole local folders instead of copying them from the old app folder into the new one. The updater also removes those folder names from the staged update payload if they somehow appear there, so a release package can't replace your local config or logs by accident.
+
+    If you need the older behavior for troubleshooting, enable **Use Legacy Update Data Restore** in the Updates settings. That mode copies/merges `config_data/` and `logs/` from the old app backup into the new install, which is slower for large browser profiles.
+
     !!! warning "Not available on source runs"
         If you're running `python main.py`, Auto-Update is disabled.
 
