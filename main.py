@@ -64,7 +64,9 @@ import time
 import traceback
 
 
-def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | None, bool, bool, str | None, bool, bool]:
+def _parse_update_cleanup_args(
+    argv: list[str],
+) -> tuple[list[str], bool, str | None, bool, bool, str | None, str | None, bool, bool]:
     """
     Parse and remove internal startup args from argv.
 
@@ -74,6 +76,8 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
       --updaterpath=<path>
       --clearFlags
       --fakeUpdate
+      --localUpdateDebug <zipfile>
+      --localUpdateDebug=<zipfile>
       --debugWidgetShows
       --extraDebugLogs
     """
@@ -83,6 +87,7 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
     clear_flags = False
     fake_update = False
     fake_pufref: str | None = None
+    local_update_debug: str | None = None
     debug_widget_shows = False
     extra_debug_logs = False
 
@@ -132,6 +137,20 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
             i += 1
             continue
 
+        if arg.lower() == "--localupdatedebug":
+            if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+                local_update_debug = argv[i + 1]
+                i += 2
+                continue
+            local_update_debug = ""
+            i += 1
+            continue
+
+        if arg.lower().startswith("--localupdatedebug="):
+            local_update_debug = arg.split("=", 1)[1]
+            i += 1
+            continue
+
         if arg.lower() == "--debugwidgetshows":
             debug_widget_shows = True
             i += 1
@@ -152,9 +171,34 @@ def _parse_update_cleanup_args(argv: list[str]) -> tuple[list[str], bool, str | 
         clear_flags,
         fake_update,
         fake_pufref,
+        local_update_debug,
         debug_widget_shows,
         extra_debug_logs,
     )
+
+
+def _resolve_local_update_debug_archive(raw_path: str | None) -> Path | None:
+    if raw_path is None:
+        return None
+
+    value = str(raw_path or "").strip()
+    if not value:
+        raise ValueError("--localUpdateDebug must point to a .zip file.")
+
+    try:
+        archive_path = Path(value).expanduser()
+        try:
+            archive_path = archive_path.resolve()
+        except Exception:
+            archive_path = archive_path.absolute()
+    except Exception as exc:
+        raise ValueError(f"Invalid --localUpdateDebug path: {value}") from exc
+
+    if archive_path.suffix.lower() != ".zip":
+        raise ValueError(f"--localUpdateDebug must point to a .zip file: {archive_path}")
+    if not archive_path.is_file():
+        raise ValueError(f"Local update debug ZIP not found: {archive_path}")
+    return archive_path
 
 
 def _delete_updater_best_effort(cleanup_path: Path) -> None:
@@ -496,6 +540,7 @@ class MainWindow(QMainWindow):
         *,
         fake_update: bool = False,
         fake_pufref: str | None = None,
+        local_update_debug_archive: str | None = None,
         extra_debug_logs_cli: bool = False,
     ):
         super().__init__()
@@ -770,7 +815,10 @@ class MainWindow(QMainWindow):
         self._maybe_show_update_installed_dialog()
         QTimer.singleShot(3000, _cleanup_postupdate_backup_best_effort)
 
-        self._maybe_check_for_updates_on_startup()
+        if local_update_debug_archive:
+            self._maybe_show_local_update_debug_dialog(local_update_debug_archive)
+        else:
+            self._maybe_check_for_updates_on_startup()
         self._apply_queue_preview_setting(force=True)
         self._refresh_news_state()
         self._sync_news_button()
@@ -1816,6 +1864,28 @@ class MainWindow(QMainWindow):
             Logger.info(f"Up to date (v{result.local_version}).")
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _maybe_show_local_update_debug_dialog(self, archive_path: str) -> None:
+        archive_path = str(archive_path or "").strip()
+        if not archive_path:
+            return
+
+        try:
+            local_version = get_version()
+        except Exception:
+            local_version = "unknown"
+
+        Logger.warning(f"Local update debug enabled: {archive_path}")
+        self.update_available_found.emit(
+            UpdateAvailableInfo(
+                local_version=str(local_version or "unknown"),
+                remote_version="Debug",
+                remote_auto_updateable=True,
+                remote_severity=None,
+                remote_summary=None,
+                local_update_archive=archive_path,
+            )
+        )
 
     def _maybe_show_welcome_window(self) -> None:
         try:
@@ -4366,6 +4436,7 @@ def main():
         clear_flags,
         fake_update,
         fake_pufref,
+        local_update_debug,
         debug_widget_shows,
         extra_debug_logs,
     ) = _parse_update_cleanup_args(sys.argv[1:])
@@ -4376,6 +4447,12 @@ def main():
         sys.exit(0 if _clear_app_flags() else 1)
 
     app = QApplication(sys.argv)
+    try:
+        local_update_debug_archive = _resolve_local_update_debug_archive(local_update_debug)
+    except ValueError as exc:
+        QMessageBox.warning(None, "Local Update Debug", str(exc))
+        sys.exit(2)
+
     if debug_widget_shows:
         _install_widget_debug_logging(app)
 
@@ -4424,6 +4501,9 @@ def main():
     window = MainWindow(
         fake_update=fake_update,
         fake_pufref=fake_pufref,
+        local_update_debug_archive=(
+            str(local_update_debug_archive) if local_update_debug_archive is not None else None
+        ),
         extra_debug_logs_cli=extra_debug_logs,
     )
     window.show()

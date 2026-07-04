@@ -276,6 +276,85 @@ def download_with_progress(
         )
 
 
+def copy_local_archive_with_progress(
+    *,
+    source_path: Path,
+    dest_path: Path,
+    chunk_size: int = 1024 * 256,
+    progress_cb: Optional[Callable[[DownloadProgress], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
+) -> None:
+    source_path = source_path.expanduser().resolve()
+    if not source_path.is_file():
+        raise AutoUpdateError(f"Local update archive not found: {source_path}")
+
+    try:
+        total_bytes = source_path.stat().st_size
+    except Exception:
+        total_bytes = None
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    part_path = dest_path.with_name(f"{dest_path.name}.part")
+    try:
+        part_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    bytes_copied = 0
+    started_at = time.monotonic()
+    last_tick = started_at
+    last_bytes = 0
+    speed_bps = 0.0
+
+    try:
+        with open(source_path, "rb") as src, open(part_path, "wb") as dst:
+            while True:
+                if should_cancel is not None and should_cancel():
+                    raise AutoUpdateError("Local update staging canceled.")
+
+                chunk = src.read(chunk_size)
+                if not chunk:
+                    break
+
+                dst.write(chunk)
+                bytes_copied += len(chunk)
+
+                now = time.monotonic()
+                if now - last_tick >= 0.25:
+                    dt = max(now - last_tick, 1e-6)
+                    db = bytes_copied - last_bytes
+                    inst = db / dt
+                    speed_bps = (speed_bps * 0.8) + (inst * 0.2) if speed_bps else inst
+                    last_tick = now
+                    last_bytes = bytes_copied
+                    if progress_cb is not None:
+                        progress_cb(
+                            DownloadProgress(
+                                bytes_downloaded=bytes_copied,
+                                total_bytes=total_bytes,
+                                speed_bytes_per_s=speed_bps,
+                            )
+                        )
+
+        part_path.replace(dest_path)
+    except Exception:
+        try:
+            part_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+    elapsed = max(time.monotonic() - started_at, 1e-6)
+    if progress_cb is not None:
+        progress_cb(
+            DownloadProgress(
+                bytes_downloaded=bytes_copied,
+                total_bytes=total_bytes,
+                speed_bytes_per_s=bytes_copied / elapsed,
+            )
+        )
+
+
 def _safe_archive_destination(extract_dir: Path, member_name: str) -> Path:
     normalized = (member_name or "").replace("\\", "/").strip()
     if not normalized:
@@ -480,6 +559,48 @@ def prepare_update_from_github(
         release_html_url=release_html_url,
         asset_name=asset_name,
         asset_download_url=asset_download_url,
+        staging_dir=extract_dir.resolve(),
+        extracted_app_root=app_root,
+    )
+
+
+def prepare_update_from_local_archive(
+    *,
+    archive_path: Path,
+    expected_exe_name: Optional[str],
+    download_dir: Path,
+    extract_dir: Path,
+    progress_cb: Optional[Callable[[DownloadProgress], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
+) -> PreparedUpdate:
+    source_path = archive_path.expanduser().resolve()
+    if source_path.suffix.lower() != ".zip":
+        raise AutoUpdateError("--localUpdateDebug must point to a .zip file.")
+    if not source_path.is_file():
+        raise AutoUpdateError(f"Local update archive not found: {source_path}")
+
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", source_path.name) or "local-update-debug.zip"
+    archive_copy_path = (download_dir / safe_name).resolve()
+
+    copy_local_archive_with_progress(
+        source_path=source_path,
+        dest_path=archive_copy_path,
+        progress_cb=progress_cb,
+        should_cancel=should_cancel,
+    )
+
+    if should_cancel is not None and should_cancel():
+        raise AutoUpdateError("Local update staging canceled.")
+
+    extract_archive(archive_copy_path, extract_dir)
+    app_root = find_extracted_app_root(extract_dir, expected_exe_name=expected_exe_name)
+
+    return PreparedUpdate(
+        tag="local-debug",
+        release_name="Debug Update Available",
+        release_html_url="",
+        asset_name=source_path.name,
+        asset_download_url=str(source_path),
         staging_dir=extract_dir.resolve(),
         extracted_app_root=app_root,
     )

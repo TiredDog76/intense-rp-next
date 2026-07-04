@@ -342,6 +342,28 @@ You can force-show the "Update Installed" dialog (without actually installing an
     python main.py --fakeUpdate
     ```
 
+### Debug: `--localUpdateDebug`
+
+You can force-show a white "Debug Update Available" dialog and run Auto-Update from a local build artifact:
+
+```bash
+--localUpdateDebug path/to/release.zip
+```
+
+The argument must point to a `.zip` release package, like the one created by `scripts/build_windows.ps1`. The archive still needs the normal release layout, including the app folder and `optional/updater.exe`.
+
+!!! warning "This really runs the updater"
+    This is for testing updater weirdness before release, but it isn't a dry run. If you click through the install flow, it will stage that ZIP and update the current packaged install.
+
+!!! note "Older artifacts can behave oddly"
+    The updater executable is loaded from the staged ZIP. If you test with an older artifact, that older `optional/updater.exe` may not understand the launch arguments used by your current app build.
+
+=== ":material-microsoft-windows: Packaged build (Windows)"
+
+    ```powershell
+    .\intenserp-next-v2.exe --localUpdateDebug .\dist\intenserp-next-v2-win32-x64.zip
+    ```
+
 ---
 
 ## :material-bug: Troubleshooting
