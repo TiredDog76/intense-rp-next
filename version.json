@@ -1,8 +1,8 @@
 {
-  "version": "2.8.8-rev3",
+  "version": "2.9.0-update",
   "aua": true,
-  "severity": 3,
+  "severity": 4,
   "pu": "discord",
   "pufref": "none",
-  "summary": "GLM-5.2 fixes, DeepSeek conservative mode, and extra debug logs"
+  "summary": "Anniversary update with Xiaomi MiMo, Dry Run Mode, CDP Teeing, and runtime polish"
 }

@@ -8,6 +8,24 @@ icon: material/newspaper-variant-outline
 
 This page is the changelog for the latest news and updates about IntenseRP Next.
 
+## July 4, 2026 - Update 2.9.0
+
+IntenseRP Next v2.9.0 is here, and this one is a little special: **IntenseRP Next is turning 1 year old this July**!!! 🎆🎆🎆✨✨✨
+
+Thank you so much to everyone who has used it, reported weird provider breakages, suggested ideas, joined the Discord, supported the project, or just quietly kept the thing running in your own setup. This project would be a much lonelier pile of browser automation without you.
+
+The headline feature is **Xiaomi MiMo support**. MiMo joins the provider list with model selection, thinking output filtering, token usage, prompt-file uploads, chat reuse, Xiaomi account login, and provider-specific proxy settings for regions where MiMo refuses to load. It's still region-dependent and a bit beta-ish, but it is now usable through IntenseRP's normal OpenAI-compatible API.
+
+This update also adds **Dry Run Mode**, a new API debugging workflow that starts the server without launching a provider browser and shows exactly what your client sent plus what IntenseRP's formatting pipeline produced. On the runtime side, **CDP Teeing** is now available across more drivers, browser proxy/viewport controls are better, backups/imports are safer, and the updater has received more polish.
+
+[Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.9.0-update){ .md-button .md-button--primary }
+[Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
+[Xiaomi MiMo Behavior](providers/mimo-behavior.md){ .md-button }
+[Dry Run Mode](features/network-api.md#dry-run-mode){ .md-button }
+[Support the Project](hands/support.md){ .md-button }
+
+---
+
 ## June 12, 2026 - Update 2.8.8
 
 IntenseRP Next v2.8.8 is a smaller release with two very practical wins: **Google AI Studio is back**, and **Providers in Parallel is no longer tucked Experimental**.
