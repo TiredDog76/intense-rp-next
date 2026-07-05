@@ -424,12 +424,12 @@ SCHEMA = [
             ),
             SettingField(
                 key="anti_censorship",
-                label="Anti-Censorship",
+                label="Blocked-Response Handling",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Suppress the refusal message when content filtering is triggered.",
+                tooltip="Handle detected refusal messages without forwarding the refusal text.",
                 docs_path=DOCS_DEEPSEEK,
-                docs_anchor="anti-censorship",
+                docs_anchor="blocked-response-handling",
             ),
             SettingField(
                 key="clean_regeneration",
@@ -841,12 +841,12 @@ SCHEMA = [
             ),
             SettingField(
                 key="anti_censorship",
-                label="Anti-Censorship",
+                label="Blocked-Response Handling",
                 type=SettingType.BOOLEAN,
                 default=False,
-                tooltip="Suppress refusal-like messages in the stream when a content-filter-style event is detected.",
+                tooltip="Handle detected refusal-like stream events without forwarding the refusal text.",
                 docs_path=DOCS_MOONSHOT,
-                docs_anchor="anti-censorship",
+                docs_anchor="blocked-response-handling",
             ),
             SettingField(
                 key="clean_regeneration",
@@ -1877,15 +1877,15 @@ SCHEMA = [
             ),
             SettingField(
                 key="anti_censorship",
-                label="Anti-Censorship",
+                label="Blocked-Response Handling",
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "Detect AI Studio hard-censorship, replace the blocked assistant turn, "
+                    "Detect blocked AI Studio turns, replace the blocked assistant turn, "
                     "and send up to 3 continue nudges automatically."
                 ),
                 docs_path=DOCS_AISTUDIO,
-                docs_anchor="anti-censorship",
+                docs_anchor="blocked-response-handling",
             ),
             SettingField(
                 key="caars_enabled",
@@ -1893,7 +1893,7 @@ SCHEMA = [
                 type=SettingType.BOOLEAN,
                 default=False,
                 tooltip=(
-                    "Run a cheap savior model first, replace its assistant turn, "
+                    "Run a secondary model first, replace its assistant turn, "
                     "then switch back and continue with the real model."
                 ),
                 depends="aistudio_behavior.anti_censorship",
@@ -3409,7 +3409,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "enable_deepthink", "send_deepthink", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache", "first_chunk_timeout"]},
-        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
+        {"title": "Blocked Responses", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "glm_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "enable_deepthink", "deepthink_effort", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_advanced_search", "enable_tools"]},
@@ -3421,7 +3421,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
         {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "enable_deepthink", "send_deepthink", "search_and_think_note", "enable_search"]},
         {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
         {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "multi_slot_cache"]},
-        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
+        {"title": "Blocked Responses", "icon": "shield-ban.svg", "fields": ["anti_censorship"]},
     ],
     "qwen_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "enable_deepthink", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_tools"]},
@@ -3451,7 +3451,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
     "aistudio_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "enable_deepthink", "thinking_level", "send_deepthink"]},
         {"title": "Tools and Uploads", "icon": "upload.svg", "fields": ["enable_search", "enable_url_context", "use_system_prompt_field", "send_as_text_file", "text_file_message", "file_upload_timeout"]},
-        {"title": "Filtering", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge", "anti_censorship_edit_save_timeout", "anti_censorship_edit_save_retries"]},
+        {"title": "Blocked Responses", "icon": "shield-ban.svg", "fields": ["anti_censorship", "caars_enabled", "caars_savior_model", "anti_censorship_replacement_message", "anti_censorship_continue_nudge", "anti_censorship_edit_save_timeout", "anti_censorship_edit_save_retries"]},
         {"title": "Sampling", "icon": "sliders-horizontal.svg", "fields": ["temperature", "top_p", "max_output_tokens"]},
         {"title": "Automation", "icon": "sparkles.svg", "fields": ["auto_login_redirect_timeout", "humanize_mouse_movements", "assume_english_ui", "assume_english_ui_warning", "assume_paid_model_access", "assume_paid_model_access_warning", "paid_model_access_emails", "clean_regeneration", "preflight_next_chat"]},
     ],

@@ -37,7 +37,7 @@ When a chat or text completion request arrives, IntenseRP captures the raw JSON 
 
 Dry Run Mode applies only when services start. If a browser is already running, stop services and start again with Dry Run Mode enabled.
 
-All parallel runtime paths are bypassed in this mode, meaning you can't submit multiple requests simultaneously, and each new captured request simply replaces the previous one in the display.
+All parallel runtime paths are skipped in this mode, meaning you can't submit multiple requests simultaneously, and each new captured request simply replaces the previous one in the display.
 
 ---
 
@@ -196,10 +196,10 @@ For GLM-5.2, enabled efforts also select the Deep Think effort menu: `medium`/`h
 
     For providers with a real web UI model picker (GLM Chat, QwenLM, Perplexity, HuggingChat, Google AI Studio, Xiaomi MiMo), the extra real-model IDs can override the **Provider Behavior** model for a single request.
 
-!!! note "AI Studio anti-censorship retries"
-    When **Settings -> Provider Behavior -> Google AI Studio -> Anti-Censorship** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. Once a retry starts producing real assistant text, that recovered attempt streams normally again.
+!!! note "AI Studio blocked-response retries"
+    When **Settings -> Provider Behavior -> Google AI Studio -> Blocked-Response Handling** is enabled, IntenseRP may temporarily hold a blocked AI Studio attempt, edit the blocked turn in the web UI, and send up to 3 continue nudges. If a retry produces usable assistant text, that attempt streams normally.
 
-    If **CAARS** is enabled, AI Studio first runs a hidden savior-model prelude in the browser, edits that turn, then streams only the main model's continuation back to the API.
+    If **CAARS** is enabled, AI Studio first runs a secondary-model prelude in the browser, edits that turn, then streams only the main model's continuation back to the API.
 
 ---
 

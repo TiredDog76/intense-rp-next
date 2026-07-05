@@ -16,8 +16,8 @@ Quick answers to the questions that come up the most. If you need a step-by-step
 ??? question "Is this an official DeepSeek or SillyTavern project?"
     Nope. This is a third-party tool and is not affiliated with DeepSeek, SillyTavern, or any provider.
 
-??? question "Do I need a paid provider API key?"
-    No. IntenseRP uses provider web apps you log into in the browser (DeepSeek / GLM / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio). This project does not use paid official provider APIs.
+??? question "Does this use provider API keys?"
+    No. IntenseRP uses provider web apps you log into in the browser (DeepSeek / GLM / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio). If you need a production-grade or officially supported integration, use the provider's official API.
 
 ??? question "What platforms are supported?"
     Windows and Linux are the supported targets right now. A graphical desktop is required because it launches a real browser.

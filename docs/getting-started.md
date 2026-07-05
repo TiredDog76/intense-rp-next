@@ -107,8 +107,8 @@ Before hitting **Start**, pick your provider and decide whether IntenseRP should
     | **GLM Chat** | Auto Login can fill credentials, but you still solve the CAPTCHA. Persistent sessions help a lot. |
     | **Moonshot / Google AI Studio** | Google sign-in may ask for confirmation, 2FA, or manual popup cleanup. |
     | **Perplexity** | Auto Login starts the email-code flow, but you enter the 6-digit code. |
-    | **HuggingChat** | Uses Hugging Face credentials; free monthly credits can run out quickly on heavier models. |
-    | **Xiaomi MiMo** | Uses Xiaomi account login and may be geoblocked in some regions. If the page refuses the connection, use MiMo's proxy setting or a VPN. |
+    | **HuggingChat** | Uses Hugging Face credentials; account credits can run out quickly on heavier models. |
+    | **Xiaomi MiMo** | Uses Xiaomi account login and may be unavailable in some regions. If the page refuses the connection, use a permitted network setup or MiMo's proxy setting. |
 
     For the longer version, see [:material-key: Login & Sessions](features/login-sessions.md) and [:material-cloud: Providers](providers.md).
 

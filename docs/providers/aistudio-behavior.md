@@ -73,7 +73,7 @@ This is separate from the API `aistudio-*` behavior presets. Gemini 2.5 entries 
 
     `Gemini 2.5 models have become paid in Google AI Studio, and IRP can't serve them.`
 
-    This is an account-access override, not a way to buy or bypass access. If a paid AI Studio API key is available, the actual AI Studio API is usually the cleaner path.
+    This is an account-access override, not a way to gain access. If a paid AI Studio API key is available, the actual AI Studio API is usually the cleaner path.
 
 ---
 
@@ -311,20 +311,20 @@ Gemma 4 models are capped at `32768`, so IntenseRP clamps larger request or sett
 On first AI Studio startup, IntenseRP automatically moves AI Studio's safety sliders to their lowest position once for that browser session.
 
 !!! warning "What it does"
-    This does not guarantee uncensored output. It only lowers the safety sliders that AI Studio exposes in the UI.
+    This only adjusts the safety controls that AI Studio exposes in the UI. It does not override provider policy or guarantee any specific output.
 
 ---
 
-## :material-shield-off: Anti-Censorship
+## :material-shield-off: Blocked-response handling
 
-Google AI Studio can hard-block a reply on the backend. When that happens, you usually get either:
+Google AI Studio can block a reply on the backend. When that happens, you usually get either:
 
 - no usable assistant text in the stream, or
 - a turn in the UI that shows **Content blocked** in the **Safety Ratings** button area
 
-:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Anti-Censorship**
+:material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Blocked-Response Handling**
 
-When this is enabled, IntenseRP does an invasive recovery flow:
+When this setting is enabled, IntenseRP runs a bounded recovery flow:
 
 1. It watches the intercepted AI Studio response and the latest assistant turn for a hard-block signal
 2. If the turn is blocked, IntenseRP edits that assistant message in-place
@@ -332,28 +332,28 @@ When this is enabled, IntenseRP does an invasive recovery flow:
 4. It sends your configured **Continue Nudge** as a normal text message
 5. It retries this up to 3 follow-up nudges
 
-Blocked attempts stay hidden from the API stream. As soon as a recovery attempt reaches real assistant answer text again, that retry streams normally.
+Blocked attempts are not forwarded to the API stream. If a recovery attempt produces usable assistant text, that retry streams normally.
 
-!!! note "Not the same as DeepSeek"
-    DeepSeek anti-censorship is basically a frontend workaround. AI Studio's version is more of a backend recovery trick, because the censorship is enforced deeper in the request/response flow.
+!!! warning "Limits"
+    This does not override AI Studio policy or guarantee recovery. It only describes how IntenseRP handles blocked turns when the setting is enabled.
 
 !!! warning "Reuse Matching Chat gets disabled for that chat"
-    If IntenseRP detects hard censorship in the current AI Studio chat, it clears that chat out of the clean-regeneration cache.
+    If IntenseRP detects a blocked turn in the current AI Studio chat, it clears that chat out of the clean-regeneration cache.
 
-    In plain English: the next identical request will start fresh instead of trying to regenerate inside that now-cursed chat.
+    In plain English: the next identical request will start fresh instead of trying to regenerate inside that blocked chat.
 
-### CAARS (Cupcake's AIStudio AntiCensorship Ratelimit Saver)
+### CAARS prelude
 
 > "We've been trying to reach you about your caar's extended warranty."
 
-CAARS is an optional prelude for AI Studio Anti-Censorship. It only appears when **Anti-Censorship** is enabled.
+CAARS is an optional prelude for AI Studio blocked-response handling. It only appears when **Blocked-Response Handling** is enabled.
 
-When enabled, IntenseRP sends the original prompt to a secondary **Savior Model** first, with that model's thinking level pushed as low as AI Studio allows. The default is `Gemini 3.1 Flash Lite`, since it's cheap and close enough to latest for this little warm-up act. IntenseRP waits until either the savior request finishes on its own or the assistant turn has produced 5 meaningful visible text updates. If the 5-update threshold wins while the savior is still running, IntenseRP clicks AI Studio's **Stop** button. Then it edits that savior assistant turn and replaces it with your configured **Replacement Message**, even if the turn was not blocked.
+When enabled, IntenseRP sends the original prompt to a secondary **Savior Model** first, with that model's thinking level set as low as AI Studio allows. The default is `Gemini 3.1 Flash Lite`. IntenseRP waits until either the secondary request finishes on its own or the assistant turn has produced 5 meaningful visible text updates. If the 5-update threshold wins while the secondary request is still running, IntenseRP clicks AI Studio's **Stop** button. Then it edits that assistant turn and replaces it with your configured **Replacement Message**, even if the turn was not blocked.
 
-After that, IntenseRP switches back to your normal AI Studio **Model** and sends your configured **Continue Nudge**. The main model's answer is the one that streams back to the API. If the main model gets hard-censored too, the normal Anti-Censorship edit + continue retry flow still runs.
+After that, IntenseRP switches back to your normal AI Studio **Model** and sends your configured **Continue Nudge**. The main model's answer is the one that streams back to the API. If the main model is blocked too, the normal edit + continue retry flow still runs.
 
 !!! note "Reuse Matching Chat"
-    CAARS starts from a fresh AI Studio chat for the prelude and skips **Reuse Matching Chat** for that request. It needs the savior turn and the main continuation to live in the same fresh chat.
+    CAARS starts from a fresh AI Studio chat for the prelude and skips **Reuse Matching Chat** for that request. It needs the secondary turn and the main continuation to live in the same fresh chat.
 
 ### Savior Model
 
@@ -424,7 +424,7 @@ Otherwise it opens a fresh chat.
     So for AI Studio, **Reuse Matching Chat** only checks the currently remembered latest chat instead of trying older cached conversations.
 
 !!! note "Blocked chats are skipped"
-    If AI Studio hard-censors a turn and **Anti-Censorship** kicks in, IntenseRP clears that chat from the clean-regeneration cache instead of reusing it later.
+    If AI Studio blocks a turn and **Blocked-Response Handling** kicks in, IntenseRP clears that chat from the clean-regeneration cache instead of reusing it later.
 
 !!! note "Mutually exclusive with Preflight Next Chat"
     **Reuse Matching Chat** needs to keep the completed chat around so it can press Regenerate later.
@@ -462,7 +462,7 @@ If you see a warning about the language:
 
 ### Assume English UI
 
-If AI Studio reports the wrong language value (and complains that the UI must be in English) while the visible page is actually English, you can bypass that detection:
+If AI Studio reports the wrong language value (and complains that the UI must be in English) while the visible page is actually English, you can skip that detection:
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Google AI Studio** -> **Assume English UI**
 
@@ -487,7 +487,7 @@ All macros are stripped before sending.
 | `[[nourl]]`, `[[no_url]]` | Force URL Context off |
 | `[[nocaars]]`, `[[nocars]]` | Disable CAARS for this request |
 
-`[[nocaars]]` / `[[nocars]]` only matters when AI Studio Anti-Censorship and CAARS are both enabled. Otherwise it has nothing to turn off.
+`[[nocaars]]` / `[[nocars]]` only matters when AI Studio blocked-response handling and CAARS are both enabled. Otherwise it has nothing to turn off.
 
 !!! tip "Model-name suffixes"
     `reasoning_effort` is the recommended API-side method now, but you can still append a Thinking Level suffix directly to the API model string, for example:
@@ -515,8 +515,8 @@ All macros are stripped before sending.
 | **Send As Text File** | Uploads the prompt through AI Studio's media picker | Off |
 | **Text File Message** | Optional text sent alongside the uploaded file | (empty) |
 | **File Upload Timeout** | Seconds to wait for the send button after file selection | `20` |
-| **Anti-Censorship** | Detects blocked AI Studio turns and runs the edit + continue workaround | Off |
-| **CAARS** | Runs a savior model prelude before the main AI Studio model | Off |
+| **Blocked-Response Handling** | Attempts a bounded blocked-response recovery flow | Off |
+| **CAARS** | Runs a secondary-model prelude before the main AI Studio model | Off |
 | **Savior Model** | Model used for the CAARS prelude | `Gemini 3.1 Flash Lite` |
 | **Replacement Message** | Text used to replace a blocked assistant turn before retrying | `.` |
 | **Continue Nudge** | Follow-up user message sent after a blocked turn | `Continue.` |

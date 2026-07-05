@@ -64,8 +64,8 @@ This is intentionally a best-effort hint. Locale can help with providers that ot
 !!! note "Practical recommendation"
     Keeping the locale on **English (en-US)** is pretty reasonable for IntenseRP, because **all** drivers currently expect English UI text anyway. The timezone override is more situational, so it's left off by default.
 
-!!! tip "MiMo geoblocking"
-    Xiaomi MiMo also has a provider-specific proxy setting under **Provider Behavior -> Xiaomi MiMo -> Proxy**. Use that if only MiMo needs a supported-region proxy.
+!!! tip "MiMo regional access"
+    Xiaomi MiMo also has a provider-specific proxy setting under **Provider Behavior -> Xiaomi MiMo -> Proxy**. Use that if only MiMo needs a permitted network route.
 
 ---
 
@@ -78,7 +78,7 @@ Provider locks are temporary safety blocks for providers that are implemented, b
 Right now, there is no default provider lock active. Google AI Studio is selectable again because its **Humanize Mouse Movements** reliability mode is enabled by default.
 
 !!! warning "The override is not a fix"
-    **Ignore Provider Locks** only bypasses IntenseRP's safety lock if a future temporary lock is added. It does not make a provider more automation-friendly. Use it only when you are sure your setup can send messages from that provider without issues.
+    **Ignore Provider Locks** only skips IntenseRP's safety lock if a future temporary lock is added. It does not make a provider more automation-friendly. Use it only when you are sure your setup can send messages from that provider without issues.
 
 ---
 

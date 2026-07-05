@@ -6,10 +6,10 @@ icon: providers/xiaomi
 
 This page covers the toggles and notes for **Xiaomi MiMo** (`aistudio.xiaomimimo.com`).
 
-MiMo is a fairly simple chat UI once it loads, but the loading part is, frankly, weird, as it's heavily geoblocked in some regions. If the browser can't reach MiMo at all, the provider may fail with `ERR_CONNECTION_REFUSED` before the normal sign-in flow even has a chance to appear.
+MiMo is a fairly simple chat UI once it loads, but availability is region-dependent. If the browser can't reach MiMo at all, the provider may fail with `ERR_CONNECTION_REFUSED` before the normal sign-in flow even has a chance to appear.
 
-!!! warning "Geoblocking"
-    If MiMo is unavailable from your location, use a system-wide VPN or MiMo's provider-specific proxy setting. A browser proxy is usually enough because IntenseRP passes it to Playwright/Patchright when launching the MiMo browser context. **Extension-based VPNs like Browsec DON'T work**.
+!!! warning "Regional availability"
+    If MiMo is unavailable from your location, use a network setup that is allowed by the service and can reach the MiMo site. IntenseRP's MiMo-specific proxy setting only affects the provider browser context.
 
 ---
 
@@ -86,7 +86,7 @@ If a client sends search-style macros, they will not make MiMo browse the web. T
 
 MiMo can be unavailable from some regions even when the rest of IntenseRP works normally. If that happens, the browser may show or log `ERR_CONNECTION_REFUSED`.
 
-You can route only MiMo's provider browser through a proxy:
+If your setup is permitted to use a proxy, you can route only MiMo's provider browser through it:
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **Xiaomi MiMo** -> **Proxy** -> **Use Proxy**
 
@@ -217,11 +217,11 @@ How long IntenseRP waits for MiMo's response stream to produce its first chunk a
 
 MiMo can stop some requests with a provider-side `sensitive_query` event. When that happens, IntenseRP returns a clear error instead of forwarding MiMo's canned blocked-response text.
 
-There is no MiMo anti-censorship recovery flow yet, sadly.
+There is no MiMo blocked-response recovery flow.
 
-The sensitive-query event, unlike the DeepSeek refusal event, appears to happen mid-stream and there's no way to recover the missing content.
+The sensitive-query event appears to happen mid-stream, and IntenseRP cannot recover the missing content.
 
-In my testing, politics (especially related to the "usual Chinese tells") are heavily banned. Sexual content and stuff like that can be more or less easily bypassed with good prompting, though you *will* need to put effort. It's not as easy to work with as, say, DeepSeek or GLM.
+In practice, this means some requests may stop abruptly based on MiMo's provider-side policy checks. IntenseRP reports the failure instead of trying to work around it.
 
 ---
 

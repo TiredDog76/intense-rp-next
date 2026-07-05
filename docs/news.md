@@ -12,7 +12,7 @@ This page is the changelog for the latest news and updates about IntenseRP Next.
 
 IntenseRP Next v2.9.0 is here, and this one is a little special: **IntenseRP Next is turning 1 year old this July**!!! 🎆🎆🎆✨✨✨
 
-Thank you so much to everyone who has used it, reported weird provider breakages, suggested ideas, joined the Discord, supported the project, or just quietly kept the thing running in your own setup. This project would be a much lonelier pile of browser automation without you.
+Thank you so much to everyone who has used it, reported weird provider breakages, suggested ideas, joined the Discord, shared feedback, or just quietly kept the thing running in your own setup. This project would be a much lonelier pile of browser automation without you.
 
 The headline feature is **Xiaomi MiMo support**. MiMo joins the provider list with model selection, thinking output filtering, token usage, prompt-file uploads, chat reuse, Xiaomi account login, and provider-specific proxy settings for regions where MiMo refuses to load. It's still region-dependent and a bit beta-ish, but it is now usable through IntenseRP's normal OpenAI-compatible API.
 
@@ -22,7 +22,6 @@ This update also adds **Dry Run Mode**, a new API debugging workflow that starts
 [Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [Xiaomi MiMo Behavior](providers/mimo-behavior.md){ .md-button }
 [Dry Run Mode](features/network-api.md#dry-run-mode){ .md-button }
-[Support the Project](hands/support.md){ .md-button }
 
 ---
 
@@ -38,7 +37,6 @@ Providers in Parallel now lives under **Browser & Runtime**, and it can do more 
 [Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [Google AI Studio Behavior](providers/aistudio-behavior.md){ .md-button }
 [Providers in Parallel](runtime/providers-in-parallel.md){ .md-button }
-[Support the Project](hands/support.md){ .md-button }
 
 ---
 
@@ -53,7 +51,6 @@ That said, it's still not a magic solution. HuggingChat is still an early integr
 [Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.8.6-patch){ .md-button .md-button--primary }
 [Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [HuggingChat Feedback](https://forms.gle/J7MVdcnorEPE249v8){ .md-button }
-[Support the Project](hands/support.md){ .md-button }
 
 ---
 
@@ -61,7 +58,7 @@ That said, it's still not a magic solution. HuggingChat is still an early integr
 
 IntenseRP Next v2.8.0 is here, and the headline is **Perplexity support**. It works with both free and paid accounts, can stream answer text through the normal OpenAI-compatible API, and includes Perplexity-specific settings for model selection, Thinking, Search, and text-file prompt uploads where the account allows them.
 
-This integration exists thanks to [Yurushia](https://github.com/twgok123), who sponsored Perplexity development and provided access to a paid account for testing. Huge thank you to them for making this one possible!!!
+This integration exists thanks to [Yurushia](https://github.com/twgok123), who helped with Perplexity testing during development. Huge thank you to them for making this one possible!!!
 
 This release also includes some recent power-user and maintenance work: Full Parallelization for provider lanes, selective provider restarts when switching loadouts, AI Studio CAARS options, backup/import polish, and a more maintainable Remote Control frontend.
 
@@ -69,7 +66,6 @@ This release also includes some recent power-user and maintenance work: Full Par
 [Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [Suggest New Features](./vote-for-new-stuff.md){ .md-button }
 [Perplexity Behavior](providers/perplexity-behavior.md){ .md-button }
-[Support the Project](hands/support.md){ .md-button }
 
 ---
 
@@ -84,15 +80,12 @@ GLM also gets **GLM-5-Turbo** as a selectable real model option under **Provider
 [Full Release Notes](https://github.com/LyubomirT/intense-rp-next/releases/tag/v2.6.3-patch){ .md-button .md-button--primary }
 [Join our Discord](https://discord.gg/4Gvjk2RdsK){ .md-button }
 [Suggest New Features](./vote-for-new-stuff.md){ .md-button }
-[Support the Project](hands/support.md){ .md-button }
 
 ---
 
-## March 20, 2026 - About Sustainability
+## March 20, 2026 - Project Direction Survey
 
-IntenseRP Next is a free and open-source project, and I want to keep it that way. But maintaining and developing a project like this takes a lot of time and effort, especially considering that it's a one-person project. I've been thinking about a more sustainable way to support it in the long run, so I've created a [survey](https://forms.gle/Dx9BA2kogYcjbdm37) to see what the community is and isn't comfortable with. If you have a moment, please fill it out and share your thoughts! I'd really appreciate the feedback, it will help me pick the best path for the project.
-
-If you were already looking for a way to support the project, you can also check out the [Support page](hands/support.md) for some options.
+IntenseRP Next opened a community survey to collect feedback about future direction and maintenance preferences.
 
 
 

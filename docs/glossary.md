@@ -96,9 +96,9 @@ This page translates the names, acronyms, and weird bits that show up around Int
 | Reuse Matching Chat / Clean Regeneration | Reopen/regenerate a matching previous chat instead of creating a new one. | Helpful for SillyTavern swipes/regenerations. |
 | Search Older Matching Chats | Reuse one of several older cached matching chats. | Also called multi-slot cache in older/internal wording. |
 | Delete Chat After Reply | Delete the provider-side chat after a successful response. | Usually incompatible with Reuse Matching Chat. |
-| Repetition Buster | GLM workaround for duplicate prompts. | Sends a throwaway prompt first so GLM treats the real request as fresh. |
-| Anti-Censorship | Provider-specific recovery from blocked/refusal-like output. | Behavior differs by provider; it is not a guarantee of any result. |
-| CAARS | Cupcake's AIStudio AntiCensorship Ratelimit Saver. | AI Studio-only flow that runs a secondary "savior" model before continuing with the real one. |
+| Repetition Buster | GLM duplicate-prompt workaround. | Sends a throwaway prompt first so GLM treats the real request as fresh. |
+| Blocked-Response Handling | Provider-specific handling for blocked/refusal-like output. | Behavior differs by provider; it does not override provider policy or guarantee any result. |
+| CAARS | AI Studio-only prelude for blocked-response handling. | Runs a secondary model before continuing with the main one. |
 | Preflight Next Chat | Prepare a blank AI Studio chat after a response finishes. | Best-effort speed-up for the next request. |
 | Safety Filters | Provider-side content filters. | AI Studio exposes sliders; IntenseRP can lower them, but cannot make the model ignore all safety behavior. |
 

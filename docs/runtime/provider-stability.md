@@ -23,7 +23,7 @@ Provider locks are temporary safety blocks for providers that are implemented, b
 Right now, there is no default provider lock active. Google AI Studio is selectable again because its **Humanize Mouse Movements** reliability mode is enabled by default.
 
 !!! warning "The override is not a fix"
-    **Ignore Provider Locks** only bypasses IntenseRP's safety lock if a future temporary lock is active. It does not make a provider more automation-friendly.
+    **Ignore Provider Locks** only skips IntenseRP's safety lock if a future temporary lock is active. It does not make a provider more automation-friendly.
 
 ---
 

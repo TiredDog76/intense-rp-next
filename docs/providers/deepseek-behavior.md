@@ -110,14 +110,14 @@ If DeepSeek is being slow to wake up, or your machine/browser is not the fastest
 
 ---
 
-## :material-shield-off: Anti-Censorship
+## :material-shield-off: Blocked-response handling
 
-DeepSeek has a content filter that sometimes triggers with a "Sorry, that's beyond my current scope" message. When Anti-Censorship is enabled, IntenseRP catches this and terminates the response cleanly instead of letting the refusal message through.
+DeepSeek has a content filter that sometimes triggers with a refusal-style message. When **Blocked-Response Handling** is enabled, IntenseRP catches the filter signal and terminates the response cleanly instead of forwarding the refusal text.
 
-:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Anti-Censorship**
+:material-arrow-right: **Settings** → **Provider Behavior** → **DeepSeek** → **Blocked-Response Handling**
 
 !!! warning "What It Doesn't Do"
-    This doesn't bypass the filter or unblock content. It just hides the refusal message. In 99.9% of cases, it will only happen at the end of a response, meaning you'll get the entire answer anyway.
+    This does not override provider policy or unlock blocked content. It only changes how detected refusal-style output is forwarded to the client.
 
 ### How It Works
 
@@ -149,15 +149,15 @@ When you send the exact same prompt twice in a row, IntenseRP can regenerate the
 !!! tip "Swipe in SillyTavern"
     This is especially useful with SillyTavern's "swipe" feature. Each swipe sends the same prompt again, and **Reuse Matching Chat** makes sure you're regenerating rather than cluttering up DeepSeek with duplicate chats.
 
-!!! note "Censorship"
-    DeepSeek automatically disables the regenerate button if the last response was censored. In that case, **Reuse Matching Chat** won't work, and IntenseRP will start a new chat instead.
+!!! note "Content-filtered chats"
+    DeepSeek automatically disables the regenerate button if the last response was content-filtered. In that case, **Reuse Matching Chat** won't work, and IntenseRP will start a new chat instead.
 
 !!! tip "Search Older Matching Chats"
     If you want **Reuse Matching Chat** to remember more than just the latest chat, enable **Provider Behavior** -> **DeepSeek** -> **Search Older Matching Chats** as well.
 
     It keeps up to 7 older cached DeepSeek chats per account, and if one of them matches the current prompt/settings, IntenseRP can reopen that chat and regenerate there instead.
 
-    DeepSeek censorship still blocks this. If a chat gets content-filtered, IntenseRP skips saving it to the multi-slot cache.
+    DeepSeek still blocks regeneration for content-filtered chats. If a chat gets content-filtered, IntenseRP skips saving it to the multi-slot cache.
 
 ---
 
@@ -210,7 +210,7 @@ All macros are stripped from the message before sending it to DeepSeek.
 | **Send As Text File** | Uploads prompt as .txt | Off |
 | **File Upload Timeout** | Seconds to wait for upload | 15 |
 | **First Chunk Timeout** | Seconds to wait for the response stream to start | 45 |
-| **Anti-Censorship** | Hides refusal messages | Off |
+| **Blocked-Response Handling** | Handles detected refusal messages | Off |
 | **Reuse Matching Chat** | Regenerates on duplicate prompts | Off |
 | **Delete Chat After Reply** | Deletes the completed DeepSeek chat after a successful reply | Off |
 

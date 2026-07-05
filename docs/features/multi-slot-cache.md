@@ -74,7 +74,7 @@ That matters because provider chat IDs are usually only valid for the account th
 
 DeepSeek has one extra rule here.
 
-If a DeepSeek chat gets content-filtered / censored, IntenseRP does **not** save that chat into the older-chat cache. DeepSeek disables regeneration on censored chats anyway, so keeping those around would just create dead cache entries.
+If a DeepSeek chat gets content-filtered, IntenseRP does **not** save that chat into the older-chat cache. DeepSeek disables regeneration on content-filtered chats anyway, so keeping those around would just create dead cache entries.
 
 ---
 

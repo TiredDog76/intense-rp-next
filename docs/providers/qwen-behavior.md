@@ -99,9 +99,7 @@ IntenseRP keeps Tools **off by default**. If **Enable Tools** is turned on, the 
 
 ## :material-shield-alert-outline: Provider-side filtering
 
-QwenLM can abort a request with a `data_inspection_failed` stream event, sometimes even after part of the assistant response has already arrived. When that happens, IntenseRP returns a clear terminal error instead of waiting for the response timeout:
-
-`QwenLM data_inspection_failed: Qwen censored this request (sadly :<), so the message has been aborted.`
+QwenLM can abort a request with a `data_inspection_failed` stream event, sometimes even after part of the assistant response has already arrived. When that happens, IntenseRP returns a clear terminal error instead of waiting for the response timeout.
 
 There isn't a Qwen recovery flow for this event yet. It happens on Qwen's side, so IntenseRP reports it and stops the request.
 
@@ -198,7 +196,7 @@ If any of those get changed, you might see the Qwen tab reload once. That is nor
 
 ## :material-refresh: Reuse Matching Chat
 
-Reuse Matching Chat tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks Qwen's "Regenerate" instead of creating a brand new chat. Especially useful if you swipe a lot in SillyTavern and want to hit ratelimits less.
+Reuse Matching Chat tries to keep chats tidy: when you send the exact same prompt twice in a row, IntenseRP clicks Qwen's "Regenerate" instead of creating a brand new chat. This is especially useful if you swipe a lot in SillyTavern and want fewer duplicate chats.
 
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **QwenLM** -> **Reuse Matching Chat**
 

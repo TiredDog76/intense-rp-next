@@ -4,7 +4,7 @@ icon: material/cloud
 
 # :material-cloud: Provider Support
 
-IntenseRP Next v2 is designed to support multiple providers by driving their web apps and intercepting the underlying network requests.
+IntenseRP Next v2 is designed to support multiple providers by driving their web apps and capturing the browser session's streaming responses.
 
 Today, **DeepSeek**, **GLM Chat (Z.ai)**, **Moonshot**, **QwenLM**, **Perplexity**, **HuggingChat**, **Google AI Studio**, and **Xiaomi MiMo** are implemented and usable.
 
@@ -30,7 +30,7 @@ All providers follow the same general approach:
 1. Launch a real browser session (Playwright/Patchright)
 2. Log in (manual or auto-login, depending on settings)
 3. Trigger a generation in the provider UI (type/upload + click send)
-4. Intercept the provider's internal streaming request
+4. Capture the provider's streaming response in the browser session
 5. Convert the provider stream into OpenAI-style SSE deltas (`/v1/chat/completions` or `/v1/completions`)
 
 This is why IntenseRP can present an OpenAI-compatible API even though the underlying provider is a normal web chat app.
@@ -95,7 +95,7 @@ Providers are prioritized in this order:
 
 -   :providers-deepseek: **DeepSeek Behavior**
 
-    DeepThink, Search, anti-censorship, and more.
+    DeepThink, Search, blocked-response handling, and more.
 
     [:arrow_right: DeepSeek Behavior](../providers/deepseek-behavior.md)
 
@@ -137,7 +137,7 @@ Providers are prioritized in this order:
 
 -   :providers-xiaomi: **Xiaomi MiMo Behavior**
 
-    MiMo model selection, thinking output filtering, proxy setup, uploads, and geoblock notes.
+    MiMo model selection, thinking output filtering, proxy setup, uploads, and regional availability notes.
 
     [:arrow_right: Xiaomi MiMo Behavior](../providers/mimo-behavior.md)
 

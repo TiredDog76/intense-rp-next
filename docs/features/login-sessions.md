@@ -50,7 +50,7 @@ Next time you start IntenseRP, the driver can fill credentials and click login f
     HuggingChat uses a Hugging Face username/email and password. If an account hits its monthly credits, disable that row in Credential Manager until the quota resets.
 
 !!! note "Xiaomi MiMo login"
-    MiMo uses Xiaomi account login. Auto Login can fill the form and agreement checkbox, but regional access can still block the page before login. If MiMo fails with `ERR_CONNECTION_REFUSED`, use MiMo's proxy setting or a VPN.
+    MiMo uses Xiaomi account login. Auto Login can fill the form and agreement checkbox, but regional availability can still block the page before login. If MiMo fails with `ERR_CONNECTION_REFUSED`, use a permitted network setup or MiMo's proxy setting.
 
 ### How It Works
 

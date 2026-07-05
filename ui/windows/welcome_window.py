@@ -449,7 +449,7 @@ class WelcomeWindow(QDialog):
         desc = QLabel(
             "IntenseRP Next is a local OpenAI-compatible API + desktop app that drives provider web UIs "
             "(DeepSeek / GLM Chat / Moonshot / QwenLM / Perplexity / HuggingChat / Google AI Studio / Xiaomi MiMo) in a real browser, "
-            "so clients like SillyTavern can use them without wiring up the paid official APIs."
+            "so clients like SillyTavern can talk to a local browser session."
         )
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignCenter)
