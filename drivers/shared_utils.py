@@ -159,6 +159,134 @@ class IncrementalTextAccumulator:
             offset += len(part)
         return True
 
+_BOUNDARY_PATTERN = re.compile(r"\n(?:User|AI|Character|System):")
+_AUTO_SPLIT_THRESHOLD_KB = 700
+_MAX_SPLIT_PARTS = 8
+
+
+def split_prompt_into_parts(
+    prompt_text: str,
+    split_count: int,
+    *,
+    boundary_pattern: "re.Pattern[str] | None" = None,
+) -> list[dict[str, str]]:
+    """
+    Split prompt text into N parts at clean message-turn boundaries.
+
+    split_count: 1 = no split (default), 2-8 = split into N parts, 0 = Auto
+    (splits only when the encoded text exceeds _AUTO_SPLIT_THRESHOLD_KB).
+
+    boundary_pattern: optional override for what counts as a clean cut point.
+    Defaults to matching "\\nUser:", "\\nAI:", "\\nCharacter:", "\\nSystem:"
+    at the start of a line, which covers the built-in formatting templates.
+    If a message-turn boundary can't be found near a target cut, we fall
+    back to searching outward (both directions) before ever resorting to a
+    raw mid-character cut, so splits should only land mid-message on
+    pathological single-message-larger-than-one-part inputs.
+
+    Returns list of dicts: [{"filename": "prompt.txt", "content": "..."}]
+    For multi-part:        [{"filename": "prompt_part1.txt", "content": "..."}, ...]
+    """
+    try:
+        split_count = int(split_count)
+    except (TypeError, ValueError):
+        split_count = 1
+
+    if not prompt_text:
+        return [{"filename": "prompt.txt", "content": prompt_text or ""}]
+
+    # No splitting — return as-is with original filename
+    if split_count == 1:
+        return [{"filename": "prompt.txt", "content": prompt_text}]
+
+    # Auto mode: figure out how many parts needed to stay under the threshold
+    actual_count = split_count
+    if split_count == 0:
+        size_kb = len(prompt_text.encode("utf-8")) / 1024.0
+        if size_kb <= _AUTO_SPLIT_THRESHOLD_KB:
+            return [{"filename": "prompt.txt", "content": prompt_text}]
+        actual_count = int(size_kb // _AUTO_SPLIT_THRESHOLD_KB) + 1  # ceil division
+        actual_count = min(actual_count, _MAX_SPLIT_PARTS)
+        actual_count = max(actual_count, 2)
+    else:
+        actual_count = max(1, min(actual_count, _MAX_SPLIT_PARTS))
+        if actual_count == 1:
+            return [{"filename": "prompt.txt", "content": prompt_text}]
+
+    # Find all message-turn boundaries. Cut right after the newline (at the
+    # start of the role label) so the previous part keeps its trailing
+    # newline and the next part starts cleanly with "User:" / "AI:" / etc.
+    # instead of a leading blank line.
+    pattern = boundary_pattern or _BOUNDARY_PATTERN
+    boundaries = sorted({0} | {m.start() + 1 for m in pattern.finditer(prompt_text)})
+
+    # Split at roughly equal sizes, snapping cuts to the nearest boundary
+    ideal_part_size = len(prompt_text) / actual_count
+    parts: list[str] = []
+    current_start = 0
+
+    for i in range(1, actual_count):
+        target_cut = int(ideal_part_size * i)
+
+        # Prefer the nearest boundary strictly after current_start.
+        # Search backward first (keeps parts close to the ideal size),
+        # then forward if nothing usable was found behind the target.
+        cut_position = None
+        for b in reversed(boundaries):
+            if current_start < b <= target_cut:
+                cut_position = b
+                break
+        if cut_position is None:
+            for b in boundaries:
+                if b > current_start:
+                    cut_position = b
+                    break
+        if cut_position is None or cut_position <= current_start:
+            # No boundary available at all (e.g. a single giant message) —
+            # fall back to a raw character cut so we never lose content
+            # or return an empty part.
+            cut_position = max(target_cut, current_start + 1)
+        cut_position = min(cut_position, len(prompt_text))
+
+        parts.append(prompt_text[current_start:cut_position])
+        current_start = cut_position
+
+    # Last part = everything remaining
+    parts.append(prompt_text[current_start:])
+
+    # Drop any accidental empty parts (can happen with tiny inputs / many parts)
+    parts = [p for p in parts if p] or [prompt_text]
+
+    if len(parts) == 1:
+        return [{"filename": "prompt.txt", "content": parts[0]}]
+
+    return [
+        {"filename": f"prompt_part{i + 1}.txt", "content": part}
+        for i, part in enumerate(parts)
+    ]
+
+
+def build_prompt_text_file_payloads(
+    formatted_message: str,
+    split_count: int = 1,
+) -> list[dict[str, Any]]:
+    """
+    Return one or more text-file upload payloads.
+    Splits the prompt into parts if split_count > 1 or split_count == 0 (Auto).
+    This is the multi-part version of build_prompt_text_file_payload.
+    """
+    parts = split_prompt_into_parts(formatted_message, split_count)
+
+    payloads = []
+    for part in parts:
+        payloads.append({
+            "name": part["filename"],
+            "mimeType": "text/plain",
+            "buffer": str(part["content"] or "").encode("utf-8"),
+        })
+
+    return payloads
+
 
 def build_prompt_text_file_payload(
     formatted_message: str,

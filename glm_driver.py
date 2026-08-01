@@ -14,7 +14,7 @@ from drivers.providers import DriverProvider
 from drivers.shared_utils import (
     COMMON_REQUEST_MACRO_ACTIONS,
     IncrementalTextAccumulator,
-    build_prompt_text_file_payload,
+    build_prompt_text_file_payloads,
     clear_clean_regeneration_cache,
     compute_missing_suffix,
     extract_macro_overrides,
@@ -2642,7 +2642,34 @@ class GLMDriver(BaseDriver):
     async def upload_file(self, file_spec: Any) -> None:
         await self._upload_file(file_spec)
 
+    @staticmethod
+    def _resolve_text_file_split_count(raw_value: Any) -> int:
+        """Map the Text File Split Count setting to the integer convention
+        used by split_prompt_into_parts (0 = Auto, 1-8 = fixed part count).
+
+        The setting is a dropdown, so the stored value is always a string
+        like "1".."8" or "Auto" — not a raw int.
+        """
+        text = str(raw_value if raw_value not in (None, "") else "1").strip()
+        if text.lower() == "auto":
+            return 0
+        try:
+            count = int(text)
+        except (TypeError, ValueError):
+            Logger.warning(
+                f"GLM Chat: invalid Text File Split Count setting {raw_value!r}, defaulting to 1 (no split)."
+            )
+            return 1
+        return max(1, min(count, 8))
+
     async def _upload_file(self, file_spec: Any) -> None:
+        """Upload one file, or a list of files as a single multi-attach action.
+
+        Playwright's set_input_files replaces the input's entire file
+        selection on every call, so multiple files must be passed together
+        in one call (as a list) to end up attached side-by-side — calling
+        this once per file would just overwrite the previous attachment.
+        """
         if not self.page:
             return
 
@@ -2651,8 +2678,29 @@ class GLMDriver(BaseDriver):
             Logger.warning("GLM Chat: file input not found.")
             return
 
-        await file_input.first.set_input_files(file_spec)
-        await asyncio.sleep(0.5)
+        is_multi = isinstance(file_spec, (list, tuple))
+        if is_multi and not file_spec:
+            return
+
+        try:
+            await file_input.first.set_input_files(file_spec)
+        except Exception as e:
+            if is_multi and len(file_spec) > 1:
+                Logger.warning(
+                    f"GLM Chat: multi-file attach failed ({e}); "
+                    "the file input may not support multiple files. "
+                    "Falling back to attaching one file at a time."
+                )
+                for single_spec in file_spec:
+                    await file_input.first.set_input_files(single_spec)
+                    await asyncio.sleep(0.5)
+                return
+            raise
+
+        wait_s = 0.5
+        if is_multi:
+            wait_s += 0.2 * max(0, len(file_spec) - 1)
+        await asyncio.sleep(wait_s)
 
     async def enter_message(self, message: str) -> None:
         await self._enter_message(message)
@@ -4081,9 +4129,21 @@ class GLMDriver(BaseDriver):
                 )
 
                 if send_as_text_file:
-                    Logger.info("GLM Chat: sending message as text file...")
-                    file_payload = build_prompt_text_file_payload(formatted_message)
-                    await self._upload_file(file_payload)
+                    split_count = self._resolve_text_file_split_count(
+                        self.config_manager.get_setting("glm_behavior", "text_file_split_count")
+                    )
+
+                    file_payloads = build_prompt_text_file_payloads(formatted_message, split_count)
+
+                    if len(file_payloads) > 1:
+                        Logger.info(
+                            f"GLM Chat: sending message as {len(file_payloads)} text file parts "
+                            f"({', '.join(p['name'] for p in file_payloads)})..."
+                        )
+                        await self._upload_file(file_payloads)
+                    else:
+                        Logger.info("GLM Chat: sending message as text file...")
+                        await self._upload_file(file_payloads[0])
 
                     # GLM requires some text alongside the file to enable the send button
                     filler = self.config_manager.get_setting("glm_behavior", "text_file_filler") or "."
@@ -4092,6 +4152,9 @@ class GLMDriver(BaseDriver):
                     # Copyright © ONCE IN A LIFETIME Bethesda Softworks LLC
 
                     upload_timeout = int(self.config_manager.get_setting("glm_behavior", "file_upload_timeout") or 15)
+                    if len(file_payloads) > 1:
+                        # Multi-file attachments take a little longer to register client-side.
+                        upload_timeout += 5 * (len(file_payloads) - 1)
                     Logger.info("GLM Chat: sending request...")
                     await self._send_message(timeout=upload_timeout, arm_event=completion_armed)
                 else:

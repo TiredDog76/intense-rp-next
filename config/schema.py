@@ -628,6 +628,26 @@ SCHEMA = [
                 docs_anchor="text-file-filler",
             ),
             SettingField(
+                key="text_file_split_count",
+                label="Text File Split Count",
+                type=SettingType.DROPDOWN,
+                default="1",
+                options=["1", "2", "3", "4", "5", "6", "7", "8", "Auto"],
+                tooltip=(
+                    "Split the uploaded prompt into this many text files, attached "
+                    "together in the same message. GLM's web chat appears to only "
+                    "read up to a certain amount of text per uploaded file, so very "
+                    "long prompts can get silently ignored past that point even "
+                    "though the whole file was attached. Splitting into smaller "
+                    "files works around this. '1' disables splitting (default). "
+                    "'Auto' only splits when the file is large enough to risk being "
+                    "cut off (roughly 700KB)."
+                ),
+                depends="glm_behavior.send_as_text_file",
+                docs_path=DOCS_GLM,
+                docs_anchor="text-file-split-count",
+            ),
+            SettingField(
                 key="clean_regeneration",
                 label="Reuse Matching Chat",
                 type=SettingType.BOOLEAN,
@@ -3413,8 +3433,7 @@ PROVIDER_BEHAVIOR_GROUPS = {
     ],
     "glm_behavior": [
         {"title": "Core", "icon": "settings.svg", "fields": ["request_capture_mode", "model", "enable_deepthink", "deepthink_effort", "send_deepthink", "count_tokens", "search_forced_off_note", "enable_search", "enable_advanced_search", "enable_tools"]},
-        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler"]},
-        {"title": "Retry and Reuse", "icon": "rotate-ccw.svg", "fields": ["clean_regeneration", "auto_delete_chats", "auto_delete_chats_warning", "repetition_buster", "multi_slot_cache"]},
+        {"title": "Uploads", "icon": "upload.svg", "fields": ["send_as_text_file", "file_upload_timeout", "text_file_filler", "text_file_split_count"]},
         {"title": "Quirks", "icon": "bug.svg", "fields": ["ui_click_timeout", "post_action_delay", "message_send_timeout", "completion_request_timeout", "first_chunk_timeout", "refresh_after_generation"]},
     ],
     "moonshot_behavior": [
