@@ -101,6 +101,7 @@ class GLMDriver(BaseDriver):
         "GLM-5-Turbo": "GLM-5-Turbo",
         "GLM-5V-Turbo": "GLM-5v-Turbo",
         "GLM-4.7": "glm-4.7",
+        "GLM-5.3": "glm-5.3",
     }
 
     # Models hidden behind a collapsible section in older dropdown variants.
