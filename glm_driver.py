@@ -62,6 +62,7 @@ class GLMDriver(BaseDriver):
     COMPLETION_URL_PATHS = {"/api/v2/chat/completions"}
     MODEL_CONCURRENCY_LIMIT_CODE = "MODEL_CONCURRENCY_LIMIT"
     GLM_52_MODEL_FRIENDLY = "GLM-5.2"
+    GLM_53_MODEL_FRIENDLY = "Glm-5.3"
     TOOLS_SUPPORTED_MODEL_FRIENDLY = "GLM-5V-Turbo"
     DEFAULT_GLM_52_DEEPTHINK_EFFORT = "max"
     MODEL_CAPACITY_TEXT_MARKERS = (
@@ -370,6 +371,7 @@ class GLMDriver(BaseDriver):
     def _glm_uses_deepthink_effort_controls(cls, model_friendly: str) -> bool:
         return cls._normalize_model_label(model_friendly) == cls._normalize_model_label(
             cls.GLM_52_MODEL_FRIENDLY
+            cls.GLM_53_MODEL_FRIENDLY
         )
 
     @classmethod
