@@ -50,6 +50,7 @@ python -m PyInstaller \
     --collect-all patchright \
     --collect-all playwright \
     --collect-all desktop_notifier \
+	--hidden-import glm_driver \
     "$ENTRY_POINT"
 
 BUILT_APP_DIR="$DIST_DIR/$APP_NAME"

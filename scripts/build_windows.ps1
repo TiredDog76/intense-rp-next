@@ -47,6 +47,7 @@ $pyinstallerArgs = @(
   "--collect-all", "patchright"
   "--collect-all", "playwright"
   "--collect-all", "desktop_notifier"
+  "--hidden-import", "glm_driver"
   $EntryPoint
 )
 
