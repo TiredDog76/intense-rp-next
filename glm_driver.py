@@ -366,11 +366,13 @@ class GLMDriver(BaseDriver):
     def _normalize_model_label(value: str) -> str:
         return re.sub(r"\\s+", " ", str(value or "")).strip().lower()
 
-    @classmethod
+        @classmethod
     def _glm_uses_deepthink_effort_controls(cls, model_friendly: str) -> bool:
-        return cls._normalize_model_label(model_friendly) == cls._normalize_model_label(
-            cls.GLM_52_MODEL_FRIENDLY
-        )
+        normalized = cls._normalize_model_label(model_friendly)
+        return normalized in {
+            cls._normalize_model_label("GLM-5.2"),
+            cls._normalize_model_label("GLM-5.3"),
+        }
 
     @classmethod
     def _normalize_glm_deepthink_effort(cls, value: Any, default: str | None = None) -> str:
