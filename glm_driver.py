@@ -96,6 +96,8 @@ class GLMDriver(BaseDriver):
     MODEL_DROPDOWN_SELECTOR = f"div#{MODEL_DROPDOWN_ID}"
     MODEL_OPTION_SELECTOR = "button[aria-label='model-item'][data-value], div[role='menu'] button[data-value]"
     MODEL_DATA_VALUE_BY_FRIENDLY: Dict[str, str] = {
+        "GLM-5.3": "glm-5.3",
+        "GLM-5.3-Flash": "glm-5.3-flash",
         "GLM-5.2": "glm-5.2",
         "GLM-5.3": "glm-5.3",
         "GLM-5.1": "GLM-5.1",
@@ -367,13 +369,15 @@ class GLMDriver(BaseDriver):
     def _normalize_model_label(value: str) -> str:
         return re.sub(r"\\s+", " ", str(value or "")).strip().lower()
 
+    DEEPTHINK_EFFORT_MODELS_FRIENDLY = ("GLM-5.2", "GLM-5.3", "GLM-5.3-Flash")
+
     @classmethod
     def _glm_uses_deepthink_effort_controls(cls, model_friendly: str) -> bool:
         normalized = cls._normalize_model_label(model_friendly)
-        return normalized in {
-            cls._normalize_model_label("GLM-5.2"),
-            cls._normalize_model_label("GLM-5.3"),
-        }
+        return any(
+            normalized == cls._normalize_model_label(name)
+            for name in cls.DEEPTHINK_EFFORT_MODELS_FRIENDLY
+        )
 
     @classmethod
     def _normalize_glm_deepthink_effort(cls, value: Any, default: str | None = None) -> str:
@@ -384,9 +388,15 @@ class GLMDriver(BaseDriver):
 
         if normalized in {"max", "maximum", "xhigh", "x-high", "extra-high", "extra-highest"}:
             return "max"
-        if normalized in {"high", "medium", "med"}:
+        if normalized == "high":
             return "high"
-        return fallback if fallback in {"high", "max"} else cls.DEFAULT_GLM_52_DEEPTHINK_EFFORT
+        if normalized in {"medium", "med", "mid"}:
+            return "medium"
+        if normalized in {"low", "min", "minimal"}:
+            return "low"
+        if fallback in {"low", "medium", "high", "max"}:
+            return fallback
+        return cls.DEFAULT_GLM_52_DEEPTHINK_EFFORT
 
     def _get_request_capture_mode(self) -> str:
         try:
@@ -963,6 +973,56 @@ class GLMDriver(BaseDriver):
         except Exception:
             return False
 
+    @staticmethod
+    def _normalize_option_token(value: str) -> str:
+        token = re.sub(r"\s+", "-", str(value or "").strip().lower())
+        return re.sub(r"-+", "-", token)
+
+    async def _click_glm_model_option_by_label(self, desired_friendly: str) -> Optional[str]:
+        """Fallback: match a dropdown option by normalized data-value or text.
+
+        Survives site-side data-value renames (e.g. `GLM-5.3-Flash` vs
+        `glm-5.3-flash`) without waiting for a dictionary update. Exact
+        token matches win; substring matches (badges/descriptions inside
+        the button text) are used only when no exact match exists."""
+        if not self.page:
+            return None
+        wanted = self._normalize_option_token(desired_friendly)
+        if not wanted:
+            return None
+        options = self.page.locator(self.MODEL_OPTION_SELECTOR)
+        if await options.count() == 0:
+            await self._expand_collapsible_section()
+            options = self.page.locator("button[data-value]")
+        count = await options.count()
+        exact = []       # (idx, data_value)
+        partial = []     # button text merely contains the name (badges around)
+        for idx in range(min(count, 25)):
+            cand = options.nth(idx)
+            try:
+                data_value = (await cand.get_attribute("data-value")) or ""
+            except Exception:
+                data_value = ""
+            text = ""
+            try:
+                text = await cand.inner_text()
+            except Exception:
+                pass
+            dv_tok = self._normalize_option_token(data_value)
+            tx_tok = self._normalize_option_token(text)
+            if wanted in (dv_tok, tx_tok):
+                exact.append((idx, data_value))
+            elif len(wanted) >= 6 and (wanted in dv_tok or wanted in tx_tok):
+                partial.append((idx, data_value))
+        for idx, data_value in exact + partial:
+            cand = options.nth(idx)
+            try:
+                await cand.click(timeout=self._ui_timeout)
+                return str(data_value or "").strip() or wanted
+            except Exception:
+                continue
+        return None
+
     async def _click_first_glm_model_option(self) -> Optional[str]:
         if not self.page:
             return None
@@ -1028,6 +1088,22 @@ class GLMDriver(BaseDriver):
         try:
             clicked = await self._click_glm_model_option(desired_data_value, friendly_name=desired)
             if not clicked:
+                try:
+                    opts = self.page.locator(self.MODEL_OPTION_SELECTOR)
+                    seen = []
+                    for i in range(min(await opts.count(), 25)):
+                        dv = (await opts.nth(i).get_attribute("data-value")) or "?"
+                        seen.append(dv)
+                    Logger.warning(f"GLM Chat: dropdown data-values: {seen}")
+                except Exception:
+                    pass
+                matched_value = await self._click_glm_model_option_by_label(desired)
+                if matched_value:
+                    Logger.warning(
+                        f"GLM Chat: '{desired}' matched by label with data-value "
+                        f"'{matched_value}' (dictionary said '{desired_data_value}')."
+                    )
+                    return
                 Logger.error(
                     f"GLM Chat: desired model '{desired}' not found in dropdown (data-value '{desired_data_value}'). "
                     "Selecting the first available model instead."
@@ -2197,10 +2273,10 @@ class GLMDriver(BaseDriver):
         enabled = "off" not in normalized
         effort = ""
         if enabled:
-            if "high" in normalized:
-                effort = "high"
-            elif "max" in normalized:
-                effort = "max"
+            for token in ("medium", "low", "max", "high"):
+                if token in normalized:
+                    effort = token
+                    break
 
         return {
             "exists": True,
@@ -2236,7 +2312,8 @@ class GLMDriver(BaseDriver):
 
         try:
             await self.page.wait_for_selector(
-                "div[role='menu'][data-state='open'] button[role='switch'][aria-checked]",
+                "div[role='menu'][data-state='open'] button[role='switch'][aria-checked], "
+                "div[role='menu'][data-state='open'] button[type='button'][data-selected]",
                 timeout=self._ui_timeout,
                 state="visible",
             )
@@ -2314,27 +2391,36 @@ class GLMDriver(BaseDriver):
             return False
 
         desired = self._normalize_glm_deepthink_effort(effort)
-        label = "Max" if desired == "max" else "High"
+        preference = {
+            "low": ("Low", "Medium", "High", "Max"),
+            "medium": ("Medium", "High", "Low", "Max"),
+            "high": ("High", "Max", "Medium", "Low"),
+            "max": ("Max", "High", "Medium", "Low"),
+        }.get(desired, ("High", "Max", "Medium", "Low"))
         menu = self.page.locator("div[role='menu'][data-state='open']")
-        option = menu.locator("button[type='button'][data-selected]").filter(has_text=label)
-        count = await option.count()
-        if count == 0:
-            Logger.warning(f"GLM Chat: GLM-5.2 Deep Think effort option '{label}' not found.")
-            return False
-
-        for idx in range(min(count, 5)):
-            cand = option.nth(idx)
-            try:
-                if await cand.is_visible():
-                    selected = str((await cand.get_attribute("data-selected")) or "").strip().lower()
-                    if selected == "true":
-                        return True
-                    await cand.click(timeout=self._ui_timeout)
-                    await asyncio.sleep(0.1)
-                    return True
-            except Exception:
+        for label in preference:
+            option = menu.locator("button[type='button'][data-selected]").filter(has_text=label)
+            count = await option.count()
+            if count == 0:
                 continue
-
+            if label != preference[0]:
+                Logger.warning(
+                    f"GLM Chat: Deep Think effort '{preference[0]}' not present; "
+                    f"using nearest available '{label}'."
+                )
+            for idx in range(min(count, 5)):
+                cand = option.nth(idx)
+                try:
+                    if await cand.is_visible():
+                        selected = str((await cand.get_attribute("data-selected")) or "").strip().lower()
+                        if selected == "true":
+                            return True
+                        await cand.click(timeout=self._ui_timeout)
+                        await asyncio.sleep(0.1)
+                        return True
+                except Exception:
+                    continue
+        Logger.warning("GLM Chat: no Deep Think effort option could be selected.")
         return False
 
     async def _set_glm_52_deepthink_state(self, state: bool, effort: str | None = None) -> None:
@@ -2359,18 +2445,35 @@ class GLMDriver(BaseDriver):
             return
 
         try:
+            has_switch = await self._glm_deepthink_menu_has_switch()
             if desired_enabled:
                 if current.get("effort") != desired_effort:
                     await self._select_glm_52_deepthink_effort(desired_effort)
                     if not await self._open_glm_52_deepthink_menu():
                         return
-                if not await self._read_glm_52_deepthink_switch_enabled():
+                if has_switch and not await self._read_glm_52_deepthink_switch_enabled():
                     await self._click_glm_52_deepthink_switch()
             else:
-                if await self._read_glm_52_deepthink_switch_enabled():
+                if not has_switch:
+                    Logger.info(
+                        "GLM Chat: this model cannot disable Deep Think "
+                        "(always-on); leaving it enabled."
+                    )
+                elif await self._read_glm_52_deepthink_switch_enabled():
                     await self._click_glm_52_deepthink_switch()
         finally:
             await self._close_glm_52_deepthink_menu()
+
+    async def _glm_deepthink_menu_has_switch(self) -> bool:
+        if not self.page:
+            return False
+        switch = self.page.locator(
+            "div[role='menu'][data-state='open'] button[role='switch'][aria-checked]"
+        )
+        try:
+            return await switch.count() > 0
+        except Exception:
+            return False
 
     async def _find_search_button(self):
         """Find the Web Search button in the active GLM composer layout."""
