@@ -45,7 +45,7 @@ For GLM, these model IDs map to simple behavior presets:
 
     The Settings dropdown shows the supported GLM web UI entries. Use it as the exact list, since GLM can change model availability through rollouts or maintenance.
 
-    Right now, **GLM-5.2** is the only model where IntenseRP exposes the separate **Deep Think Effort** setting, and **GLM-5V-Turbo** is the only model where IntenseRP exposes the separate **Enable Tools** toggle. On other GLM models, those settings are ignored or forced off as needed.
+    Right now, **GLM-5.2** and the **GLM-5.3** family are the models where IntenseRP exposes the separate **Deep Think Effort** setting, and **GLM-5V-Turbo** is the only model where IntenseRP exposes the separate **Enable Tools** toggle. On other GLM models, those settings are ignored or forced off as needed.
 
     !!! warning "Fallback behavior"
         If your selected model is not present in the dropdown (UI changes / rollout), IntenseRP logs a warning and selects the **first available** model instead.
@@ -66,9 +66,11 @@ Toggles the Deep Think button in GLM's interface.
 
 GLM-5.2 uses a newer Deep Think control. Instead of one plain toggle, the menu has **High** and **Max** effort choices plus a separate on/off switch.
 
+The GLM-5.3 family (GLM-5.3, GLM-5.3-Flash) uses the same combined menu but with **Low**, **Medium**, and **High** choices — and **no on/off switch at all**: these models cannot disable thinking. When Deep Think is requested off for them, IntenseRP leaves it enabled and logs an informational message. If the configured effort level is missing on the selected model (e.g. Max on GLM-5.3), the nearest available level is used and a warning is logged.
+
 :material-arrow-right: **Settings** -> **Provider Behavior** -> **GLM Chat** -> **Deep Think Effort**
 
-This setting is only shown for **GLM-5.2** while **Enable Deep Think** is on. Older GLM models keep using the simpler Deep Think toggle.
+This setting is shown for **GLM-5.2** and the **GLM-5.3** family while **Enable Deep Think** is on. Older GLM models keep using the simpler Deep Think toggle.
 
 ### Send Deep Think
 
@@ -285,7 +287,7 @@ GLM has a few quirks worth knowing about, that could look as broken (but really 
 | **Request Capture Mode** | Captures responses with Replay or CDP Teeing | Replay |
 | **Model** | Selects GLM's real model picker (UI) | GLM-5.2 |
 | **Enable Deep Think** | Toggles GLM reasoning mode | Off |
-| **Deep Think Effort** | Picks GLM-5.2's Deep Think effort | Max |
+| **Deep Think Effort** | Picks the Deep Think effort (GLM-5.2: High/Max; GLM-5.3 family: Low/Medium/High) | Max |
 | **Send Deep Think** | Includes thinking in response | Off |
 | **Count Tokens** | Returns token usage in API responses | On |
 | **Enable Search** | Enables GLM search | Off |

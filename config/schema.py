@@ -500,7 +500,7 @@ SCHEMA = [
                 label="Model",
                 type=SettingType.DROPDOWN,
                 default="GLM-5.3",
-                options=["GLM-5.3", "GLM-5.2", "GLM-5.1", "GLM-5-Turbo", "GLM-5V-Turbo", "GLM-4.7"],
+                options=["GLM-5.3", "GLM-5.3-Flash", "GLM-5.2", "GLM-5.1", "GLM-5-Turbo", "GLM-5V-Turbo", "GLM-4.7"],
                 tooltip="Select which GLM model to use in the web UI. Not related to the API model IDs.",
                 docs_path=DOCS_GLM,
                 docs_anchor="modes-model-ids",
@@ -519,9 +519,22 @@ SCHEMA = [
                 label="Deep Think Effort",
                 type=SettingType.DROPDOWN,
                 default="Max",
-                options=["High", "Max"],
-                tooltip="Select GLM-5.2's Deep Think effort when Deep Think is enabled.",
-                visible_depends="(glm_behavior.model==GLM-5.2|glm_behavior.model==GLM-5.3)&&glm_behavior.enable_deepthink",
+                options=["Low", "Medium", "High", "Max"],
+                tooltip=(
+                    "Deep Think effort. GLM-5.2 exposes High/Max; the GLM-5.3 family "
+                    "exposes Low/Medium/High and cannot disable thinking at all. "
+                    "Levels missing on the selected model fall back to the nearest available."
+                ),
+                # NOTE: the visible_depends parser supports only `&&` with ==/!=
+                # (no `|`), so an OR-list of models is expressed as a chain of
+                # exclusions of the non-effort models.
+                visible_depends=(
+                    "glm_behavior.enable_deepthink"
+                    "&&glm_behavior.model!=GLM-5.1"
+                    "&&glm_behavior.model!=GLM-5-Turbo"
+                    "&&glm_behavior.model!=GLM-5V-Turbo"
+                    "&&glm_behavior.model!=GLM-4.7"
+                ),
                 docs_path=DOCS_GLM,
                 docs_anchor="deep-think-effort",
             ),
