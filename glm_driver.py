@@ -2465,15 +2465,28 @@ class GLMDriver(BaseDriver):
             await self._close_glm_52_deepthink_menu()
 
     async def _glm_deepthink_menu_has_switch(self) -> bool:
+        """True only for a switch that can actually be clicked.
+
+        The GLM-5.3 menu renders a switch element that is present in the DOM
+        but hidden/disabled (thinking cannot be turned off), so a bare
+        count() check is not enough — clicking it just times out."""
         if not self.page:
             return False
         switch = self.page.locator(
             "div[role='menu'][data-state='open'] button[role='switch'][aria-checked]"
         )
         try:
-            return await switch.count() > 0
+            count = await switch.count()
         except Exception:
             return False
+        for idx in range(min(count, 3)):
+            cand = switch.nth(idx)
+            try:
+                if await cand.is_visible() and await cand.is_enabled():
+                    return True
+            except Exception:
+                continue
+        return False
 
     async def _find_search_button(self):
         """Find the Web Search button in the active GLM composer layout."""
