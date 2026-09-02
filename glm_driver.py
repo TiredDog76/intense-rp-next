@@ -2455,10 +2455,16 @@ class GLMDriver(BaseDriver):
                     await self._click_glm_52_deepthink_switch()
             else:
                 if not has_switch:
+                    # Thinking cannot be turned off on this model. The best we
+                    # can do is honor the configured effort level so replies
+                    # stay as fast as possible (critical for clients with
+                    # short timeouts).
                     Logger.info(
                         "GLM Chat: this model cannot disable Deep Think "
-                        "(always-on); leaving it enabled."
+                        f"(always-on); applying effort '{desired_effort}' instead."
                     )
+                    if current.get("effort") != desired_effort:
+                        await self._select_glm_52_deepthink_effort(desired_effort)
                 elif await self._read_glm_52_deepthink_switch_enabled():
                     await self._click_glm_52_deepthink_switch()
         finally:
